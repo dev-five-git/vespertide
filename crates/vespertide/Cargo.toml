@@ -1,7 +1,12 @@
 [package]
 name = "vespertide"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+description = "Rust workspace for defining database schemas in JSON and generating migration plans and SQL from model diffs"
 
 [dependencies]
 vespertide-macro = { workspace = true }

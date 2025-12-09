@@ -1,7 +1,12 @@
 [package]
 name = "vespertide-core"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+description = "Data models for tables, columns, constraints, indexes, and migration actions"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

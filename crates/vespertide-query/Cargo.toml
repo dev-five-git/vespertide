@@ -1,7 +1,12 @@
 [package]
 name = "vespertide-query"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+description = "Converts migration actions into PostgreSQL SQL statements with bind parameters"
 
 [dependencies]
 vespertide-core = { workspace = true }

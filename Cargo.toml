@@ -2,6 +2,13 @@
 members = ["crates/*", "examples/app"]
 resolver = "2"
 
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/dev-five-git/vespertide"
+homepage = "https://github.com/dev-five-git/vespertide"
+documentation = "https://docs.rs/vespertide"
+
 [workspace.dependencies]
 vespertide-core = { path = "crates/vespertide-core", version = "0.1.0" }
 vespertide-config = { path = "crates/vespertide-config", version = "0.1.0" }

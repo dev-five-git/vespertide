@@ -1,7 +1,12 @@
 [package]
 name = "vespertide-cli"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+description = "CLI command for vespertide (model template, diff, SQL, revision, status, log)"
 publish = false
 
 [dependencies]

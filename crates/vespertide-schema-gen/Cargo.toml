@@ -1,7 +1,12 @@
 [package]
 name = "vespertide-schema-gen"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+description = "Emits JSON Schemas for vespertide models and migrations"
 publish = false
 
 [dependencies]

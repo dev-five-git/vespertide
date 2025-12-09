@@ -1,7 +1,12 @@
 [package]
 name = "vespertide-planner"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+description = "Replays applied migrations to rebuild a baseline, then diffs against current models to compute the next migration plan"
 
 [dependencies]
 vespertide-core = { workspace = true }
