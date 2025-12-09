@@ -425,6 +425,7 @@ mod tests {
     #[case::create_only(
         vec![MigrationPlan {
             comment: None,
+            created_at: None,
             version: 1,
             actions: vec![MigrationAction::CreateTable {
                 table: "users".into(),
@@ -443,6 +444,7 @@ mod tests {
         vec![
             MigrationPlan {
                 comment: None,
+                created_at: None,
                 version: 1,
                 actions: vec![MigrationAction::CreateTable {
                     table: "users".into(),
@@ -452,6 +454,7 @@ mod tests {
             },
             MigrationPlan {
                 comment: None,
+                created_at: None,
                 version: 2,
                 actions: vec![MigrationAction::AddColumn {
                     table: "users".into(),
@@ -474,6 +477,7 @@ mod tests {
         vec![
             MigrationPlan {
                 comment: None,
+                created_at: None,
                 version: 1,
                 actions: vec![MigrationAction::CreateTable {
                     table: "users".into(),
@@ -483,6 +487,7 @@ mod tests {
             },
             MigrationPlan {
                 comment: None,
+                created_at: None,
                 version: 2,
                 actions: vec![MigrationAction::AddColumn {
                     table: "users".into(),
@@ -492,6 +497,7 @@ mod tests {
             },
             MigrationPlan {
                 comment: None,
+                created_at: None,
                 version: 3,
                 actions: vec![MigrationAction::AddIndex {
                     table: "users".into(),
@@ -616,6 +622,7 @@ mod tests {
     fn plan_next_migration_sets_next_version() {
         let applied = vec![MigrationPlan {
             comment: None,
+            created_at: None,
             version: 1,
             actions: vec![MigrationAction::CreateTable {
                 table: "users".into(),
