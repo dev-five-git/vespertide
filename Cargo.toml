@@ -1,0 +1,8 @@
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[workspace.package]
+name = "vespertide"
+version = "0.1.0"
+edition = "2024"
