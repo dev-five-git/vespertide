@@ -3,8 +3,8 @@ use clap::{Parser, Subcommand};
 
 mod commands;
 mod utils;
-use commands::{cmd_diff, cmd_init, cmd_log, cmd_new, cmd_revision, cmd_sql, cmd_status};
 use clap::ValueEnum;
+use commands::{cmd_diff, cmd_init, cmd_log, cmd_new, cmd_revision, cmd_sql, cmd_status};
 
 /// vespertide command-line interface.
 #[derive(Parser, Debug)]

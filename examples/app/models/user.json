@@ -1,0 +1,7 @@
+{
+  "$schema": "./schemas/model.schema.json",
+  "columns": [],
+  "constraints": [],
+  "indexes": [],
+  "name": "user"
+}

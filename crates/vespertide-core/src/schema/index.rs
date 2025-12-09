@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
+use schemars::JsonSchema;
 
 use crate::schema::names::{ColumnName, IndexName};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexDef {
     pub name: IndexName,

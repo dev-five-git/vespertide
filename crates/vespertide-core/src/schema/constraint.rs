@@ -1,8 +1,9 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::schema::{names::ColumnName, names::TableName, ReferenceAction};
+use crate::schema::{ReferenceAction, names::ColumnName, names::TableName};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum TableConstraint {
     PrimaryKey(Vec<ColumnName>),
     Unique {
@@ -26,4 +27,3 @@ pub enum TableConstraint {
         expr: String,
     },
 }
-

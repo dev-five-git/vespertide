@@ -1,0 +1,452 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MigrationPlan",
+  "type": "object",
+  "properties": {
+    "actions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/MigrationAction"
+      }
+    },
+    "comment": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "version": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "version",
+    "actions"
+  ],
+  "$defs": {
+    "ColumnDef": {
+      "type": "object",
+      "properties": {
+        "dataType": {
+          "$ref": "#/$defs/ColumnType"
+        },
+        "default": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "nullable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "dataType",
+        "nullable"
+      ]
+    },
+    "ColumnType": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "Integer",
+            "BigInt",
+            "Text",
+            "Boolean",
+            "Timestamp"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "Custom": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "Custom"
+          ]
+        }
+      ]
+    },
+    "IndexDef": {
+      "type": "object",
+      "properties": {
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "unique": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "columns",
+        "unique"
+      ]
+    },
+    "MigrationAction": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "columns": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ColumnDef"
+              }
+            },
+            "constraints": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/TableConstraint"
+              }
+            },
+            "table": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "CreateTable"
+            }
+          },
+          "required": [
+            "type",
+            "table",
+            "columns",
+            "constraints"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "table": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "DeleteTable"
+            }
+          },
+          "required": [
+            "type",
+            "table"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "column": {
+              "$ref": "#/$defs/ColumnDef"
+            },
+            "fillWith": {
+              "description": "Optional fill value to backfill existing rows when adding NOT NULL without default.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "table": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "AddColumn"
+            }
+          },
+          "required": [
+            "type",
+            "table",
+            "column"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "string"
+            },
+            "table": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "RenameColumn"
+            }
+          },
+          "required": [
+            "type",
+            "table",
+            "from",
+            "to"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "column": {
+              "type": "string"
+            },
+            "table": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "DeleteColumn"
+            }
+          },
+          "required": [
+            "type",
+            "table",
+            "column"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "column": {
+              "type": "string"
+            },
+            "newType": {
+              "$ref": "#/$defs/ColumnType"
+            },
+            "table": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "ModifyColumnType"
+            }
+          },
+          "required": [
+            "type",
+            "table",
+            "column",
+            "newType"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "index": {
+              "$ref": "#/$defs/IndexDef"
+            },
+            "table": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "AddIndex"
+            }
+          },
+          "required": [
+            "type",
+            "table",
+            "index"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "table": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "RemoveIndex"
+            }
+          },
+          "required": [
+            "type",
+            "table",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "RenameTable"
+            }
+          },
+          "required": [
+            "type",
+            "from",
+            "to"
+          ]
+        }
+      ]
+    },
+    "ReferenceAction": {
+      "type": "string",
+      "enum": [
+        "Cascade",
+        "Restrict",
+        "SetNull",
+        "SetDefault",
+        "NoAction"
+      ]
+    },
+    "TableConstraint": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "PrimaryKey": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "PrimaryKey"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "Unique": {
+              "type": "object",
+              "properties": {
+                "columns": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "columns"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "Unique"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "ForeignKey": {
+              "type": "object",
+              "properties": {
+                "columns": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "onDelete": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/ReferenceAction"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "onUpdate": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/ReferenceAction"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "refColumns": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "refTable": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "columns",
+                "refTable",
+                "refColumns"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "ForeignKey"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "Check": {
+              "type": "object",
+              "properties": {
+                "expr": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "expr"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "Check"
+          ]
+        }
+      ]
+    }
+  }
+}

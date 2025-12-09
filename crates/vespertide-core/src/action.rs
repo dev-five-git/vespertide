@@ -2,8 +2,9 @@ use crate::schema::{
     ColumnDef, ColumnName, ColumnType, IndexDef, IndexName, TableConstraint, TableName,
 };
 use serde::{Deserialize, Serialize};
+use schemars::JsonSchema;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MigrationPlan {
     pub comment: Option<String>,
@@ -11,7 +12,7 @@ pub struct MigrationPlan {
     pub actions: Vec<MigrationAction>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type")]
 pub enum MigrationAction {
     #[serde(rename_all = "camelCase")]

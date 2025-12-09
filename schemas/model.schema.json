@@ -1,0 +1,253 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TableDef",
+  "type": "object",
+  "properties": {
+    "columns": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ColumnDef"
+      }
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/TableConstraint"
+      }
+    },
+    "indexes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/IndexDef"
+      }
+    },
+    "name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "columns",
+    "constraints",
+    "indexes"
+  ],
+  "$defs": {
+    "ColumnDef": {
+      "type": "object",
+      "properties": {
+        "dataType": {
+          "$ref": "#/$defs/ColumnType"
+        },
+        "default": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "nullable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "dataType",
+        "nullable"
+      ]
+    },
+    "ColumnType": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "Integer",
+            "BigInt",
+            "Text",
+            "Boolean",
+            "Timestamp"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "Custom": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "Custom"
+          ]
+        }
+      ]
+    },
+    "IndexDef": {
+      "type": "object",
+      "properties": {
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "unique": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "columns",
+        "unique"
+      ]
+    },
+    "ReferenceAction": {
+      "type": "string",
+      "enum": [
+        "Cascade",
+        "Restrict",
+        "SetNull",
+        "SetDefault",
+        "NoAction"
+      ]
+    },
+    "TableConstraint": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "PrimaryKey": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "PrimaryKey"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "Unique": {
+              "type": "object",
+              "properties": {
+                "columns": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "columns"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "Unique"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "ForeignKey": {
+              "type": "object",
+              "properties": {
+                "columns": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "onDelete": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/ReferenceAction"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "onUpdate": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/ReferenceAction"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "refColumns": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "refTable": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "columns",
+                "refTable",
+                "refColumns"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "ForeignKey"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "Check": {
+              "type": "object",
+              "properties": {
+                "expr": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "expr"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "Check"
+          ]
+        }
+      ]
+    }
+  }
+}
