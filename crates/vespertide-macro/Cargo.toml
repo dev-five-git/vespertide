@@ -5,4 +5,4 @@ edition = "2024"
 
 [dependencies]
 vespertide-core = { path = "../vespertide-core" }
-thiserror = "1"
+thiserror = "2"
