@@ -687,14 +687,14 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "vespertide"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "vespertide-macro",
 ]
 
 [[package]]
 name = "vespertide-cli"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -710,7 +710,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-config"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "clap",
  "serde",
@@ -718,7 +718,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-core"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "schemars",
  "serde",
@@ -726,7 +726,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-macro"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "thiserror",
  "vespertide-core",
@@ -734,7 +734,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-planner"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "rstest",
  "thiserror",
@@ -743,7 +743,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-query"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "thiserror",
  "vespertide-core",

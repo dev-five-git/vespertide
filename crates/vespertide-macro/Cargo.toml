@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-vespertide-core = { path = "../vespertide-core" }
+vespertide-core = { workspace = true }
 thiserror = "2"
