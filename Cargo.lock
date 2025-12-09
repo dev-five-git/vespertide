@@ -107,6 +107,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "vespertide-planner"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "vespertide-core",
+]
+
+[[package]]
 name = "vespertide-query"
 version = "0.1.0"
 dependencies = [
