@@ -488,6 +488,9 @@ dependencies = [
  "clap",
  "serde_json",
  "vespertide-config",
+ "vespertide-core",
+ "vespertide-planner",
+ "vespertide-query",
 ]
 
 [[package]]

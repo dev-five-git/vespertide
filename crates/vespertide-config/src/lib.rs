@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// Supported naming cases.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum NameCase {
     Snake,
     Camel,
@@ -29,6 +30,7 @@ impl NameCase {
 
 /// Top-level vespertide configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VespertideConfig {
     pub models_dir: PathBuf,
     pub migrations_dir: PathBuf,
