@@ -1,14 +1,30 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+mod options;
+mod runtime;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub use options::MigrationOptions;
+pub use runtime::{MigrationError, run_migrations};
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+/// Zero-runtime migration entry point.
+#[macro_export]
+macro_rules! vespertide_migration {
+    ($pool:expr $(, $key:ident = $value:expr )* $(,)?) => {{
+        async {
+            let mut __version_table: &str = "vespertide_version";
+
+            $(
+                match stringify!($key) {
+                    "version_table" => __version_table = $value,
+                    _ => compile_error!("unsupported option for vespertide_migration!"),
+                }
+            )*
+
+            $crate::run_migrations(
+                $pool,
+                $crate::MigrationOptions {
+                    version_table: __version_table.to_string(),
+                },
+            )
+            .await
+        }
+    }};
 }
