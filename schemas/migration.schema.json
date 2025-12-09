@@ -15,6 +15,13 @@
         "null"
       ]
     },
+    "createdAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
     "version": {
       "type": "integer",
       "format": "uint32",
