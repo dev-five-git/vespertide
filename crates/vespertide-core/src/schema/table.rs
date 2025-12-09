@@ -1,0 +1,14 @@
+use serde::{Deserialize, Serialize};
+
+use crate::schema::{
+    column::ColumnDef, constraint::TableConstraint, index::IndexDef, names::TableName,
+};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableDef {
+    pub name: TableName,
+    pub columns: Vec<ColumnDef>,
+    pub constraints: Vec<TableConstraint>,
+    pub indexes: Vec<IndexDef>,
+}
