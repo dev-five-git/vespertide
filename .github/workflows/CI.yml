@@ -63,6 +63,6 @@ jobs:
         id: changepacks
       - name: Publish
         run: cargo publish --workspace
-        if: ${{ contains(steps.changepacks.outputs.changepacks, 'crates/vespera/Cargo.toml') }}
+        if: ${{ contains(steps.changepacks.outputs.changepacks, 'crates/vespertide/Cargo.toml') }}
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
