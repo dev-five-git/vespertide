@@ -26,13 +26,38 @@ pub fn build_action_queries(action: &MigrationAction) -> Result<Vec<String>, Que
             columns,
             constraints,
         } => Ok(vec![create_table_sql(table, columns, constraints)?]),
-        MigrationAction::DeleteTable { table } => {
-            Ok(vec![format!("DROP TABLE {table};")])
+        MigrationAction::DeleteTable { table } => Ok(vec![format!("DROP TABLE {table};")]),
+        MigrationAction::AddColumn {
+            table,
+            column,
+            fill_with,
+        } => {
+            // If adding NOT NULL without default, optionally backfill then enforce NOT NULL.
+            let mut stmts = Vec::new();
+            let add_col_sql = if column.nullable || column.default.is_some() || fill_with.is_none()
+            {
+                format!("ALTER TABLE {table} ADD COLUMN {};", column_def_sql(column))
+            } else {
+                // Add as nullable to allow backfill.
+                let mut c = column.clone();
+                c.nullable = true;
+                format!("ALTER TABLE {table} ADD COLUMN {};", column_def_sql(&c))
+            };
+            stmts.push(add_col_sql);
+
+            if let Some(fill) = fill_with {
+                stmts.push(format!("UPDATE {table} SET {} = {fill};", column.name));
+            }
+
+            if !column.nullable && column.default.is_none() && fill_with.is_some() {
+                stmts.push(format!(
+                    "ALTER TABLE {table} ALTER COLUMN {} SET NOT NULL;",
+                    column.name
+                ));
+            }
+
+            Ok(stmts)
         }
-        MigrationAction::AddColumn { table, column } => Ok(vec![format!(
-            "ALTER TABLE {table} ADD COLUMN {};",
-            column_def_sql(column)
-        )]),
         MigrationAction::RenameColumn { table, from, to } => Ok(vec![format!(
             "ALTER TABLE {table} RENAME COLUMN {from} TO {to};"
         )]),
@@ -48,9 +73,7 @@ pub fn build_action_queries(action: &MigrationAction) -> Result<Vec<String>, Que
             column_type_sql(new_type)
         )]),
         MigrationAction::AddIndex { table, index } => Ok(vec![create_index_sql(table, index)]),
-        MigrationAction::RemoveIndex { name, .. } => {
-            Ok(vec![format!("DROP INDEX {name};")])
-        }
+        MigrationAction::RemoveIndex { name, .. } => Ok(vec![format!("DROP INDEX {name};")]),
         MigrationAction::RenameTable { from, to } => {
             Ok(vec![format!("ALTER TABLE {from} RENAME TO {to};")])
         }
@@ -72,7 +95,11 @@ fn create_table_sql(
 }
 
 fn column_def_sql(column: &ColumnDef) -> String {
-    let mut parts = vec![format!("{} {}", column.name, column_type_sql(&column.data_type))];
+    let mut parts = vec![format!(
+        "{} {}",
+        column.name,
+        column_type_sql(&column.data_type)
+    )];
     if !column.nullable {
         parts.push("NOT NULL".into());
     }
@@ -156,4 +183,3 @@ fn create_index_sql(table: &str, index: &IndexDef) -> String {
         index.columns.join(", ")
     )
 }
-

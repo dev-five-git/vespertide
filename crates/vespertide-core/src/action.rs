@@ -23,7 +23,12 @@ pub enum MigrationAction {
     #[serde(rename_all = "camelCase")]
     DeleteTable { table: TableName },
     #[serde(rename_all = "camelCase")]
-    AddColumn { table: TableName, column: ColumnDef },
+    AddColumn {
+        table: TableName,
+        column: ColumnDef,
+        /// Optional fill value to backfill existing rows when adding NOT NULL without default.
+        fill_with: Option<String>,
+    },
     #[serde(rename_all = "camelCase")]
     RenameColumn {
         table: TableName,
