@@ -16,6 +16,9 @@ pub fn cmd_log() -> Result<()> {
 
     for plan in &plans {
         println!("Version: {}", plan.version);
+        if let Some(created) = &plan.created_at {
+            println!("Created at: {}", created);
+        }
         if let Some(comment) = &plan.comment {
             println!("Comment: {}", comment);
         }

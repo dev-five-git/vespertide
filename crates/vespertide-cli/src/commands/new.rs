@@ -4,19 +4,21 @@ use anyhow::{Context, Result, bail};
 use serde_json::Value;
 use vespertide_core::TableDef;
 
-use crate::{ModelFormat, utils::load_config};
+use crate::utils::load_config;
+use vespertide_config::FileFormat;
 
-pub fn cmd_new(name: String, format: ModelFormat) -> Result<()> {
+pub fn cmd_new(name: String, format: Option<FileFormat>) -> Result<()> {
     let config = load_config()?;
+    let format = format.unwrap_or_else(|| config.model_format());
     let dir = config.models_dir();
     if !dir.exists() {
         fs::create_dir_all(dir).context("create models directory")?;
     }
 
     let ext = match format {
-        ModelFormat::Json => "json",
-        ModelFormat::Yaml => "yaml",
-        ModelFormat::Yml => "yml",
+        FileFormat::Json => "json",
+        FileFormat::Yaml => "yaml",
+        FileFormat::Yml => "yml",
     };
 
     let schema_url = schema_url_for(format);
@@ -33,15 +35,15 @@ pub fn cmd_new(name: String, format: ModelFormat) -> Result<()> {
     };
 
     match format {
-        ModelFormat::Json => write_json_with_schema(&path, &table, &schema_url)?,
-        ModelFormat::Yaml | ModelFormat::Yml => write_yaml(&path, &table, &schema_url)?,
+        FileFormat::Json => write_json_with_schema(&path, &table, &schema_url)?,
+        FileFormat::Yaml | FileFormat::Yml => write_yaml(&path, &table, &schema_url)?,
     }
 
     println!("Created model template: {}", path.display());
     Ok(())
 }
 
-fn schema_url_for(format: ModelFormat) -> String {
+fn schema_url_for(format: FileFormat) -> String {
     // If not set, default to public raw GitHub schema location.
     // Users can override via VESP_SCHEMA_BASE_URL.
     let base = std::env::var("VESP_SCHEMA_BASE_URL").ok();
@@ -50,8 +52,8 @@ fn schema_url_for(format: ModelFormat) -> String {
     );
     let base = base.trim_end_matches('/');
     match format {
-        ModelFormat::Json => format!("{}/model.schema.json", base),
-        ModelFormat::Yaml | ModelFormat::Yml => format!("{}/model.schema.json", base),
+        FileFormat::Json => format!("{}/model.schema.json", base),
+        FileFormat::Yaml | FileFormat::Yml => format!("{}/model.schema.json", base),
     }
 }
 

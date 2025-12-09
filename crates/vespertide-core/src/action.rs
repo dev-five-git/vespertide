@@ -8,6 +8,8 @@ use schemars::JsonSchema;
 #[serde(rename_all = "camelCase")]
 pub struct MigrationPlan {
     pub comment: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
     pub version: u32,
     pub actions: Vec<MigrationAction>,
 }

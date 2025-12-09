@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use clap::ValueEnum;
 
 /// Supported naming cases.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,6 +29,26 @@ impl NameCase {
     }
 }
 
+/// Supported file formats for generated artifacts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum FileFormat {
+    Json,
+    Yaml,
+    Yml,
+}
+
+impl Default for FileFormat {
+    fn default() -> Self {
+        FileFormat::Json
+    }
+}
+
+/// Default migration filename pattern: zero-padded version + sanitized comment.
+pub fn default_migration_filename_pattern() -> String {
+    "%04v_%m".to_string()
+}
+
 /// Top-level vespertide configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,6 +57,12 @@ pub struct VespertideConfig {
     pub migrations_dir: PathBuf,
     pub table_naming_case: NameCase,
     pub column_naming_case: NameCase,
+    #[serde(default)]
+    pub model_format: FileFormat,
+    #[serde(default)]
+    pub migration_format: FileFormat,
+    #[serde(default = "default_migration_filename_pattern")]
+    pub migration_filename_pattern: String,
 }
 
 impl Default for VespertideConfig {
@@ -45,6 +72,9 @@ impl Default for VespertideConfig {
             migrations_dir: PathBuf::from("migrations"),
             table_naming_case: NameCase::Snake,
             column_naming_case: NameCase::Snake,
+            model_format: FileFormat::Json,
+            migration_format: FileFormat::Json,
+            migration_filename_pattern: default_migration_filename_pattern(),
         }
     }
 }
@@ -73,6 +103,21 @@ impl VespertideConfig {
     pub fn column_case(&self) -> NameCase {
         self.column_naming_case
     }
+
+    /// Preferred file format for models.
+    pub fn model_format(&self) -> FileFormat {
+        self.model_format
+    }
+
+    /// Preferred file format for migrations.
+    pub fn migration_format(&self) -> FileFormat {
+        self.migration_format
+    }
+
+    /// Pattern for migration filenames (supports %v and %m placeholders).
+    pub fn migration_filename_pattern(&self) -> &str {
+        &self.migration_filename_pattern
+    }
 }
 
 #[cfg(test)]
@@ -95,6 +140,7 @@ mod tests {
             migrations_dir: PathBuf::from("custom_migrations"),
             table_naming_case: NameCase::Camel,
             column_naming_case: NameCase::Pascal,
+            ..Default::default()
         };
 
         assert_eq!(cfg.models_dir(), Path::new("custom_models"));

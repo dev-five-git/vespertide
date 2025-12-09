@@ -1,17 +1,17 @@
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 
 mod commands;
 mod utils;
-use clap::ValueEnum;
 use commands::{cmd_diff, cmd_init, cmd_log, cmd_new, cmd_revision, cmd_sql, cmd_status};
+use vespertide_config::FileFormat;
 
 /// vespertide command-line interface.
 #[derive(Parser, Debug)]
 #[command(name = "vespertide", author, version, about)]
 struct Cli {
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -26,9 +26,9 @@ enum Commands {
     New {
         /// Model name (table name).
         name: String,
-        /// Output format: json|yaml|yml (default: json).
-        #[arg(short = 'f', long = "format", default_value = "json", value_enum)]
-        format: ModelFormat,
+        /// Output format: json|yaml|yml (default: config modelFormat or json).
+        #[arg(short = 'f', long = "format", value_enum)]
+        format: Option<FileFormat>,
     },
     /// Show current status.
     Status,
@@ -41,22 +41,21 @@ enum Commands {
     Init,
 }
 
-#[derive(Copy, Clone, Debug, ValueEnum)]
-pub enum ModelFormat {
-    Json,
-    Yaml,
-    Yml,
-}
-
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Diff => cmd_diff(),
-        Commands::Sql => cmd_sql(),
-        Commands::Log => cmd_log(),
-        Commands::New { name, format } => cmd_new(name, format),
-        Commands::Status => cmd_status(),
-        Commands::Revision { message } => cmd_revision(message),
-        Commands::Init => cmd_init(),
+        Some(Commands::Diff) => cmd_diff(),
+        Some(Commands::Sql) => cmd_sql(),
+        Some(Commands::Log) => cmd_log(),
+        Some(Commands::New { name, format }) => cmd_new(name, format),
+        Some(Commands::Status) => cmd_status(),
+        Some(Commands::Revision { message }) => cmd_revision(message),
+        Some(Commands::Init) => cmd_init(),
+        None => {
+            // No subcommand: show help and exit successfully.
+            Cli::command().print_help()?;
+            println!();
+            Ok(())
+        }
     }
 }

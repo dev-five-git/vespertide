@@ -163,6 +163,7 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
 
     Ok(MigrationPlan {
         comment: None,
+        created_at: None,
         version: 0,
         actions,
     })

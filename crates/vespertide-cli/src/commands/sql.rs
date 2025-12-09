@@ -21,6 +21,9 @@ pub fn cmd_sql() -> Result<()> {
         .map_err(|e| anyhow::anyhow!("query build error: {}", e))?;
 
     println!("Plan version: {}", plan.version);
+    if let Some(created_at) = &plan.created_at {
+        println!("Created at: {}", created_at);
+    }
     if let Some(comment) = &plan.comment {
         println!("Comment: {}", comment);
     }

@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use vespertide_config::VespertideConfig;
+use vespertide_config::{FileFormat, VespertideConfig};
 use vespertide_core::{MigrationPlan, TableDef};
 
 /// Load vespertide.json config from current directory.
@@ -42,8 +42,8 @@ pub fn load_models(config: &VespertideConfig) -> Result<Vec<TableDef>> {
                     serde_json::from_str(&content)
                         .with_context(|| format!("parse JSON model: {}", path.display()))?
                 } else {
-                    // For now, only JSON is supported. YAML support can be added later.
-                    anyhow::bail!("YAML support not yet implemented: {}", path.display());
+                    serde_yaml::from_str(&content)
+                        .with_context(|| format!("parse YAML model: {}", path.display()))?
                 };
 
                 tables.push(table);
@@ -69,13 +69,18 @@ pub fn load_migrations(config: &VespertideConfig) -> Result<Vec<MigrationPlan>> 
         let path = entry.path();
         if path.is_file() {
             let ext = path.extension().and_then(|s| s.to_str());
-            if ext == Some("json") {
+            if ext == Some("json") || ext == Some("yaml") || ext == Some("yml") {
                 let content = fs::read_to_string(&path).with_context(|| {
                     format!("read migration file: {}", path.display())
                 })?;
 
-                let plan: MigrationPlan = serde_json::from_str(&content)
-                    .with_context(|| format!("parse migration: {}", path.display()))?;
+                let plan: MigrationPlan = if ext == Some("json") {
+                    serde_json::from_str(&content)
+                        .with_context(|| format!("parse migration: {}", path.display()))?
+                } else {
+                    serde_yaml::from_str(&content)
+                        .with_context(|| format!("parse migration: {}", path.display()))?
+                };
 
                 plans.push(plan);
             }
@@ -87,9 +92,38 @@ pub fn load_migrations(config: &VespertideConfig) -> Result<Vec<MigrationPlan>> 
     Ok(plans)
 }
 
-/// Generate a migration filename from version and optional comment.
+#[allow(dead_code)]
+/// Generate a migration filename from version and optional comment using defaults.
 pub fn migration_filename(version: u32, comment: Option<&str>) -> String {
-    let sanitized = comment
+    migration_filename_with_format_and_pattern(
+        version,
+        comment,
+        FileFormat::Json,
+        vespertide_config::default_migration_filename_pattern().as_str(),
+    )
+}
+
+/// Generate a migration filename from version and optional comment with format and pattern.
+pub fn migration_filename_with_format_and_pattern(
+    version: u32,
+    comment: Option<&str>,
+    format: FileFormat,
+    pattern: &str,
+) -> String {
+    let sanitized = sanitize_comment(comment);
+    let name = render_migration_name(pattern, version, &sanitized);
+
+    let ext = match format {
+        FileFormat::Json => "json",
+        FileFormat::Yaml => "yaml",
+        FileFormat::Yml => "yml",
+    };
+
+    format!("{name}.{ext}")
+}
+
+fn sanitize_comment(comment: Option<&str>) -> String {
+    comment
         .map(|c| {
             c.to_lowercase()
                 .chars()
@@ -99,12 +133,63 @@ pub fn migration_filename(version: u32, comment: Option<&str>) -> String {
                 .collect::<Vec<_>>()
                 .join("_")
         })
-        .unwrap_or_default();
+        .unwrap_or_default()
+}
 
-    if sanitized.is_empty() {
-        format!("{:04}_migration.json", version)
+fn render_migration_name(pattern: &str, version: u32, sanitized_comment: &str) -> String {
+    let default_version = format!("{:04}", version);
+    let chars: Vec<char> = pattern.chars().collect();
+    let mut i = 0;
+    let mut out = String::new();
+
+    while i < chars.len() {
+        if chars[i] == '%' {
+            // Handle %v, %m, and %0Nv (width-padded).
+            if i + 1 < chars.len() {
+                let next = chars[i + 1];
+                if next == 'v' {
+                    out.push_str(&default_version);
+                    i += 2;
+                    continue;
+                } else if next == 'm' {
+                    out.push_str(sanitized_comment);
+                    i += 2;
+                    continue;
+                } else if next == '0' {
+                    let mut j = i + 2;
+                    let mut width = String::new();
+                    while j < chars.len() && chars[j].is_ascii_digit() {
+                        width.push(chars[j]);
+                        j += 1;
+                    }
+                    if j < chars.len() && chars[j] == 'v' {
+                        let w: usize = width.parse().unwrap_or(0);
+                        if w == 0 {
+                            out.push_str(&default_version);
+                        } else {
+                            out.push_str(&format!("{:0width$}", version, width = w));
+                        }
+                        i = j + 1;
+                        continue;
+                    }
+                }
+            }
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+
+    let mut name = out;
+
+    // Trim redundant trailing separators when comment is empty.
+    while name.ends_with('_') || name.ends_with('-') || name.ends_with('.') {
+        name.pop();
+    }
+
+    if name.is_empty() {
+        default_version
     } else {
-        format!("{:04}_{}.json", version, sanitized)
+        name
     }
 }
 

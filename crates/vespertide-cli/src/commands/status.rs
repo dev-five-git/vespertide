@@ -14,6 +14,12 @@ pub fn cmd_status() -> Result<()> {
     println!("  Migrations directory: {}", config.migrations_dir().display());
     println!("  Table naming: {:?}", config.table_naming_case);
     println!("  Column naming: {:?}", config.column_naming_case);
+    println!("  Model format: {:?}", config.model_format());
+    println!("  Migration format: {:?}", config.migration_format());
+    println!(
+        "  Migration filename pattern: {}",
+        config.migration_filename_pattern()
+    );
     println!();
 
     println!("Applied migrations: {}", applied_plans.len());
@@ -22,6 +28,9 @@ pub fn cmd_status() -> Result<()> {
         println!("  Latest version: {}", latest.version);
         if let Some(comment) = &latest.comment {
             println!("  Latest comment: {}", comment);
+        }
+        if let Some(created_at) = &latest.created_at {
+            println!("  Latest created at: {}", created_at);
         }
     }
     println!();

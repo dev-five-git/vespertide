@@ -1,0 +1,20 @@
+{
+  "comment": "Create user",
+  "createdAt": "2025-12-09T15:06:17Z",
+  "version": 1,
+  "actions": [
+    {
+      "type": "CreateTable",
+      "table": "user",
+      "columns": [
+        {
+          "name": "aa",
+          "type": "Integer",
+          "nullable": false,
+          "default": null
+        }
+      ],
+      "constraints": []
+    }
+  ]
+}

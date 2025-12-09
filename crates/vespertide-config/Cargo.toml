@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+clap = { version = "4", features = ["derive"] }
 
