@@ -35,9 +35,6 @@
     "ColumnDef": {
       "type": "object",
       "properties": {
-        "dataType": {
-          "$ref": "#/$defs/ColumnType"
-        },
         "default": {
           "type": [
             "string",
@@ -49,11 +46,14 @@
         },
         "nullable": {
           "type": "boolean"
+        },
+        "type": {
+          "$ref": "#/$defs/ColumnType"
         }
       },
       "required": [
         "name",
-        "dataType",
+        "type",
         "nullable"
       ]
     },

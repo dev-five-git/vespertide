@@ -7,7 +7,7 @@ use crate::schema::names::ColumnName;
 #[serde(rename_all = "camelCase")]
 pub struct ColumnDef {
     pub name: ColumnName,
-    pub data_type: ColumnType,
+    pub r#type: ColumnType,
     pub nullable: bool,
     pub default: Option<String>,
 }

@@ -220,7 +220,7 @@ fn create_table_sql(
 
 fn column_def_sql(column: &ColumnDef, binds: &mut Vec<String>) -> String {
     let name = bind(binds, &column.name);
-    let mut parts = vec![format!("{name} {}", column_type_sql(&column.data_type))];
+    let mut parts = vec![format!("{name} {}", column_type_sql(&column.r#type))];
     if !column.nullable {
         parts.push("NOT NULL".into());
     }

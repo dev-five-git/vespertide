@@ -92,11 +92,11 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
             // Modified columns
             for (col, to_def) in &to_cols {
                 if let Some(from_def) = from_cols.get(col) {
-                    if from_def.data_type != to_def.data_type {
+                    if from_def.r#type != to_def.r#type {
                         actions.push(MigrationAction::ModifyColumnType {
                             table: (*name).to_string(),
                             column: (*col).to_string(),
-                            new_type: to_def.data_type.clone(),
+                            new_type: to_def.r#type.clone(),
                         });
                     }
                 }
@@ -259,7 +259,7 @@ pub fn apply_action(
                 .iter_mut()
                 .find(|c| c.name == *column)
                 .ok_or_else(|| PlannerError::ColumnNotFound(table.clone(), column.clone()))?;
-            col.data_type = new_type.clone();
+            col.r#type = new_type.clone();
             Ok(())
         }
         MigrationAction::AddIndex { table, index } => {
@@ -380,7 +380,7 @@ mod tests {
     fn col(name: &str, ty: ColumnType) -> ColumnDef {
         ColumnDef {
             name: name.to_string(),
-            data_type: ty,
+            r#type: ty,
             nullable: true,
             default: None,
         }

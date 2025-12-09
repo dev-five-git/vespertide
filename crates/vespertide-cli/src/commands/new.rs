@@ -42,8 +42,12 @@ pub fn cmd_new(name: String, format: ModelFormat) -> Result<()> {
 }
 
 fn schema_url_for(format: ModelFormat) -> String {
+    // If not set, default to public raw GitHub schema location.
+    // Users can override via VESP_SCHEMA_BASE_URL.
     let base = std::env::var("VESP_SCHEMA_BASE_URL").ok();
-    let base = base.as_deref().unwrap_or("./schemas");
+    let base = base.as_deref().unwrap_or(
+        "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas",
+    );
     let base = base.trim_end_matches('/');
     match format {
         ModelFormat::Json => format!("{}/model.schema.json", base),
