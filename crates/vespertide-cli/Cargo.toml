@@ -7,7 +7,7 @@ repository.workspace = true
 homepage.workspace = true
 documentation.workspace = true
 description = "CLI command for vespertide (model template, diff, SQL, revision, status, log)"
-publish = false
+publish = true
 
 [dependencies]
 anyhow = "1"
