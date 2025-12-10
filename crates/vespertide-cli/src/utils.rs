@@ -191,3 +191,138 @@ fn render_migration_name(pattern: &str, version: u32, sanitized_comment: &str) -
         name
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+    use std::fs;
+    use tempfile::tempdir;
+    use vespertide_core::{ColumnDef, ColumnType, TableConstraint};
+
+    struct CwdGuard {
+        original: PathBuf,
+    }
+
+    impl CwdGuard {
+        fn new(dir: &PathBuf) -> Self {
+            let original = std::env::current_dir().unwrap();
+            std::env::set_current_dir(dir).unwrap();
+            Self { original }
+        }
+    }
+
+    impl Drop for CwdGuard {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.original);
+        }
+    }
+
+    fn write_config() {
+        let cfg = VespertideConfig::default();
+        let text = serde_json::to_string_pretty(&cfg).unwrap();
+        fs::write("vespertide.json", text).unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn load_config_missing_file_errors() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        let err = load_config().unwrap_err();
+        assert!(err.to_string().contains("vespertide.json not found"));
+    }
+
+    #[test]
+    #[serial]
+    fn load_models_reads_yaml_and_validates() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        write_config();
+
+        fs::create_dir_all("models").unwrap();
+        let table = TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Integer,
+                nullable: false,
+                default: None,
+            }],
+            constraints: vec![],
+            indexes: vec![],
+        };
+        fs::write("models/users.yaml", serde_yaml::to_string(&table).unwrap()).unwrap();
+
+        let models = load_models(&VespertideConfig::default()).unwrap();
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].name, "users");
+    }
+
+    #[test]
+    #[serial]
+    fn load_migrations_reads_yaml_and_sorts() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        write_config();
+
+        fs::create_dir_all("migrations").unwrap();
+        let plan1 = MigrationPlan {
+            comment: Some("first".into()),
+            created_at: None,
+            version: 2,
+            actions: vec![],
+        };
+        let plan0 = MigrationPlan {
+            comment: Some("zero".into()),
+            created_at: None,
+            version: 1,
+            actions: vec![],
+        };
+        fs::write(
+            "migrations/0002_first.yaml",
+            serde_yaml::to_string(&plan1).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            "migrations/0001_zero.yaml",
+            serde_yaml::to_string(&plan0).unwrap(),
+        )
+        .unwrap();
+
+        let plans = load_migrations(&VespertideConfig::default()).unwrap();
+        assert_eq!(plans.len(), 2);
+        assert_eq!(plans[0].version, 1);
+        assert_eq!(plans[1].version, 2);
+    }
+
+    #[test]
+    fn migration_filename_respects_format_and_sanitizes_comment() {
+        let name = migration_filename_with_format_and_pattern(
+            5,
+            Some("Hello! World"),
+            FileFormat::Yml,
+            "%04v_%m",
+        );
+        assert_eq!(name, "0005_hello__world.yml");
+    }
+
+    #[test]
+    fn migration_filename_handles_zero_width_and_trim() {
+        // width 0 falls back to default version and trailing separators are trimmed
+        let name = migration_filename_with_format_and_pattern(3, None, FileFormat::Json, "%0v__");
+        assert_eq!(name, "0003.json");
+    }
+
+    #[test]
+    fn migration_filename_replaces_version_directly() {
+        let name = migration_filename_with_format_and_pattern(12, None, FileFormat::Json, "%v");
+        assert_eq!(name, "0012.json");
+    }
+
+    #[test]
+    fn migration_filename_uses_default_when_comment_only_and_empty() {
+        let name = migration_filename_with_format_and_pattern(7, None, FileFormat::Json, "%m");
+        assert_eq!(name, "0007.json");
+    }
+}
