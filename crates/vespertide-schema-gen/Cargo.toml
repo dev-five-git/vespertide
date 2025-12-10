@@ -16,3 +16,6 @@ schemars = "1.1"
 serde_json = "1"
 vespertide-core = { workspace = true }
 
+[dev-dependencies]
+tempfile = "3"
+
