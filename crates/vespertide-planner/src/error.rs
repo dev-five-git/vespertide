@@ -12,5 +12,17 @@ pub enum PlannerError {
     ColumnNotFound(String, String),
     #[error("index not found: {0}.{1}")]
     IndexNotFound(String, String),
+    #[error("duplicate table name: {0}")]
+    DuplicateTableName(String),
+    #[error("foreign key references non-existent table: {0}.{1} -> {2}")]
+    ForeignKeyTableNotFound(String, String, String),
+    #[error("foreign key references non-existent column: {0}.{1} -> {2}.{3}")]
+    ForeignKeyColumnNotFound(String, String, String, String),
+    #[error("index references non-existent column: {0}.{1} -> {2}")]
+    IndexColumnNotFound(String, String, String),
+    #[error("constraint references non-existent column: {0}.{1} -> {2}")]
+    ConstraintColumnNotFound(String, String, String),
+    #[error("constraint has empty column list: {0}.{1}")]
+    EmptyConstraintColumns(String, String),
 }
 

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use vespertide_config::{FileFormat, VespertideConfig};
 use vespertide_core::{MigrationPlan, TableDef};
+use vespertide_planner::validate_schema;
 
 /// Load vespertide.json config from current directory.
 pub fn load_config() -> Result<VespertideConfig> {
@@ -49,6 +50,12 @@ pub fn load_models(config: &VespertideConfig) -> Result<Vec<TableDef>> {
                 tables.push(table);
             }
         }
+    }
+
+    // Validate schema integrity before returning
+    if !tables.is_empty() {
+        validate_schema(&tables)
+            .map_err(|e| anyhow::anyhow!("schema validation failed: {}", e))?;
     }
 
     Ok(tables)
