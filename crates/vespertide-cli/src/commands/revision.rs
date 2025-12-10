@@ -164,9 +164,14 @@ mod tests {
 
         let entries: Vec<_> = fs::read_dir(cfg.migrations_dir()).unwrap().collect();
         assert!(!entries.is_empty());
-        let has_yaml = entries
-            .iter()
-            .any(|e| e.as_ref().unwrap().path().extension().map(|s| s == "yaml").unwrap_or(false));
+        let has_yaml = entries.iter().any(|e| {
+            e.as_ref()
+                .unwrap()
+                .path()
+                .extension()
+                .map(|s| s == "yaml")
+                .unwrap_or(false)
+        });
         assert!(has_yaml);
     }
 }

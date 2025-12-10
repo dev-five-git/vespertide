@@ -53,7 +53,9 @@ mod tests {
     use std::path::PathBuf;
     use tempfile::tempdir;
     use vespertide_config::VespertideConfig;
-    use vespertide_core::{ColumnDef, ColumnType, MigrationAction, MigrationPlan, TableDef, TableConstraint};
+    use vespertide_core::{
+        ColumnDef, ColumnType, MigrationAction, MigrationPlan, TableConstraint, TableDef,
+    };
 
     struct CwdGuard {
         original: PathBuf,

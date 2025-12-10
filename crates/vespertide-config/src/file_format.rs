@@ -15,3 +15,13 @@ impl Default for FileFormat {
         FileFormat::Json
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::FileFormat;
+
+    #[test]
+    fn default_is_json() {
+        assert_eq!(FileFormat::default(), FileFormat::Json);
+    }
+}

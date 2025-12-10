@@ -96,17 +96,6 @@ pub fn load_migrations(config: &VespertideConfig) -> Result<Vec<MigrationPlan>> 
     Ok(plans)
 }
 
-#[allow(dead_code)]
-/// Generate a migration filename from version and optional comment using defaults.
-pub fn migration_filename(version: u32, comment: Option<&str>) -> String {
-    migration_filename_with_format_and_pattern(
-        version,
-        comment,
-        FileFormat::Json,
-        vespertide_config::default_migration_filename_pattern().as_str(),
-    )
-}
-
 /// Generate a migration filename from version and optional comment with format and pattern.
 pub fn migration_filename_with_format_and_pattern(
     version: u32,

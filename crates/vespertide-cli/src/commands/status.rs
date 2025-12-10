@@ -76,10 +76,7 @@ pub fn cmd_status() -> Result<()> {
 mod tests {
     use super::*;
     use serial_test::serial;
-    use std::{
-        fs,
-        path::PathBuf,
-    };
+    use std::{fs, path::PathBuf};
     use tempfile::tempdir;
     use vespertide_config::VespertideConfig;
     use vespertide_core::{ColumnDef, ColumnType, MigrationAction, MigrationPlan, TableDef};
