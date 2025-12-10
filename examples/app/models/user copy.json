@@ -1,0 +1,11 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
+  "columns": [{
+    "name": "aa1",
+    "type": "Integer",
+    "nullable": false
+  }],
+  "constraints": [],
+  "indexes": [],
+  "name": "user2"
+}

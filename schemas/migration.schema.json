@@ -15,7 +15,7 @@
         "null"
       ]
     },
-    "createdAt": {
+    "created_at": {
       "type": [
         "string",
         "null"
@@ -160,7 +160,7 @@
             "column": {
               "$ref": "#/$defs/ColumnDef"
             },
-            "fillWith": {
+            "fill_with": {
               "description": "Optional fill value to backfill existing rows when adding NOT NULL without default.",
               "type": [
                 "string",
@@ -231,7 +231,7 @@
             "column": {
               "type": "string"
             },
-            "newType": {
+            "new_type": {
               "$ref": "#/$defs/ColumnType"
             },
             "table": {
@@ -246,7 +246,7 @@
             "type",
             "table",
             "column",
-            "newType"
+            "new_type"
           ]
         },
         {
@@ -326,131 +326,119 @@
         {
           "type": "object",
           "properties": {
-            "PrimaryKey": {
+            "type": {
+              "type": "string",
+              "const": "primary_key"
+            }
+          },
+          "items": {
+            "type": "string"
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "columns": {
               "type": "array",
               "items": {
                 "type": "string"
               }
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "unique"
             }
           },
-          "additionalProperties": false,
           "required": [
-            "PrimaryKey"
+            "type",
+            "columns"
           ]
         },
         {
           "type": "object",
           "properties": {
-            "Unique": {
-              "type": "object",
-              "properties": {
-                "columns": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "name": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                }
-              },
-              "required": [
-                "columns"
+            "columns": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
               ]
+            },
+            "on_delete": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ReferenceAction"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "on_update": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ReferenceAction"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "ref_columns": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "ref_table": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "foreign_key"
             }
           },
-          "additionalProperties": false,
           "required": [
-            "Unique"
+            "type",
+            "columns",
+            "ref_table",
+            "ref_columns"
           ]
         },
         {
           "type": "object",
           "properties": {
-            "ForeignKey": {
-              "type": "object",
-              "properties": {
-                "columns": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "name": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "onDelete": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/$defs/ReferenceAction"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "onUpdate": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/$defs/ReferenceAction"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "refColumns": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "refTable": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "columns",
-                "refTable",
-                "refColumns"
+            "expr": {
+              "type": "string"
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
               ]
+            },
+            "type": {
+              "type": "string",
+              "const": "check"
             }
           },
-          "additionalProperties": false,
           "required": [
-            "ForeignKey"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "Check": {
-              "type": "object",
-              "properties": {
-                "expr": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                }
-              },
-              "required": [
-                "expr"
-              ]
-            }
-          },
-          "additionalProperties": false,
-          "required": [
-            "Check"
+            "type",
+            "expr"
           ]
         }
       ]

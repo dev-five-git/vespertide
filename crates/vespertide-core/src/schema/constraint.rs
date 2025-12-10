@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::schema::{ReferenceAction, names::ColumnName, names::TableName};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case", tag = "type")]
 pub enum TableConstraint {
     PrimaryKey(Vec<ColumnName>),
     Unique {
@@ -13,13 +14,9 @@ pub enum TableConstraint {
     ForeignKey {
         name: Option<String>,
         columns: Vec<ColumnName>,
-        #[serde(rename = "refTable")]
         ref_table: TableName,
-        #[serde(rename = "refColumns")]
         ref_columns: Vec<ColumnName>,
-        #[serde(rename = "onDelete")]
         on_delete: Option<ReferenceAction>,
-        #[serde(rename = "onUpdate")]
         on_update: Option<ReferenceAction>,
     },
     Check {

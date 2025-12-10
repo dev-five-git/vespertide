@@ -6,7 +6,7 @@ use crate::schema::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct TableDef {
     pub name: TableName,
     pub columns: Vec<ColumnDef>,
