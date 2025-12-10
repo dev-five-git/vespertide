@@ -2,6 +2,7 @@ use std::fs;
 
 use anyhow::{Context, Result};
 use chrono::Utc;
+use colored::Colorize;
 use vespertide_planner::plan_next_migration;
 
 use crate::utils::{
@@ -17,7 +18,11 @@ pub fn cmd_revision(message: String) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("planning error: {}", e))?;
 
     if plan.actions.is_empty() {
-        println!("No changes detected. Nothing to migrate.");
+        println!(
+            "{} {}",
+            "No changes detected.".bright_yellow(),
+            "Nothing to migrate.".bright_white()
+        );
         return Ok(());
     }
 
@@ -29,7 +34,7 @@ pub fn cmd_revision(message: String) -> Result<()> {
 
     let migrations_dir = config.migrations_dir();
     if !migrations_dir.exists() {
-        fs::create_dir_all(&migrations_dir).context("create migrations directory")?;
+        fs::create_dir_all(migrations_dir).context("create migrations directory")?;
     }
 
     let format = config.migration_format();
@@ -50,11 +55,23 @@ pub fn cmd_revision(message: String) -> Result<()> {
 
     fs::write(&path, text).with_context(|| format!("write migration file: {}", path.display()))?;
 
-    println!("Created migration: {}", path.display());
-    println!("  Version: {}", plan.version);
-    println!("  Actions: {}", plan.actions.len());
+    println!(
+        "{} {}",
+        "Created migration:".bright_green().bold(),
+        format!("{}", path.display()).bright_white()
+    );
+    println!(
+        "  {} {}",
+        "Version:".bright_cyan(),
+        plan.version.to_string().bright_magenta().bold()
+    );
+    println!(
+        "  {} {}",
+        "Actions:".bright_cyan(),
+        plan.actions.len().to_string().bright_yellow()
+    );
     if let Some(comment) = &plan.comment {
-        println!("  Comment: {}", comment);
+        println!("  {} {}", "Comment:".bright_cyan(), comment.bright_white());
     }
 
     Ok(())

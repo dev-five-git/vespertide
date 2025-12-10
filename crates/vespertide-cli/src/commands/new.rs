@@ -1,6 +1,7 @@
 use std::fs;
 
 use anyhow::{Context, Result, bail};
+use colored::Colorize;
 use serde_json::Value;
 use vespertide_core::TableDef;
 
@@ -39,7 +40,11 @@ pub fn cmd_new(name: String, format: Option<FileFormat>) -> Result<()> {
         FileFormat::Yaml | FileFormat::Yml => write_yaml(&path, &table, &schema_url)?,
     }
 
-    println!("Created model template: {}", path.display());
+    println!(
+        "{} {}",
+        "Created model template:".bright_green().bold(),
+        format!("{}", path.display()).bright_white()
+    );
     Ok(())
 }
 

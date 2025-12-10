@@ -1,6 +1,7 @@
 use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result, bail};
+use colored::Colorize;
 use vespertide_config::VespertideConfig;
 
 pub fn cmd_init() -> Result<()> {
@@ -12,7 +13,11 @@ pub fn cmd_init() -> Result<()> {
     let config = VespertideConfig::default();
     let json = serde_json::to_string_pretty(&config).context("serialize default config")?;
     fs::write(&path, json).context("write vespertide.json")?;
-    println!("created {:?}", path);
+    println!(
+        "{} {}",
+        "created".bright_green().bold(),
+        format!("{}", path.display()).bright_white()
+    );
     Ok(())
 }
 

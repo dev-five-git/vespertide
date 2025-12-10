@@ -1,4 +1,5 @@
 use anyhow::Result;
+use colored::Colorize;
 use vespertide_planner::schema_from_plans;
 
 use crate::utils::{load_config, load_migrations, load_models};
@@ -9,42 +10,79 @@ pub fn cmd_status() -> Result<()> {
     let current_models = load_models(&config)?;
     let applied_plans = load_migrations(&config)?;
 
-    println!("Configuration:");
-    println!("  Models directory: {}", config.models_dir().display());
+    println!("{}", "Configuration:".bright_cyan().bold());
     println!(
-        "  Migrations directory: {}",
-        config.migrations_dir().display()
+        "  {} {}",
+        "Models directory:".cyan(),
+        format!("{}", config.models_dir().display()).bright_white()
     );
-    println!("  Table naming: {:?}", config.table_naming_case);
-    println!("  Column naming: {:?}", config.column_naming_case);
-    println!("  Model format: {:?}", config.model_format());
-    println!("  Migration format: {:?}", config.migration_format());
     println!(
-        "  Migration filename pattern: {}",
-        config.migration_filename_pattern()
+        "  {} {}",
+        "Migrations directory:".cyan(),
+        format!("{}", config.migrations_dir().display()).bright_white()
+    );
+    println!(
+        "  {} {:?}",
+        "Table naming:".cyan(),
+        config.table_naming_case
+    );
+    println!(
+        "  {} {:?}",
+        "Column naming:".cyan(),
+        config.column_naming_case
+    );
+    println!("  {} {:?}", "Model format:".cyan(), config.model_format());
+    println!(
+        "  {} {:?}",
+        "Migration format:".cyan(),
+        config.migration_format()
+    );
+    println!(
+        "  {} {}",
+        "Migration filename pattern:".cyan(),
+        config.migration_filename_pattern().bright_white()
     );
     println!();
 
-    println!("Applied migrations: {}", applied_plans.len());
+    println!(
+        "{} {}",
+        "Applied migrations:".bright_cyan().bold(),
+        applied_plans.len().to_string().bright_yellow()
+    );
     if !applied_plans.is_empty() {
         let latest = applied_plans.last().unwrap();
-        println!("  Latest version: {}", latest.version);
+        println!(
+            "  {} {}",
+            "Latest version:".cyan(),
+            latest.version.to_string().bright_magenta()
+        );
         if let Some(comment) = &latest.comment {
-            println!("  Latest comment: {}", comment);
+            println!("  {} {}", "Latest comment:".cyan(), comment.bright_white());
         }
         if let Some(created_at) = &latest.created_at {
-            println!("  Latest created at: {}", created_at);
+            println!(
+                "  {} {}",
+                "Latest created at:".cyan(),
+                created_at.bright_white()
+            );
         }
     }
     println!();
 
-    println!("Current models: {}", current_models.len());
+    println!(
+        "{} {}",
+        "Current models:".bright_cyan().bold(),
+        current_models.len().to_string().bright_yellow()
+    );
     for model in &current_models {
         println!(
-            "  - {} ({} columns, {} indexes)",
-            model.name,
-            model.columns.len(),
-            model.indexes.len()
+            "  {} {} ({} {}, {} {})",
+            "-".bright_white(),
+            model.name.bright_green(),
+            model.columns.len().to_string().bright_blue(),
+            "columns".bright_white(),
+            model.indexes.len().to_string().bright_blue(),
+            "indexes".bright_white()
         );
     }
     println!();
@@ -57,16 +95,42 @@ pub fn cmd_status() -> Result<()> {
         let current_tables: HashSet<_> = current_models.iter().map(|t| &t.name).collect();
 
         if baseline_tables == current_tables {
-            println!("Status: Schema is synchronized with migrations.");
+            println!(
+                "{} {}",
+                "Status:".bright_cyan().bold(),
+                "Schema is synchronized with migrations.".bright_green()
+            );
         } else {
-            println!("Status: Schema differs from applied migrations.");
-            println!("  Run 'vespertide diff' to see details.");
+            println!(
+                "{} {}",
+                "Status:".bright_cyan().bold(),
+                "Schema differs from applied migrations.".bright_yellow()
+            );
+            println!(
+                "  {} {} {}",
+                "Run".bright_white(),
+                "'vespertide diff'".bright_cyan().bold(),
+                "to see details.".bright_white()
+            );
         }
     } else if current_models.is_empty() {
-        println!("Status: No models or migrations found.");
+        println!(
+            "{} {}",
+            "Status:".bright_cyan().bold(),
+            "No models or migrations found.".bright_yellow()
+        );
     } else {
-        println!("Status: Models exist but no migrations have been applied.");
-        println!("  Run 'vespertide revision -m \"initial\"' to create the first migration.");
+        println!(
+            "{} {}",
+            "Status:".bright_cyan().bold(),
+            "Models exist but no migrations have been applied.".bright_yellow()
+        );
+        println!(
+            "  {} {} {}",
+            "Run".bright_white(),
+            "'vespertide revision -m \"initial\"'".bright_cyan().bold(),
+            "to create the first migration.".bright_white()
+        );
     }
 
     Ok(())

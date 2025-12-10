@@ -1,4 +1,5 @@
 use anyhow::Result;
+use colored::Colorize;
 use vespertide_query::build_plan_queries;
 
 use crate::utils::load_migrations;
@@ -7,31 +8,56 @@ pub fn cmd_log() -> Result<()> {
     let plans = load_migrations(&crate::utils::load_config()?)?;
 
     if plans.is_empty() {
-        println!("No migrations found.");
+        println!("{}", "No migrations found.".bright_yellow());
         return Ok(());
     }
 
-    println!("Migrations (oldest -> newest): {}", plans.len());
+    println!(
+        "{} {} {}",
+        "Migrations".bright_cyan().bold(),
+        "(oldest -> newest):".bright_white(),
+        plans.len().to_string().bright_yellow().bold()
+    );
     println!();
 
     for plan in &plans {
-        println!("Version: {}", plan.version);
+        println!(
+            "{} {}",
+            "Version:".bright_cyan().bold(),
+            plan.version.to_string().bright_magenta().bold()
+        );
         if let Some(created) = &plan.created_at {
-            println!("Created at: {}", created);
+            println!(
+                "  {} {}",
+                "Created at:".bright_cyan(),
+                created.bright_white()
+            );
         }
         if let Some(comment) = &plan.comment {
-            println!("Comment: {}", comment);
+            println!("  {} {}", "Comment:".bright_cyan(), comment.bright_white());
         }
-        println!("Actions: {}", plan.actions.len());
+        println!(
+            "  {} {}",
+            "Actions:".bright_cyan(),
+            plan.actions.len().to_string().bright_yellow()
+        );
 
         let queries = build_plan_queries(plan)
             .map_err(|e| anyhow::anyhow!("query build error for v{}: {}", plan.version, e))?;
-        println!("SQL statements: {}", queries.len());
+        println!(
+            "  {} {}",
+            "SQL statements:".bright_cyan().bold(),
+            queries.len().to_string().bright_yellow().bold()
+        );
 
         for (i, q) in queries.iter().enumerate() {
-            println!("  {}. {}", i + 1, q.sql.trim());
+            println!(
+                "    {}. {}",
+                (i + 1).to_string().bright_magenta().bold(),
+                q.sql.trim().bright_white()
+            );
             if !q.binds.is_empty() {
-                println!("     binds: {:?}", q.binds);
+                println!("       {} {:?}", "binds:".bright_cyan(), q.binds);
             }
         }
         println!();

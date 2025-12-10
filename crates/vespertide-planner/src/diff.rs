@@ -47,14 +47,14 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
 
             // Modified columns
             for (col, to_def) in &to_cols {
-                if let Some(from_def) = from_cols.get(col) {
-                    if from_def.r#type != to_def.r#type {
-                        actions.push(MigrationAction::ModifyColumnType {
-                            table: (*name).to_string(),
-                            column: (*col).to_string(),
-                            new_type: to_def.r#type.clone(),
-                        });
-                    }
+                if let Some(from_def) = from_cols.get(col)
+                    && from_def.r#type != to_def.r#type
+                {
+                    actions.push(MigrationAction::ModifyColumnType {
+                        table: (*name).to_string(),
+                        column: (*col).to_string(),
+                        new_type: to_def.r#type.clone(),
+                    });
                 }
             }
 

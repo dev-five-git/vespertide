@@ -1,4 +1,5 @@
 use anyhow::Result;
+use colored::Colorize;
 use vespertide_planner::plan_next_migration;
 use vespertide_query::build_plan_queries;
 
@@ -17,28 +18,52 @@ pub fn cmd_sql() -> Result<()> {
 
 fn emit_sql(plan: &vespertide_core::MigrationPlan) -> Result<()> {
     if plan.actions.is_empty() {
-        println!("No differences found. Schema is up to date; no SQL to emit.");
+        println!(
+            "{} {}",
+            "No differences found.".bright_green(),
+            "Schema is up to date; no SQL to emit.".bright_white()
+        );
         return Ok(());
     }
 
     let queries =
-        build_plan_queries(&plan).map_err(|e| anyhow::anyhow!("query build error: {}", e))?;
+        build_plan_queries(plan).map_err(|e| anyhow::anyhow!("query build error: {}", e))?;
 
-    println!("Plan version: {}", plan.version);
+    println!(
+        "{} {}",
+        "Plan version:".bright_cyan().bold(),
+        plan.version.to_string().bright_magenta()
+    );
     if let Some(created_at) = &plan.created_at {
-        println!("Created at: {}", created_at);
+        println!(
+            "{} {}",
+            "Created at:".bright_cyan(),
+            created_at.bright_white()
+        );
     }
     if let Some(comment) = &plan.comment {
-        println!("Comment: {}", comment);
+        println!("{} {}", "Comment:".bright_cyan(), comment.bright_white());
     }
-    println!("Actions: {}", plan.actions.len());
-    println!("SQL statements: {}", queries.len());
+    println!(
+        "{} {}",
+        "Actions:".bright_cyan(),
+        plan.actions.len().to_string().bright_yellow()
+    );
+    println!(
+        "{} {}",
+        "SQL statements:".bright_cyan().bold(),
+        queries.len().to_string().bright_yellow().bold()
+    );
     println!();
 
     for (i, q) in queries.iter().enumerate() {
-        println!("{}. {}", i + 1, q.sql.trim());
+        println!(
+            "{}. {}",
+            (i + 1).to_string().bright_magenta().bold(),
+            q.sql.trim().bright_white()
+        );
         if !q.binds.is_empty() {
-            println!("   binds: {:?}", q.binds);
+            println!("   {} {:?}", "binds:".bright_cyan(), q.binds);
         }
     }
 
