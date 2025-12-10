@@ -24,4 +24,6 @@ pub enum PlannerError {
     ConstraintColumnNotFound(String, String, String),
     #[error("constraint has empty column list: {0}.{1}")]
     EmptyConstraintColumns(String, String),
+    #[error("AddColumn requires fill_with when column is NOT NULL without default: {0}.{1}")]
+    MissingFillWith(String, String),
 }

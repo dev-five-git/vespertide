@@ -10,4 +10,4 @@ pub use diff::diff_schemas;
 pub use error::PlannerError;
 pub use plan::plan_next_migration;
 pub use schema::schema_from_plans;
-pub use validate::validate_schema;
+pub use validate::{validate_migration_plan, validate_schema};
