@@ -28,9 +28,11 @@ pub fn apply_action(
             let before = schema.len();
             schema.retain(|t| t.name != *table);
             if schema.len() == before {
-                return Err(PlannerError::TableNotFound(table.clone()));
+                Err(PlannerError::TableNotFound(table.clone()))
             }
-            Ok(())
+            else {
+                Ok(())
+            }
         }
         MigrationAction::AddColumn {
             table,
@@ -42,13 +44,15 @@ pub fn apply_action(
                 .find(|t| t.name == *table)
                 .ok_or_else(|| PlannerError::TableNotFound(table.clone()))?;
             if tbl.columns.iter().any(|c| c.name == column.name) {
-                return Err(PlannerError::ColumnExists(
+                Err(PlannerError::ColumnExists(
                     table.clone(),
                     column.name.clone(),
-                ));
+                ))
             }
-            tbl.columns.push(column.clone());
-            Ok(())
+            else {
+                tbl.columns.push(column.clone());
+                Ok(())
+            }
         }
         MigrationAction::RenameColumn { table, from, to } => {
             let tbl = schema
@@ -73,11 +77,13 @@ pub fn apply_action(
             let before = tbl.columns.len();
             tbl.columns.retain(|c| c.name != *column);
             if tbl.columns.len() == before {
-                return Err(PlannerError::ColumnNotFound(table.clone(), column.clone()));
+                Err(PlannerError::ColumnNotFound(table.clone(), column.clone()))
             }
-            drop_column_from_constraints(&mut tbl.constraints, column);
-            drop_column_from_indexes(&mut tbl.indexes, column);
-            Ok(())
+            else {
+                drop_column_from_constraints(&mut tbl.constraints, column);
+                drop_column_from_indexes(&mut tbl.indexes, column);
+                Ok(())
+            }
         }
         MigrationAction::ModifyColumnType {
             table,
@@ -112,20 +118,24 @@ pub fn apply_action(
             let before = tbl.indexes.len();
             tbl.indexes.retain(|i| i.name != *name);
             if tbl.indexes.len() == before {
-                return Err(PlannerError::IndexNotFound(table.clone(), name.clone()));
+                Err(PlannerError::IndexNotFound(table.clone(), name.clone()))
             }
-            Ok(())
+            else {
+                Ok(())
+            }
         }
         MigrationAction::RenameTable { from, to } => {
             if schema.iter().any(|t| t.name == *to) {
-                return Err(PlannerError::TableExists(to.clone()));
+                Err(PlannerError::TableExists(to.clone()))
             }
-            let tbl = schema
-                .iter_mut()
-                .find(|t| t.name == *from)
-                .ok_or_else(|| PlannerError::TableNotFound(from.clone()))?;
-            tbl.name = to.clone();
-            Ok(())
+            else {
+                let tbl = schema
+                    .iter_mut()
+                    .find(|t| t.name == *from)
+                    .ok_or_else(|| PlannerError::TableNotFound(from.clone()))?;
+                tbl.name = to.clone();
+                Ok(())
+            }
         }
     }
 }
