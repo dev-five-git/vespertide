@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use vespertide_config::{FileFormat, VespertideConfig};
 use vespertide_core::{MigrationPlan, TableDef};
-use vespertide_planner::validate_schema;
+use vespertide_planner::{validate_migration_plan, validate_schema};
 
 /// Load vespertide.json config from current directory.
 pub fn load_config() -> Result<VespertideConfig> {
@@ -85,6 +85,10 @@ pub fn load_migrations(config: &VespertideConfig) -> Result<Vec<MigrationPlan>> 
                     serde_yaml::from_str(&content)
                         .with_context(|| format!("parse migration: {}", path.display()))?
                 };
+
+                // Validate the migration plan
+                validate_migration_plan(&plan)
+                    .with_context(|| format!("validate migration: {}", path.display()))?;
 
                 plans.push(plan);
             }

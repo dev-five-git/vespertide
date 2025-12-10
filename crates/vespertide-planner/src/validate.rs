@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use vespertide_core::{IndexDef, TableConstraint, TableDef};
+use vespertide_core::{IndexDef, MigrationAction, MigrationPlan, TableConstraint, TableDef};
 
 use crate::error::PlannerError;
 
@@ -514,4 +514,130 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn validate_migration_plan_missing_fill_with() {
+        use vespertide_core::{ColumnDef, ColumnType, MigrationAction, MigrationPlan};
+
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "users".into(),
+                column: ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Text,
+                    nullable: false,
+                    default: None,
+                },
+                fill_with: None,
+            }],
+        };
+
+        let result = validate_migration_plan(&plan);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            PlannerError::MissingFillWith(table, column) => {
+                assert_eq!(table, "users");
+                assert_eq!(column, "email");
+            }
+            _ => panic!("expected MissingFillWith error"),
+        }
+    }
+
+    #[test]
+    fn validate_migration_plan_with_fill_with() {
+        use vespertide_core::{ColumnDef, ColumnType, MigrationAction, MigrationPlan};
+
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "users".into(),
+                column: ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Text,
+                    nullable: false,
+                    default: None,
+                },
+                fill_with: Some("default@example.com".into()),
+            }],
+        };
+
+        let result = validate_migration_plan(&plan);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_migration_plan_nullable_column() {
+        use vespertide_core::{ColumnDef, ColumnType, MigrationAction, MigrationPlan};
+
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "users".into(),
+                column: ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Text,
+                    nullable: true,
+                    default: None,
+                },
+                fill_with: None,
+            }],
+        };
+
+        let result = validate_migration_plan(&plan);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_migration_plan_with_default() {
+        use vespertide_core::{ColumnDef, ColumnType, MigrationAction, MigrationPlan};
+
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "users".into(),
+                column: ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Text,
+                    nullable: false,
+                    default: Some("default@example.com".into()),
+                },
+                fill_with: None,
+            }],
+        };
+
+        let result = validate_migration_plan(&plan);
+        assert!(result.is_ok());
+    }
+}
+
+/// Validate a migration plan for correctness.
+/// Checks for:
+/// - AddColumn actions with NOT NULL columns without default must have fill_with
+pub fn validate_migration_plan(plan: &MigrationPlan) -> Result<(), PlannerError> {
+    for action in &plan.actions {
+        if let MigrationAction::AddColumn {
+            table,
+            column,
+            fill_with,
+        } = action
+        {
+            // If column is NOT NULL and has no default, fill_with is required
+            if !column.nullable && column.default.is_none() && fill_with.is_none() {
+                return Err(PlannerError::MissingFillWith(
+                    table.clone(),
+                    column.name.clone(),
+                ));
+            }
+        }
+    }
+    Ok(())
 }
