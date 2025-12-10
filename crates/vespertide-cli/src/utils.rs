@@ -198,7 +198,7 @@ mod tests {
     use serial_test::serial;
     use std::fs;
     use tempfile::tempdir;
-    use vespertide_core::{ColumnDef, ColumnType, TableConstraint};
+    use vespertide_core::{ColumnDef, ColumnType};
 
     struct CwdGuard {
         original: PathBuf,
