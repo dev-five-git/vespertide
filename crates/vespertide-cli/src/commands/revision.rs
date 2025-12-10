@@ -3,6 +3,9 @@ use std::fs;
 use anyhow::{Context, Result};
 use chrono::Utc;
 use colored::Colorize;
+use serde_json::Value;
+use vespertide_config::FileFormat;
+use vespertide_core::MigrationPlan;
 use vespertide_planner::plan_next_migration;
 
 use crate::utils::{
@@ -46,14 +49,11 @@ pub fn cmd_revision(message: String) -> Result<()> {
     );
     let path = migrations_dir.join(&filename);
 
-    let text = match format {
-        vespertide_config::FileFormat::Json => {
-            serde_json::to_string_pretty(&plan).context("serialize migration plan")?
-        }
-        _ => serde_yaml::to_string(&plan).context("serialize migration plan")?,
-    };
-
-    fs::write(&path, text).with_context(|| format!("write migration file: {}", path.display()))?;
+    let schema_url = schema_url_for(format);
+    match format {
+        FileFormat::Json => write_json_with_schema(&path, &plan, &schema_url)?,
+        FileFormat::Yaml | FileFormat::Yml => write_yaml(&path, &plan, &schema_url)?,
+    }
 
     println!(
         "{} {}",
@@ -74,6 +74,47 @@ pub fn cmd_revision(message: String) -> Result<()> {
         println!("  {} {}", "Comment:".bright_cyan(), comment.bright_white());
     }
 
+    Ok(())
+}
+
+fn schema_url_for(format: FileFormat) -> String {
+    // If not set, default to public raw GitHub schema location.
+    // Users can override via VESP_SCHEMA_BASE_URL.
+    let base = std::env::var("VESP_SCHEMA_BASE_URL").ok();
+    let base = base.as_deref().unwrap_or(
+        "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas",
+    );
+    let base = base.trim_end_matches('/');
+    match format {
+        FileFormat::Json => format!("{}/migration.schema.json", base),
+        FileFormat::Yaml | FileFormat::Yml => format!("{}/migration.schema.json", base),
+    }
+}
+
+fn write_json_with_schema(
+    path: &std::path::Path,
+    plan: &MigrationPlan,
+    schema_url: &str,
+) -> Result<()> {
+    let mut value = serde_json::to_value(plan).context("serialize migration plan to json")?;
+    if let Value::Object(ref mut map) = value {
+        map.insert("$schema".to_string(), Value::String(schema_url.to_string()));
+    }
+    let text = serde_json::to_string_pretty(&value).context("stringify json with schema")?;
+    fs::write(path, text).with_context(|| format!("write file: {}", path.display()))?;
+    Ok(())
+}
+
+fn write_yaml(path: &std::path::Path, plan: &MigrationPlan, schema_url: &str) -> Result<()> {
+    let mut value = serde_yaml::to_value(plan).context("serialize migration plan to yaml value")?;
+    if let serde_yaml::Value::Mapping(ref mut map) = value {
+        map.insert(
+            serde_yaml::Value::String("$schema".to_string()),
+            serde_yaml::Value::String(schema_url.to_string()),
+        );
+    }
+    let text = serde_yaml::to_string(&value).context("serialize yaml with schema")?;
+    fs::write(path, text).with_context(|| format!("write file: {}", path.display()))?;
     Ok(())
 }
 
