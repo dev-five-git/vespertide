@@ -25,4 +25,3 @@ impl NameCase {
         matches!(self, NameCase::Pascal)
     }
 }
-

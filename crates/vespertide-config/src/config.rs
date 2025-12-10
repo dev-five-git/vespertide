@@ -41,10 +41,6 @@ impl Default for VespertideConfig {
 }
 
 impl VespertideConfig {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Path where model definitions are stored.
     pub fn models_dir(&self) -> &Path {
         &self.models_dir
@@ -80,4 +76,3 @@ impl VespertideConfig {
         &self.migration_filename_pattern
     }
 }
-

@@ -7,7 +7,10 @@ use schemars::schema_for;
 use vespertide_core::{MigrationPlan, TableDef};
 
 #[derive(Debug, Parser)]
-#[command(name = "vespertide-schema-gen", about = "Emit JSON Schemas for vespertide models and migrations.")]
+#[command(
+    name = "vespertide-schema-gen",
+    about = "Emit JSON Schemas for vespertide models and migrations."
+)]
 struct Args {
     /// Output directory for schema files.
     #[arg(short = 'o', long = "out", default_value = "schemas")]
@@ -16,8 +19,10 @@ struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    let out = args.out;
+    run(args.out)
+}
 
+fn run(out: PathBuf) -> Result<()> {
     if !out.exists() {
         fs::create_dir_all(&out).with_context(|| format!("create dir {}", out.display()))?;
     }
@@ -46,3 +51,88 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn run_creates_output_directory_if_not_exists() {
+        let temp_dir = TempDir::new().unwrap();
+        let out = temp_dir.path().join("test_schemas");
+
+        assert!(!out.exists());
+        run(out.clone()).unwrap();
+        assert!(out.exists());
+    }
+
+    #[test]
+    fn run_generates_model_schema_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let out = temp_dir.path();
+
+        run(out.to_path_buf()).unwrap();
+
+        let model_path = out.join("model.schema.json");
+        assert!(model_path.exists());
+
+        let content = fs::read_to_string(&model_path).unwrap();
+        assert!(content.contains("TableDef"));
+        assert!(content.contains("ColumnDef"));
+    }
+
+    #[test]
+    fn run_generates_migration_schema_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let out = temp_dir.path();
+
+        run(out.to_path_buf()).unwrap();
+
+        let migration_path = out.join("migration.schema.json");
+        assert!(migration_path.exists());
+
+        let content = fs::read_to_string(&migration_path).unwrap();
+        assert!(content.contains("MigrationPlan"));
+        assert!(content.contains("MigrationAction"));
+    }
+
+    #[test]
+    fn run_generates_both_schema_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let out = temp_dir.path();
+
+        run(out.to_path_buf()).unwrap();
+
+        let model_path = out.join("model.schema.json");
+        let migration_path = out.join("migration.schema.json");
+
+        assert!(model_path.exists());
+        assert!(migration_path.exists());
+
+        // Verify files are valid JSON
+        let model_content = fs::read_to_string(&model_path).unwrap();
+        let migration_content = fs::read_to_string(&migration_path).unwrap();
+
+        serde_json::from_str::<serde_json::Value>(&model_content).unwrap();
+        serde_json::from_str::<serde_json::Value>(&migration_content).unwrap();
+    }
+
+    #[test]
+    fn run_works_with_existing_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let out = temp_dir.path();
+
+        // Create directory first
+        fs::create_dir_all(&out).unwrap();
+        assert!(out.exists());
+
+        // Should still work
+        run(out.to_path_buf()).unwrap();
+
+        let model_path = out.join("model.schema.json");
+        let migration_path = out.join("migration.schema.json");
+        assert!(model_path.exists());
+        assert!(migration_path.exists());
+    }
+}

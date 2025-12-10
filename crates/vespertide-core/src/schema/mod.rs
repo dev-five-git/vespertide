@@ -11,4 +11,3 @@ pub use index::IndexDef;
 pub use names::{ColumnName, IndexName, TableName};
 pub use reference::ReferenceAction;
 pub use table::TableDef;
-

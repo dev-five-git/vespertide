@@ -11,3 +11,6 @@ description = "Converts migration actions into PostgreSQL SQL statements with bi
 [dependencies]
 vespertide-core = { workspace = true }
 thiserror = "2"
+
+[dev-dependencies]
+rstest = "0.26"

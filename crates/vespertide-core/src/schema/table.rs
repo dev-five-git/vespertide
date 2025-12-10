@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use crate::schema::{
     column::ColumnDef, constraint::TableConstraint, index::IndexDef, names::TableName,

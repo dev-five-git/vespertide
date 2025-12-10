@@ -153,7 +153,11 @@ fn validate_constraint(
             if columns.len() != ref_columns.len() {
                 return Err(PlannerError::ForeignKeyColumnNotFound(
                     table_name.to_string(),
-                    format!("column count mismatch: {} != {}", columns.len(), ref_columns.len()),
+                    format!(
+                        "column count mismatch: {} != {}",
+                        columns.len(),
+                        ref_columns.len()
+                    ),
                     ref_table.clone(),
                     "".to_string(),
                 ));
@@ -195,6 +199,7 @@ fn validate_index(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
     use vespertide_core::{ColumnDef, ColumnType, IndexDef, TableConstraint};
 
     fn col(name: &str, ty: ColumnType) -> ColumnDef {
@@ -220,30 +225,49 @@ mod tests {
         }
     }
 
-    #[test]
-    fn validate_schema_accepts_valid_schema() {
-        let schema = vec![table(
+    fn is_duplicate(err: &PlannerError) -> bool {
+        matches!(err, PlannerError::DuplicateTableName(_))
+    }
+
+    fn is_fk_table(err: &PlannerError) -> bool {
+        matches!(err, PlannerError::ForeignKeyTableNotFound(_, _, _))
+    }
+
+    fn is_fk_column(err: &PlannerError) -> bool {
+        matches!(err, PlannerError::ForeignKeyColumnNotFound(_, _, _, _))
+    }
+
+    fn is_index_column(err: &PlannerError) -> bool {
+        matches!(err, PlannerError::IndexColumnNotFound(_, _, _))
+    }
+
+    fn is_constraint_column(err: &PlannerError) -> bool {
+        matches!(err, PlannerError::ConstraintColumnNotFound(_, _, _))
+    }
+
+    fn is_empty_columns(err: &PlannerError) -> bool {
+        matches!(err, PlannerError::EmptyConstraintColumns(_, _))
+    }
+
+    #[rstest]
+    #[case::valid_schema(
+        vec![table(
             "users",
             vec![col("id", ColumnType::Integer)],
             vec![TableConstraint::PrimaryKey(vec!["id".into()])],
             vec![],
-        )];
-        assert!(validate_schema(&schema).is_ok());
-    }
-
-    #[test]
-    fn validate_schema_rejects_duplicate_table_names() {
-        let schema = vec![
+        )],
+        None
+    )]
+    #[case::duplicate_table(
+        vec![
             table("users", vec![col("id", ColumnType::Integer)], vec![], vec![]),
             table("users", vec![col("id", ColumnType::Integer)], vec![], vec![]),
-        ];
-        let err = validate_schema(&schema).unwrap_err();
-        assert!(matches!(err, PlannerError::DuplicateTableName(_)));
-    }
-
-    #[test]
-    fn validate_schema_rejects_foreign_key_to_nonexistent_table() {
-        let schema = vec![table(
+        ],
+        Some(is_duplicate as fn(&PlannerError) -> bool)
+    )]
+    #[case::fk_missing_table(
+        vec![table(
             "users",
             vec![col("id", ColumnType::Integer)],
             vec![TableConstraint::ForeignKey {
@@ -255,14 +279,11 @@ mod tests {
                 on_update: None,
             }],
             vec![],
-        )];
-        let err = validate_schema(&schema).unwrap_err();
-        assert!(matches!(err, PlannerError::ForeignKeyTableNotFound(_, _, _)));
-    }
-
-    #[test]
-    fn validate_schema_rejects_foreign_key_to_nonexistent_column() {
-        let schema = vec![
+        )],
+        Some(is_fk_table as fn(&PlannerError) -> bool)
+    )]
+    #[case::fk_missing_column(
+        vec![
             table("posts", vec![col("id", ColumnType::Integer)], vec![], vec![]),
             table(
                 "users",
@@ -277,14 +298,30 @@ mod tests {
                 }],
                 vec![],
             ),
-        ];
-        let err = validate_schema(&schema).unwrap_err();
-        assert!(matches!(err, PlannerError::ForeignKeyColumnNotFound(_, _, _, _)));
-    }
-
-    #[test]
-    fn validate_schema_accepts_valid_foreign_key() {
-        let schema = vec![
+        ],
+        Some(is_fk_column as fn(&PlannerError) -> bool)
+    )]
+    #[case::fk_local_missing_column(
+        vec![
+            table("posts", vec![col("id", ColumnType::Integer)], vec![], vec![]),
+            table(
+                "users",
+                vec![col("id", ColumnType::Integer)],
+                vec![TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["missing".into()],
+                    ref_table: "posts".into(),
+                    ref_columns: vec!["id".into()],
+                    on_delete: None,
+                    on_update: None,
+                }],
+                vec![],
+            ),
+        ],
+        Some(is_constraint_column as fn(&PlannerError) -> bool)
+    )]
+    #[case::fk_valid(
+        vec![
             table(
                 "posts",
                 vec![col("id", ColumnType::Integer)],
@@ -304,13 +341,11 @@ mod tests {
                 }],
                 vec![],
             ),
-        ];
-        assert!(validate_schema(&schema).is_ok());
-    }
-
-    #[test]
-    fn validate_schema_rejects_index_with_nonexistent_column() {
-        let schema = vec![table(
+        ],
+        None
+    )]
+    #[case::index_missing_column(
+        vec![table(
             "users",
             vec![col("id", ColumnType::Integer)],
             vec![],
@@ -319,38 +354,53 @@ mod tests {
                 columns: vec!["nonexistent".into()],
                 unique: false,
             }],
-        )];
-        let err = validate_schema(&schema).unwrap_err();
-        assert!(matches!(err, PlannerError::IndexColumnNotFound(_, _, _)));
-    }
-
-    #[test]
-    fn validate_schema_rejects_constraint_with_nonexistent_column() {
-        let schema = vec![table(
+        )],
+        Some(is_index_column as fn(&PlannerError) -> bool)
+    )]
+    #[case::constraint_missing_column(
+        vec![table(
             "users",
             vec![col("id", ColumnType::Integer)],
             vec![TableConstraint::PrimaryKey(vec!["nonexistent".into()])],
             vec![],
-        )];
-        let err = validate_schema(&schema).unwrap_err();
-        assert!(matches!(err, PlannerError::ConstraintColumnNotFound(_, _, _)));
-    }
-
-    #[test]
-    fn validate_schema_rejects_empty_primary_key() {
-        let schema = vec![table(
+        )],
+        Some(is_constraint_column as fn(&PlannerError) -> bool)
+    )]
+    #[case::unique_empty_columns(
+        vec![table(
+            "users",
+            vec![col("id", ColumnType::Integer)],
+            vec![TableConstraint::Unique {
+                name: Some("u".into()),
+                columns: vec![],
+            }],
+            vec![],
+        )],
+        Some(is_empty_columns as fn(&PlannerError) -> bool)
+    )]
+    #[case::unique_missing_column(
+        vec![table(
+            "users",
+            vec![col("id", ColumnType::Integer)],
+            vec![TableConstraint::Unique {
+                name: None,
+                columns: vec!["missing".into()],
+            }],
+            vec![],
+        )],
+        Some(is_constraint_column as fn(&PlannerError) -> bool)
+    )]
+    #[case::empty_primary_key(
+        vec![table(
             "users",
             vec![col("id", ColumnType::Integer)],
             vec![TableConstraint::PrimaryKey(vec![])],
             vec![],
-        )];
-        let err = validate_schema(&schema).unwrap_err();
-        assert!(matches!(err, PlannerError::EmptyConstraintColumns(_, _)));
-    }
-
-    #[test]
-    fn validate_schema_rejects_foreign_key_column_count_mismatch() {
-        let schema = vec![
+        )],
+        Some(is_empty_columns as fn(&PlannerError) -> bool)
+    )]
+    #[case::fk_column_count_mismatch(
+        vec![
             table(
                 "posts",
                 vec![col("id", ColumnType::Integer)],
@@ -370,9 +420,98 @@ mod tests {
                 }],
                 vec![],
             ),
-        ];
-        let err = validate_schema(&schema).unwrap_err();
-        assert!(matches!(err, PlannerError::ForeignKeyColumnNotFound(_, _, _, _)));
+        ],
+        Some(is_fk_column as fn(&PlannerError) -> bool)
+    )]
+    #[case::fk_empty_columns(
+        vec![table(
+            "users",
+            vec![col("id", ColumnType::Integer)],
+            vec![TableConstraint::ForeignKey {
+                name: None,
+                columns: vec![],
+                ref_table: "posts".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            }],
+            vec![],
+        )],
+        Some(is_empty_columns as fn(&PlannerError) -> bool)
+    )]
+    #[case::fk_empty_ref_columns(
+        vec![
+            table(
+                "posts",
+                vec![col("id", ColumnType::Integer)],
+                vec![],
+                vec![],
+            ),
+            table(
+                "users",
+                vec![col("id", ColumnType::Integer)],
+                vec![TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["id".into()],
+                    ref_table: "posts".into(),
+                    ref_columns: vec![],
+                    on_delete: None,
+                    on_update: None,
+                }],
+                vec![],
+            ),
+        ],
+        Some(is_empty_columns as fn(&PlannerError) -> bool)
+    )]
+    #[case::index_empty_columns(
+        vec![table(
+            "users",
+            vec![col("id", ColumnType::Integer)],
+            vec![],
+            vec![IndexDef {
+                name: "idx".into(),
+                columns: vec![],
+                unique: false,
+            }],
+        )],
+        Some(is_empty_columns as fn(&PlannerError) -> bool)
+    )]
+    #[case::index_valid(
+        vec![table(
+            "users",
+            vec![col("id", ColumnType::Integer), col("name", ColumnType::Text)],
+            vec![],
+            vec![IndexDef {
+                name: "idx_name".into(),
+                columns: vec!["name".into()],
+                unique: false,
+            }],
+        )],
+        None
+    )]
+    #[case::check_constraint_ok(
+        vec![table(
+            "users",
+            vec![col("id", ColumnType::Integer)],
+            vec![TableConstraint::Check {
+                name: Some("ck".into()),
+                expr: "id > 0".into(),
+            }],
+            vec![],
+        )],
+        None
+    )]
+    fn validate_schema_cases(
+        #[case] schema: Vec<TableDef>,
+        #[case] expected_err: Option<fn(&PlannerError) -> bool>,
+    ) {
+        let result = validate_schema(&schema);
+        match expected_err {
+            None => assert!(result.is_ok()),
+            Some(pred) => {
+                let err = result.unwrap_err();
+                assert!(pred(&err), "unexpected error: {:?}", err);
+            }
+        }
     }
 }
-

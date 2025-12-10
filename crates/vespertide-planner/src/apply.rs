@@ -28,9 +28,10 @@ pub fn apply_action(
             let before = schema.len();
             schema.retain(|t| t.name != *table);
             if schema.len() == before {
-                return Err(PlannerError::TableNotFound(table.clone()));
+                Err(PlannerError::TableNotFound(table.clone()))
+            } else {
+                Ok(())
             }
-            Ok(())
         }
         MigrationAction::AddColumn {
             table,
@@ -42,13 +43,14 @@ pub fn apply_action(
                 .find(|t| t.name == *table)
                 .ok_or_else(|| PlannerError::TableNotFound(table.clone()))?;
             if tbl.columns.iter().any(|c| c.name == column.name) {
-                return Err(PlannerError::ColumnExists(
+                Err(PlannerError::ColumnExists(
                     table.clone(),
                     column.name.clone(),
-                ));
+                ))
+            } else {
+                tbl.columns.push(column.clone());
+                Ok(())
             }
-            tbl.columns.push(column.clone());
-            Ok(())
         }
         MigrationAction::RenameColumn { table, from, to } => {
             let tbl = schema
@@ -73,11 +75,12 @@ pub fn apply_action(
             let before = tbl.columns.len();
             tbl.columns.retain(|c| c.name != *column);
             if tbl.columns.len() == before {
-                return Err(PlannerError::ColumnNotFound(table.clone(), column.clone()));
+                Err(PlannerError::ColumnNotFound(table.clone(), column.clone()))
+            } else {
+                drop_column_from_constraints(&mut tbl.constraints, column);
+                drop_column_from_indexes(&mut tbl.indexes, column);
+                Ok(())
             }
-            drop_column_from_constraints(&mut tbl.constraints, column);
-            drop_column_from_indexes(&mut tbl.indexes, column);
-            Ok(())
         }
         MigrationAction::ModifyColumnType {
             table,
@@ -112,20 +115,22 @@ pub fn apply_action(
             let before = tbl.indexes.len();
             tbl.indexes.retain(|i| i.name != *name);
             if tbl.indexes.len() == before {
-                return Err(PlannerError::IndexNotFound(table.clone(), name.clone()));
+                Err(PlannerError::IndexNotFound(table.clone(), name.clone()))
+            } else {
+                Ok(())
             }
-            Ok(())
         }
         MigrationAction::RenameTable { from, to } => {
             if schema.iter().any(|t| t.name == *to) {
-                return Err(PlannerError::TableExists(to.clone()));
+                Err(PlannerError::TableExists(to.clone()))
+            } else {
+                let tbl = schema
+                    .iter_mut()
+                    .find(|t| t.name == *from)
+                    .ok_or_else(|| PlannerError::TableNotFound(from.clone()))?;
+                tbl.name = to.clone();
+                Ok(())
             }
-            let tbl = schema
-                .iter_mut()
-                .find(|t| t.name == *from)
-                .ok_or_else(|| PlannerError::TableNotFound(from.clone()))?;
-            tbl.name = to.clone();
-            Ok(())
         }
     }
 }
@@ -311,6 +316,17 @@ mod tests {
         },
         ErrKind::IndexNotFound
     )]
+    #[case(
+        vec![
+            table("old", vec![col("id", ColumnType::Integer)], vec![], vec![]),
+            table("new", vec![col("id", ColumnType::Integer)], vec![], vec![]),
+        ],
+        MigrationAction::RenameTable {
+            from: "old".into(),
+            to: "new".into()
+        },
+        ErrKind::TableExists
+    )]
     fn apply_action_reports_errors(
         #[case] mut schema: Vec<TableDef>,
         #[case] action: MigrationAction,
@@ -319,5 +335,287 @@ mod tests {
         let err = apply_action(&mut schema, &action).unwrap_err();
         assert_err_kind(err, expected);
     }
-}
 
+    fn idx(name: &str, columns: Vec<&str>, unique: bool) -> IndexDef {
+        IndexDef {
+            name: name.to_string(),
+            columns: columns.into_iter().map(|s| s.to_string()).collect(),
+            unique,
+        }
+    }
+
+    #[derive(Clone)]
+    struct SuccessCase {
+        initial: Vec<TableDef>,
+        actions: Vec<MigrationAction>,
+        expected: Vec<TableDef>,
+    }
+
+    #[rstest]
+    #[case(SuccessCase {
+        initial: vec![],
+        actions: vec![
+            MigrationAction::CreateTable {
+                table: "users".into(),
+                columns: vec![col("id", ColumnType::Integer)],
+                constraints: vec![],
+            },
+            MigrationAction::DeleteTable {
+                table: "users".into(),
+            },
+        ],
+        expected: vec![],
+    })]
+    #[case(SuccessCase {
+        initial: vec![table(
+            "users",
+            vec![
+                col("id", ColumnType::Integer),
+                col("old", ColumnType::Text),
+                col("ref_id", ColumnType::Integer)
+            ],
+            vec![
+                TableConstraint::PrimaryKey(vec!["id".into()]),
+                TableConstraint::Unique {
+                    name: Some("u_old".into()),
+                    columns: vec!["old".into()],
+                },
+                TableConstraint::ForeignKey {
+                    name: Some("fk_old".into()),
+                    columns: vec!["old".into()],
+                    ref_table: "ref_table".into(),
+                    ref_columns: vec!["ref_id".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+                TableConstraint::Check {
+                    name: None,
+                    expr: "old IS NOT NULL".into(),
+                },
+            ],
+            vec![
+                idx("idx_old", vec!["old"], false),
+                idx("idx_ref", vec!["ref_id"], false),
+            ],
+        )],
+        actions: vec![
+            MigrationAction::AddColumn {
+                table: "users".into(),
+                column: col("new_col", ColumnType::Boolean),
+                fill_with: None,
+            },
+            MigrationAction::RenameColumn {
+                table: "users".into(),
+                from: "ref_id".into(),
+                to: "renamed".into(),
+            },
+        ],
+        expected: vec![table(
+            "users",
+            vec![
+                col("id", ColumnType::Integer),
+                col("old", ColumnType::Text),
+                col("renamed", ColumnType::Integer),
+                col("new_col", ColumnType::Boolean)
+            ],
+            vec![
+                TableConstraint::PrimaryKey(vec!["id".into()]),
+                TableConstraint::Unique {
+                    name: Some("u_old".into()),
+                    columns: vec!["old".into()],
+                },
+                TableConstraint::ForeignKey {
+                    name: Some("fk_old".into()),
+                    columns: vec!["old".into()],
+                    ref_table: "ref_table".into(),
+                    ref_columns: vec!["renamed".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+                TableConstraint::Check {
+                    name: None,
+                    expr: "old IS NOT NULL".into(),
+                },
+            ],
+            vec![
+                idx("idx_old", vec!["old"], false),
+                idx("idx_ref", vec!["renamed"], false),
+            ],
+        )],
+    })]
+    #[case(SuccessCase {
+        initial: vec![table(
+            "users",
+            vec![col("id", ColumnType::Integer), col("old", ColumnType::Text)],
+            vec![
+                TableConstraint::PrimaryKey(vec!["id".into()]),
+                TableConstraint::Unique {
+                    name: Some("u_old".into()),
+                    columns: vec!["old".into()],
+                },
+                TableConstraint::ForeignKey {
+                    name: Some("fk_old".into()),
+                    columns: vec!["old".into()],
+                    ref_table: "ref_table".into(),
+                    ref_columns: vec!["old".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+                TableConstraint::Check {
+                    name: None,
+                    expr: "old IS NOT NULL".into(),
+                },
+            ],
+            vec![idx("idx_old", vec!["old"], false)],
+        )],
+        actions: vec![MigrationAction::DeleteColumn {
+            table: "users".into(),
+            column: "old".into(),
+        }],
+        expected: vec![table(
+            "users",
+            vec![col("id", ColumnType::Integer)],
+            vec![
+                TableConstraint::PrimaryKey(vec!["id".into()]),
+                TableConstraint::Check {
+                    name: None,
+                    expr: "old IS NOT NULL".into(),
+                },
+            ],
+            vec![],
+        )],
+    })]
+    #[case(SuccessCase {
+        initial: vec![table(
+            "users",
+            vec![col("id", ColumnType::Integer)],
+            vec![],
+            vec![],
+        )],
+        actions: vec![
+            MigrationAction::ModifyColumnType {
+                table: "users".into(),
+                column: "id".into(),
+                new_type: ColumnType::Text,
+            },
+            MigrationAction::AddIndex {
+                table: "users".into(),
+                index: idx("idx_id", vec!["id"], true),
+            },
+            MigrationAction::RemoveIndex {
+                table: "users".into(),
+                name: "idx_id".into(),
+            },
+        ],
+        expected: vec![table(
+            "users",
+            vec![col("id", ColumnType::Text)],
+            vec![],
+            vec![],
+        )],
+    })]
+    #[case(SuccessCase {
+        initial: vec![table(
+            "old",
+            vec![col("id", ColumnType::Integer)],
+            vec![],
+            vec![],
+        )],
+        actions: vec![MigrationAction::RenameTable {
+            from: "old".into(),
+            to: "new".into(),
+        }],
+        expected: vec![table(
+            "new",
+            vec![col("id", ColumnType::Integer)],
+            vec![],
+            vec![],
+        )],
+    })]
+    fn apply_action_success_cases(#[case] case: SuccessCase) {
+        let mut schema = case.initial;
+        for action in case.actions {
+            apply_action(&mut schema, &action).unwrap();
+        }
+        assert_eq!(schema, case.expected);
+    }
+
+    #[rstest]
+    #[case(
+        vec![
+            TableConstraint::PrimaryKey(vec!["id".into(), "old".into()]),
+            TableConstraint::Unique {
+                name: None,
+                columns: vec!["old".into(), "keep".into()],
+            },
+            TableConstraint::ForeignKey {
+                name: None,
+                columns: vec!["old".into()],
+                ref_table: "ref".into(),
+                ref_columns: vec!["old".into()],
+                on_delete: None,
+                on_update: None,
+            },
+            TableConstraint::Check {
+                name: None,
+                expr: "old > 0".into(),
+            },
+        ],
+        vec![idx("idx_old", vec!["old", "keep"], false)],
+        "old",
+        "new",
+        vec![
+            TableConstraint::PrimaryKey(vec!["id".into(), "new".into()]),
+            TableConstraint::Unique {
+                name: None,
+                columns: vec!["new".into(), "keep".into()],
+            },
+            TableConstraint::ForeignKey {
+                name: None,
+                columns: vec!["new".into()],
+                ref_table: "ref".into(),
+                ref_columns: vec!["new".into()],
+                on_delete: None,
+                on_update: None,
+            },
+            TableConstraint::Check {
+                name: None,
+                expr: "old > 0".into(),
+            },
+        ],
+        vec![idx("idx_old", vec!["new", "keep"], false)]
+    )]
+    #[case(
+        vec![
+            TableConstraint::PrimaryKey(vec!["id".into()]),
+            TableConstraint::Check {
+                name: None,
+                expr: "id > 0".into(),
+            },
+        ],
+        vec![idx("idx_id", vec!["id"], false)],
+        "missing",
+        "new",
+        vec![
+            TableConstraint::PrimaryKey(vec!["id".into()]),
+            TableConstraint::Check {
+                name: None,
+                expr: "id > 0".into(),
+            },
+        ],
+        vec![idx("idx_id", vec!["id"], false)]
+    )]
+    fn rename_helpers_update_constraints_and_indexes(
+        #[case] mut constraints: Vec<TableConstraint>,
+        #[case] mut indexes: Vec<IndexDef>,
+        #[case] from: &str,
+        #[case] to: &str,
+        #[case] expected_constraints: Vec<TableConstraint>,
+        #[case] expected_indexes: Vec<IndexDef>,
+    ) {
+        rename_column_in_constraints(&mut constraints, from, to);
+        rename_column_in_indexes(&mut indexes, from, to);
+        assert_eq!(constraints, expected_constraints);
+        assert_eq!(indexes, expected_indexes);
+    }
+}

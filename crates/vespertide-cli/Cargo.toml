@@ -13,6 +13,7 @@ publish = true
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+colored = "3"
 serde_json = "1"
 serde_yaml = "0.9"
 schemars = "1.1"
@@ -20,6 +21,11 @@ vespertide-config = { workspace = true }
 vespertide-core = { workspace = true }
 vespertide-planner = { workspace = true }
 vespertide-query = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+serial_test = "3"
+rstest = "0.26"
 
 [[bin]]
 name = "vespertide"

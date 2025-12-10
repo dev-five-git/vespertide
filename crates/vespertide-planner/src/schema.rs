@@ -1,7 +1,7 @@
 use vespertide_core::{MigrationPlan, TableDef};
 
-use crate::error::PlannerError;
 use crate::apply::apply_action;
+use crate::error::PlannerError;
 
 /// Derive a schema snapshot from existing migration plans.
 pub fn schema_from_plans(plans: &[MigrationPlan]) -> Result<Vec<TableDef>, PlannerError> {
@@ -154,4 +154,3 @@ mod tests {
         assert_eq!(users, &expected_users);
     }
 }
-
