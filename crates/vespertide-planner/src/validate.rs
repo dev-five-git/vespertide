@@ -153,7 +153,11 @@ fn validate_constraint(
             if columns.len() != ref_columns.len() {
                 return Err(PlannerError::ForeignKeyColumnNotFound(
                     table_name.to_string(),
-                    format!("column count mismatch: {} != {}", columns.len(), ref_columns.len()),
+                    format!(
+                        "column count mismatch: {} != {}",
+                        columns.len(),
+                        ref_columns.len()
+                    ),
                     ref_table.clone(),
                     "".to_string(),
                 ));
@@ -506,13 +510,8 @@ mod tests {
             None => assert!(result.is_ok()),
             Some(pred) => {
                 let err = result.unwrap_err();
-                assert!(
-                    pred(&err),
-                    "unexpected error: {:?}",
-                    err
-                );
+                assert!(pred(&err), "unexpected error: {:?}", err);
             }
         }
     }
 }
-

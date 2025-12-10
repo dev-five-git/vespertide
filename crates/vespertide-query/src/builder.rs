@@ -1,7 +1,7 @@
 use vespertide_core::MigrationPlan;
 
 use crate::error::QueryError;
-use crate::sql::{build_action_queries, BuiltQuery};
+use crate::sql::{BuiltQuery, build_action_queries};
 
 pub fn build_plan_queries(plan: &MigrationPlan) -> Result<Vec<BuiltQuery>, QueryError> {
     let mut queries: Vec<BuiltQuery> = Vec::new();
@@ -91,8 +91,11 @@ mod tests {
 
         for (i, (expected_sql, expected_binds)) in expected.iter().enumerate() {
             assert_eq!(result[i].sql, *expected_sql, "Query {} sql mismatch", i);
-            assert_eq!(result[i].binds, *expected_binds, "Query {} binds mismatch", i);
+            assert_eq!(
+                result[i].binds, *expected_binds,
+                "Query {} binds mismatch",
+                i
+            );
         }
     }
 }
-

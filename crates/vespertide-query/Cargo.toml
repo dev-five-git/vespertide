@@ -13,4 +13,4 @@ vespertide-core = { workspace = true }
 thiserror = "2"
 
 [dev-dependencies]
-rstest = "0.21"
+rstest = "0.26"

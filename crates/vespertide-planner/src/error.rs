@@ -25,4 +25,3 @@ pub enum PlannerError {
     #[error("constraint has empty column list: {0}.{1}")]
     EmptyConstraintColumns(String, String),
 }
-

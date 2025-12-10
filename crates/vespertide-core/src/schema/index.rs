@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use crate::schema::names::{ColumnName, IndexName};
 
@@ -10,4 +10,3 @@ pub struct IndexDef {
     pub columns: Vec<ColumnName>,
     pub unique: bool,
 }
-

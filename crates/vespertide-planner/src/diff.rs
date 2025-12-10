@@ -231,6 +231,91 @@ mod tests {
             },
         ]
     )]
+    #[case::delete_column(
+        vec![table(
+            "users",
+            vec![col("id", ColumnType::Integer), col("name", ColumnType::Text)],
+            vec![],
+            vec![],
+        )],
+        vec![table(
+            "users",
+            vec![col("id", ColumnType::Integer)],
+            vec![],
+            vec![],
+        )],
+        vec![MigrationAction::DeleteColumn {
+            table: "users".into(),
+            column: "name".into(),
+        }]
+    )]
+    #[case::modify_column_type(
+        vec![table(
+            "users",
+            vec![col("id", ColumnType::Integer)],
+            vec![],
+            vec![],
+        )],
+        vec![table(
+            "users",
+            vec![col("id", ColumnType::Text)],
+            vec![],
+            vec![],
+        )],
+        vec![MigrationAction::ModifyColumnType {
+            table: "users".into(),
+            column: "id".into(),
+            new_type: ColumnType::Text,
+        }]
+    )]
+    #[case::remove_index(
+        vec![table(
+            "users",
+            vec![col("id", ColumnType::Integer)],
+            vec![],
+            vec![IndexDef {
+                name: "idx_users_id".into(),
+                columns: vec!["id".into()],
+                unique: false,
+            }],
+        )],
+        vec![table(
+            "users",
+            vec![col("id", ColumnType::Integer)],
+            vec![],
+            vec![],
+        )],
+        vec![MigrationAction::RemoveIndex {
+            table: "users".into(),
+            name: "idx_users_id".into(),
+        }]
+    )]
+    #[case::add_index_existing_table(
+        vec![table(
+            "users",
+            vec![col("id", ColumnType::Integer)],
+            vec![],
+            vec![],
+        )],
+        vec![table(
+            "users",
+            vec![col("id", ColumnType::Integer)],
+            vec![],
+            vec![IndexDef {
+                name: "idx_users_id".into(),
+                columns: vec!["id".into()],
+                unique: true,
+            }],
+        )],
+        vec![MigrationAction::AddIndex {
+            table: "users".into(),
+            index: IndexDef {
+                name: "idx_users_id".into(),
+                columns: vec!["id".into()],
+                unique: true,
+            },
+        }]
+    )]
     fn diff_schemas_detects_additions(
         #[case] from_schema: Vec<TableDef>,
         #[case] to_schema: Vec<TableDef>,
@@ -240,4 +325,3 @@ mod tests {
         assert_eq!(plan.actions, expected_actions);
     }
 }
-

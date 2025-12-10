@@ -12,13 +12,17 @@ pub fn cmd_sql() -> Result<()> {
     let plan = plan_next_migration(&current_models, &applied_plans)
         .map_err(|e| anyhow::anyhow!("planning error: {}", e))?;
 
+    emit_sql(&plan)
+}
+
+fn emit_sql(plan: &vespertide_core::MigrationPlan) -> Result<()> {
     if plan.actions.is_empty() {
         println!("No differences found. Schema is up to date; no SQL to emit.");
         return Ok(());
     }
 
-    let queries = build_plan_queries(&plan)
-        .map_err(|e| anyhow::anyhow!("query build error: {}", e))?;
+    let queries =
+        build_plan_queries(&plan).map_err(|e| anyhow::anyhow!("query build error: {}", e))?;
 
     println!("Plan version: {}", plan.version);
     if let Some(created_at) = &plan.created_at {
@@ -41,3 +45,101 @@ pub fn cmd_sql() -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+    use std::fs;
+    use std::path::PathBuf;
+    use tempfile::tempdir;
+    use vespertide_config::VespertideConfig;
+    use vespertide_core::{ColumnDef, ColumnType, MigrationAction, MigrationPlan, TableDef, TableConstraint};
+
+    struct CwdGuard {
+        original: PathBuf,
+    }
+
+    impl CwdGuard {
+        fn new(dir: &PathBuf) -> Self {
+            let original = std::env::current_dir().unwrap();
+            std::env::set_current_dir(dir).unwrap();
+            Self { original }
+        }
+    }
+
+    impl Drop for CwdGuard {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.original);
+        }
+    }
+
+    fn write_config() -> VespertideConfig {
+        let cfg = VespertideConfig::default();
+        let text = serde_json::to_string_pretty(&cfg).unwrap();
+        fs::write("vespertide.json", text).unwrap();
+        cfg
+    }
+
+    fn write_model(name: &str) {
+        let models_dir = PathBuf::from("models");
+        fs::create_dir_all(&models_dir).unwrap();
+        let table = TableDef {
+            name: name.to_string(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Integer,
+                nullable: false,
+                default: None,
+            }],
+            constraints: vec![],
+            indexes: vec![],
+        };
+        let path = models_dir.join(format!("{name}.json"));
+        fs::write(path, serde_json::to_string_pretty(&table).unwrap()).unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn cmd_sql_emits_queries() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+
+        let cfg = write_config();
+        write_model("users");
+        fs::create_dir_all(cfg.migrations_dir()).unwrap();
+
+        let result = cmd_sql();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn emit_sql_no_actions_early_return() {
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![],
+        };
+        assert!(emit_sql(&plan).is_ok());
+    }
+
+    #[test]
+    fn emit_sql_with_metadata() {
+        let plan = MigrationPlan {
+            comment: Some("init".into()),
+            created_at: Some("2024-01-01T00:00:00Z".into()),
+            version: 1,
+            actions: vec![MigrationAction::CreateTable {
+                table: "users".into(),
+                columns: vec![ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Integer,
+                    nullable: false,
+                    default: None,
+                }],
+                constraints: vec![TableConstraint::PrimaryKey(vec!["id".into()])],
+            }],
+        };
+        assert!(emit_sql(&plan).is_ok());
+    }
+}

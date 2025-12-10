@@ -21,6 +21,11 @@ vespertide-core = { workspace = true }
 vespertide-planner = { workspace = true }
 vespertide-query = { workspace = true }
 
+[dev-dependencies]
+tempfile = "3"
+serial_test = "3"
+rstest = "0.26"
+
 [[bin]]
 name = "vespertide"
 path = "src/main.rs"

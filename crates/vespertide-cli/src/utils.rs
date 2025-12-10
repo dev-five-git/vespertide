@@ -35,9 +35,8 @@ pub fn load_models(config: &VespertideConfig) -> Result<Vec<TableDef>> {
         if path.is_file() {
             let ext = path.extension().and_then(|s| s.to_str());
             if ext == Some("json") || ext == Some("yaml") || ext == Some("yml") {
-                let content = fs::read_to_string(&path).with_context(|| {
-                    format!("read model file: {}", path.display())
-                })?;
+                let content = fs::read_to_string(&path)
+                    .with_context(|| format!("read model file: {}", path.display()))?;
 
                 let table: TableDef = if ext == Some("json") {
                     serde_json::from_str(&content)
@@ -54,8 +53,7 @@ pub fn load_models(config: &VespertideConfig) -> Result<Vec<TableDef>> {
 
     // Validate schema integrity before returning
     if !tables.is_empty() {
-        validate_schema(&tables)
-            .map_err(|e| anyhow::anyhow!("schema validation failed: {}", e))?;
+        validate_schema(&tables).map_err(|e| anyhow::anyhow!("schema validation failed: {}", e))?;
     }
 
     Ok(tables)
@@ -77,9 +75,8 @@ pub fn load_migrations(config: &VespertideConfig) -> Result<Vec<MigrationPlan>> 
         if path.is_file() {
             let ext = path.extension().and_then(|s| s.to_str());
             if ext == Some("json") || ext == Some("yaml") || ext == Some("yml") {
-                let content = fs::read_to_string(&path).with_context(|| {
-                    format!("read migration file: {}", path.display())
-                })?;
+                let content = fs::read_to_string(&path)
+                    .with_context(|| format!("read migration file: {}", path.display()))?;
 
                 let plan: MigrationPlan = if ext == Some("json") {
                     serde_json::from_str(&content)
@@ -134,7 +131,13 @@ fn sanitize_comment(comment: Option<&str>) -> String {
         .map(|c| {
             c.to_lowercase()
                 .chars()
-                .map(|ch| if ch.is_alphanumeric() || ch == ' ' { ch } else { '_' })
+                .map(|ch| {
+                    if ch.is_alphanumeric() || ch == ' ' {
+                        ch
+                    } else {
+                        '_'
+                    }
+                })
                 .collect::<String>()
                 .split_whitespace()
                 .collect::<Vec<_>>()
@@ -199,4 +202,3 @@ fn render_migration_name(pattern: &str, version: u32, sanitized_comment: &str) -
         name
     }
 }
-

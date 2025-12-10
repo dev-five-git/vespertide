@@ -320,4 +320,3 @@ mod tests {
         assert_err_kind(err, expected);
     }
 }
-

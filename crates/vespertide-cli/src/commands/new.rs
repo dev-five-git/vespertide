@@ -71,6 +71,126 @@ fn write_json_with_schema(
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+    use tempfile::tempdir;
+    use vespertide_config::VespertideConfig;
+
+    struct CwdGuard {
+        original: std::path::PathBuf,
+    }
+
+    impl CwdGuard {
+        fn new(dir: &std::path::Path) -> Self {
+            let original = env::current_dir().unwrap();
+            env::set_current_dir(dir).unwrap();
+            Self { original }
+        }
+    }
+
+    impl Drop for CwdGuard {
+        fn drop(&mut self) {
+            let _ = env::set_current_dir(&self.original);
+        }
+    }
+
+    fn write_config(model_format: FileFormat) {
+        let mut cfg = VespertideConfig::default();
+        cfg.model_format = model_format;
+        let text = serde_json::to_string_pretty(&cfg).unwrap();
+        std::fs::write("vespertide.json", text).unwrap();
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn cmd_new_creates_json_with_schema() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(tmp.path());
+        let expected_schema = schema_url_for(FileFormat::Json);
+        write_config(FileFormat::Json);
+
+        cmd_new("users".into(), None).unwrap();
+
+        let cfg = VespertideConfig::default();
+        let path = cfg.models_dir().join("users.json");
+        assert!(path.exists());
+
+        let text = fs::read_to_string(path).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(
+            value.get("$schema"),
+            Some(&serde_json::Value::String(expected_schema))
+        );
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn cmd_new_creates_yaml_with_schema() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(tmp.path());
+        let expected_schema = schema_url_for(FileFormat::Yaml);
+        write_config(FileFormat::Yaml);
+
+        cmd_new("orders".into(), None).unwrap();
+
+        let mut cfg = VespertideConfig::default();
+        cfg.model_format = FileFormat::Yaml;
+        let path = cfg.models_dir().join("orders.yaml");
+        assert!(path.exists());
+
+        let text = fs::read_to_string(path).unwrap();
+        let value: serde_yaml::Value = serde_yaml::from_str(&text).unwrap();
+        let schema = value
+            .as_mapping()
+            .and_then(|m| m.get(&serde_yaml::Value::String("$schema".into())))
+            .and_then(|v| v.as_str());
+        assert_eq!(schema, Some(expected_schema.as_str()));
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn cmd_new_creates_yml_with_schema() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(tmp.path());
+        let expected_schema = schema_url_for(FileFormat::Yml);
+        write_config(FileFormat::Yml);
+
+        cmd_new("products".into(), None).unwrap();
+
+        let mut cfg = VespertideConfig::default();
+        cfg.model_format = FileFormat::Yml;
+        let path = cfg.models_dir().join("products.yml");
+        assert!(path.exists());
+
+        let text = fs::read_to_string(path).unwrap();
+        let value: serde_yaml::Value = serde_yaml::from_str(&text).unwrap();
+        let schema = value
+            .as_mapping()
+            .and_then(|m| m.get(&serde_yaml::Value::String("$schema".into())))
+            .and_then(|v| v.as_str());
+        assert_eq!(schema, Some(expected_schema.as_str()));
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn cmd_new_fails_if_model_file_exists() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(tmp.path());
+        write_config(FileFormat::Json);
+
+        let cfg = VespertideConfig::default();
+        std::fs::create_dir_all(cfg.models_dir()).unwrap();
+        let path = cfg.models_dir().join("users.json");
+        std::fs::write(&path, "{}").unwrap();
+
+        let err = cmd_new("users".into(), None).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("model file already exists"));
+        assert!(msg.contains("users.json"));
+    }
+}
 fn write_yaml(path: &std::path::Path, table: &TableDef, schema_url: &str) -> Result<()> {
     let mut value = serde_yaml::to_value(table).context("serialize table to yaml value")?;
     if let serde_yaml::Value::Mapping(ref mut map) = value {

@@ -15,4 +15,3 @@ impl Default for FileFormat {
         FileFormat::Json
     }
 }
-

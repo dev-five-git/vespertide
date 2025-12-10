@@ -5,4 +5,3 @@ pub enum QueryError {
     #[error("unsupported table constraint")]
     UnsupportedConstraint,
 }
-

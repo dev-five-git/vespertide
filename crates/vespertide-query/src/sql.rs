@@ -578,7 +578,11 @@ mod tests {
 
         for (i, (expected_sql, expected_binds)) in expected.iter().enumerate() {
             assert_eq!(result[i].sql, *expected_sql, "Query {} mismatch sql", i);
-            assert_eq!(result[i].binds, *expected_binds, "Query {} mismatch binds", i);
+            assert_eq!(
+                result[i].binds, *expected_binds,
+                "Query {} mismatch binds",
+                i
+            );
         }
     }
 
@@ -649,10 +653,7 @@ mod tests {
             vec!["name".to_string(), "'default'".to_string()],
         )
     )]
-    fn test_column_def_sql(
-        #[case] column: ColumnDef,
-        #[case] expected: (String, Vec<String>),
-    ) {
+    fn test_column_def_sql(#[case] column: ColumnDef, #[case] expected: (String, Vec<String>)) {
         let mut binds = Vec::new();
         let result = column_def_sql(&column, &mut binds);
         assert_eq!(result, expected.0);

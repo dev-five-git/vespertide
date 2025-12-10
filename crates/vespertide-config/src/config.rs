@@ -80,4 +80,3 @@ impl VespertideConfig {
         &self.migration_filename_pattern
     }
 }
-
