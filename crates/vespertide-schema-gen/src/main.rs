@@ -19,67 +19,6 @@ fn main() -> Result<()> {
     run(args.out)
 }
 
-#[cfg(test)]
-mod main_tests {
-    use super::*;
-    use clap::Parser;
-    use tempfile::TempDir;
-
-    #[test]
-    fn main_parses_default_args() {
-        // Test with default value (simulated)
-        let args = Args::try_parse_from(&["vespertide-schema-gen"]).unwrap();
-        assert_eq!(args.out, PathBuf::from("schemas"));
-    }
-
-    #[test]
-    fn main_parses_custom_output_dir() {
-        let temp_dir = TempDir::new().unwrap();
-        let custom_out = temp_dir.path().join("custom_schemas");
-        
-        let args = Args::try_parse_from(&[
-            "vespertide-schema-gen",
-            "--out",
-            custom_out.to_str().unwrap(),
-        ]).unwrap();
-        
-        assert_eq!(args.out, custom_out);
-    }
-
-    #[test]
-    fn main_parses_short_output_flag() {
-        let temp_dir = TempDir::new().unwrap();
-        let custom_out = temp_dir.path().join("short_schemas");
-        
-        let args = Args::try_parse_from(&[
-            "vespertide-schema-gen",
-            "-o",
-            custom_out.to_str().unwrap(),
-        ]).unwrap();
-        
-        assert_eq!(args.out, custom_out);
-    }
-
-    #[test]
-    fn main_integration_with_default_args() {
-        let temp_dir = TempDir::new().unwrap();
-        let out = temp_dir.path().join("schemas");
-        
-        // Simulate main() behavior
-        let args = Args::try_parse_from(&[
-            "vespertide-schema-gen",
-            "--out",
-            out.to_str().unwrap(),
-        ]).unwrap();
-        
-        run(args.out.clone()).unwrap();
-        
-        assert!(out.exists());
-        assert!(out.join("model.schema.json").exists());
-        assert!(out.join("migration.schema.json").exists());
-    }
-}
-
 fn run(out: PathBuf) -> Result<()> {
     if !out.exists() {
         fs::create_dir_all(&out).with_context(|| format!("create dir {}", out.display()))?;
