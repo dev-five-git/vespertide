@@ -3,8 +3,9 @@ use clap::{CommandFactory, Parser, Subcommand};
 
 mod commands;
 mod utils;
-use commands::{cmd_diff, cmd_init, cmd_log, cmd_new, cmd_revision, cmd_sql, cmd_status};
+use commands::{cmd_diff, cmd_export, cmd_init, cmd_log, cmd_new, cmd_revision, cmd_sql, cmd_status};
 use vespertide_config::FileFormat;
+use crate::commands::export::OrmArg;
 
 /// vespertide command-line interface.
 #[derive(Parser, Debug)]
@@ -39,6 +40,15 @@ enum Commands {
     },
     /// Initialize vespertide.json with defaults.
     Init,
+    /// Export models into ORM-specific code.
+    Export {
+        /// Target ORM for export.
+        #[arg(short = 'o', long = "orm", value_enum)]
+        orm: OrmArg,
+        /// Output directory (defaults to config modelsDir or src/models).
+        #[arg(short = 'd', long = "export-dir")]
+        export_dir: Option<std::path::PathBuf>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -51,6 +61,7 @@ fn main() -> Result<()> {
         Some(Commands::Status) => cmd_status(),
         Some(Commands::Revision { message }) => cmd_revision(message),
         Some(Commands::Init) => cmd_init(),
+        Some(Commands::Export { orm, export_dir }) => cmd_export(orm, export_dir),
         None => {
             // No subcommand: show help and exit successfully.
             Cli::command().print_help()?;

@@ -21,6 +21,7 @@ vespertide-config = { workspace = true }
 vespertide-core = { workspace = true }
 vespertide-planner = { workspace = true }
 vespertide-query = { workspace = true }
+vespertide-exporter = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

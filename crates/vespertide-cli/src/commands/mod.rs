@@ -5,6 +5,7 @@ pub mod new;
 pub mod revision;
 pub mod sql;
 pub mod status;
+pub mod export;
 
 pub use diff::cmd_diff;
 pub use init::cmd_init;
@@ -13,3 +14,4 @@ pub use new::cmd_new;
 pub use revision::cmd_revision;
 pub use sql::cmd_sql;
 pub use status::cmd_status;
+pub use export::cmd_export;
