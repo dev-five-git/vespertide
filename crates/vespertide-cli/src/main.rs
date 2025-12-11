@@ -43,7 +43,7 @@ enum Commands {
     /// Export models into ORM-specific code.
     Export {
         /// Target ORM for export.
-        #[arg(short = 'o', long = "orm", value_enum)]
+        #[arg(short = 'o', long = "orm", value_enum, default_value = "seaorm")]
         orm: OrmArg,
         /// Output directory (defaults to config modelsDir or src/models).
         #[arg(short = 'd', long = "export-dir")]

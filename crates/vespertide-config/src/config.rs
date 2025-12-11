@@ -24,6 +24,13 @@ pub struct VespertideConfig {
     pub migration_format: FileFormat,
     #[serde(default = "default_migration_filename_pattern")]
     pub migration_filename_pattern: String,
+    /// Output directory for generated ORM models.
+    #[serde(default = "default_model_export_dir")]
+    pub model_export_dir: PathBuf,
+}
+
+fn default_model_export_dir() -> PathBuf {
+    PathBuf::from("src/models")
 }
 
 impl Default for VespertideConfig {
@@ -36,6 +43,7 @@ impl Default for VespertideConfig {
             model_format: FileFormat::Json,
             migration_format: FileFormat::Json,
             migration_filename_pattern: default_migration_filename_pattern(),
+            model_export_dir: default_model_export_dir(),
         }
     }
 }
@@ -74,5 +82,10 @@ impl VespertideConfig {
     /// Pattern for migration filenames (supports %v and %m placeholders).
     pub fn migration_filename_pattern(&self) -> &str {
         &self.migration_filename_pattern
+    }
+
+    /// Output directory for generated ORM models.
+    pub fn model_export_dir(&self) -> &Path {
+        &self.model_export_dir
     }
 }

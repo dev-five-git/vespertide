@@ -32,8 +32,6 @@ pub fn render_entity(table: &TableDef) -> String {
     }
 
     lines.push("}".into());
-    lines.push(String::new());
-    lines.push("impl ActiveModelBehavior for ActiveModel {}".into());
 
     // Relations and indexes
     lines.push(String::new());
@@ -224,7 +222,6 @@ mod tests {
         assert!(rendered.contains("#[sea_orm(primary_key)]"));
         assert!(rendered.contains("pub id: i32,"));
         assert!(rendered.contains("pub display_name: Option<String>,"));
-        assert!(rendered.contains("impl ActiveModelBehavior for ActiveModel"));
     }
 
     #[test]

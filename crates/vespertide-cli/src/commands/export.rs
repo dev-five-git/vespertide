@@ -59,13 +59,8 @@ fn resolve_export_dir(export_dir: Option<PathBuf>, config: &VespertideConfig) ->
     if let Some(dir) = export_dir {
         return dir;
     }
-    // Prefer config models_dir if set, otherwise default to src/models.
-    let cfg_dir = config.models_dir().to_path_buf();
-    if !cfg_dir.as_os_str().is_empty() {
-        cfg_dir
-    } else {
-        PathBuf::from("src").join("models")
-    }
+    // Prefer explicit model_export_dir from config, fallback to default inside config.
+    config.model_export_dir().to_path_buf()
 }
 
 fn build_output_path(root: &Path, rel_path: &Path, orm: Orm) -> PathBuf {
