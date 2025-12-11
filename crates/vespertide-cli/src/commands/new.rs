@@ -115,7 +115,10 @@ mod tests {
     }
 
     fn write_config(model_format: FileFormat) {
-        let cfg = VespertideConfig {model_format, ..VespertideConfig::default()};
+        let cfg = VespertideConfig {
+            model_format,
+            ..VespertideConfig::default()
+        };
         let text = serde_json::to_string_pretty(&cfg).unwrap();
         std::fs::write("vespertide.json", text).unwrap();
     }
@@ -152,7 +155,10 @@ mod tests {
 
         cmd_new("orders".into(), None).unwrap();
 
-        let cfg = VespertideConfig {model_format: FileFormat::Yaml, ..VespertideConfig::default()};
+        let cfg = VespertideConfig {
+            model_format: FileFormat::Yaml,
+            ..VespertideConfig::default()
+        };
         let path = cfg.models_dir().join("orders.yaml");
         assert!(path.exists());
 
@@ -175,7 +181,10 @@ mod tests {
 
         cmd_new("products".into(), None).unwrap();
 
-        let cfg =VespertideConfig {model_format: FileFormat::Yml, ..VespertideConfig::default()};
+        let cfg = VespertideConfig {
+            model_format: FileFormat::Yml,
+            ..VespertideConfig::default()
+        };
         let path = cfg.models_dir().join("products.yml");
         assert!(path.exists());
 

@@ -100,10 +100,10 @@ fn ensure_mod_chain(root: &Path, rel_path: &Path) -> Result<()> {
     while let Some(child) = comps.pop() {
         let dir = root.join(comps.join(std::path::MAIN_SEPARATOR_STR));
         let mod_path = dir.join("mod.rs");
-        if let Some(parent) = mod_path.parent() {
-            if !parent.exists() {
-                fs::create_dir_all(parent)?;
-            }
+        if let Some(parent) = mod_path.parent()
+            && !parent.exists()
+        {
+            fs::create_dir_all(parent)?;
         }
         let mut content = if mod_path.exists() {
             fs::read_to_string(&mod_path)?
