@@ -35,6 +35,8 @@ jobs:
           components: clippy, rustfmt
       - name: Build
         run: cargo check
+      - name: Lint
+        run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Test
         run: |
           # rust coverage issue
@@ -47,14 +49,14 @@ jobs:
           echo 'merge_derives = true' >> .rustfmt.toml
           echo 'use_small_heuristics = "Default"' >> .rustfmt.toml
           cargo fmt
-          cargo tarpaulin --out Lcov
+          cargo tarpaulin --out Lcov Stdout
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: true
           files: lcov.info
-        if: github.ref_name == 'main'
+        if: github.ref == 'refs/heads/main'
 
   # publish
   changepacks:

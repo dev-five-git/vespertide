@@ -182,6 +182,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "console"
+version = "0.15.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "054ccb5b10f9f2cbf51eb355ca1d05c2d279ce1804688d0db74b4733a5aeafd8"
+dependencies = [
+ "encode_unicode",
+ "libc",
+ "once_cell",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -192,6 +204,12 @@ name = "dyn-clone"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
+
+[[package]]
+name = "encode_unicode"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
 
 [[package]]
 name = "equivalent"
@@ -378,6 +396,18 @@ checksum = "0ad4bb2b565bca0645f4d68c5c9af97fba094e9791da685bf83cb5f3ce74acf2"
 dependencies = [
  "equivalent",
  "hashbrown",
+]
+
+[[package]]
+name = "insta"
+version = "1.44.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b5c943d4415edd8153251b6f197de5eb1640e56d84e8d9159bea190421c73698"
+dependencies = [
+ "console",
+ "once_cell",
+ "serde",
+ "similar",
 ]
 
 [[package]]
@@ -802,6 +832,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
+name = "similar"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
+
+[[package]]
 name = "slab"
 version = "0.4.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -913,14 +949,14 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "vespertide"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "vespertide-macro",
 ]
 
 [[package]]
 name = "vespertide-cli"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -934,13 +970,14 @@ dependencies = [
  "tempfile",
  "vespertide-config",
  "vespertide-core",
+ "vespertide-exporter",
  "vespertide-planner",
  "vespertide-query",
 ]
 
 [[package]]
 name = "vespertide-config"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "clap",
  "serde",
@@ -948,15 +985,25 @@ dependencies = [
 
 [[package]]
 name = "vespertide-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "schemars",
  "serde",
 ]
 
 [[package]]
+name = "vespertide-exporter"
+version = "0.1.2"
+dependencies = [
+ "insta",
+ "rstest",
+ "thiserror",
+ "vespertide-core",
+]
+
+[[package]]
 name = "vespertide-macro"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "thiserror",
  "vespertide-core",
@@ -964,7 +1011,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-planner"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "rstest",
  "thiserror",
@@ -973,7 +1020,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-query"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "rstest",
  "thiserror",

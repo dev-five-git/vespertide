@@ -120,16 +120,20 @@
         {
           "type": "object",
           "properties": {
+            "columns": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
             "type": {
               "type": "string",
               "const": "primary_key"
             }
           },
-          "items": {
-            "type": "string"
-          },
           "required": [
-            "type"
+            "type",
+            "columns"
           ]
         },
         {

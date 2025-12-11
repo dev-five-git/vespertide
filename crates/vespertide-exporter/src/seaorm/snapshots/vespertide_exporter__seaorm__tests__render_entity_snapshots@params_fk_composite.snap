@@ -1,0 +1,19 @@
+---
+source: crates/vespertide-exporter/src/seaorm/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "invoices")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub customer_id: i32,
+    pub customer_tenant_id: i32,
+    #[sea_orm(belongs_to, from = "(customer_id, customer_tenant_id)", to = "(id, tenant_id)")]
+    pub customers: HasOne<super::customers::Entity>,
+}
+
+impl ActiveModelBehavior for ActiveModel {}
