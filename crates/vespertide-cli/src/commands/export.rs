@@ -48,6 +48,10 @@ pub fn cmd_export(orm: OrmArg, export_dir: Option<PathBuf>) -> Result<()> {
                 .with_context(|| format!("create parent dir {}", parent.display()))?;
         }
         fs::write(&out_path, code).with_context(|| format!("write {}", out_path.display()))?;
+        if matches!(orm_kind, Orm::SeaOrm) {
+            ensure_mod_chain(&target_root, rel_path)
+                .with_context(|| format!("ensure mod chain for {}", out_path.display()))?;
+        }
         println!("Exported {} -> {}", table.name, out_path.display());
     }
 
@@ -80,6 +84,43 @@ fn load_models_recursive(base: &Path) -> Result<Vec<(TableDef, PathBuf)>> {
     }
     walk_models(base, base, &mut out)?;
     Ok(out)
+}
+
+fn ensure_mod_chain(root: &Path, rel_path: &Path) -> Result<()> {
+    // Only needed for SeaORM (Rust) exports to wire modules.
+    let mut comps: Vec<String> = rel_path
+        .with_extension("")
+        .components()
+        .filter_map(|c| c.as_os_str().to_str().map(|s| s.to_string()))
+        .collect();
+    if comps.is_empty() {
+        return Ok(());
+    }
+    // Build from deepest file up to root: dir/mod.rs should include child module.
+    while let Some(child) = comps.pop() {
+        let dir = root.join(comps.join(std::path::MAIN_SEPARATOR_STR));
+        let mod_path = dir.join("mod.rs");
+        if let Some(parent) = mod_path.parent() {
+            if !parent.exists() {
+                fs::create_dir_all(parent)?;
+            }
+        }
+        let mut content = if mod_path.exists() {
+            fs::read_to_string(&mod_path)?
+        } else {
+            String::new()
+        };
+        let decl = format!("pub mod {};", child);
+        if !content.lines().any(|l| l.trim() == decl) {
+            if !content.is_empty() && !content.ends_with('\n') {
+                content.push('\n');
+            }
+            content.push_str(&decl);
+            content.push('\n');
+            fs::write(mod_path, content)?;
+        }
+    }
+    Ok(())
 }
 
 fn walk_models(root: &Path, current: &Path, acc: &mut Vec<(TableDef, PathBuf)>) -> Result<()> {
@@ -180,6 +221,12 @@ mod tests {
         assert!(out.exists());
         let content = fs::read_to_string(out).unwrap();
         assert!(content.contains("#[sea_orm(table_name = \"users\")]"));
+
+        // mod.rs wiring at root
+        let root_mod = PathBuf::from("src/models/mod.rs");
+        assert!(root_mod.exists());
+        let root_mod_content = fs::read_to_string(root_mod).unwrap();
+        assert!(root_mod_content.contains("pub mod users;"));
     }
 
     #[test]
@@ -199,6 +246,16 @@ mod tests {
         assert!(out.exists());
         let content = fs::read_to_string(out).unwrap();
         assert!(content.contains("#[sea_orm(table_name = \"posts\")]"));
+
+        // mod.rs wiring
+        let root_mod = custom.join("mod.rs");
+        let blog_mod = custom.join("blog/mod.rs");
+        assert!(root_mod.exists());
+        assert!(blog_mod.exists());
+        let root_mod_content = fs::read_to_string(root_mod).unwrap();
+        let blog_mod_content = fs::read_to_string(blog_mod).unwrap();
+        assert!(root_mod_content.contains("pub mod blog;"));
+        assert!(blog_mod_content.contains("pub mod posts;"));
     }
 
     #[test]
@@ -277,6 +334,34 @@ mod tests {
         let models = load_models_recursive(Path::new("models")).unwrap();
         assert_eq!(models.len(), 1);
         assert_eq!(models[0].0.name, "yaml_table");
+    }
+
+    #[test]
+    #[serial]
+    fn ensure_mod_chain_adds_to_existing_file_without_trailing_newline() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("src/models");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("mod.rs"), "pub mod existing;").unwrap();
+
+        ensure_mod_chain(&root, Path::new("blog/posts.rs")).unwrap();
+
+        let root_mod = fs::read_to_string(root.join("mod.rs")).unwrap();
+        let blog_mod = fs::read_to_string(root.join("blog/mod.rs")).unwrap();
+        assert!(root_mod.contains("pub mod existing;"));
+        assert!(root_mod.contains("pub mod blog;"));
+        assert!(blog_mod.contains("pub mod posts;"));
+        // ensure newline appended if missing
+        assert!(root_mod.ends_with('\n'));
+    }
+
+    #[test]
+    fn ensure_mod_chain_no_components_is_noop() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("src/models");
+        fs::create_dir_all(&root).unwrap();
+        // empty path should not error
+        assert!(ensure_mod_chain(&root, Path::new("")).is_ok());
     }
 
     #[test]
