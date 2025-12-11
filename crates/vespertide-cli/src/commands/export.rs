@@ -108,3 +108,193 @@ fn walk_models(root: &Path, current: &Path, acc: &mut Vec<(TableDef, PathBuf)>) 
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+    use std::fs;
+    use tempfile::tempdir;
+    use vespertide_core::{ColumnDef, ColumnType, TableConstraint};
+
+    struct CwdGuard {
+        original: PathBuf,
+    }
+
+    impl CwdGuard {
+        fn new(dir: &PathBuf) -> Self {
+            let original = std::env::current_dir().unwrap();
+            std::env::set_current_dir(dir).unwrap();
+            Self { original }
+        }
+    }
+
+    impl Drop for CwdGuard {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.original);
+        }
+    }
+
+    fn write_config() {
+        let cfg = VespertideConfig::default();
+        let text = serde_json::to_string_pretty(&cfg).unwrap();
+        fs::write("vespertide.json", text).unwrap();
+    }
+
+    fn write_model(path: &Path, table: &TableDef) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, serde_json::to_string_pretty(table).unwrap()).unwrap();
+    }
+
+    fn sample_table(name: &str) -> TableDef {
+        TableDef {
+            name: name.to_string(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Integer,
+                nullable: false,
+                default: None,
+            }],
+            constraints: vec![TableConstraint::PrimaryKey {
+                columns: vec!["id".into()],
+            }],
+            indexes: vec![],
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn export_writes_seaorm_files_to_default_dir() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        write_config();
+
+        let model = sample_table("users");
+        write_model(Path::new("models/users.json"), &model);
+
+        cmd_export(OrmArg::Seaorm, None).unwrap();
+
+        let out = PathBuf::from("src/models/users.rs");
+        assert!(out.exists());
+        let content = fs::read_to_string(out).unwrap();
+        assert!(content.contains("#[sea_orm(table_name = \"users\")]"));
+    }
+
+    #[test]
+    #[serial]
+    fn export_respects_custom_output_dir() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        write_config();
+
+        let model = sample_table("posts");
+        write_model(Path::new("models/blog/posts.json"), &model);
+
+        let custom = PathBuf::from("out_dir");
+        cmd_export(OrmArg::Seaorm, Some(custom.clone())).unwrap();
+
+        let out = custom.join("blog/posts.rs");
+        assert!(out.exists());
+        let content = fs::read_to_string(out).unwrap();
+        assert!(content.contains("#[sea_orm(table_name = \"posts\")]"));
+    }
+
+    #[test]
+    #[serial]
+    fn export_with_sqlalchemy_sets_py_extension() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        write_config();
+
+        let model = sample_table("items");
+        write_model(Path::new("models/items.json"), &model);
+
+        cmd_export(OrmArg::Sqlalchemy, None).unwrap();
+
+        let out = PathBuf::from("src/models/items.py");
+        assert!(out.exists());
+        let content = fs::read_to_string(out).unwrap();
+        assert!(content.contains("items"));
+    }
+
+    #[test]
+    #[serial]
+    fn export_with_sqlmodel_sets_py_extension() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        write_config();
+
+        let model = sample_table("orders");
+        write_model(Path::new("models/orders.json"), &model);
+
+        cmd_export(OrmArg::Sqlmodel, None).unwrap();
+
+        let out = PathBuf::from("src/models/orders.py");
+        assert!(out.exists());
+        let content = fs::read_to_string(out).unwrap();
+        assert!(content.contains("orders"));
+    }
+
+    #[test]
+    #[serial]
+    fn load_models_recursive_returns_empty_when_absent() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        let models = load_models_recursive(Path::new("no_models")).unwrap();
+        assert!(models.is_empty());
+    }
+
+    #[test]
+    #[serial]
+    fn load_models_recursive_ignores_non_model_files() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        write_config();
+
+        fs::create_dir_all("models").unwrap();
+        fs::write("models/ignore.txt", "hello").unwrap();
+        write_model(Path::new("models/valid.json"), &sample_table("valid"));
+
+        let models = load_models_recursive(Path::new("models")).unwrap();
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].0.name, "valid");
+    }
+
+    #[test]
+    #[serial]
+    fn load_models_recursive_parses_yaml_branch() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        write_config();
+
+        fs::create_dir_all("models").unwrap();
+        let table = sample_table("yaml_table");
+        let yaml = serde_yaml::to_string(&table).unwrap();
+        fs::write("models/yaml_table.yaml", yaml).unwrap();
+
+        let models = load_models_recursive(Path::new("models")).unwrap();
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].0.name, "yaml_table");
+    }
+
+    #[test]
+    #[serial]
+    fn resolve_export_dir_prefers_override() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        write_config();
+        let cfg = VespertideConfig::default();
+        let override_dir = PathBuf::from("custom_out");
+        let resolved = super::resolve_export_dir(Some(override_dir.clone()), &cfg);
+        assert_eq!(resolved, override_dir);
+    }
+
+    #[test]
+    fn orm_arg_maps_to_enum() {
+        assert!(matches!(Orm::from(OrmArg::Seaorm), Orm::SeaOrm));
+        assert!(matches!(Orm::from(OrmArg::Sqlalchemy), Orm::SqlAlchemy));
+        assert!(matches!(Orm::from(OrmArg::Sqlmodel), Orm::SqlModel));
+    }
+}
