@@ -24,6 +24,7 @@ pub fn render_entity(table: &TableDef) -> String {
     let mut lines: Vec<String> = Vec::new();
     lines.push("use sea_orm::entity::prelude::*;".into());
     lines.push(String::new());
+    lines.push("#[sea_orm::model]".into());
     lines.push("#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]".into());
     lines.push(format!("#[sea_orm(table_name = \"{}\")]", table.name));
     lines.push("pub struct Model {".into());
@@ -40,6 +41,10 @@ pub fn render_entity(table: &TableDef) -> String {
     // Indexes (relations expressed as belongs_to fields above)
     lines.push(String::new());
     render_indexes(&mut lines, indexes);
+
+    lines.push("impl ActiveModelBehavior for ActiveModel {}".into());
+
+    lines.push(String::new());
 
     lines.join("\n")
 }
@@ -176,100 +181,72 @@ fn unique_name(base: &str, used: &mut HashSet<String>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use insta::{assert_snapshot, with_settings};
+    use rstest::rstest;
 
-    fn base_table() -> TableDef {
-        TableDef {
-            name: "users".into(),
-            columns: vec![
-                ColumnDef {
-                    name: "id".into(),
-                    r#type: ColumnType::Integer,
-                    nullable: false,
-                    default: None,
-                },
-                ColumnDef {
-                    name: "display_name".into(),
-                    r#type: ColumnType::Text,
-                    nullable: true,
-                    default: None,
-                },
-            ],
-            constraints: vec![TableConstraint::PrimaryKey {
-                columns: vec!["id".into()],
-            }],
-            indexes: vec![],
-        }
-    }
-
-    #[test]
-    fn render_entity_outputs_basic_model() {
-        let table = base_table();
-        let rendered = render_entity(&table);
-
-        assert!(rendered.contains("#[sea_orm(table_name = \"users\")]"));
-        assert!(rendered.contains("#[sea_orm(primary_key)]"));
-        assert!(rendered.contains("pub id: i32,"));
-        assert!(rendered.contains("pub display_name: Option<String>,"));
-    }
-
-    #[test]
-    fn render_entity_marks_composite_primary_keys() {
-        let mut table = base_table();
-        table.columns.push(ColumnDef {
-            name: "tenant_id".into(),
-            r#type: ColumnType::BigInt,
-            nullable: false,
-            default: None,
-        });
-        table.constraints = vec![TableConstraint::PrimaryKey {
-            columns: vec!["id".into(), "tenant_id".into()],
-        }];
-
-        let rendered = render_entity(&table);
-        let pk_lines: Vec<_> = rendered
-            .lines()
-            .filter(|line| line.contains("primary_key"))
-            .collect();
-
-        // composite PK should disable auto increment
-        assert!(
-            pk_lines
-                .iter()
-                .all(|line| line.contains("auto_increment = false"))
-        );
-        assert!(rendered.contains("pub tenant_id: i64,"));
-    }
-
-    #[test]
-    fn render_entity_handles_multiple_tables_individually() {
-        let tables = [
-            base_table(),
-            TableDef {
-                name: "posts".into(),
-                columns: vec![ColumnDef {
-                    name: "id".into(),
-                    r#type: ColumnType::Integer,
-                    nullable: false,
-                    default: None,
-                }],
-                constraints: vec![TableConstraint::PrimaryKey {
-                    columns: vec!["id".into()],
-                }],
-                indexes: vec![],
+    #[rstest]
+    #[case("basic_single_pk", TableDef {
+        name: "users".into(),
+        columns: vec![
+            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None },
+            ColumnDef { name: "display_name".into(), r#type: ColumnType::Text, nullable: true, default: None },
+        ],
+        constraints: vec![TableConstraint::PrimaryKey { columns: vec!["id".into()] }],
+        indexes: vec![],
+    })]
+    #[case("composite_pk", TableDef {
+        name: "accounts".into(),
+        columns: vec![
+            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None },
+            ColumnDef { name: "tenant_id".into(), r#type: ColumnType::BigInt, nullable: false, default: None },
+        ],
+        constraints: vec![TableConstraint::PrimaryKey { columns: vec!["id".into(), "tenant_id".into()] }],
+        indexes: vec![],
+    })]
+    #[case("fk_single", TableDef {
+        name: "posts".into(),
+        columns: vec![
+            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None },
+            ColumnDef { name: "user_id".into(), r#type: ColumnType::Integer, nullable: false, default: None },
+            ColumnDef { name: "title".into(), r#type: ColumnType::Text, nullable: true, default: None },
+        ],
+        constraints: vec![
+            TableConstraint::PrimaryKey { columns: vec!["id".into()] },
+            TableConstraint::ForeignKey {
+                name: None,
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
             },
-        ];
-
-        let rendered: Vec<_> = tables.iter().map(render_entity).collect();
-        assert_eq!(rendered.len(), 2);
-        assert!(
-            rendered
-                .iter()
-                .any(|code| code.contains("#[sea_orm(table_name = \"users\")]"))
-        );
-        assert!(
-            rendered
-                .iter()
-                .any(|code| code.contains("#[sea_orm(table_name = \"posts\")]"))
-        );
+        ],
+        indexes: vec![],
+    })]
+    #[case("fk_composite", TableDef {
+        name: "invoices".into(),
+        columns: vec![
+            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None },
+            ColumnDef { name: "customer_id".into(), r#type: ColumnType::Integer, nullable: false, default: None },
+            ColumnDef { name: "customer_tenant_id".into(), r#type: ColumnType::Integer, nullable: false, default: None },
+        ],
+        constraints: vec![
+            TableConstraint::PrimaryKey { columns: vec!["id".into()] },
+            TableConstraint::ForeignKey {
+                name: None,
+                columns: vec!["customer_id".into(), "customer_tenant_id".into()],
+                ref_table: "customers".into(),
+                ref_columns: vec!["id".into(), "tenant_id".into()],
+                on_delete: None,
+                on_update: None,
+            },
+        ],
+        indexes: vec![],
+    })]
+    fn render_entity_snapshots(#[case] name: &str, #[case] table: TableDef) {
+        let rendered = render_entity(&table);
+        with_settings!({ snapshot_suffix => format!("params_{}", name) }, {
+            assert_snapshot!(rendered);
+        });
     }
 }

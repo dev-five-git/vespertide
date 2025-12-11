@@ -10,4 +10,8 @@
 
  [dependencies]
  vespertide-core = { workspace = true }
-thiserror = "1"
+thiserror = "2"
+
+[dev-dependencies]
+rstest = "0.26"
+insta = { version = "1.44", features = ["yaml"] }

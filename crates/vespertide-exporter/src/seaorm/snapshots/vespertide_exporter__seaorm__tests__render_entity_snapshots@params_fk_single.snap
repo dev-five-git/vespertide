@@ -1,16 +1,19 @@
+---
+source: crates/vespertide-exporter/src/seaorm/mod.rs
+expression: rendered
+---
 use sea_orm::entity::prelude::*;
 
 #[sea_orm::model]
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
-#[sea_orm(table_name = "post")]
+#[sea_orm(table_name = "posts")]
 pub struct Model {
-    pub title: i32,
-    pub content: String,
-    pub created_at: DateTimeWithTimeZone,
-    pub updated_at: Option<DateTimeWithTimeZone>,
+    #[sea_orm(primary_key)]
+    pub id: i32,
     pub user_id: i32,
+    pub title: Option<String>,
     #[sea_orm(belongs_to, from = "user_id", to = "id")]
-    pub user: HasOne<super::user::Entity>,
+    pub users: HasOne<super::users::Entity>,
 }
 
 impl ActiveModelBehavior for ActiveModel {}
