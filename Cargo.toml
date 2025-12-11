@@ -10,9 +10,8 @@ homepage = "https://github.com/dev-five-git/vespertide"
 documentation = "https://docs.rs/vespertide"
 
 [workspace.dependencies]
-vespertide-core = { path = "crates/vespertide-core", version = "0.1.1" }
-vespertide-config = { path = "crates/vespertide-config", version = "0.1.1" }
-vespertide-macro = { path = "crates/vespertide-macro", version = "0.1.1" }
-vespertide-planner = { path = "crates/vespertide-planner", version = "0.1.1" }
-vespertide-query = { path = "crates/vespertide-query", version = "0.1.1" }
-vespertide-exporter = { path = "crates/vespertide-exporter", version = "0.1.1" }
+vespertide-core = { path = "crates/vespertide-core", version = "0.1.2" }
+vespertide-config = { path = "crates/vespertide-config", version = "0.1.2" }
+vespertide-macro = { path = "crates/vespertide-macro", version = "0.1.2" }
+vespertide-planner = { path = "crates/vespertide-planner", version = "0.1.2" }
+vespertide-query = { path = "crates/vespertide-query", version = "0.1.2" }
