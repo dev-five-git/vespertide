@@ -124,7 +124,7 @@ mod tests {
         let out = temp_dir.path();
 
         // Create directory first
-        fs::create_dir_all(&out).unwrap();
+        fs::create_dir_all(out).unwrap();
         assert!(out.exists());
 
         // Should still work

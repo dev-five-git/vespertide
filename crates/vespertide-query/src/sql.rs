@@ -234,8 +234,8 @@ fn table_constraint_sql(
     binds: &mut Vec<String>,
 ) -> Result<String, QueryError> {
     Ok(match constraint {
-        TableConstraint::PrimaryKey(cols) => {
-            let placeholders = cols
+        TableConstraint::PrimaryKey { columns } => {
+            let placeholders = columns
                 .iter()
                 .map(|c| bind(binds, c))
                 .collect::<Vec<_>>()
@@ -384,7 +384,7 @@ mod tests {
                 col("id", ColumnType::Integer),
                 col("name", ColumnType::Text),
             ],
-            constraints: vec![TableConstraint::PrimaryKey(vec!["id".into()])],
+            constraints: vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
         },
         vec![(
             "CREATE TABLE $1 ($2 INTEGER, $3 TEXT, PRIMARY KEY ($4));".to_string(),
@@ -590,7 +590,7 @@ mod tests {
     #[case::simple(
         "users",
         vec![col("id", ColumnType::Integer), col("name", ColumnType::Text)],
-        vec![TableConstraint::PrimaryKey(vec!["id".into()])],
+        vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
         (
             "CREATE TABLE $1 ($2 INTEGER, $3 TEXT, PRIMARY KEY ($4));".to_string(),
             vec!["users".to_string(), "id".to_string(), "name".to_string(), "id".to_string()],
@@ -600,7 +600,7 @@ mod tests {
         "users",
         vec![col("id", ColumnType::Integer), col("email", ColumnType::Text)],
         vec![
-            TableConstraint::PrimaryKey(vec!["id".into()]),
+            TableConstraint::PrimaryKey{columns: vec!["id".into()] },
             TableConstraint::Unique {
                 name: Some("unique_email".into()),
                 columns: vec!["email".into()],
@@ -673,11 +673,11 @@ mod tests {
 
     #[rstest]
     #[case::primary_key_single(
-        TableConstraint::PrimaryKey(vec!["id".into()]),
+        TableConstraint::PrimaryKey{columns: vec!["id".into()] },
         ("PRIMARY KEY ($1)".to_string(), vec!["id".to_string()])
     )]
     #[case::primary_key_multiple(
-        TableConstraint::PrimaryKey(vec!["id".into(), "version".into()]),
+        TableConstraint::PrimaryKey{columns: vec!["id".into(), "version".into()] },
         ("PRIMARY KEY ($1, $2)".to_string(), vec!["id".to_string(), "version".to_string()])
     )]
     #[case::unique_without_name(

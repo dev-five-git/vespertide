@@ -19,6 +19,7 @@ pub fn render_entity(table: &TableDef) -> String {
     let primary_keys = primary_key_columns(table);
     let composite_pk = primary_keys.len() > 1;
     let indexes = &table.indexes;
+    let relation_fields = relation_field_defs(table);
 
     let mut lines: Vec<String> = Vec::new();
     lines.push("use sea_orm::entity::prelude::*;".into());
@@ -30,12 +31,14 @@ pub fn render_entity(table: &TableDef) -> String {
     for column in &table.columns {
         render_column(&mut lines, column, &primary_keys, composite_pk);
     }
+    for field in relation_fields {
+        lines.push(field);
+    }
 
     lines.push("}".into());
 
-    // Relations and indexes
+    // Indexes (relations expressed as belongs_to fields above)
     lines.push(String::new());
-    render_relations(&mut lines, table);
     render_indexes(&mut lines, indexes);
 
     lines.join("\n")
@@ -63,8 +66,8 @@ fn render_column(
 fn primary_key_columns(table: &TableDef) -> HashSet<String> {
     let mut keys = HashSet::new();
     for constraint in &table.constraints {
-        if let TableConstraint::PrimaryKey(cols) = constraint {
-            for col in cols {
+        if let TableConstraint::PrimaryKey { columns } = constraint {
+            for col in columns {
                 keys.insert(col.clone());
             }
         }
@@ -72,64 +75,38 @@ fn primary_key_columns(table: &TableDef) -> HashSet<String> {
     keys
 }
 
-fn render_relations(lines: &mut Vec<String>, table: &TableDef) {
-    let foreign_keys: Vec<_> = table
-        .constraints
-        .iter()
-        .filter_map(|c| {
-            if let TableConstraint::ForeignKey {
-                columns,
-                ref_table,
-                ref_columns,
-                ..
-            } = c
-            {
-                Some((columns.clone(), ref_table.clone(), ref_columns.clone()))
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    if foreign_keys.is_empty() {
-        return;
-    }
-
-    lines.push("#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]".into());
-    lines.push("pub enum Relation {".into());
-    for (idx, (_, ref_table, _)) in foreign_keys.iter().enumerate() {
-        let variant = format!("    Ref{idx}, // to {ref_table}");
-        lines.push(variant);
-    }
-    lines.push("}".into());
-
-    lines.push(String::new());
-    lines.push("impl Related<Entity> for Relation {}".into());
-
-    // RelationDef builder
-    lines.push(String::new());
-    lines.push("impl RelationTrait for Relation {".into());
-    lines.push("    fn def(&self) -> RelationDef {".into());
-    lines.push("        match self {".into());
-
-    for (idx, (columns, ref_table, ref_columns)) in foreign_keys.iter().enumerate() {
-        let from_cols = columns.join(", ");
-        let to_cols = ref_columns.join(", ");
-        lines.push(format!(
-            "            Relation::Ref{idx} => Entity::has_many(super::{ref_table}::Entity).from(Column::{}).to(super::{ref_table}::Column::{}),",
-            columns.first().cloned().unwrap_or_default(),
-            ref_columns.first().cloned().unwrap_or_default()
-        ));
-        if columns.len() > 1 || ref_columns.len() > 1 {
-            lines.push(format!(
-                "            // composite FK from [{from_cols}] to {ref_table}.[{to_cols}]"
+fn relation_field_defs(table: &TableDef) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut used = HashSet::new();
+    for constraint in &table.constraints {
+        if let TableConstraint::ForeignKey {
+            columns,
+            ref_table,
+            ref_columns,
+            ..
+        } = constraint
+        {
+            let base = sanitize_field_name(ref_table);
+            let field_name = unique_name(&base, &mut used);
+            let from = fk_attr_value(columns);
+            let to = fk_attr_value(ref_columns);
+            out.push(format!(
+                "    #[sea_orm(belongs_to, from = \"{from}\", to = \"{to}\")]"
+            ));
+            out.push(format!(
+                "    pub {field_name}: HasOne<super::{ref_table}::Entity>,"
             ));
         }
     }
+    out
+}
 
-    lines.push("        }".into());
-    lines.push("    }".into());
-    lines.push("}".into());
+fn fk_attr_value(cols: &[String]) -> String {
+    if cols.len() == 1 {
+        cols[0].clone()
+    } else {
+        format!("({})", cols.join(", "))
+    }
 }
 
 fn render_indexes(lines: &mut Vec<String>, indexes: &[IndexDef]) {
@@ -168,9 +145,7 @@ fn sanitize_field_name(name: &str) -> String {
     let mut result = String::new();
 
     for (idx, ch) in name.chars().enumerate() {
-        if (ch.is_ascii_alphanumeric() && (idx > 0 || ch.is_ascii_alphabetic()))
-            || ch == '_'
-        {
+        if (ch.is_ascii_alphanumeric() && (idx > 0 || ch.is_ascii_alphabetic())) || ch == '_' {
             result.push(ch);
         } else if idx == 0 && ch.is_ascii_digit() {
             result.push('_');
@@ -185,6 +160,17 @@ fn sanitize_field_name(name: &str) -> String {
     } else {
         result
     }
+}
+
+fn unique_name(base: &str, used: &mut HashSet<String>) -> String {
+    let mut name = base.to_string();
+    let mut i = 1;
+    while used.contains(&name) {
+        name = format!("{base}_{i}");
+        i += 1;
+    }
+    used.insert(name.clone());
+    name
 }
 
 #[cfg(test)]
@@ -208,7 +194,9 @@ mod tests {
                     default: None,
                 },
             ],
-            constraints: vec![TableConstraint::PrimaryKey(vec!["id".into()])],
+            constraints: vec![TableConstraint::PrimaryKey {
+                columns: vec!["id".into()],
+            }],
             indexes: vec![],
         }
     }
@@ -233,24 +221,28 @@ mod tests {
             nullable: false,
             default: None,
         });
-        table.constraints = vec![TableConstraint::PrimaryKey(vec![
-            "id".into(),
-            "tenant_id".into(),
-        ])];
+        table.constraints = vec![TableConstraint::PrimaryKey {
+            columns: vec!["id".into(), "tenant_id".into()],
+        }];
 
         let rendered = render_entity(&table);
-        let pk_lines: Vec<_> = rendered.lines().filter(|line| line.contains("primary_key")).collect();
+        let pk_lines: Vec<_> = rendered
+            .lines()
+            .filter(|line| line.contains("primary_key"))
+            .collect();
 
         // composite PK should disable auto increment
-        assert!(pk_lines
-            .iter()
-            .all(|line| line.contains("auto_increment = false")));
+        assert!(
+            pk_lines
+                .iter()
+                .all(|line| line.contains("auto_increment = false"))
+        );
         assert!(rendered.contains("pub tenant_id: i64,"));
     }
 
     #[test]
     fn render_entity_handles_multiple_tables_individually() {
-        let tables = vec![
+        let tables = [
             base_table(),
             TableDef {
                 name: "posts".into(),
@@ -260,18 +252,24 @@ mod tests {
                     nullable: false,
                     default: None,
                 }],
-                constraints: vec![TableConstraint::PrimaryKey(vec!["id".into()])],
+                constraints: vec![TableConstraint::PrimaryKey {
+                    columns: vec!["id".into()],
+                }],
                 indexes: vec![],
             },
         ];
 
         let rendered: Vec<_> = tables.iter().map(render_entity).collect();
         assert_eq!(rendered.len(), 2);
-        assert!(rendered
-            .iter()
-            .any(|code| code.contains("#[sea_orm(table_name = \"users\")]")));
-        assert!(rendered
-            .iter()
-            .any(|code| code.contains("#[sea_orm(table_name = \"posts\")]")));
+        assert!(
+            rendered
+                .iter()
+                .any(|code| code.contains("#[sea_orm(table_name = \"users\")]"))
+        );
+        assert!(
+            rendered
+                .iter()
+                .any(|code| code.contains("#[sea_orm(table_name = \"posts\")]"))
+        );
     }
 }

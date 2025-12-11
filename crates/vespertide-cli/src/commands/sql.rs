@@ -164,7 +164,7 @@ mod tests {
                     nullable: false,
                     default: None,
                 }],
-                constraints: vec![TableConstraint::PrimaryKey(vec!["id".into()])],
+                constraints: vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
             }],
         };
         assert!(emit_sql(&plan).is_ok());

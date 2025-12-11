@@ -76,6 +76,19 @@ fn write_json_with_schema(
     Ok(())
 }
 
+fn write_yaml(path: &std::path::Path, table: &TableDef, schema_url: &str) -> Result<()> {
+    let mut value = serde_yaml::to_value(table).context("serialize table to yaml value")?;
+    if let serde_yaml::Value::Mapping(ref mut map) = value {
+        map.insert(
+            serde_yaml::Value::String("$schema".to_string()),
+            serde_yaml::Value::String(schema_url.to_string()),
+        );
+    }
+    let text = serde_yaml::to_string(&value).context("serialize yaml with schema")?;
+    fs::write(path, text).with_context(|| format!("write file: {}", path.display()))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,8 +115,7 @@ mod tests {
     }
 
     fn write_config(model_format: FileFormat) {
-        let mut cfg = VespertideConfig::default();
-        cfg.model_format = model_format;
+        let cfg = VespertideConfig {model_format, ..VespertideConfig::default()};
         let text = serde_json::to_string_pretty(&cfg).unwrap();
         std::fs::write("vespertide.json", text).unwrap();
     }
@@ -140,8 +152,7 @@ mod tests {
 
         cmd_new("orders".into(), None).unwrap();
 
-        let mut cfg = VespertideConfig::default();
-        cfg.model_format = FileFormat::Yaml;
+        let cfg = VespertideConfig {model_format: FileFormat::Yaml, ..VespertideConfig::default()};
         let path = cfg.models_dir().join("orders.yaml");
         assert!(path.exists());
 
@@ -149,7 +160,7 @@ mod tests {
         let value: serde_yaml::Value = serde_yaml::from_str(&text).unwrap();
         let schema = value
             .as_mapping()
-            .and_then(|m| m.get(&serde_yaml::Value::String("$schema".into())))
+            .and_then(|m| m.get(serde_yaml::Value::String("$schema".into())))
             .and_then(|v| v.as_str());
         assert_eq!(schema, Some(expected_schema.as_str()));
     }
@@ -164,8 +175,7 @@ mod tests {
 
         cmd_new("products".into(), None).unwrap();
 
-        let mut cfg = VespertideConfig::default();
-        cfg.model_format = FileFormat::Yml;
+        let cfg =VespertideConfig {model_format: FileFormat::Yml, ..VespertideConfig::default()};
         let path = cfg.models_dir().join("products.yml");
         assert!(path.exists());
 
@@ -173,7 +183,7 @@ mod tests {
         let value: serde_yaml::Value = serde_yaml::from_str(&text).unwrap();
         let schema = value
             .as_mapping()
-            .and_then(|m| m.get(&serde_yaml::Value::String("$schema".into())))
+            .and_then(|m| m.get(serde_yaml::Value::String("$schema".into())))
             .and_then(|v| v.as_str());
         assert_eq!(schema, Some(expected_schema.as_str()));
     }
@@ -195,16 +205,4 @@ mod tests {
         assert!(msg.contains("model file already exists"));
         assert!(msg.contains("users.json"));
     }
-}
-fn write_yaml(path: &std::path::Path, table: &TableDef, schema_url: &str) -> Result<()> {
-    let mut value = serde_yaml::to_value(table).context("serialize table to yaml value")?;
-    if let serde_yaml::Value::Mapping(ref mut map) = value {
-        map.insert(
-            serde_yaml::Value::String("$schema".to_string()),
-            serde_yaml::Value::String(schema_url.to_string()),
-        );
-    }
-    let text = serde_yaml::to_string(&value).context("serialize yaml with schema")?;
-    fs::write(path, text).with_context(|| format!("write file: {}", path.display()))?;
-    Ok(())
 }

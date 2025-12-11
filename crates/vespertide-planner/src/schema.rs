@@ -52,13 +52,13 @@ mod tests {
             actions: vec![MigrationAction::CreateTable {
                 table: "users".into(),
                 columns: vec![col("id", ColumnType::Integer)],
-                constraints: vec![TableConstraint::PrimaryKey(vec!["id".into()])],
+                constraints: vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
             }],
         }],
         table(
             "users",
             vec![col("id", ColumnType::Integer)],
-            vec![TableConstraint::PrimaryKey(vec!["id".into()])],
+            vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
             vec![],
         )
     )]
@@ -71,7 +71,7 @@ mod tests {
                 actions: vec![MigrationAction::CreateTable {
                     table: "users".into(),
                     columns: vec![col("id", ColumnType::Integer)],
-                    constraints: vec![TableConstraint::PrimaryKey(vec!["id".into()])],
+                    constraints: vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
                 }],
             },
             MigrationPlan {
@@ -91,7 +91,7 @@ mod tests {
                 col("id", ColumnType::Integer),
                 col("name", ColumnType::Text),
             ],
-            vec![TableConstraint::PrimaryKey(vec!["id".into()])],
+            vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
             vec![],
         )
     )]
@@ -104,7 +104,7 @@ mod tests {
                 actions: vec![MigrationAction::CreateTable {
                     table: "users".into(),
                     columns: vec![col("id", ColumnType::Integer)],
-                    constraints: vec![TableConstraint::PrimaryKey(vec!["id".into()])],
+                    constraints: vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
                 }],
             },
             MigrationPlan {
@@ -137,7 +137,7 @@ mod tests {
                 col("id", ColumnType::Integer),
                 col("name", ColumnType::Text),
             ],
-            vec![TableConstraint::PrimaryKey(vec!["id".into()])],
+            vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
             vec![IndexDef {
                 name: "idx_users_name".into(),
                 columns: vec!["name".into()],

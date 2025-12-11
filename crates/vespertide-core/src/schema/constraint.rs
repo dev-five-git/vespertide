@@ -6,7 +6,9 @@ use crate::schema::{ReferenceAction, names::ColumnName, names::TableName};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case", tag = "type")]
 pub enum TableConstraint {
-    PrimaryKey(Vec<ColumnName>),
+    PrimaryKey {
+        columns: Vec<ColumnName>,
+    },
     Unique {
         name: Option<String>,
         columns: Vec<ColumnName>,

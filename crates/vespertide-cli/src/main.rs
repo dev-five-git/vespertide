@@ -3,9 +3,11 @@ use clap::{CommandFactory, Parser, Subcommand};
 
 mod commands;
 mod utils;
-use commands::{cmd_diff, cmd_export, cmd_init, cmd_log, cmd_new, cmd_revision, cmd_sql, cmd_status};
-use vespertide_config::FileFormat;
 use crate::commands::export::OrmArg;
+use commands::{
+    cmd_diff, cmd_export, cmd_init, cmd_log, cmd_new, cmd_revision, cmd_sql, cmd_status,
+};
+use vespertide_config::FileFormat;
 
 /// vespertide command-line interface.
 #[derive(Parser, Debug)]

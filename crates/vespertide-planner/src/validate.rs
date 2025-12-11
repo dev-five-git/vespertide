@@ -64,7 +64,7 @@ fn validate_constraint(
     table_map: &std::collections::HashMap<&str, HashSet<&str>>,
 ) -> Result<(), PlannerError> {
     match constraint {
-        TableConstraint::PrimaryKey(columns) => {
+        TableConstraint::PrimaryKey { columns } => {
             if columns.is_empty() {
                 return Err(PlannerError::EmptyConstraintColumns(
                     table_name.to_string(),
@@ -196,6 +196,29 @@ fn validate_index(
     Ok(())
 }
 
+/// Validate a migration plan for correctness.
+/// Checks for:
+/// - AddColumn actions with NOT NULL columns without default must have fill_with
+pub fn validate_migration_plan(plan: &MigrationPlan) -> Result<(), PlannerError> {
+    for action in &plan.actions {
+        if let MigrationAction::AddColumn {
+            table,
+            column,
+            fill_with,
+        } = action
+        {
+            // If column is NOT NULL and has no default, fill_with is required
+            if !column.nullable && column.default.is_none() && fill_with.is_none() {
+                return Err(PlannerError::MissingFillWith(
+                    table.clone(),
+                    column.name.clone(),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -254,7 +277,7 @@ mod tests {
         vec![table(
             "users",
             vec![col("id", ColumnType::Integer)],
-            vec![TableConstraint::PrimaryKey(vec!["id".into()])],
+            vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
             vec![],
         )],
         None
@@ -325,7 +348,7 @@ mod tests {
             table(
                 "posts",
                 vec![col("id", ColumnType::Integer)],
-                vec![TableConstraint::PrimaryKey(vec!["id".into()])],
+                vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
                 vec![],
             ),
             table(
@@ -361,7 +384,7 @@ mod tests {
         vec![table(
             "users",
             vec![col("id", ColumnType::Integer)],
-            vec![TableConstraint::PrimaryKey(vec!["nonexistent".into()])],
+            vec![TableConstraint::PrimaryKey{columns: vec!["nonexistent".into()] }],
             vec![],
         )],
         Some(is_constraint_column as fn(&PlannerError) -> bool)
@@ -394,7 +417,7 @@ mod tests {
         vec![table(
             "users",
             vec![col("id", ColumnType::Integer)],
-            vec![TableConstraint::PrimaryKey(vec![])],
+            vec![TableConstraint::PrimaryKey{columns: vec![] }],
             vec![],
         )],
         Some(is_empty_columns as fn(&PlannerError) -> bool)
@@ -617,27 +640,4 @@ mod tests {
         let result = validate_migration_plan(&plan);
         assert!(result.is_ok());
     }
-}
-
-/// Validate a migration plan for correctness.
-/// Checks for:
-/// - AddColumn actions with NOT NULL columns without default must have fill_with
-pub fn validate_migration_plan(plan: &MigrationPlan) -> Result<(), PlannerError> {
-    for action in &plan.actions {
-        if let MigrationAction::AddColumn {
-            table,
-            column,
-            fill_with,
-        } = action
-        {
-            // If column is NOT NULL and has no default, fill_with is required
-            if !column.nullable && column.default.is_none() && fill_with.is_none() {
-                return Err(PlannerError::MissingFillWith(
-                    table.clone(),
-                    column.name.clone(),
-                ));
-            }
-        }
-    }
-    Ok(())
 }

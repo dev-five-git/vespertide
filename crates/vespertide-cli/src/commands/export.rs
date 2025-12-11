@@ -30,8 +30,7 @@ impl From<OrmArg> for Orm {
 
 pub fn cmd_export(orm: OrmArg, export_dir: Option<PathBuf>) -> Result<()> {
     let config = load_config()?;
-    let models = load_models_recursive(config.models_dir())
-        .context("load models recursively")?;
+    let models = load_models_recursive(config.models_dir()).context("load models recursively")?;
 
     let target_root = resolve_export_dir(export_dir, &config);
     if !target_root.exists() {
