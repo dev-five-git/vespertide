@@ -11,8 +11,22 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
     let mut actions: Vec<MigrationAction> = Vec::new();
 
     // Normalize both schemas to ensure inline constraints are converted to table-level
-    let from_normalized: Vec<TableDef> = from.iter().map(|t| t.normalize()).collect();
-    let to_normalized: Vec<TableDef> = to.iter().map(|t| t.normalize()).collect();
+    let from_normalized: Vec<TableDef> = from
+        .iter()
+        .map(|t| {
+            t.normalize().map_err(|e| {
+                PlannerError::TableValidation(format!("Failed to normalize table '{}': {}", t.name, e))
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let to_normalized: Vec<TableDef> = to
+        .iter()
+        .map(|t| {
+            t.normalize().map_err(|e| {
+                PlannerError::TableValidation(format!("Failed to normalize table '{}': {}", t.name, e))
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
     let from_map: HashMap<_, _> = from_normalized
         .iter()
@@ -122,10 +136,10 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
                         table: (*name).to_string(),
                         constraint: to_constraint.clone(),
                     });
-                }
             }
         }
     }
+}
 
     // Create new tables (and their indexes).
     for (name, tbl) in &to_map {
@@ -619,6 +633,74 @@ mod tests {
 
             // Check for AddIndex action
             assert!(matches!(&plan.actions[1], MigrationAction::AddIndex { .. }));
+        }
+
+        #[test]
+        fn add_constraint_to_existing_table() {
+            // Add a unique constraint to an existing table
+            let from_schema = vec![table(
+                "users",
+                vec![col("id", ColumnType::Integer), col("email", ColumnType::Text)],
+                vec![],
+                vec![],
+            )];
+
+            let to_schema = vec![table(
+                "users",
+                vec![col("id", ColumnType::Integer), col("email", ColumnType::Text)],
+                vec![vespertide_core::TableConstraint::Unique {
+                    name: Some("uq_users_email".into()),
+                    columns: vec!["email".into()],
+                }],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from_schema, &to_schema).unwrap();
+            assert_eq!(plan.actions.len(), 1);
+            if let MigrationAction::AddConstraint { table, constraint } = &plan.actions[0] {
+                assert_eq!(table, "users");
+                assert!(matches!(
+                    constraint,
+                    vespertide_core::TableConstraint::Unique { name: Some(n), columns }
+                        if n == "uq_users_email" && columns == &vec!["email".to_string()]
+                ));
+            } else {
+                panic!("Expected AddConstraint action, got {:?}", plan.actions[0]);
+            }
+        }
+
+        #[test]
+        fn remove_constraint_from_existing_table() {
+            // Remove a unique constraint from an existing table
+            let from_schema = vec![table(
+                "users",
+                vec![col("id", ColumnType::Integer), col("email", ColumnType::Text)],
+                vec![vespertide_core::TableConstraint::Unique {
+                    name: Some("uq_users_email".into()),
+                    columns: vec!["email".into()],
+                }],
+                vec![],
+            )];
+
+            let to_schema = vec![table(
+                "users",
+                vec![col("id", ColumnType::Integer), col("email", ColumnType::Text)],
+                vec![],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from_schema, &to_schema).unwrap();
+            assert_eq!(plan.actions.len(), 1);
+            if let MigrationAction::RemoveConstraint { table, constraint } = &plan.actions[0] {
+                assert_eq!(table, "users");
+                assert!(matches!(
+                    constraint,
+                    vespertide_core::TableConstraint::Unique { name: Some(n), columns }
+                        if n == "uq_users_email" && columns == &vec!["email".to_string()]
+                ));
+            } else {
+                panic!("Expected RemoveConstraint action, got {:?}", plan.actions[0]);
+            }
         }
     }
 }

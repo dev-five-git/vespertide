@@ -1,11 +1,35 @@
 use schemars::JsonSchema;
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::schema::{
     StrOrBoolOrArray, column::ColumnDef, constraint::TableConstraint, index::IndexDef, names::TableName,
 };
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TableValidationError {
+    DuplicateIndexColumn {
+        index_name: String,
+        column_name: String,
+    },
+}
+
+impl std::fmt::Display for TableValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TableValidationError::DuplicateIndexColumn { index_name, column_name } => {
+                write!(
+                    f,
+                    "Duplicate index '{}' on column '{}': the same index name cannot be applied to the same column multiple times",
+                    index_name, column_name
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for TableValidationError {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -20,7 +44,11 @@ impl TableDef {
     /// Normalizes inline column constraints (primary_key, unique, index, foreign_key)
     /// into table-level constraints and indexes.
     /// Returns a new TableDef with all inline constraints converted to table-level.
-    pub fn normalize(&self) -> Self {
+    /// 
+    /// # Errors
+    /// 
+    /// Returns an error if the same index name is applied to the same column multiple times.
+    pub fn normalize(&self) -> Result<Self, TableValidationError> {
         let mut constraints = self.constraints.clone();
         let mut indexes = self.indexes.clone();
 
@@ -143,6 +171,9 @@ impl TableDef {
         // Use a HashMap to group, but preserve column order by tracking first occurrence
         let mut index_groups: HashMap<String, Vec<String>> = HashMap::new();
         let mut index_order: Vec<String> = Vec::new(); // Preserve order of first occurrence
+        // Track which columns are already in each index from inline definitions to detect duplicates
+        // Only track inline definitions, not existing table-level indexes (they can be extended)
+        let mut inline_index_column_tracker: HashMap<String, HashSet<String>> = HashMap::new();
 
         for col in &self.columns {
             if let Some(ref index_val) = col.index {
@@ -151,33 +182,86 @@ impl TableDef {
                         // Named index - group by name
                         let index_name = name.clone();
                         
+                        // Check for duplicate - only check inline definitions, not existing table-level indexes
+                        if let Some(columns) = inline_index_column_tracker.get(name.as_str()) {
+                            if columns.contains(col.name.as_str()) {
+                                return Err(TableValidationError::DuplicateIndexColumn {
+                                    index_name: name.clone(),
+                                    column_name: col.name.clone(),
+                                });
+                            }
+                        }
+                        
                         if !index_groups.contains_key(&index_name) {
                             index_order.push(index_name.clone());
                         }
                         
                         index_groups
-                            .entry(index_name)
+                            .entry(index_name.clone())
                             .or_default()
                             .push(col.name.clone());
+                        
+                        inline_index_column_tracker
+                            .entry(index_name)
+                            .or_default()
+                            .insert(col.name.clone());
                     }
                     StrOrBoolOrArray::Bool(true) => {
                         // Auto-generated index name
                         let index_name = format!("idx_{}_{}", self.name, col.name);
                         
+                        // Check for duplicate (auto-generated names are unique per column, so this shouldn't happen)
+                        // But we check anyway for consistency - only check inline definitions
+                        if let Some(columns) = inline_index_column_tracker.get(index_name.as_str()) {
+                            if columns.contains(col.name.as_str()) {
+                                return Err(TableValidationError::DuplicateIndexColumn {
+                                    index_name: index_name.clone(),
+                                    column_name: col.name.clone(),
+                                });
+                            }
+                        }
+                        
                         if !index_groups.contains_key(&index_name) {
                             index_order.push(index_name.clone());
                         }
                         
                         index_groups
-                            .entry(index_name)
+                            .entry(index_name.clone())
                             .or_default()
                             .push(col.name.clone());
+                        
+                        inline_index_column_tracker
+                            .entry(index_name)
+                            .or_default()
+                            .insert(col.name.clone());
                     }
                     StrOrBoolOrArray::Bool(false) => continue,
                     StrOrBoolOrArray::Array(names) => {
                         // Array format: each element is an index name
                         // This column will be part of all these named indexes
+                        // Check for duplicates within the array
+                        let mut seen_in_array = HashSet::new();
                         for index_name in names {
+                        // Check for duplicate within the same array
+                        if seen_in_array.contains(index_name.as_str()) {
+                            return Err(TableValidationError::DuplicateIndexColumn {
+                                index_name: index_name.clone(),
+                                column_name: col.name.clone(),
+                            });
+                        }
+                        seen_in_array.insert(index_name.clone());
+                        
+                        // Check for duplicate across different inline definitions
+                        // Only check inline definitions, not existing table-level indexes
+                        if let Some(columns) = inline_index_column_tracker.get(index_name.as_str()) {
+                            if columns.contains(col.name.as_str()) {
+                                return Err(TableValidationError::DuplicateIndexColumn {
+                                    index_name: index_name.clone(),
+                                    column_name: col.name.clone(),
+                                });
+                            }
+                        }
+                            
                             if !index_groups.contains_key(index_name.as_str()) {
                                 index_order.push(index_name.clone());
                             }
@@ -186,6 +270,11 @@ impl TableDef {
                                 .entry(index_name.clone())
                                 .or_default()
                                 .push(col.name.clone());
+                            
+                            inline_index_column_tracker
+                                .entry(index_name.clone())
+                                .or_default()
+                                .insert(col.name.clone());
                         }
                     }
                 }
@@ -211,12 +300,12 @@ impl TableDef {
             }
         }
 
-        TableDef {
+        Ok(TableDef {
             name: self.name.clone(),
             columns: self.columns.clone(),
             constraints,
             indexes,
-        }
+        })
     }
 }
 
@@ -254,7 +343,7 @@ mod tests {
             indexes: vec![],
         };
 
-        let normalized = table.normalize();
+        let normalized = table.normalize().unwrap();
         assert_eq!(normalized.constraints.len(), 1);
         assert!(matches!(
             &normalized.constraints[0],
@@ -277,7 +366,7 @@ mod tests {
             indexes: vec![],
         };
 
-        let normalized = table.normalize();
+        let normalized = table.normalize().unwrap();
         assert_eq!(normalized.constraints.len(), 1);
         assert!(matches!(
             &normalized.constraints[0],
@@ -299,7 +388,7 @@ mod tests {
             indexes: vec![],
         };
 
-        let normalized = table.normalize();
+        let normalized = table.normalize().unwrap();
         assert_eq!(normalized.constraints.len(), 1);
     }
 
@@ -315,7 +404,7 @@ mod tests {
             indexes: vec![],
         };
 
-        let normalized = table.normalize();
+        let normalized = table.normalize().unwrap();
         assert_eq!(normalized.constraints.len(), 1);
         assert!(matches!(
             &normalized.constraints[0],
@@ -335,7 +424,7 @@ mod tests {
             indexes: vec![],
         };
 
-        let normalized = table.normalize();
+        let normalized = table.normalize().unwrap();
         assert_eq!(normalized.constraints.len(), 1);
         assert!(matches!(
             &normalized.constraints[0],
@@ -356,7 +445,7 @@ mod tests {
             indexes: vec![],
         };
 
-        let normalized = table.normalize();
+        let normalized = table.normalize().unwrap();
         assert_eq!(normalized.indexes.len(), 1);
         assert_eq!(normalized.indexes[0].name, "idx_users_name");
         assert_eq!(normalized.indexes[0].columns, vec!["name".to_string()]);
@@ -375,7 +464,7 @@ mod tests {
             indexes: vec![],
         };
 
-        let normalized = table.normalize();
+        let normalized = table.normalize().unwrap();
         assert_eq!(normalized.indexes.len(), 1);
         assert_eq!(normalized.indexes[0].name, "custom_idx_name");
     }
@@ -397,7 +486,7 @@ mod tests {
             indexes: vec![],
         };
 
-        let normalized = table.normalize();
+        let normalized = table.normalize().unwrap();
         assert_eq!(normalized.constraints.len(), 1);
         assert!(matches!(
             &normalized.constraints[0],
@@ -440,7 +529,7 @@ mod tests {
             indexes: vec![],
         };
 
-        let normalized = table.normalize();
+        let normalized = table.normalize().unwrap();
         // Should have: PrimaryKey, Unique, ForeignKey
         assert_eq!(normalized.constraints.len(), 3);
         // Should have: 1 index
@@ -462,7 +551,7 @@ mod tests {
             indexes: vec![],
         };
 
-        let normalized = table.normalize();
+        let normalized = table.normalize().unwrap();
         assert_eq!(normalized.indexes.len(), 1);
         assert_eq!(normalized.indexes[0].name, "tuple");
         assert_eq!(
@@ -493,7 +582,7 @@ mod tests {
             indexes: vec![],
         };
 
-        let normalized = table.normalize();
+        let normalized = table.normalize().unwrap();
         assert_eq!(normalized.indexes.len(), 3);
 
         // Check idx_a composite index
@@ -534,7 +623,7 @@ mod tests {
             indexes: vec![],
         };
 
-        let normalized = table.normalize();
+        let normalized = table.normalize().unwrap();
         assert_eq!(normalized.constraints.len(), 0);
         assert_eq!(normalized.indexes.len(), 0);
     }
@@ -555,7 +644,7 @@ mod tests {
             indexes: vec![],
         };
 
-        let normalized = table.normalize();
+        let normalized = table.normalize().unwrap();
         // Should have: tuple (composite: updated_at, user_id), tuple2 (composite: updated_at, user_id)
         assert_eq!(normalized.indexes.len(), 2);
         
@@ -568,5 +657,242 @@ mod tests {
         let mut sorted_cols2 = tuple2_idx.columns.clone();
         sorted_cols2.sort();
         assert_eq!(sorted_cols2, vec!["updated_at".to_string(), "user_id".to_string()]);
+    }
+
+    #[test]
+    fn normalize_inline_unique_with_array_existing_constraint() {
+        // Test Array format where constraint already exists - should add column to existing
+        let mut col1 = col("col1", ColumnType::Text);
+        col1.unique = Some(StrOrBoolOrArray::Array(vec!["uq_group".into()]));
+
+        let mut col2 = col("col2", ColumnType::Text);
+        col2.unique = Some(StrOrBoolOrArray::Array(vec!["uq_group".into()]));
+
+        let table = TableDef {
+            name: "test".into(),
+            columns: vec![col("id", ColumnType::Integer), col1, col2],
+            constraints: vec![],
+            indexes: vec![],
+        };
+
+        let normalized = table.normalize().unwrap();
+        assert_eq!(normalized.constraints.len(), 1);
+        let unique_constraint = &normalized.constraints[0];
+        assert!(matches!(
+            unique_constraint,
+            TableConstraint::Unique { name: Some(n), columns: _ }
+                if n == "uq_group"
+        ));
+        if let TableConstraint::Unique { columns, .. } = unique_constraint {
+            let mut sorted_cols = columns.clone();
+            sorted_cols.sort();
+            assert_eq!(sorted_cols, vec!["col1".to_string(), "col2".to_string()]);
+        }
+    }
+
+    #[test]
+    fn normalize_inline_unique_with_array_column_already_in_constraint() {
+        // Test Array format where column is already in constraint - should not duplicate
+        let mut col1 = col("col1", ColumnType::Text);
+        col1.unique = Some(StrOrBoolOrArray::Array(vec!["uq_group".into()]));
+
+        let table = TableDef {
+            name: "test".into(),
+            columns: vec![col("id", ColumnType::Integer), col1.clone()],
+            constraints: vec![],
+            indexes: vec![],
+        };
+
+        let normalized1 = table.normalize().unwrap();
+        assert_eq!(normalized1.constraints.len(), 1);
+
+        // Add same column again - should not create duplicate
+        let table2 = TableDef {
+            name: "test".into(),
+            columns: vec![col("id", ColumnType::Integer), col1],
+            constraints: normalized1.constraints.clone(),
+            indexes: vec![],
+        };
+
+        let normalized2 = table2.normalize().unwrap();
+        assert_eq!(normalized2.constraints.len(), 1);
+        if let TableConstraint::Unique { columns, .. } = &normalized2.constraints[0] {
+            assert_eq!(columns.len(), 1);
+            assert_eq!(columns[0], "col1");
+        }
+    }
+
+    #[test]
+    fn normalize_inline_unique_str_already_exists() {
+        // Test that existing unique constraint with same name and column is not duplicated
+        let mut email_col = col("email", ColumnType::Text);
+        email_col.unique = Some(StrOrBoolOrArray::Str("uq_email".into()));
+
+        let table = TableDef {
+            name: "users".into(),
+            columns: vec![col("id", ColumnType::Integer), email_col],
+            constraints: vec![TableConstraint::Unique {
+                name: Some("uq_email".into()),
+                columns: vec!["email".into()],
+            }],
+            indexes: vec![],
+        };
+
+        let normalized = table.normalize().unwrap();
+        // Should not duplicate the constraint
+        let unique_constraints: Vec<_> = normalized
+            .constraints
+            .iter()
+            .filter(|c| matches!(c, TableConstraint::Unique { .. }))
+            .collect();
+        assert_eq!(unique_constraints.len(), 1);
+    }
+
+    #[test]
+    fn normalize_inline_unique_bool_already_exists() {
+        // Test that existing unnamed unique constraint with same column is not duplicated
+        let mut email_col = col("email", ColumnType::Text);
+        email_col.unique = Some(StrOrBoolOrArray::Bool(true));
+
+        let table = TableDef {
+            name: "users".into(),
+            columns: vec![col("id", ColumnType::Integer), email_col],
+            constraints: vec![TableConstraint::Unique {
+                name: None,
+                columns: vec!["email".into()],
+            }],
+            indexes: vec![],
+        };
+
+        let normalized = table.normalize().unwrap();
+        // Should not duplicate the constraint
+        let unique_constraints: Vec<_> = normalized
+            .constraints
+            .iter()
+            .filter(|c| matches!(c, TableConstraint::Unique { .. }))
+            .collect();
+        assert_eq!(unique_constraints.len(), 1);
+    }
+
+    #[test]
+    fn normalize_inline_foreign_key_already_exists() {
+        // Test that existing foreign key constraint is not duplicated
+        let mut user_id_col = col("user_id", ColumnType::Integer);
+        user_id_col.foreign_key = Some(ForeignKeyDef {
+            ref_table: "users".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: None,
+        });
+
+        let table = TableDef {
+            name: "posts".into(),
+            columns: vec![col("id", ColumnType::Integer), user_id_col],
+            constraints: vec![TableConstraint::ForeignKey {
+                name: None,
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            }],
+            indexes: vec![],
+        };
+
+        let normalized = table.normalize().unwrap();
+        // Should not duplicate the foreign key
+        let fk_constraints: Vec<_> = normalized
+            .constraints
+            .iter()
+            .filter(|c| matches!(c, TableConstraint::ForeignKey { .. }))
+            .collect();
+        assert_eq!(fk_constraints.len(), 1);
+    }
+
+    #[test]
+    fn normalize_duplicate_index_same_column_str() {
+        // Same index name applied to the same column multiple times should error
+        // This tests inline index duplicate, not table-level index
+        let mut col1 = col("col1", ColumnType::Text);
+        col1.index = Some(StrOrBoolOrArray::Str("idx1".into()));
+
+        let table = TableDef {
+            name: "test".into(),
+            columns: vec![
+                col("id", ColumnType::Integer),
+                col1.clone(),
+                {
+                    // Same column with same index name again
+                    let mut c = col1.clone();
+                    c.index = Some(StrOrBoolOrArray::Str("idx1".into()));
+                    c
+                },
+            ],
+            constraints: vec![],
+            indexes: vec![],
+        };
+
+        let result = table.normalize();
+        assert!(result.is_err());
+        if let Err(TableValidationError::DuplicateIndexColumn { index_name, column_name }) = result {
+            assert_eq!(index_name, "idx1");
+            assert_eq!(column_name, "col1");
+        } else {
+            panic!("Expected DuplicateIndexColumn error");
+        }
+    }
+
+    #[test]
+    fn normalize_duplicate_index_same_column_array() {
+        // Same index name in array applied to the same column should error
+        let mut col1 = col("col1", ColumnType::Text);
+        col1.index = Some(StrOrBoolOrArray::Array(vec!["idx1".into(), "idx1".into()]));
+
+        let table = TableDef {
+            name: "test".into(),
+            columns: vec![col("id", ColumnType::Integer), col1],
+            constraints: vec![],
+            indexes: vec![],
+        };
+
+        let result = table.normalize();
+        assert!(result.is_err());
+        if let Err(TableValidationError::DuplicateIndexColumn { index_name, column_name }) = result {
+            assert_eq!(index_name, "idx1");
+            assert_eq!(column_name, "col1");
+        } else {
+            panic!("Expected DuplicateIndexColumn error");
+        }
+    }
+
+    #[test]
+    fn normalize_duplicate_index_same_column_multiple_definitions() {
+        // Same index name applied to the same column in different ways should error
+        let mut col1 = col("col1", ColumnType::Text);
+        col1.index = Some(StrOrBoolOrArray::Str("idx1".into()));
+
+        let table = TableDef {
+            name: "test".into(),
+            columns: vec![
+                col("id", ColumnType::Integer),
+                col1.clone(),
+                {
+                    let mut c = col1.clone();
+                    c.index = Some(StrOrBoolOrArray::Array(vec!["idx1".into()]));
+                    c
+                },
+            ],
+            constraints: vec![],
+            indexes: vec![],
+        };
+
+        let result = table.normalize();
+        assert!(result.is_err());
+        if let Err(TableValidationError::DuplicateIndexColumn { index_name, column_name }) = result {
+            assert_eq!(index_name, "idx1");
+            assert_eq!(column_name, "col1");
+        } else {
+            panic!("Expected DuplicateIndexColumn error");
+        }
     }
 }

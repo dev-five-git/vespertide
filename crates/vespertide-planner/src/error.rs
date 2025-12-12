@@ -26,4 +26,6 @@ pub enum PlannerError {
     EmptyConstraintColumns(String, String),
     #[error("AddColumn requires fill_with when column is NOT NULL without default: {0}.{1}")]
     MissingFillWith(String, String),
+    #[error("table validation error: {0}")]
+    TableValidation(String),
 }

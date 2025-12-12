@@ -13,4 +13,4 @@ pub use index::IndexDef;
 pub use names::{ColumnName, IndexName, TableName};
 pub use reference::ReferenceAction;
 pub use str_or_bool::StrOrBoolOrArray;
-pub use table::TableDef;
+pub use table::{TableDef, TableValidationError};
