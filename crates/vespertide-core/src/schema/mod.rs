@@ -12,5 +12,5 @@ pub use constraint::TableConstraint;
 pub use index::IndexDef;
 pub use names::{ColumnName, IndexName, TableName};
 pub use reference::ReferenceAction;
-pub use str_or_bool::StrOrBool;
+pub use str_or_bool::{StrOrBool, StrOrBoolOrArray};
 pub use table::TableDef;

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::schema::{
-    StrOrBool, column::ColumnDef, constraint::TableConstraint, index::IndexDef, names::TableName,
+    StrOrBoolOrArray, column::ColumnDef, constraint::TableConstraint, index::IndexDef, names::TableName,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -48,26 +48,70 @@ impl TableDef {
         for col in &self.columns {
             // Handle inline unique
             if let Some(ref unique_val) = col.unique {
-                let constraint_name = match unique_val {
-                    StrOrBool::Str(name) => Some(name.clone()),
-                    StrOrBool::Bool(true) => None,
-                    StrOrBool::Bool(false) => continue,
-                };
+                match unique_val {
+                    StrOrBoolOrArray::Str(name) => {
+                        let constraint_name = Some(name.clone());
+                        
+                        // Check if this unique constraint already exists
+                        let exists = constraints.iter().any(|c| {
+                            if let TableConstraint::Unique { name: c_name, columns } = c {
+                                c_name.as_ref() == Some(name) && columns.len() == 1 && columns[0] == col.name
+                            } else {
+                                false
+                            }
+                        });
 
-                // Check if this unique constraint already exists
-                let exists = constraints.iter().any(|c| {
-                    if let TableConstraint::Unique { columns, .. } = c {
-                        columns.len() == 1 && columns[0] == col.name
-                    } else {
-                        false
+                        if !exists {
+                            constraints.push(TableConstraint::Unique {
+                                name: constraint_name,
+                                columns: vec![col.name.clone()],
+                            });
+                        }
                     }
-                });
+                    StrOrBoolOrArray::Bool(true) => {
+                        let exists = constraints.iter().any(|c| {
+                            if let TableConstraint::Unique { name: None, columns } = c {
+                                columns.len() == 1 && columns[0] == col.name
+                            } else {
+                                false
+                            }
+                        });
 
-                if !exists {
-                    constraints.push(TableConstraint::Unique {
-                        name: constraint_name,
-                        columns: vec![col.name.clone()],
-                    });
+                        if !exists {
+                            constraints.push(TableConstraint::Unique {
+                                name: None,
+                                columns: vec![col.name.clone()],
+                            });
+                        }
+                    }
+                    StrOrBoolOrArray::Bool(false) => continue,
+                    StrOrBoolOrArray::Array(names) => {
+                        // Array format: each element is a constraint name
+                        // This column will be part of all these named constraints
+                        for constraint_name in names {
+                            // Check if constraint with this name already exists
+                            if let Some(existing) = constraints.iter_mut().find(|c| {
+                                if let TableConstraint::Unique { name: Some(n), .. } = c {
+                                    n == constraint_name
+                                } else {
+                                    false
+                                }
+                            }) {
+                                // Add this column to existing composite constraint
+                                if let TableConstraint::Unique { columns, .. } = existing {
+                                    if !columns.contains(&col.name) {
+                                        columns.push(col.name.clone());
+                                    }
+                                }
+                            } else {
+                                // Create new constraint with this column
+                                constraints.push(TableConstraint::Unique {
+                                    name: Some(constraint_name.clone()),
+                                    columns: vec![col.name.clone()],
+                                });
+                            }
+                        }
+                    }
                 }
             }
 
@@ -102,20 +146,49 @@ impl TableDef {
 
         for col in &self.columns {
             if let Some(ref index_val) = col.index {
-                let index_name = match index_val {
-                    StrOrBool::Str(name) => name.clone(),
-                    StrOrBool::Bool(true) => format!("idx_{}_{}", self.name, col.name),
-                    StrOrBool::Bool(false) => continue,
-                };
-
-                if !index_groups.contains_key(&index_name) {
-                    index_order.push(index_name.clone());
+                match index_val {
+                    StrOrBoolOrArray::Str(name) => {
+                        // Named index - group by name
+                        let index_name = name.clone();
+                        
+                        if !index_groups.contains_key(&index_name) {
+                            index_order.push(index_name.clone());
+                        }
+                        
+                        index_groups
+                            .entry(index_name)
+                            .or_default()
+                            .push(col.name.clone());
+                    }
+                    StrOrBoolOrArray::Bool(true) => {
+                        // Auto-generated index name
+                        let index_name = format!("idx_{}_{}", self.name, col.name);
+                        
+                        if !index_groups.contains_key(&index_name) {
+                            index_order.push(index_name.clone());
+                        }
+                        
+                        index_groups
+                            .entry(index_name)
+                            .or_default()
+                            .push(col.name.clone());
+                    }
+                    StrOrBoolOrArray::Bool(false) => continue,
+                    StrOrBoolOrArray::Array(names) => {
+                        // Array format: each element is an index name
+                        // This column will be part of all these named indexes
+                        for index_name in names {
+                            if !index_groups.contains_key(index_name.as_str()) {
+                                index_order.push(index_name.clone());
+                            }
+                            
+                            index_groups
+                                .entry(index_name.clone())
+                                .or_default()
+                                .push(col.name.clone());
+                        }
+                    }
                 }
-
-                index_groups
-                    .entry(index_name)
-                    .or_default()
-                    .push(col.name.clone());
             }
         }
 
@@ -123,10 +196,11 @@ impl TableDef {
         for index_name in index_order {
             let columns = index_groups.get(&index_name).unwrap().clone();
 
-            // Check if this index already exists (by name or by exact column match)
+            // Check if this index already exists (by name only, not by column match)
+            // Multiple indexes can have the same columns but different names
             let exists = indexes
                 .iter()
-                .any(|i| i.name == index_name || (i.columns == columns));
+                .any(|i| i.name == index_name);
 
             if !exists {
                 indexes.push(IndexDef {
@@ -152,6 +226,7 @@ mod tests {
     use crate::schema::column::ColumnType;
     use crate::schema::foreign_key::ForeignKeyDef;
     use crate::schema::reference::ReferenceAction;
+    use crate::schema::str_or_bool::StrOrBoolOrArray;
 
     fn col(name: &str, ty: ColumnType) -> ColumnDef {
         ColumnDef {
@@ -231,7 +306,7 @@ mod tests {
     #[test]
     fn normalize_inline_unique_bool() {
         let mut email_col = col("email", ColumnType::Text);
-        email_col.unique = Some(StrOrBool::Bool(true));
+        email_col.unique = Some(StrOrBoolOrArray::Bool(true));
 
         let table = TableDef {
             name: "users".into(),
@@ -251,7 +326,7 @@ mod tests {
     #[test]
     fn normalize_inline_unique_with_name() {
         let mut email_col = col("email", ColumnType::Text);
-        email_col.unique = Some(StrOrBool::Str("uq_users_email".into()));
+        email_col.unique = Some(StrOrBoolOrArray::Str("uq_users_email".into()));
 
         let table = TableDef {
             name: "users".into(),
@@ -272,7 +347,7 @@ mod tests {
     #[test]
     fn normalize_inline_index_bool() {
         let mut name_col = col("name", ColumnType::Text);
-        name_col.index = Some(StrOrBool::Bool(true));
+        name_col.index = Some(StrOrBoolOrArray::Bool(true));
 
         let table = TableDef {
             name: "users".into(),
@@ -291,7 +366,7 @@ mod tests {
     #[test]
     fn normalize_inline_index_with_name() {
         let mut name_col = col("name", ColumnType::Text);
-        name_col.index = Some(StrOrBool::Str("custom_idx_name".into()));
+        name_col.index = Some(StrOrBoolOrArray::Str("custom_idx_name".into()));
 
         let table = TableDef {
             name: "users".into(),
@@ -345,10 +420,10 @@ mod tests {
         id_col.primary_key = Some(true);
 
         let mut email_col = col("email", ColumnType::Text);
-        email_col.unique = Some(StrOrBool::Bool(true));
+        email_col.unique = Some(StrOrBoolOrArray::Bool(true));
 
         let mut name_col = col("name", ColumnType::Text);
-        name_col.index = Some(StrOrBool::Bool(true));
+        name_col.index = Some(StrOrBoolOrArray::Bool(true));
 
         let mut user_id_col = col("org_id", ColumnType::Integer);
         user_id_col.foreign_key = Some(ForeignKeyDef {
@@ -375,10 +450,10 @@ mod tests {
     #[test]
     fn normalize_composite_index_from_string_name() {
         let mut updated_at_col = col("updated_at", ColumnType::Timestamp);
-        updated_at_col.index = Some(StrOrBool::Str("tuple".into()));
+        updated_at_col.index = Some(StrOrBoolOrArray::Str("tuple".into()));
 
         let mut user_id_col = col("user_id", ColumnType::Integer);
-        user_id_col.index = Some(StrOrBool::Str("tuple".into()));
+        user_id_col.index = Some(StrOrBoolOrArray::Str("tuple".into()));
 
         let table = TableDef {
             name: "post".into(),
@@ -400,16 +475,16 @@ mod tests {
     #[test]
     fn normalize_multiple_different_indexes() {
         let mut col1 = col("col1", ColumnType::Text);
-        col1.index = Some(StrOrBool::Str("idx_a".into()));
+        col1.index = Some(StrOrBoolOrArray::Str("idx_a".into()));
 
         let mut col2 = col("col2", ColumnType::Text);
-        col2.index = Some(StrOrBool::Str("idx_a".into()));
+        col2.index = Some(StrOrBoolOrArray::Str("idx_a".into()));
 
         let mut col3 = col("col3", ColumnType::Text);
-        col3.index = Some(StrOrBool::Str("idx_b".into()));
+        col3.index = Some(StrOrBoolOrArray::Str("idx_b".into()));
 
         let mut col4 = col("col4", ColumnType::Text);
-        col4.index = Some(StrOrBool::Bool(true));
+        col4.index = Some(StrOrBoolOrArray::Bool(true));
 
         let table = TableDef {
             name: "test".into(),
@@ -449,8 +524,8 @@ mod tests {
     #[test]
     fn normalize_false_values_are_ignored() {
         let mut email_col = col("email", ColumnType::Text);
-        email_col.unique = Some(StrOrBool::Bool(false));
-        email_col.index = Some(StrOrBool::Bool(false));
+        email_col.unique = Some(StrOrBoolOrArray::Bool(false));
+        email_col.index = Some(StrOrBoolOrArray::Bool(false));
 
         let table = TableDef {
             name: "users".into(),
@@ -462,5 +537,36 @@ mod tests {
         let normalized = table.normalize();
         assert_eq!(normalized.constraints.len(), 0);
         assert_eq!(normalized.indexes.len(), 0);
+    }
+
+    #[test]
+    fn normalize_multiple_indexes_from_same_array() {
+        // Multiple columns with same array of index names should create multiple composite indexes
+        let mut updated_at_col = col("updated_at", ColumnType::Timestamp);
+        updated_at_col.index = Some(StrOrBoolOrArray::Array(vec!["tuple".into(), "tuple2".into()]));
+
+        let mut user_id_col = col("user_id", ColumnType::Integer);
+        user_id_col.index = Some(StrOrBoolOrArray::Array(vec!["tuple".into(), "tuple2".into()]));
+
+        let table = TableDef {
+            name: "post".into(),
+            columns: vec![col("id", ColumnType::Integer), updated_at_col, user_id_col],
+            constraints: vec![],
+            indexes: vec![],
+        };
+
+        let normalized = table.normalize();
+        // Should have: tuple (composite: updated_at, user_id), tuple2 (composite: updated_at, user_id)
+        assert_eq!(normalized.indexes.len(), 2);
+        
+        let tuple_idx = normalized.indexes.iter().find(|i| i.name == "tuple").unwrap();
+        let mut sorted_cols = tuple_idx.columns.clone();
+        sorted_cols.sort();
+        assert_eq!(sorted_cols, vec!["updated_at".to_string(), "user_id".to_string()]);
+        
+        let tuple2_idx = normalized.indexes.iter().find(|i| i.name == "tuple2").unwrap();
+        let mut sorted_cols2 = tuple2_idx.columns.clone();
+        sorted_cols2.sort();
+        assert_eq!(sorted_cols2, vec!["updated_at".to_string(), "user_id".to_string()]);
     }
 }

@@ -60,7 +60,7 @@
         "index": {
           "anyOf": [
             {
-              "$ref": "#/$defs/StrOrBool"
+              "$ref": "#/$defs/StrOrBoolOrArray"
             },
             {
               "type": "null"
@@ -85,7 +85,7 @@
         "unique": {
           "anyOf": [
             {
-              "$ref": "#/$defs/StrOrBool"
+              "$ref": "#/$defs/StrOrBoolOrArray"
             },
             {
               "type": "null"
@@ -195,10 +195,16 @@
         "NoAction"
       ]
     },
-    "StrOrBool": {
+    "StrOrBoolOrArray": {
       "anyOf": [
         {
           "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         {
           "type": "boolean"

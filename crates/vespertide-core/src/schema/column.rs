@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::schema::{StrOrBool, foreign_key::ForeignKeyDef, names::ColumnName};
+use crate::schema::{foreign_key::ForeignKeyDef, names::ColumnName, str_or_bool::StrOrBoolOrArray};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -12,8 +12,8 @@ pub struct ColumnDef {
     pub default: Option<String>,
     pub comment: Option<String>,
     pub primary_key: Option<bool>,
-    pub unique: Option<StrOrBool>,
-    pub index: Option<StrOrBool>,
+    pub unique: Option<StrOrBoolOrArray>,
+    pub index: Option<StrOrBoolOrArray>,
     pub foreign_key: Option<ForeignKeyDef>,
 }
 

@@ -22,7 +22,7 @@
     "name": "updated_at",
     "type": "Timestamp",
     "nullable": true,
-    "index": "tuple"
+    "index": ["tuple","tuple2"]
   }, {
     "name": "user_id",
     "type": "Integer",
@@ -31,7 +31,7 @@
       "ref_table": "user",
       "ref_columns": ["id"]
     },
-    "index": "tuple"
+    "index": ["tuple","tuple2"]
   }],
   "constraints": [],
   "indexes": []

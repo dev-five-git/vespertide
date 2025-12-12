@@ -61,7 +61,7 @@
         "index": {
           "anyOf": [
             {
-              "$ref": "#/$defs/StrOrBool"
+              "$ref": "#/$defs/StrOrBoolOrArray"
             },
             {
               "type": "null"
@@ -86,7 +86,7 @@
         "unique": {
           "anyOf": [
             {
-              "$ref": "#/$defs/StrOrBool"
+              "$ref": "#/$defs/StrOrBoolOrArray"
             },
             {
               "type": "null"
@@ -372,6 +372,46 @@
         {
           "type": "object",
           "properties": {
+            "constraint": {
+              "$ref": "#/$defs/TableConstraint"
+            },
+            "table": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "AddConstraint"
+            }
+          },
+          "required": [
+            "type",
+            "table",
+            "constraint"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "constraint": {
+              "$ref": "#/$defs/TableConstraint"
+            },
+            "table": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "RemoveConstraint"
+            }
+          },
+          "required": [
+            "type",
+            "table",
+            "constraint"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
             "from": {
               "type": "string"
             },
@@ -417,10 +457,16 @@
         "NoAction"
       ]
     },
-    "StrOrBool": {
+    "StrOrBoolOrArray": {
       "anyOf": [
         {
           "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         {
           "type": "boolean"
