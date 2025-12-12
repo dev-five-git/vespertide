@@ -361,7 +361,7 @@ mod tests {
     mod inline_constraints {
         use super::*;
         use vespertide_core::schema::foreign_key::ForeignKeyDef;
-        use vespertide_core::{StrOrBool, TableConstraint};
+        use vespertide_core::{StrOrBoolOrArray, TableConstraint};
 
         fn col_with_pk(name: &str, ty: ColumnType) -> ColumnDef {
             ColumnDef {
@@ -385,7 +385,7 @@ mod tests {
                 default: None,
                 comment: None,
                 primary_key: None,
-                unique: Some(StrOrBool::Bool(true)),
+                unique: Some(StrOrBoolOrArray::Bool(true)),
                 index: None,
                 foreign_key: None,
             }
@@ -400,7 +400,7 @@ mod tests {
                 comment: None,
                 primary_key: None,
                 unique: None,
-                index: Some(StrOrBool::Bool(true)),
+                index: Some(StrOrBoolOrArray::Bool(true)),
                 foreign_key: None,
             }
         }
@@ -583,10 +583,10 @@ mod tests {
             id_col.nullable = false;
 
             let mut email_col = col("email", ColumnType::Text);
-            email_col.unique = Some(StrOrBool::Bool(true));
+            email_col.unique = Some(StrOrBoolOrArray::Bool(true));
 
             let mut name_col = col("name", ColumnType::Text);
-            name_col.index = Some(StrOrBool::Bool(true));
+            name_col.index = Some(StrOrBoolOrArray::Bool(true));
 
             let mut org_id_col = col("org_id", ColumnType::Integer);
             org_id_col.foreign_key = Some(ForeignKeyDef {
