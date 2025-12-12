@@ -26,6 +26,11 @@ mod tests {
             r#type: ty,
             nullable: true,
             default: None,
+            comment: None,
+            primary_key: None,
+            unique: None,
+            index: None,
+            foreign_key: None,
         }
     }
 

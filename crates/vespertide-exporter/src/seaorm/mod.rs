@@ -188,8 +188,8 @@ mod tests {
     #[case("basic_single_pk", TableDef {
         name: "users".into(),
         columns: vec![
-            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None },
-            ColumnDef { name: "display_name".into(), r#type: ColumnType::Text, nullable: true, default: None },
+            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "display_name".into(), r#type: ColumnType::Text, nullable: true, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
         ],
         constraints: vec![TableConstraint::PrimaryKey { columns: vec!["id".into()] }],
         indexes: vec![],
@@ -197,8 +197,8 @@ mod tests {
     #[case("composite_pk", TableDef {
         name: "accounts".into(),
         columns: vec![
-            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None },
-            ColumnDef { name: "tenant_id".into(), r#type: ColumnType::BigInt, nullable: false, default: None },
+            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "tenant_id".into(), r#type: ColumnType::BigInt, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
         ],
         constraints: vec![TableConstraint::PrimaryKey { columns: vec!["id".into(), "tenant_id".into()] }],
         indexes: vec![],
@@ -206,9 +206,9 @@ mod tests {
     #[case("fk_single", TableDef {
         name: "posts".into(),
         columns: vec![
-            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None },
-            ColumnDef { name: "user_id".into(), r#type: ColumnType::Integer, nullable: false, default: None },
-            ColumnDef { name: "title".into(), r#type: ColumnType::Text, nullable: true, default: None },
+            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "user_id".into(), r#type: ColumnType::Integer, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "title".into(), r#type: ColumnType::Text, nullable: true, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
         ],
         constraints: vec![
             TableConstraint::PrimaryKey { columns: vec!["id".into()] },
@@ -226,9 +226,9 @@ mod tests {
     #[case("fk_composite", TableDef {
         name: "invoices".into(),
         columns: vec![
-            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None },
-            ColumnDef { name: "customer_id".into(), r#type: ColumnType::Integer, nullable: false, default: None },
-            ColumnDef { name: "customer_tenant_id".into(), r#type: ColumnType::Integer, nullable: false, default: None },
+            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "customer_id".into(), r#type: ColumnType::Integer, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "customer_tenant_id".into(), r#type: ColumnType::Integer, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
         ],
         constraints: vec![
             TableConstraint::PrimaryKey { columns: vec!["id".into()] },
