@@ -5,11 +5,23 @@ use vespertide_core::{MigrationAction, MigrationPlan, TableDef};
 use crate::error::PlannerError;
 
 /// Diff two schema snapshots into a migration plan.
+/// Both schemas are normalized to convert inline column constraints
+/// (primary_key, unique, index, foreign_key) to table-level constraints.
 pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan, PlannerError> {
     let mut actions: Vec<MigrationAction> = Vec::new();
 
-    let from_map: HashMap<_, _> = from.iter().map(|t| (t.name.as_str(), t)).collect();
-    let to_map: HashMap<_, _> = to.iter().map(|t| (t.name.as_str(), t)).collect();
+    // Normalize both schemas to ensure inline constraints are converted to table-level
+    let from_normalized: Vec<TableDef> = from.iter().map(|t| t.normalize()).collect();
+    let to_normalized: Vec<TableDef> = to.iter().map(|t| t.normalize()).collect();
+
+    let from_map: HashMap<_, _> = from_normalized
+        .iter()
+        .map(|t| (t.name.as_str(), t))
+        .collect();
+    let to_map: HashMap<_, _> = to_normalized
+        .iter()
+        .map(|t| (t.name.as_str(), t))
+        .collect();
 
     // Drop tables that disappeared.
     for name in from_map.keys() {
@@ -94,6 +106,24 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
                     actions.push(MigrationAction::AddIndex {
                         table: (*name).to_string(),
                         index: (*def).clone(),
+                    });
+                }
+            }
+
+            // Constraints - compare and detect additions/removals
+            for from_constraint in &from_tbl.constraints {
+                if !to_tbl.constraints.contains(from_constraint) {
+                    actions.push(MigrationAction::RemoveConstraint {
+                        table: (*name).to_string(),
+                        constraint: from_constraint.clone(),
+                    });
+                }
+            }
+            for to_constraint in &to_tbl.constraints {
+                if !from_tbl.constraints.contains(to_constraint) {
+                    actions.push(MigrationAction::AddConstraint {
+                        table: (*name).to_string(),
+                        constraint: to_constraint.clone(),
                     });
                 }
             }
@@ -328,5 +358,247 @@ mod tests {
     ) {
         let plan = diff_schemas(&from_schema, &to_schema).unwrap();
         assert_eq!(plan.actions, expected_actions);
+    }
+
+    // Tests for inline column constraints normalization
+    mod inline_constraints {
+        use super::*;
+        use vespertide_core::{StrOrBool, TableConstraint};
+        use vespertide_core::schema::foreign_key::ForeignKeyDef;
+
+        fn col_with_pk(name: &str, ty: ColumnType) -> ColumnDef {
+            ColumnDef {
+                name: name.to_string(),
+                r#type: ty,
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: Some(true),
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }
+        }
+
+        fn col_with_unique(name: &str, ty: ColumnType) -> ColumnDef {
+            ColumnDef {
+                name: name.to_string(),
+                r#type: ty,
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: Some(StrOrBool::Bool(true)),
+                index: None,
+                foreign_key: None,
+            }
+        }
+
+        fn col_with_index(name: &str, ty: ColumnType) -> ColumnDef {
+            ColumnDef {
+                name: name.to_string(),
+                r#type: ty,
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: Some(StrOrBool::Bool(true)),
+                foreign_key: None,
+            }
+        }
+
+        fn col_with_fk(name: &str, ty: ColumnType, ref_table: &str, ref_col: &str) -> ColumnDef {
+            ColumnDef {
+                name: name.to_string(),
+                r#type: ty,
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: Some(ForeignKeyDef {
+                    ref_table: ref_table.to_string(),
+                    ref_columns: vec![ref_col.to_string()],
+                    on_delete: None,
+                    on_update: None,
+                }),
+            }
+        }
+
+        #[test]
+        fn create_table_with_inline_pk() {
+            let plan = diff_schemas(
+                &[],
+                &[table(
+                    "users",
+                    vec![col_with_pk("id", ColumnType::Integer), col("name", ColumnType::Text)],
+                    vec![],
+                    vec![],
+                )],
+            )
+            .unwrap();
+
+            assert_eq!(plan.actions.len(), 1);
+            if let MigrationAction::CreateTable { constraints, .. } = &plan.actions[0] {
+                assert_eq!(constraints.len(), 1);
+                assert!(matches!(
+                    &constraints[0],
+                    TableConstraint::PrimaryKey { columns } if columns == &["id".to_string()]
+                ));
+            } else {
+                panic!("Expected CreateTable action");
+            }
+        }
+
+        #[test]
+        fn create_table_with_inline_unique() {
+            let plan = diff_schemas(
+                &[],
+                &[table(
+                    "users",
+                    vec![col("id", ColumnType::Integer), col_with_unique("email", ColumnType::Text)],
+                    vec![],
+                    vec![],
+                )],
+            )
+            .unwrap();
+
+            assert_eq!(plan.actions.len(), 1);
+            if let MigrationAction::CreateTable { constraints, .. } = &plan.actions[0] {
+                assert_eq!(constraints.len(), 1);
+                assert!(matches!(
+                    &constraints[0],
+                    TableConstraint::Unique { name: None, columns } if columns == &["email".to_string()]
+                ));
+            } else {
+                panic!("Expected CreateTable action");
+            }
+        }
+
+        #[test]
+        fn create_table_with_inline_index() {
+            let plan = diff_schemas(
+                &[],
+                &[table(
+                    "users",
+                    vec![col("id", ColumnType::Integer), col_with_index("name", ColumnType::Text)],
+                    vec![],
+                    vec![],
+                )],
+            )
+            .unwrap();
+
+            // Should have CreateTable + AddIndex
+            assert_eq!(plan.actions.len(), 2);
+            assert!(matches!(&plan.actions[0], MigrationAction::CreateTable { .. }));
+            if let MigrationAction::AddIndex { index, .. } = &plan.actions[1] {
+                assert_eq!(index.name, "idx_users_name");
+                assert_eq!(index.columns, vec!["name".to_string()]);
+            } else {
+                panic!("Expected AddIndex action");
+            }
+        }
+
+        #[test]
+        fn create_table_with_inline_fk() {
+            let plan = diff_schemas(
+                &[],
+                &[table(
+                    "posts",
+                    vec![
+                        col("id", ColumnType::Integer),
+                        col_with_fk("user_id", ColumnType::Integer, "users", "id"),
+                    ],
+                    vec![],
+                    vec![],
+                )],
+            )
+            .unwrap();
+
+            assert_eq!(plan.actions.len(), 1);
+            if let MigrationAction::CreateTable { constraints, .. } = &plan.actions[0] {
+                assert_eq!(constraints.len(), 1);
+                assert!(matches!(
+                    &constraints[0],
+                    TableConstraint::ForeignKey { columns, ref_table, ref_columns, .. }
+                        if columns == &["user_id".to_string()]
+                        && ref_table == "users"
+                        && ref_columns == &["id".to_string()]
+                ));
+            } else {
+                panic!("Expected CreateTable action");
+            }
+        }
+
+        #[test]
+        fn add_index_via_inline_constraint() {
+            // Existing table without index -> table with inline index
+            let plan = diff_schemas(
+                &[table(
+                    "users",
+                    vec![col("id", ColumnType::Integer), col("name", ColumnType::Text)],
+                    vec![],
+                    vec![],
+                )],
+                &[table(
+                    "users",
+                    vec![col("id", ColumnType::Integer), col_with_index("name", ColumnType::Text)],
+                    vec![],
+                    vec![],
+                )],
+            )
+            .unwrap();
+
+            assert_eq!(plan.actions.len(), 1);
+            if let MigrationAction::AddIndex { table, index } = &plan.actions[0] {
+                assert_eq!(table, "users");
+                assert_eq!(index.name, "idx_users_name");
+                assert_eq!(index.columns, vec!["name".to_string()]);
+            } else {
+                panic!("Expected AddIndex action, got {:?}", plan.actions[0]);
+            }
+        }
+
+        #[test]
+        fn create_table_with_all_inline_constraints() {
+            let mut id_col = col("id", ColumnType::Integer);
+            id_col.primary_key = Some(true);
+            id_col.nullable = false;
+
+            let mut email_col = col("email", ColumnType::Text);
+            email_col.unique = Some(StrOrBool::Bool(true));
+
+            let mut name_col = col("name", ColumnType::Text);
+            name_col.index = Some(StrOrBool::Bool(true));
+
+            let mut org_id_col = col("org_id", ColumnType::Integer);
+            org_id_col.foreign_key = Some(ForeignKeyDef {
+                ref_table: "orgs".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            });
+
+            let plan = diff_schemas(
+                &[],
+                &[table("users", vec![id_col, email_col, name_col, org_id_col], vec![], vec![])],
+            )
+            .unwrap();
+
+            // Should have CreateTable + AddIndex
+            assert_eq!(plan.actions.len(), 2);
+
+            if let MigrationAction::CreateTable { constraints, .. } = &plan.actions[0] {
+                // Should have: PrimaryKey, Unique, ForeignKey (3 constraints)
+                assert_eq!(constraints.len(), 3);
+            } else {
+                panic!("Expected CreateTable action");
+            }
+
+            // Check for AddIndex action
+            assert!(matches!(&plan.actions[1], MigrationAction::AddIndex { .. }));
+        }
     }
 }

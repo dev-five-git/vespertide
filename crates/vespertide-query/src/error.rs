@@ -4,4 +4,6 @@ use thiserror::Error;
 pub enum QueryError {
     #[error("unsupported table constraint")]
     UnsupportedConstraint,
+    #[error("{0}")]
+    Other(String),
 }

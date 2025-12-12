@@ -133,6 +133,22 @@ pub fn apply_action(
             }
         }
         MigrationAction::RawSql { .. } => Ok(()), // Does not mutate in-memory schema; allowed as side-effect-only
+        MigrationAction::AddConstraint { table, constraint } => {
+            let tbl = schema
+                .iter_mut()
+                .find(|t| t.name == *table)
+                .ok_or_else(|| PlannerError::TableNotFound(table.clone()))?;
+            tbl.constraints.push(constraint.clone());
+            Ok(())
+        }
+        MigrationAction::RemoveConstraint { table, constraint } => {
+            let tbl = schema
+                .iter_mut()
+                .find(|t| t.name == *table)
+                .ok_or_else(|| PlannerError::TableNotFound(table.clone()))?;
+            tbl.constraints.retain(|c| c != constraint);
+            Ok(())
+        }
     }
 }
 

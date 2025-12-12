@@ -187,6 +187,64 @@ pub fn build_action_queries(action: &MigrationAction) -> Result<Vec<BuiltQuery>,
             sql: sql.to_string(),
             binds: Vec::new(),
         }]),
+        MigrationAction::AddConstraint { table, constraint } => {
+            let mut binds = Vec::new();
+            let t = bind(&mut binds, table);
+            let constraint_sql = table_constraint_sql(constraint, &mut binds)?;
+            Ok(vec![BuiltQuery {
+                sql: format!("ALTER TABLE {t} ADD {constraint_sql};"),
+                binds,
+            }])
+        }
+        MigrationAction::RemoveConstraint { table, constraint } => {
+            let mut binds = Vec::new();
+            let t = bind(&mut binds, table);
+            // For removing constraints, we need to handle each type differently
+            let drop_sql = match constraint {
+                TableConstraint::PrimaryKey { .. } => {
+                    // PostgreSQL syntax for dropping primary key
+                    format!("ALTER TABLE {t} DROP CONSTRAINT {t}_pkey;")
+                }
+                TableConstraint::Unique { name, columns } => {
+                    if let Some(n) = name {
+                        let nm = bind(&mut binds, n);
+                        format!("ALTER TABLE {t} DROP CONSTRAINT {nm};")
+                    } else {
+                        // Generate default constraint name for unnamed unique
+                        let cols = columns.join("_");
+                        let constraint_name = bind(&mut binds, &format!("{}_{}_key", table, cols));
+                        format!("ALTER TABLE {t} DROP CONSTRAINT {constraint_name};")
+                    }
+                }
+                TableConstraint::ForeignKey { name, columns, .. } => {
+                    if let Some(n) = name {
+                        let nm = bind(&mut binds, n);
+                        format!("ALTER TABLE {t} DROP CONSTRAINT {nm};")
+                    } else {
+                        // Generate default constraint name for unnamed foreign key
+                        let cols = columns.join("_");
+                        let constraint_name = bind(&mut binds, &format!("{}_{}_fkey", table, cols));
+                        format!("ALTER TABLE {t} DROP CONSTRAINT {constraint_name};")
+                    }
+                }
+                TableConstraint::Check { name, .. } => {
+                    if let Some(n) = name {
+                        let nm = bind(&mut binds, n);
+                        format!("ALTER TABLE {t} DROP CONSTRAINT {nm};")
+                    } else {
+                        // Check constraints without names are problematic to drop
+                        // Return an error or use a placeholder
+                        return Err(QueryError::Other(
+                            "Cannot drop unnamed CHECK constraint".to_string(),
+                        ));
+                    }
+                }
+            };
+            Ok(vec![BuiltQuery {
+                sql: drop_sql,
+                binds,
+            }])
+        }
     }
 }
 

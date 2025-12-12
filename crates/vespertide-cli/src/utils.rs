@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use vespertide_config::{FileFormat, VespertideConfig};
@@ -19,7 +19,7 @@ pub fn load_config() -> Result<VespertideConfig> {
     Ok(config)
 }
 
-/// Load all model definitions from the models directory.
+/// Load all model definitions from the models directory (recursively).
 pub fn load_models(config: &VespertideConfig) -> Result<Vec<TableDef>> {
     let models_dir = config.models_dir();
     if !models_dir.exists() {
@@ -27,14 +27,34 @@ pub fn load_models(config: &VespertideConfig) -> Result<Vec<TableDef>> {
     }
 
     let mut tables = Vec::new();
-    let entries = fs::read_dir(models_dir).context("read models directory")?;
+    load_models_recursive(models_dir, &mut tables)?;
+
+    // Validate schema integrity before returning
+    if !tables.is_empty() {
+        validate_schema(&tables).map_err(|e| anyhow::anyhow!("schema validation failed: {}", e))?;
+    }
+
+    Ok(tables)
+}
+
+/// Recursively walk directory and load model files.
+fn load_models_recursive(dir: &Path, tables: &mut Vec<TableDef>) -> Result<()> {
+    let entries = fs::read_dir(dir)
+        .with_context(|| format!("read models directory: {}", dir.display()))?;
 
     for entry in entries {
         let entry = entry.context("read directory entry")?;
         let path = entry.path();
+
+        if path.is_dir() {
+            // Recursively process subdirectories
+            load_models_recursive(&path, tables)?;
+            continue;
+        }
+
         if path.is_file() {
             let ext = path.extension().and_then(|s| s.to_str());
-            if ext == Some("json") || ext == Some("yaml") || ext == Some("yml") {
+            if matches!(ext, Some("json") | Some("yaml") | Some("yml")) {
                 let content = fs::read_to_string(&path)
                     .with_context(|| format!("read model file: {}", path.display()))?;
 
@@ -51,12 +71,7 @@ pub fn load_models(config: &VespertideConfig) -> Result<Vec<TableDef>> {
         }
     }
 
-    // Validate schema integrity before returning
-    if !tables.is_empty() {
-        validate_schema(&tables).map_err(|e| anyhow::anyhow!("schema validation failed: {}", e))?;
-    }
-
-    Ok(tables)
+    Ok(())
 }
 
 /// Load all migration plans from the migrations directory, sorted by version.

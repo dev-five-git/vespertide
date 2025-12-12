@@ -1,20 +1,21 @@
 {
   "$schema": "../../../schemas/model.schema.json",
+  "name": "user",
   "columns": [{
-    "name": "aa",
+    "name": "id",
     "type": "Integer",
     "nullable": false,
-    "foreign_key": {
-      "ref_table": "post",
-      "ref_columns": ["id"]
-    }
+    "primary_key": true
+  }, {
+    "name": "name",
+    "type": "Text",
+    "nullable": false
+  }, {
+    "name": "email",
+    "type": "Text",
+    "nullable": false,
+    "unique": true
   }],
-  "constraints": [{
-    "type":"foreign_key",
-    "columns": ["aa"],
-    "ref_table": "post",
-    "ref_columns": ["id"]
-  }],
-  "indexes": [],
-  "name": "user"
+  "constraints": [],
+  "indexes": []
 }

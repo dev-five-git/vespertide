@@ -123,6 +123,58 @@ fn format_action(action: &MigrationAction) -> String {
                 sql.bright_cyan()
             )
         }
+        MigrationAction::AddConstraint { table, constraint } => {
+            format!(
+                "{} {} {} {}",
+                "Add constraint:".bright_green(),
+                format_constraint_type(constraint).bright_cyan().bold(),
+                "on".bright_white(),
+                table.bright_cyan()
+            )
+        }
+        MigrationAction::RemoveConstraint { table, constraint } => {
+            format!(
+                "{} {} {} {}",
+                "Remove constraint:".bright_red(),
+                format_constraint_type(constraint).bright_cyan().bold(),
+                "from".bright_white(),
+                table.bright_cyan()
+            )
+        }
+    }
+}
+
+fn format_constraint_type(constraint: &vespertide_core::TableConstraint) -> String {
+    match constraint {
+        vespertide_core::TableConstraint::PrimaryKey { columns } => {
+            format!("PRIMARY KEY ({})", columns.join(", "))
+        }
+        vespertide_core::TableConstraint::Unique { name, columns } => {
+            if let Some(n) = name {
+                format!("{} UNIQUE ({})", n, columns.join(", "))
+            } else {
+                format!("UNIQUE ({})", columns.join(", "))
+            }
+        }
+        vespertide_core::TableConstraint::ForeignKey {
+            name,
+            columns,
+            ref_table,
+            ..
+        } => {
+            if let Some(n) = name {
+                format!("{} FK ({}) -> {}", n, columns.join(", "), ref_table)
+            } else {
+                format!("FK ({}) -> {}", columns.join(", "), ref_table)
+            }
+        }
+        vespertide_core::TableConstraint::Check { name, expr } => {
+            if let Some(n) = name {
+                format!("{} CHECK ({})", n, expr)
+            } else {
+                format!("CHECK ({})", expr)
+            }
+        }
     }
 }
 
