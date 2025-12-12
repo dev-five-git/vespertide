@@ -10,3 +10,4 @@ description = "Rust workspace for defining database schemas in JSON and generati
 
 [dependencies]
 vespertide-macro = { workspace = true }
+vespertide-core = { workspace = true }
