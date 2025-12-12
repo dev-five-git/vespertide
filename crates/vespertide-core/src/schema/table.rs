@@ -895,4 +895,95 @@ mod tests {
             panic!("Expected DuplicateIndexColumn error");
         }
     }
+
+    #[test]
+    fn test_table_validation_error_display() {
+        let error = TableValidationError::DuplicateIndexColumn {
+            index_name: "idx_test".into(),
+            column_name: "col1".into(),
+        };
+        let error_msg = format!("{}", error);
+        assert!(error_msg.contains("idx_test"));
+        assert!(error_msg.contains("col1"));
+        assert!(error_msg.contains("Duplicate index"));
+    }
+
+    #[test]
+    fn normalize_inline_unique_str_with_different_constraint_type() {
+        // Test that other constraint types don't match in the exists check
+        let mut email_col = col("email", ColumnType::Text);
+        email_col.unique = Some(StrOrBoolOrArray::Str("uq_email".into()));
+
+        let table = TableDef {
+            name: "users".into(),
+            columns: vec![col("id", ColumnType::Integer), email_col],
+            constraints: vec![
+                // Add a PrimaryKey constraint (different type) - should not match
+                TableConstraint::PrimaryKey {
+                    columns: vec!["id".into()],
+                },
+            ],
+            indexes: vec![],
+        };
+
+        let normalized = table.normalize().unwrap();
+        // Should have: PrimaryKey (existing) + Unique (new)
+        assert_eq!(normalized.constraints.len(), 2);
+    }
+
+    #[test]
+    fn normalize_inline_unique_array_with_different_constraint_type() {
+        // Test that other constraint types don't match in the exists check for Array case
+        let mut col1 = col("col1", ColumnType::Text);
+        col1.unique = Some(StrOrBoolOrArray::Array(vec!["uq_group".into()]));
+
+        let table = TableDef {
+            name: "test".into(),
+            columns: vec![col("id", ColumnType::Integer), col1],
+            constraints: vec![
+                // Add a PrimaryKey constraint (different type) - should not match
+                TableConstraint::PrimaryKey {
+                    columns: vec!["id".into()],
+                },
+            ],
+            indexes: vec![],
+        };
+
+        let normalized = table.normalize().unwrap();
+        // Should have: PrimaryKey (existing) + Unique (new)
+        assert_eq!(normalized.constraints.len(), 2);
+    }
+
+    #[test]
+    fn normalize_duplicate_index_bool_true_same_column() {
+        // Test that Bool(true) with duplicate on same column errors
+        let mut col1 = col("col1", ColumnType::Text);
+        col1.index = Some(StrOrBoolOrArray::Bool(true));
+
+        let table = TableDef {
+            name: "test".into(),
+            columns: vec![
+                col("id", ColumnType::Integer),
+                col1.clone(),
+                {
+                    // Same column with Bool(true) again
+                    let mut c = col1.clone();
+                    c.index = Some(StrOrBoolOrArray::Bool(true));
+                    c
+                },
+            ],
+            constraints: vec![],
+            indexes: vec![],
+        };
+
+        let result = table.normalize();
+        assert!(result.is_err());
+        if let Err(TableValidationError::DuplicateIndexColumn { index_name, column_name }) = result {
+            assert!(index_name.contains("idx_test"));
+            assert!(index_name.contains("col1"));
+            assert_eq!(column_name, "col1");
+        } else {
+            panic!("Expected DuplicateIndexColumn error");
+        }
+    }
 }
