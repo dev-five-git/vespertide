@@ -199,7 +199,7 @@ mod helper_tests {
             },
         ];
         render_indexes(&mut lines, &indexes);
-        assert!(lines.len() > 0);
+        assert!(!lines.is_empty());
         assert!(lines.iter().any(|l| l.contains("idx_users_email")));
         assert!(lines.iter().any(|l| l.contains("idx_users_name_email")));
     }

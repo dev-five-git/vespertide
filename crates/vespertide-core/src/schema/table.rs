@@ -126,10 +126,8 @@ impl TableDef {
                                 }
                             }) {
                                 // Add this column to existing composite constraint
-                                if let TableConstraint::Unique { columns, .. } = existing {
-                                    if !columns.contains(&col.name) {
+                                if let TableConstraint::Unique { columns, .. } = existing && !columns.contains(&col.name) {
                                         columns.push(col.name.clone());
-                                    }
                                 }
                             } else {
                                 // Create new constraint with this column
@@ -183,13 +181,11 @@ impl TableDef {
                         let index_name = name.clone();
                         
                         // Check for duplicate - only check inline definitions, not existing table-level indexes
-                        if let Some(columns) = inline_index_column_tracker.get(name.as_str()) {
-                            if columns.contains(col.name.as_str()) {
+                        if let Some(columns) = inline_index_column_tracker.get(name.as_str()) && columns.contains(col.name.as_str()) {
                                 return Err(TableValidationError::DuplicateIndexColumn {
                                     index_name: name.clone(),
                                     column_name: col.name.clone(),
                                 });
-                            }
                         }
                         
                         if !index_groups.contains_key(&index_name) {
@@ -212,13 +208,11 @@ impl TableDef {
                         
                         // Check for duplicate (auto-generated names are unique per column, so this shouldn't happen)
                         // But we check anyway for consistency - only check inline definitions
-                        if let Some(columns) = inline_index_column_tracker.get(index_name.as_str()) {
-                            if columns.contains(col.name.as_str()) {
+                        if let Some(columns) = inline_index_column_tracker.get(index_name.as_str()) && columns.contains(col.name.as_str()) {
                                 return Err(TableValidationError::DuplicateIndexColumn {
                                     index_name: index_name.clone(),
                                     column_name: col.name.clone(),
                                 });
-                            }
                         }
                         
                         if !index_groups.contains_key(&index_name) {
@@ -253,13 +247,11 @@ impl TableDef {
                         
                         // Check for duplicate across different inline definitions
                         // Only check inline definitions, not existing table-level indexes
-                        if let Some(columns) = inline_index_column_tracker.get(index_name.as_str()) {
-                            if columns.contains(col.name.as_str()) {
+                        if let Some(columns) = inline_index_column_tracker.get(index_name.as_str()) &&columns.contains(col.name.as_str()) {
                                 return Err(TableValidationError::DuplicateIndexColumn {
                                     index_name: index_name.clone(),
                                     column_name: col.name.clone(),
                                 });
-                            }
                         }
                             
                             if !index_groups.contains_key(index_name.as_str()) {
