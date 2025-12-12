@@ -3,4 +3,4 @@
 pub use vespertide_macro::vespertide_migration;
 
 // Re-export other commonly used items
-pub use vespertide_macro::{MigrationError, MigrationOptions, run_migrations};
+pub use vespertide_core::{MigrationError, MigrationOptions};

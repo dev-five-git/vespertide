@@ -111,6 +111,22 @@
         {
           "type": "object",
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "RawSql"
+            },
+            "sql": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "sql"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
             "columns": {
               "type": "array",
               "items": {

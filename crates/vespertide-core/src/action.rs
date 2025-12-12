@@ -55,4 +55,6 @@ pub enum MigrationAction {
     RemoveIndex { table: TableName, name: IndexName },
     #[serde(rename_all = "snake_case")]
     RenameTable { from: TableName, to: TableName },
+    #[serde(rename_all = "snake_case")]
+    RawSql { sql: String },
 }
