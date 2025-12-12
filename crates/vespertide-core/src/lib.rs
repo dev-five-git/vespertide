@@ -1,10 +1,10 @@
 pub mod action;
-pub mod schema;
 pub mod migration;
+pub mod schema;
 
 pub use action::{MigrationAction, MigrationPlan};
+pub use migration::{MigrationError, MigrationOptions};
 pub use schema::{
     ColumnDef, ColumnName, ColumnType, IndexDef, IndexName, ReferenceAction, TableConstraint,
     TableDef, TableName,
 };
-pub use migration::{MigrationError, MigrationOptions};

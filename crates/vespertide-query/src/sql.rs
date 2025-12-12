@@ -183,6 +183,10 @@ pub fn build_action_queries(action: &MigrationAction) -> Result<Vec<BuiltQuery>,
                 b
             },
         }]),
+        MigrationAction::RawSql { sql } => Ok(vec![BuiltQuery {
+            sql: sql.to_string(),
+            binds: Vec::new(),
+        }]),
     }
 }
 

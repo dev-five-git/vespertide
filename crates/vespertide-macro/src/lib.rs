@@ -2,11 +2,11 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, Expr, Ident, Token};
-use syn::parse::{Parse, ParseStream};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+use syn::parse::{Parse, ParseStream};
+use syn::{Expr, Ident, Token, parse_macro_input};
 use vespertide_config::VespertideConfig;
 use vespertide_core::MigrationPlan;
 use vespertide_query::build_plan_queries;
@@ -52,7 +52,9 @@ impl Parse for MacroInput {
 pub fn vespertide_migration(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as MacroInput);
     let pool = &input.pool;
-    let version_table = input.version_table.unwrap_or_else(|| "vespertide_version".to_string());
+    let version_table = input
+        .version_table
+        .unwrap_or_else(|| "vespertide_version".to_string());
 
     // Load migration files and build SQL at compile time
     let migrations = match load_migrations_at_compile_time() {
@@ -76,7 +78,10 @@ pub fn vespertide_migration(input: TokenStream) -> TokenStream {
             Err(e) => {
                 return syn::Error::new(
                     proc_macro2::Span::call_site(),
-                    format!("Failed to build queries for migration version {}: {}", version, e),
+                    format!(
+                        "Failed to build queries for migration version {}: {}",
+                        version, e
+                    ),
                 )
                 .to_compile_error()
                 .into();

@@ -132,6 +132,7 @@ pub fn apply_action(
                 Ok(())
             }
         }
+        MigrationAction::RawSql { .. } => Ok(()), // Does not mutate in-memory schema; allowed as side-effect-only
     }
 }
 

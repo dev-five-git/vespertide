@@ -116,6 +116,13 @@ fn format_action(action: &MigrationAction) -> String {
                 to.bright_cyan().bold()
             )
         }
+        MigrationAction::RawSql { sql } => {
+            format!(
+                "{} {}",
+                "Execute raw SQL:".bright_yellow(),
+                sql.bright_cyan()
+            )
+        }
     }
 }
 
@@ -233,6 +240,10 @@ mod tests {
     #[case(
         MigrationAction::RenameTable { from: "users".into(), to: "accounts".into() },
         format!("{} {} {} {}", "Rename table:".bright_yellow(), "users".bright_cyan(), "->".bright_white(), "accounts".bright_cyan().bold())
+    )]
+    #[case(
+        MigrationAction::RawSql { sql: "SELECT 1".into() },
+        format!("{} {}", "Execute raw SQL:".bright_yellow(), "SELECT 1".bright_cyan())
     )]
     #[serial]
     fn format_action_cases(#[case] action: MigrationAction, #[case] expected: String) {

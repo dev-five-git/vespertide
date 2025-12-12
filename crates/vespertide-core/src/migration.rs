@@ -10,4 +10,3 @@ pub enum MigrationError {
     #[error("database error: {0}")]
     DatabaseError(String),
 }
-

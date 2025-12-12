@@ -1,11 +1,11 @@
-use std::time::Duration;
 use anyhow::Result;
-use sea_orm::{Database, ConnectOptions};
+use sea_orm::{ConnectOptions, Database};
+use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     println!("Hello, world!");
-    
+
     // Configure SQLite connection
     let mut opt = ConnectOptions::new("sqlite://./local.db?mode=rwc");
     opt.max_connections(100)
@@ -18,10 +18,10 @@ async fn main() -> Result<()> {
 
     // Connect to the database
     let db = Database::connect(opt).await?;
-    
+
     println!("Successfully connected to SQLite database!");
 
     vespertide::vespertide_migration!(db, version_table = "vespertide_version").await?;
-    
+
     Ok(())
 }
