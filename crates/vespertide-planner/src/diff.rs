@@ -734,5 +734,38 @@ mod tests {
                 panic!("Expected TableValidation error, got {:?}", result);
             }
         }
+
+        #[test]
+        fn diff_schemas_with_normalize_error_in_from_schema() {
+            // Test that normalize errors in 'from' schema are properly propagated
+            let mut col1 = col("col1", ColumnType::Text);
+            col1.index = Some(StrOrBoolOrArray::Str("idx1".into()));
+
+            let table = TableDef {
+                name: "test".into(),
+                columns: vec![
+                    col("id", ColumnType::Integer),
+                    col1.clone(),
+                    {
+                        // Same column with same index name - should error
+                        let mut c = col1.clone();
+                        c.index = Some(StrOrBoolOrArray::Str("idx1".into()));
+                        c
+                    },
+                ],
+                constraints: vec![],
+                indexes: vec![],
+            };
+
+            // 'from' schema has the invalid table
+            let result = diff_schemas(&[table], &[]);
+            assert!(result.is_err());
+            if let Err(PlannerError::TableValidation(msg)) = result {
+                assert!(msg.contains("Failed to normalize table"));
+                assert!(msg.contains("Duplicate index"));
+            } else {
+                panic!("Expected TableValidation error, got {:?}", result);
+            }
+        }
     }
 }
