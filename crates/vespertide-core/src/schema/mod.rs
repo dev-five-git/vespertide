@@ -1,8 +1,10 @@
 pub mod column;
 pub mod constraint;
+pub mod foreign_key;
 pub mod index;
 pub mod names;
 pub mod reference;
+pub mod str_or_bool;
 pub mod table;
 
 pub use column::{ColumnDef, ColumnType};
@@ -10,4 +12,5 @@ pub use constraint::TableConstraint;
 pub use index::IndexDef;
 pub use names::{ColumnName, IndexName, TableName};
 pub use reference::ReferenceAction;
-pub use table::TableDef;
+pub use str_or_bool::StrOrBoolOrArray;
+pub use table::{TableDef, TableValidationError};

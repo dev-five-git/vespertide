@@ -1,8 +1,14 @@
 {
   "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
+  "name": "post",
   "columns": [{
-    "name": "title",
+    "name": "id",
     "type": "Integer",
+    "nullable": false,
+    "primary_key": true
+  }, {
+    "name": "title",
+    "type": "Text",
     "nullable": false
   }, {
     "name": "content",
@@ -15,21 +21,18 @@
   }, {
     "name": "updated_at",
     "type": "Timestamp",
-    "nullable": true
+    "nullable": true,
+    "index": ["tuple","tuple2"]
   }, {
     "name": "user_id",
     "type": "Integer",
-    "nullable": false
+    "nullable": false,
+    "foreign_key": {
+      "ref_table": "user",
+      "ref_columns": ["id"]
+    },
+    "index": ["tuple","tuple2"]
   }],
-  "constraints": [{
-    "type": "foreign_key",
-    "columns": ["user_id"],
-    "ref_table": "user",
-    "ref_columns": ["id"]
-  }, {
-    "type": "primary_key",
-    "columns": ["id"]
-  }],
-  "indexes": [],
-  "name": "post"
+  "constraints": [],
+  "indexes": []
 }

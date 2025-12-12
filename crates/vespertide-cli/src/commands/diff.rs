@@ -123,6 +123,58 @@ fn format_action(action: &MigrationAction) -> String {
                 sql.bright_cyan()
             )
         }
+        MigrationAction::AddConstraint { table, constraint } => {
+            format!(
+                "{} {} {} {}",
+                "Add constraint:".bright_green(),
+                format_constraint_type(constraint).bright_cyan().bold(),
+                "on".bright_white(),
+                table.bright_cyan()
+            )
+        }
+        MigrationAction::RemoveConstraint { table, constraint } => {
+            format!(
+                "{} {} {} {}",
+                "Remove constraint:".bright_red(),
+                format_constraint_type(constraint).bright_cyan().bold(),
+                "from".bright_white(),
+                table.bright_cyan()
+            )
+        }
+    }
+}
+
+fn format_constraint_type(constraint: &vespertide_core::TableConstraint) -> String {
+    match constraint {
+        vespertide_core::TableConstraint::PrimaryKey { columns } => {
+            format!("PRIMARY KEY ({})", columns.join(", "))
+        }
+        vespertide_core::TableConstraint::Unique { name, columns } => {
+            if let Some(n) = name {
+                format!("{} UNIQUE ({})", n, columns.join(", "))
+            } else {
+                format!("UNIQUE ({})", columns.join(", "))
+            }
+        }
+        vespertide_core::TableConstraint::ForeignKey {
+            name,
+            columns,
+            ref_table,
+            ..
+        } => {
+            if let Some(n) = name {
+                format!("{} FK ({}) -> {}", n, columns.join(", "), ref_table)
+            } else {
+                format!("FK ({}) -> {}", columns.join(", "), ref_table)
+            }
+        }
+        vespertide_core::TableConstraint::Check { name, expr } => {
+            if let Some(n) = name {
+                format!("{} CHECK ({})", n, expr)
+            } else {
+                format!("CHECK ({})", expr)
+            }
+        }
     }
 }
 
@@ -172,6 +224,11 @@ mod tests {
                 r#type: ColumnType::Integer,
                 nullable: false,
                 default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
             }],
             constraints: vec![],
             indexes: vec![],
@@ -197,6 +254,11 @@ mod tests {
                 r#type: ColumnType::Text,
                 nullable: true,
                 default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
             },
             fill_with: None,
         },
@@ -244,6 +306,92 @@ mod tests {
     #[case(
         MigrationAction::RawSql { sql: "SELECT 1".into() },
         format!("{} {}", "Execute raw SQL:".bright_yellow(), "SELECT 1".bright_cyan())
+    )]
+    #[case(
+        MigrationAction::AddConstraint {
+            table: "users".into(),
+            constraint: vespertide_core::TableConstraint::PrimaryKey {
+                columns: vec!["id".into()],
+            },
+        },
+        format!("{} {} {} {}", "Add constraint:".bright_green(), "PRIMARY KEY (id)".bright_cyan().bold(), "on".bright_white(), "users".bright_cyan())
+    )]
+    #[case(
+        MigrationAction::AddConstraint {
+            table: "users".into(),
+            constraint: vespertide_core::TableConstraint::Unique {
+                name: Some("unique_email".into()),
+                columns: vec!["email".into()],
+            },
+        },
+        format!("{} {} {} {}", "Add constraint:".bright_green(), "unique_email UNIQUE (email)".bright_cyan().bold(), "on".bright_white(), "users".bright_cyan())
+    )]
+    #[case(
+        MigrationAction::AddConstraint {
+            table: "posts".into(),
+            constraint: vespertide_core::TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            },
+        },
+        format!("{} {} {} {}", "Add constraint:".bright_green(), "fk_user FK (user_id) -> users".bright_cyan().bold(), "on".bright_white(), "posts".bright_cyan())
+    )]
+    #[case(
+        MigrationAction::AddConstraint {
+            table: "users".into(),
+            constraint: vespertide_core::TableConstraint::Check {
+                name: Some("check_age".into()),
+                expr: "age > 0".into(),
+            },
+        },
+        format!("{} {} {} {}", "Add constraint:".bright_green(), "check_age CHECK (age > 0)".bright_cyan().bold(), "on".bright_white(), "users".bright_cyan())
+    )]
+    #[case(
+        MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: vespertide_core::TableConstraint::PrimaryKey {
+                columns: vec!["id".into()],
+            },
+        },
+        format!("{} {} {} {}", "Remove constraint:".bright_red(), "PRIMARY KEY (id)".bright_cyan().bold(), "from".bright_white(), "users".bright_cyan())
+    )]
+    #[case(
+        MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: vespertide_core::TableConstraint::Unique {
+                name: None,
+                columns: vec!["email".into()],
+            },
+        },
+        format!("{} {} {} {}", "Remove constraint:".bright_red(), "UNIQUE (email)".bright_cyan().bold(), "from".bright_white(), "users".bright_cyan())
+    )]
+    #[case(
+        MigrationAction::RemoveConstraint {
+            table: "posts".into(),
+            constraint: vespertide_core::TableConstraint::ForeignKey {
+                name: None,
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            },
+        },
+        format!("{} {} {} {}", "Remove constraint:".bright_red(), "FK (user_id) -> users".bright_cyan().bold(), "from".bright_white(), "posts".bright_cyan())
+    )]
+    #[case(
+        MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: vespertide_core::TableConstraint::Check {
+                name: None,
+                expr: "age > 0".into(),
+            },
+        },
+        format!("{} {} {} {}", "Remove constraint:".bright_red(), "CHECK (age > 0)".bright_cyan().bold(), "from".bright_white(), "users".bright_cyan())
     )]
     #[serial]
     fn format_action_cases(#[case] action: MigrationAction, #[case] expected: String) {

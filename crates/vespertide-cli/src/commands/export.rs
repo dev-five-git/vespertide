@@ -197,6 +197,11 @@ mod tests {
                 r#type: ColumnType::Integer,
                 nullable: false,
                 default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
             }],
             constraints: vec![TableConstraint::PrimaryKey {
                 columns: vec!["id".into()],

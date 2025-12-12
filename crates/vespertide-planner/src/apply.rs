@@ -133,6 +133,22 @@ pub fn apply_action(
             }
         }
         MigrationAction::RawSql { .. } => Ok(()), // Does not mutate in-memory schema; allowed as side-effect-only
+        MigrationAction::AddConstraint { table, constraint } => {
+            let tbl = schema
+                .iter_mut()
+                .find(|t| t.name == *table)
+                .ok_or_else(|| PlannerError::TableNotFound(table.clone()))?;
+            tbl.constraints.push(constraint.clone());
+            Ok(())
+        }
+        MigrationAction::RemoveConstraint { table, constraint } => {
+            let tbl = schema
+                .iter_mut()
+                .find(|t| t.name == *table)
+                .ok_or_else(|| PlannerError::TableNotFound(table.clone()))?;
+            tbl.constraints.retain(|c| c != constraint);
+            Ok(())
+        }
     }
 }
 
@@ -223,6 +239,11 @@ mod tests {
             r#type: ty,
             nullable: true,
             default: None,
+            comment: None,
+            primary_key: None,
+            unique: None,
+            index: None,
+            foreign_key: None,
         }
     }
 
@@ -532,6 +553,47 @@ mod tests {
             vec![],
             vec![],
         )],
+    })]
+    #[case(SuccessCase {
+        initial: vec![table("users", vec![col("id", ColumnType::Integer)], vec![], vec![])],
+        actions: vec![MigrationAction::AddConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::PrimaryKey {
+                columns: vec!["id".into()],
+            },
+        }],
+        expected: vec![table(
+            "users",
+            vec![col("id", ColumnType::Integer)],
+            vec![TableConstraint::PrimaryKey {
+                columns: vec!["id".into()],
+            }],
+            vec![],
+        )],
+    })]
+    #[case(SuccessCase {
+        initial: vec![table(
+            "users",
+            vec![col("id", ColumnType::Integer)],
+            vec![TableConstraint::PrimaryKey {
+                columns: vec!["id".into()],
+            }],
+            vec![],
+        )],
+        actions: vec![MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::PrimaryKey {
+                columns: vec!["id".into()],
+            },
+        }],
+        expected: vec![table("users", vec![col("id", ColumnType::Integer)], vec![], vec![])],
+    })]
+    #[case(SuccessCase {
+        initial: vec![table("users", vec![col("id", ColumnType::Integer)], vec![], vec![])],
+        actions: vec![MigrationAction::RawSql {
+            sql: "SELECT 1;".to_string(),
+        }],
+        expected: vec![table("users", vec![col("id", ColumnType::Integer)], vec![], vec![])],
     })]
     fn apply_action_success_cases(#[case] case: SuccessCase) {
         let mut schema = case.initial;

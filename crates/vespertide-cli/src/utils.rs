@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use vespertide_config::{FileFormat, VespertideConfig};
@@ -19,7 +19,7 @@ pub fn load_config() -> Result<VespertideConfig> {
     Ok(config)
 }
 
-/// Load all model definitions from the models directory.
+/// Load all model definitions from the models directory (recursively).
 pub fn load_models(config: &VespertideConfig) -> Result<Vec<TableDef>> {
     let models_dir = config.models_dir();
     if !models_dir.exists() {
@@ -27,14 +27,34 @@ pub fn load_models(config: &VespertideConfig) -> Result<Vec<TableDef>> {
     }
 
     let mut tables = Vec::new();
-    let entries = fs::read_dir(models_dir).context("read models directory")?;
+    load_models_recursive(models_dir, &mut tables)?;
+
+    // Validate schema integrity before returning
+    if !tables.is_empty() {
+        validate_schema(&tables).map_err(|e| anyhow::anyhow!("schema validation failed: {}", e))?;
+    }
+
+    Ok(tables)
+}
+
+/// Recursively walk directory and load model files.
+fn load_models_recursive(dir: &Path, tables: &mut Vec<TableDef>) -> Result<()> {
+    let entries =
+        fs::read_dir(dir).with_context(|| format!("read models directory: {}", dir.display()))?;
 
     for entry in entries {
         let entry = entry.context("read directory entry")?;
         let path = entry.path();
+
+        if path.is_dir() {
+            // Recursively process subdirectories
+            load_models_recursive(&path, tables)?;
+            continue;
+        }
+
         if path.is_file() {
             let ext = path.extension().and_then(|s| s.to_str());
-            if ext == Some("json") || ext == Some("yaml") || ext == Some("yml") {
+            if matches!(ext, Some("json") | Some("yaml") | Some("yml")) {
                 let content = fs::read_to_string(&path)
                     .with_context(|| format!("read model file: {}", path.display()))?;
 
@@ -51,12 +71,7 @@ pub fn load_models(config: &VespertideConfig) -> Result<Vec<TableDef>> {
         }
     }
 
-    // Validate schema integrity before returning
-    if !tables.is_empty() {
-        validate_schema(&tables).map_err(|e| anyhow::anyhow!("schema validation failed: {}", e))?;
-    }
-
-    Ok(tables)
+    Ok(())
 }
 
 /// Load all migration plans from the migrations directory, sorted by version.
@@ -199,6 +214,7 @@ fn render_migration_name(pattern: &str, version: u32, sanitized_comment: &str) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
     use serial_test::serial;
     use std::fs;
     use tempfile::tempdir;
@@ -252,6 +268,11 @@ mod tests {
                 r#type: ColumnType::Integer,
                 nullable: false,
                 default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
             }],
             constraints: vec![],
             indexes: vec![],
@@ -261,6 +282,40 @@ mod tests {
         let models = load_models(&VespertideConfig::default()).unwrap();
         assert_eq!(models.len(), 1);
         assert_eq!(models[0].name, "users");
+    }
+
+    #[test]
+    #[serial]
+    fn load_models_recursive_processes_subdirectories() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        write_config();
+
+        fs::create_dir_all("models/subdir").unwrap();
+        
+        // Create model in subdirectory
+        let table = TableDef {
+            name: "subtable".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Integer,
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            indexes: vec![],
+        };
+        let content = serde_json::to_string_pretty(&table).unwrap();
+        fs::write("models/subdir/subtable.json", content).unwrap();
+
+        let models = load_models(&VespertideConfig::default()).unwrap();
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].name, "subtable");
     }
 
     #[test]
@@ -300,33 +355,19 @@ mod tests {
         assert_eq!(plans[1].version, 2);
     }
 
-    #[test]
-    fn migration_filename_respects_format_and_sanitizes_comment() {
-        let name = migration_filename_with_format_and_pattern(
-            5,
-            Some("Hello! World"),
-            FileFormat::Yml,
-            "%04v_%m",
-        );
-        assert_eq!(name, "0005_hello__world.yml");
-    }
-
-    #[test]
-    fn migration_filename_handles_zero_width_and_trim() {
-        // width 0 falls back to default version and trailing separators are trimmed
-        let name = migration_filename_with_format_and_pattern(3, None, FileFormat::Json, "%0v__");
-        assert_eq!(name, "0003.json");
-    }
-
-    #[test]
-    fn migration_filename_replaces_version_directly() {
-        let name = migration_filename_with_format_and_pattern(12, None, FileFormat::Json, "%v");
-        assert_eq!(name, "0012.json");
-    }
-
-    #[test]
-    fn migration_filename_uses_default_when_comment_only_and_empty() {
-        let name = migration_filename_with_format_and_pattern(7, None, FileFormat::Json, "%m");
-        assert_eq!(name, "0007.json");
+    #[rstest]
+    #[case(5, Some("Hello! World"), FileFormat::Yml, "%04v_%m", "0005_hello__world.yml")]
+    #[case(3, None, FileFormat::Json, "%0v__", "0003.json")] // width 0 falls back to default version and trailing separators are trimmed
+    #[case(12, None, FileFormat::Json, "%v", "0012.json")]
+    #[case(7, None, FileFormat::Json, "%m", "0007.json")] // uses default when comment only and empty
+    fn migration_filename_with_format_and_pattern_tests(
+        #[case] version: u32,
+        #[case] comment: Option<&str>,
+        #[case] format: FileFormat,
+        #[case] pattern: &str,
+        #[case] expected: &str,
+    ) {
+        let name = migration_filename_with_format_and_pattern(version, comment, format, pattern);
+        assert_eq!(name, expected);
     }
 }

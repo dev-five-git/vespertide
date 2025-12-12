@@ -179,6 +179,77 @@ fn unique_name(base: &str, used: &mut HashSet<String>) -> String {
 }
 
 #[cfg(test)]
+mod helper_tests {
+    use super::*;
+    use vespertide_core::{ColumnType, IndexDef};
+
+    #[test]
+    fn test_render_indexes() {
+        let mut lines = Vec::new();
+        let indexes = vec![
+            IndexDef {
+                name: "idx_users_email".into(),
+                columns: vec!["email".into()],
+                unique: false,
+            },
+            IndexDef {
+                name: "idx_users_name_email".into(),
+                columns: vec!["name".into(), "email".into()],
+                unique: true,
+            },
+        ];
+        render_indexes(&mut lines, &indexes);
+        assert!(!lines.is_empty());
+        assert!(lines.iter().any(|l| l.contains("idx_users_email")));
+        assert!(lines.iter().any(|l| l.contains("idx_users_name_email")));
+    }
+
+    #[test]
+    fn test_render_indexes_empty() {
+        let mut lines = Vec::new();
+        render_indexes(&mut lines, &[]);
+        // Should not add anything when indexes are empty
+        assert_eq!(lines.len(), 0);
+    }
+
+    #[test]
+    fn test_rust_type() {
+        assert_eq!(rust_type(&ColumnType::Integer, false), "i32");
+        assert_eq!(rust_type(&ColumnType::Integer, true), "Option<i32>");
+        assert_eq!(rust_type(&ColumnType::BigInt, false), "i64");
+        assert_eq!(rust_type(&ColumnType::BigInt, true), "Option<i64>");
+        assert_eq!(rust_type(&ColumnType::Text, false), "String");
+        assert_eq!(rust_type(&ColumnType::Text, true), "Option<String>");
+        assert_eq!(rust_type(&ColumnType::Boolean, false), "bool");
+        assert_eq!(rust_type(&ColumnType::Boolean, true), "Option<bool>");
+        assert_eq!(rust_type(&ColumnType::Timestamp, false), "DateTimeWithTimeZone");
+        assert_eq!(rust_type(&ColumnType::Timestamp, true), "Option<DateTimeWithTimeZone>");
+        assert_eq!(rust_type(&ColumnType::Custom("MyType".into()), false), "MyType");
+        assert_eq!(rust_type(&ColumnType::Custom("MyType".into()), true), "Option<MyType>");
+    }
+
+    #[test]
+    fn test_sanitize_field_name() {
+        assert_eq!(sanitize_field_name("normal_name"), "normal_name");
+        assert_eq!(sanitize_field_name("123name"), "_123name");
+        assert_eq!(sanitize_field_name("name-with-dash"), "name_with_dash");
+        assert_eq!(sanitize_field_name("name.with.dot"), "name_with_dot");
+        assert_eq!(sanitize_field_name(""), "_col");
+        assert_eq!(sanitize_field_name("a"), "a");
+    }
+
+    #[test]
+    fn test_unique_name() {
+        let mut used = std::collections::HashSet::new();
+        assert_eq!(unique_name("test", &mut used), "test");
+        assert_eq!(unique_name("test", &mut used), "test_1");
+        assert_eq!(unique_name("test", &mut used), "test_2");
+        assert_eq!(unique_name("other", &mut used), "other");
+        assert_eq!(unique_name("other", &mut used), "other_1");
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use insta::{assert_snapshot, with_settings};
@@ -188,8 +259,8 @@ mod tests {
     #[case("basic_single_pk", TableDef {
         name: "users".into(),
         columns: vec![
-            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None },
-            ColumnDef { name: "display_name".into(), r#type: ColumnType::Text, nullable: true, default: None },
+            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "display_name".into(), r#type: ColumnType::Text, nullable: true, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
         ],
         constraints: vec![TableConstraint::PrimaryKey { columns: vec!["id".into()] }],
         indexes: vec![],
@@ -197,8 +268,8 @@ mod tests {
     #[case("composite_pk", TableDef {
         name: "accounts".into(),
         columns: vec![
-            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None },
-            ColumnDef { name: "tenant_id".into(), r#type: ColumnType::BigInt, nullable: false, default: None },
+            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "tenant_id".into(), r#type: ColumnType::BigInt, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
         ],
         constraints: vec![TableConstraint::PrimaryKey { columns: vec!["id".into(), "tenant_id".into()] }],
         indexes: vec![],
@@ -206,9 +277,9 @@ mod tests {
     #[case("fk_single", TableDef {
         name: "posts".into(),
         columns: vec![
-            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None },
-            ColumnDef { name: "user_id".into(), r#type: ColumnType::Integer, nullable: false, default: None },
-            ColumnDef { name: "title".into(), r#type: ColumnType::Text, nullable: true, default: None },
+            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "user_id".into(), r#type: ColumnType::Integer, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "title".into(), r#type: ColumnType::Text, nullable: true, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
         ],
         constraints: vec![
             TableConstraint::PrimaryKey { columns: vec!["id".into()] },
@@ -226,9 +297,9 @@ mod tests {
     #[case("fk_composite", TableDef {
         name: "invoices".into(),
         columns: vec![
-            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None },
-            ColumnDef { name: "customer_id".into(), r#type: ColumnType::Integer, nullable: false, default: None },
-            ColumnDef { name: "customer_tenant_id".into(), r#type: ColumnType::Integer, nullable: false, default: None },
+            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "customer_id".into(), r#type: ColumnType::Integer, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "customer_tenant_id".into(), r#type: ColumnType::Integer, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
         ],
         constraints: vec![
             TableConstraint::PrimaryKey { columns: vec!["id".into()] },
