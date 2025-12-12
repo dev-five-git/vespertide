@@ -36,10 +36,36 @@
     "ColumnDef": {
       "type": "object",
       "properties": {
+        "comment": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "default": {
           "type": [
             "string",
             "null"
+          ]
+        },
+        "foreign_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ForeignKeyDef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "index": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StrOrBool"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "name": {
@@ -48,8 +74,24 @@
         "nullable": {
           "type": "boolean"
         },
+        "primary_key": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "type": {
           "$ref": "#/$defs/ColumnType"
+        },
+        "unique": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StrOrBool"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -84,6 +126,44 @@
         }
       ]
     },
+    "ForeignKeyDef": {
+      "type": "object",
+      "properties": {
+        "on_delete": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReferenceAction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "on_update": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReferenceAction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ref_columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ref_table": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref_table",
+        "ref_columns"
+      ]
+    },
     "IndexDef": {
       "type": "object",
       "properties": {
@@ -108,22 +188,6 @@
     },
     "MigrationAction": {
       "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "RawSql"
-            },
-            "sql": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "sql"
-          ]
-        },
         {
           "type": "object",
           "properties": {
@@ -324,6 +388,22 @@
             "from",
             "to"
           ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "sql": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "RawSql"
+            }
+          },
+          "required": [
+            "type",
+            "sql"
+          ]
         }
       ]
     },
@@ -335,6 +415,16 @@
         "SetNull",
         "SetDefault",
         "NoAction"
+      ]
+    },
+    "StrOrBool": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        }
       ]
     },
     "TableConstraint": {

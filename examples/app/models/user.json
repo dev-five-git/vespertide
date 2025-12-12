@@ -1,11 +1,20 @@
 {
-  "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
+  "$schema": "../../../schemas/model.schema.json",
   "columns": [{
     "name": "aa",
     "type": "Integer",
-    "nullable": false
+    "nullable": false,
+    "foreign_key": {
+      "ref_table": "post",
+      "ref_columns": ["id"]
+    }
   }],
-  "constraints": [],
+  "constraints": [{
+    "type":"foreign_key",
+    "columns": ["aa"],
+    "ref_table": "post",
+    "ref_columns": ["id"]
+  }],
   "indexes": [],
   "name": "user"
 }
