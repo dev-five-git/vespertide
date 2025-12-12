@@ -630,6 +630,119 @@ mod tests {
             vec!["old_users".to_string(), "new_users".to_string()],
         )]
     )]
+    #[case::raw_sql(
+        MigrationAction::RawSql {
+            sql: "SELECT 1;".to_string(),
+        },
+        vec![("SELECT 1;".to_string(), vec![])]
+    )]
+    #[case::add_constraint_primary_key(
+        MigrationAction::AddConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::PrimaryKey {
+                columns: vec!["id".into()],
+            },
+        },
+        vec![(
+            "ALTER TABLE $1 ADD PRIMARY KEY ($2);".to_string(),
+            vec!["users".to_string(), "id".to_string()],
+        )]
+    )]
+    #[case::add_constraint_unique(
+        MigrationAction::AddConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Unique {
+                name: Some("unique_email".into()),
+                columns: vec!["email".into()],
+            },
+        },
+        vec![(
+            "ALTER TABLE $1 ADD CONSTRAINT $2 UNIQUE ($3);".to_string(),
+            vec!["users".to_string(), "unique_email".to_string(), "email".to_string()],
+        )]
+    )]
+    #[case::remove_constraint_primary_key(
+        MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::PrimaryKey {
+                columns: vec!["id".into()],
+            },
+        },
+        vec![("ALTER TABLE $1 DROP CONSTRAINT $1_pkey;".to_string(), vec!["users".to_string()])]
+    )]
+    #[case::remove_constraint_unique_named(
+        MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Unique {
+                name: Some("unique_email".into()),
+                columns: vec!["email".into()],
+            },
+        },
+        vec![(
+            "ALTER TABLE $1 DROP CONSTRAINT $2;".to_string(),
+            vec!["users".to_string(), "unique_email".to_string()],
+        )]
+    )]
+    #[case::remove_constraint_unique_unnamed(
+        MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Unique {
+                name: None,
+                columns: vec!["email".into()],
+            },
+        },
+        vec![(
+            "ALTER TABLE $1 DROP CONSTRAINT $2;".to_string(),
+            vec!["users".to_string(), "users_email_key".to_string()],
+        )]
+    )]
+    #[case::remove_constraint_foreign_key_named(
+        MigrationAction::RemoveConstraint {
+            table: "posts".into(),
+            constraint: TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            },
+        },
+        vec![(
+            "ALTER TABLE $1 DROP CONSTRAINT $2;".to_string(),
+            vec!["posts".to_string(), "fk_user".to_string()],
+        )]
+    )]
+    #[case::remove_constraint_foreign_key_unnamed(
+        MigrationAction::RemoveConstraint {
+            table: "posts".into(),
+            constraint: TableConstraint::ForeignKey {
+                name: None,
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            },
+        },
+        vec![(
+            "ALTER TABLE $1 DROP CONSTRAINT $2;".to_string(),
+            vec!["posts".to_string(), "posts_user_id_fkey".to_string()],
+        )]
+    )]
+    #[case::remove_constraint_check_named(
+        MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Check {
+                name: Some("check_age".into()),
+                expr: "age > 0".into(),
+            },
+        },
+        vec![(
+            "ALTER TABLE $1 DROP CONSTRAINT $2;".to_string(),
+            vec!["users".to_string(), "check_age".to_string()],
+        )]
+    )]
     fn test_build_action_queries(
         #[case] action: MigrationAction,
         #[case] expected: Vec<(String, Vec<String>)>,
@@ -895,5 +1008,19 @@ mod tests {
     fn test_reference_action_sql(#[case] action: ReferenceAction, #[case] expected: &str) {
         let mut binds = Vec::new();
         assert_eq!(reference_action_sql(&action, &mut binds), expected);
+    }
+
+    #[test]
+    fn test_remove_constraint_check_unnamed_error() {
+        let action = MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Check {
+                name: None,
+                expr: "age > 0".into(),
+            },
+        };
+        let result = build_action_queries(&action);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Cannot drop unnamed CHECK constraint"));
     }
 }
