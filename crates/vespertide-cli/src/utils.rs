@@ -39,8 +39,8 @@ pub fn load_models(config: &VespertideConfig) -> Result<Vec<TableDef>> {
 
 /// Recursively walk directory and load model files.
 fn load_models_recursive(dir: &Path, tables: &mut Vec<TableDef>) -> Result<()> {
-    let entries = fs::read_dir(dir)
-        .with_context(|| format!("read models directory: {}", dir.display()))?;
+    let entries =
+        fs::read_dir(dir).with_context(|| format!("read models directory: {}", dir.display()))?;
 
     for entry in entries {
         let entry = entry.context("read directory entry")?;

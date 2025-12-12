@@ -212,7 +212,7 @@ pub fn build_action_queries(action: &MigrationAction) -> Result<Vec<BuiltQuery>,
                     } else {
                         // Generate default constraint name for unnamed unique
                         let cols = columns.join("_");
-                        let constraint_name = bind(&mut binds, &format!("{}_{}_key", table, cols));
+                        let constraint_name = bind(&mut binds, format!("{}_{}_key", table, cols));
                         format!("ALTER TABLE {t} DROP CONSTRAINT {constraint_name};")
                     }
                 }
@@ -223,7 +223,7 @@ pub fn build_action_queries(action: &MigrationAction) -> Result<Vec<BuiltQuery>,
                     } else {
                         // Generate default constraint name for unnamed foreign key
                         let cols = columns.join("_");
-                        let constraint_name = bind(&mut binds, &format!("{}_{}_fkey", table, cols));
+                        let constraint_name = bind(&mut binds, format!("{}_{}_fkey", table, cols));
                         format!("ALTER TABLE {t} DROP CONSTRAINT {constraint_name};")
                     }
                 }
@@ -1021,6 +1021,11 @@ mod tests {
         };
         let result = build_action_queries(&action);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Cannot drop unnamed CHECK constraint"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Cannot drop unnamed CHECK constraint")
+        );
     }
 }

@@ -18,10 +18,7 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
         .iter()
         .map(|t| (t.name.as_str(), t))
         .collect();
-    let to_map: HashMap<_, _> = to_normalized
-        .iter()
-        .map(|t| (t.name.as_str(), t))
-        .collect();
+    let to_map: HashMap<_, _> = to_normalized.iter().map(|t| (t.name.as_str(), t)).collect();
 
     // Drop tables that disappeared.
     for name in from_map.keys() {
@@ -363,8 +360,8 @@ mod tests {
     // Tests for inline column constraints normalization
     mod inline_constraints {
         use super::*;
-        use vespertide_core::{StrOrBool, TableConstraint};
         use vespertide_core::schema::foreign_key::ForeignKeyDef;
+        use vespertide_core::{StrOrBool, TableConstraint};
 
         fn col_with_pk(name: &str, ty: ColumnType) -> ColumnDef {
             ColumnDef {
@@ -433,7 +430,10 @@ mod tests {
                 &[],
                 &[table(
                     "users",
-                    vec![col_with_pk("id", ColumnType::Integer), col("name", ColumnType::Text)],
+                    vec![
+                        col_with_pk("id", ColumnType::Integer),
+                        col("name", ColumnType::Text),
+                    ],
                     vec![],
                     vec![],
                 )],
@@ -458,7 +458,10 @@ mod tests {
                 &[],
                 &[table(
                     "users",
-                    vec![col("id", ColumnType::Integer), col_with_unique("email", ColumnType::Text)],
+                    vec![
+                        col("id", ColumnType::Integer),
+                        col_with_unique("email", ColumnType::Text),
+                    ],
                     vec![],
                     vec![],
                 )],
@@ -483,7 +486,10 @@ mod tests {
                 &[],
                 &[table(
                     "users",
-                    vec![col("id", ColumnType::Integer), col_with_index("name", ColumnType::Text)],
+                    vec![
+                        col("id", ColumnType::Integer),
+                        col_with_index("name", ColumnType::Text),
+                    ],
                     vec![],
                     vec![],
                 )],
@@ -492,7 +498,10 @@ mod tests {
 
             // Should have CreateTable + AddIndex
             assert_eq!(plan.actions.len(), 2);
-            assert!(matches!(&plan.actions[0], MigrationAction::CreateTable { .. }));
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::CreateTable { .. }
+            ));
             if let MigrationAction::AddIndex { index, .. } = &plan.actions[1] {
                 assert_eq!(index.name, "idx_users_name");
                 assert_eq!(index.columns, vec!["name".to_string()]);
@@ -538,13 +547,19 @@ mod tests {
             let plan = diff_schemas(
                 &[table(
                     "users",
-                    vec![col("id", ColumnType::Integer), col("name", ColumnType::Text)],
+                    vec![
+                        col("id", ColumnType::Integer),
+                        col("name", ColumnType::Text),
+                    ],
                     vec![],
                     vec![],
                 )],
                 &[table(
                     "users",
-                    vec![col("id", ColumnType::Integer), col_with_index("name", ColumnType::Text)],
+                    vec![
+                        col("id", ColumnType::Integer),
+                        col_with_index("name", ColumnType::Text),
+                    ],
                     vec![],
                     vec![],
                 )],
@@ -583,7 +598,12 @@ mod tests {
 
             let plan = diff_schemas(
                 &[],
-                &[table("users", vec![id_col, email_col, name_col, org_id_col], vec![], vec![])],
+                &[table(
+                    "users",
+                    vec![id_col, email_col, name_col, org_id_col],
+                    vec![],
+                    vec![],
+                )],
             )
             .unwrap();
 

@@ -1,5 +1,7 @@
 use schemars::JsonSchema;
+
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use crate::schema::{
     StrOrBool, column::ColumnDef, constraint::TableConstraint, index::IndexDef, names::TableName,
@@ -36,7 +38,9 @@ impl TableDef {
                 .iter()
                 .any(|c| matches!(c, TableConstraint::PrimaryKey { .. }));
             if !has_pk {
-                constraints.push(TableConstraint::PrimaryKey { columns: pk_columns });
+                constraints.push(TableConstraint::PrimaryKey {
+                    columns: pk_columns,
+                });
             }
         }
 
@@ -67,28 +71,6 @@ impl TableDef {
                 }
             }
 
-            // Handle inline index
-            if let Some(ref index_val) = col.index {
-                let index_name = match index_val {
-                    StrOrBool::Str(name) => name.clone(),
-                    StrOrBool::Bool(true) => format!("idx_{}_{}", self.name, col.name),
-                    StrOrBool::Bool(false) => continue,
-                };
-
-                // Check if this index already exists
-                let exists = indexes.iter().any(|i| {
-                    i.columns.len() == 1 && i.columns[0] == col.name
-                });
-
-                if !exists {
-                    indexes.push(IndexDef {
-                        name: index_name,
-                        columns: vec![col.name.clone()],
-                        unique: false,
-                    });
-                }
-            }
-
             // Handle inline foreign_key
             if let Some(ref fk) = col.foreign_key {
                 // Check if this foreign key already exists
@@ -110,6 +92,48 @@ impl TableDef {
                         on_update: fk.on_update.clone(),
                     });
                 }
+            }
+        }
+
+        // Group columns by index name to create composite indexes
+        // Use a HashMap to group, but preserve column order by tracking first occurrence
+        let mut index_groups: HashMap<String, Vec<String>> = HashMap::new();
+        let mut index_order: Vec<String> = Vec::new(); // Preserve order of first occurrence
+
+        for col in &self.columns {
+            if let Some(ref index_val) = col.index {
+                let index_name = match index_val {
+                    StrOrBool::Str(name) => name.clone(),
+                    StrOrBool::Bool(true) => format!("idx_{}_{}", self.name, col.name),
+                    StrOrBool::Bool(false) => continue,
+                };
+
+                if !index_groups.contains_key(&index_name) {
+                    index_order.push(index_name.clone());
+                }
+
+                index_groups
+                    .entry(index_name)
+                    .or_default()
+                    .push(col.name.clone());
+            }
+        }
+
+        // Create indexes from grouped columns in order
+        for index_name in index_order {
+            let columns = index_groups.get(&index_name).unwrap().clone();
+
+            // Check if this index already exists (by name or by exact column match)
+            let exists = indexes
+                .iter()
+                .any(|i| i.name == index_name || (i.columns == columns));
+
+            if !exists {
+                indexes.push(IndexDef {
+                    name: index_name,
+                    columns,
+                    unique: false,
+                });
             }
         }
 
@@ -346,6 +370,80 @@ mod tests {
         assert_eq!(normalized.constraints.len(), 3);
         // Should have: 1 index
         assert_eq!(normalized.indexes.len(), 1);
+    }
+
+    #[test]
+    fn normalize_composite_index_from_string_name() {
+        let mut updated_at_col = col("updated_at", ColumnType::Timestamp);
+        updated_at_col.index = Some(StrOrBool::Str("tuple".into()));
+
+        let mut user_id_col = col("user_id", ColumnType::Integer);
+        user_id_col.index = Some(StrOrBool::Str("tuple".into()));
+
+        let table = TableDef {
+            name: "post".into(),
+            columns: vec![col("id", ColumnType::Integer), updated_at_col, user_id_col],
+            constraints: vec![],
+            indexes: vec![],
+        };
+
+        let normalized = table.normalize();
+        assert_eq!(normalized.indexes.len(), 1);
+        assert_eq!(normalized.indexes[0].name, "tuple");
+        assert_eq!(
+            normalized.indexes[0].columns,
+            vec!["updated_at".to_string(), "user_id".to_string()]
+        );
+        assert!(!normalized.indexes[0].unique);
+    }
+
+    #[test]
+    fn normalize_multiple_different_indexes() {
+        let mut col1 = col("col1", ColumnType::Text);
+        col1.index = Some(StrOrBool::Str("idx_a".into()));
+
+        let mut col2 = col("col2", ColumnType::Text);
+        col2.index = Some(StrOrBool::Str("idx_a".into()));
+
+        let mut col3 = col("col3", ColumnType::Text);
+        col3.index = Some(StrOrBool::Str("idx_b".into()));
+
+        let mut col4 = col("col4", ColumnType::Text);
+        col4.index = Some(StrOrBool::Bool(true));
+
+        let table = TableDef {
+            name: "test".into(),
+            columns: vec![col("id", ColumnType::Integer), col1, col2, col3, col4],
+            constraints: vec![],
+            indexes: vec![],
+        };
+
+        let normalized = table.normalize();
+        assert_eq!(normalized.indexes.len(), 3);
+
+        // Check idx_a composite index
+        let idx_a = normalized
+            .indexes
+            .iter()
+            .find(|i| i.name == "idx_a")
+            .unwrap();
+        assert_eq!(idx_a.columns, vec!["col1".to_string(), "col2".to_string()]);
+
+        // Check idx_b single column index
+        let idx_b = normalized
+            .indexes
+            .iter()
+            .find(|i| i.name == "idx_b")
+            .unwrap();
+        assert_eq!(idx_b.columns, vec!["col3".to_string()]);
+
+        // Check auto-generated index for col4
+        let idx_col4 = normalized
+            .indexes
+            .iter()
+            .find(|i| i.name == "idx_test_col4")
+            .unwrap();
+        assert_eq!(idx_col4.columns, vec!["col4".to_string()]);
     }
 
     #[test]
