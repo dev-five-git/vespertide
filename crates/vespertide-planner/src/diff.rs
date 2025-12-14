@@ -383,9 +383,9 @@ mod tests {
     mod inline_constraints {
         use super::*;
         use vespertide_core::schema::foreign_key::ForeignKeyDef;
-        use vespertide_core::{StrOrBoolOrArray, TableConstraint};
-        use vespertide_core::schema::primary_key::PrimaryKeySyntax;
         use vespertide_core::schema::foreign_key::ForeignKeySyntax;
+        use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+        use vespertide_core::{StrOrBoolOrArray, TableConstraint};
 
         fn col_with_pk(name: &str, ty: ColumnType) -> ColumnDef {
             ColumnDef {

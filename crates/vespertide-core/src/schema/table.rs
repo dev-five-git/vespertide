@@ -458,6 +458,26 @@ mod tests {
     }
 
     #[test]
+    fn normalize_ignores_primary_key_false() {
+        let mut id_col = col("id", ColumnType::Simple(SimpleColumnType::Integer));
+        id_col.primary_key = Some(PrimaryKeySyntax::Bool(false));
+
+        let table = TableDef {
+            name: "users".into(),
+            columns: vec![
+                id_col,
+                col("name", ColumnType::Simple(SimpleColumnType::Text)),
+            ],
+            constraints: vec![],
+            indexes: vec![],
+        };
+
+        let normalized = table.normalize().unwrap();
+        // primary_key: false should be ignored, so no primary key constraint should be added
+        assert_eq!(normalized.constraints.len(), 0);
+    }
+
+    #[test]
     fn normalize_inline_unique_bool() {
         let mut email_col = col("email", ColumnType::Simple(SimpleColumnType::Text));
         email_col.unique = Some(StrOrBoolOrArray::Bool(true));
@@ -1207,11 +1227,7 @@ mod tests {
 
         let result = table.normalize();
         assert!(result.is_err());
-        if let Err(TableValidationError::InvalidForeignKeyFormat {
-            column_name,
-            value,
-        }) = result
-        {
+        if let Err(TableValidationError::InvalidForeignKeyFormat { column_name, value }) = result {
             assert_eq!(column_name, "user_id");
             assert_eq!(value, "usersid");
         } else {
@@ -1237,11 +1253,7 @@ mod tests {
 
         let result = table.normalize();
         assert!(result.is_err());
-        if let Err(TableValidationError::InvalidForeignKeyFormat {
-            column_name,
-            value,
-        }) = result
-        {
+        if let Err(TableValidationError::InvalidForeignKeyFormat { column_name, value }) = result {
             assert_eq!(column_name, "user_id");
             assert_eq!(value, ".id");
         } else {
@@ -1267,11 +1279,7 @@ mod tests {
 
         let result = table.normalize();
         assert!(result.is_err());
-        if let Err(TableValidationError::InvalidForeignKeyFormat {
-            column_name,
-            value,
-        }) = result
-        {
+        if let Err(TableValidationError::InvalidForeignKeyFormat { column_name, value }) = result {
             assert_eq!(column_name, "user_id");
             assert_eq!(value, "users.");
         } else {
@@ -1297,11 +1305,7 @@ mod tests {
 
         let result = table.normalize();
         assert!(result.is_err());
-        if let Err(TableValidationError::InvalidForeignKeyFormat {
-            column_name,
-            value,
-        }) = result
-        {
+        if let Err(TableValidationError::InvalidForeignKeyFormat { column_name, value }) = result {
             assert_eq!(column_name, "user_id");
             assert_eq!(value, "schema.users.id");
         } else {

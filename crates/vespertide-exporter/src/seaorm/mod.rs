@@ -212,7 +212,7 @@ mod helper_tests {
 
     #[test]
     fn test_rust_type() {
-        use vespertide_core::{ColumnType, SimpleColumnType, ComplexColumnType};
+        use vespertide_core::{ColumnType, ComplexColumnType, SimpleColumnType};
         // Numeric types
         assert_eq!(
             ColumnType::Simple(SimpleColumnType::SmallInt).to_rust_type(false),
@@ -343,7 +343,11 @@ mod helper_tests {
 
         // Complex types
         assert_eq!(
-            ColumnType::Complex(ComplexColumnType::Numeric { precision: 10, scale: 2 }).to_rust_type(false),
+            ColumnType::Complex(ComplexColumnType::Numeric {
+                precision: 10,
+                scale: 2
+            })
+            .to_rust_type(false),
             "Decimal"
         );
         assert_eq!(
@@ -359,9 +363,18 @@ mod helper_tests {
         assert_eq!(sanitize_field_name("name-with-dash"), "name_with_dash");
         assert_eq!(sanitize_field_name("name.with.dot"), "name_with_dot");
         assert_eq!(sanitize_field_name("name with space"), "name_with_space");
-        assert_eq!(sanitize_field_name("name  with  multiple  spaces"), "name__with__multiple__spaces");
-        assert_eq!(sanitize_field_name(" name_with_leading_space"), "_name_with_leading_space");
-        assert_eq!(sanitize_field_name("name_with_trailing_space "), "name_with_trailing_space_");
+        assert_eq!(
+            sanitize_field_name("name  with  multiple  spaces"),
+            "name__with__multiple__spaces"
+        );
+        assert_eq!(
+            sanitize_field_name(" name_with_leading_space"),
+            "_name_with_leading_space"
+        );
+        assert_eq!(
+            sanitize_field_name("name_with_trailing_space "),
+            "name_with_trailing_space_"
+        );
         assert_eq!(sanitize_field_name(""), "_col");
         assert_eq!(sanitize_field_name("a"), "a");
     }
@@ -382,8 +395,8 @@ mod tests {
     use super::*;
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
-    use vespertide_core::{ColumnType, SimpleColumnType};
     use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+    use vespertide_core::{ColumnType, SimpleColumnType};
 
     #[rstest]
     #[case("basic_single_pk", TableDef {

@@ -22,7 +22,9 @@ pub enum MigrationAction {
         columns: Vec<ColumnDef>,
         constraints: Vec<TableConstraint>,
     },
-    DeleteTable { table: TableName },
+    DeleteTable {
+        table: TableName,
+    },
     AddColumn {
         table: TableName,
         column: ColumnDef,
@@ -43,8 +45,14 @@ pub enum MigrationAction {
         column: ColumnName,
         new_type: ColumnType,
     },
-    AddIndex { table: TableName, index: IndexDef },
-    RemoveIndex { table: TableName, name: IndexName },
+    AddIndex {
+        table: TableName,
+        index: IndexDef,
+    },
+    RemoveIndex {
+        table: TableName,
+        name: IndexName,
+    },
     AddConstraint {
         table: TableName,
         constraint: TableConstraint,
@@ -53,6 +61,11 @@ pub enum MigrationAction {
         table: TableName,
         constraint: TableConstraint,
     },
-    RenameTable { from: TableName, to: TableName },
-    RawSql { sql: String },
+    RenameTable {
+        from: TableName,
+        to: TableName,
+    },
+    RawSql {
+        sql: String,
+    },
 }

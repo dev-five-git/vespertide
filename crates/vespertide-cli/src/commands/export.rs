@@ -69,7 +69,7 @@ fn resolve_export_dir(export_dir: Option<PathBuf>, config: &VespertideConfig) ->
 fn build_output_path(root: &Path, rel_path: &Path, orm: Orm) -> PathBuf {
     // Sanitize file name: replace spaces with underscores
     let mut out = root.to_path_buf();
-    
+
     // Reconstruct path with sanitized file name
     for component in rel_path.components() {
         if let std::path::Component::Normal(name) = component {
@@ -78,7 +78,7 @@ fn build_output_path(root: &Path, rel_path: &Path, orm: Orm) -> PathBuf {
             out.push(component.as_os_str());
         }
     }
-    
+
     // Sanitize the file name (last component)
     if let Some(file_name) = out.file_name().and_then(|n| n.to_str()) {
         // Remove extension, sanitize, then add new extension
@@ -87,7 +87,7 @@ fn build_output_path(root: &Path, rel_path: &Path, orm: Orm) -> PathBuf {
         } else {
             (file_name, "")
         };
-        
+
         let sanitized = sanitize_filename(stem);
         let ext = match orm {
             Orm::SeaOrm => "rs",
@@ -95,7 +95,7 @@ fn build_output_path(root: &Path, rel_path: &Path, orm: Orm) -> PathBuf {
         };
         out.set_file_name(format!("{}.{}", sanitized, ext));
     }
-    
+
     out
 }
 
@@ -125,7 +125,11 @@ fn ensure_mod_chain(root: &Path, rel_path: &Path) -> Result<()> {
     let mut comps: Vec<String> = rel_path
         .with_extension("")
         .components()
-        .filter_map(|c| c.as_os_str().to_str().map(|s| sanitize_filename(s).to_string()))
+        .filter_map(|c| {
+            c.as_os_str()
+                .to_str()
+                .map(|s| sanitize_filename(s).to_string())
+        })
         .collect();
     if comps.is_empty() {
         return Ok(());

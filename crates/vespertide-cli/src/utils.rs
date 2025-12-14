@@ -34,9 +34,8 @@ pub fn load_models(config: &VespertideConfig) -> Result<Vec<TableDef>> {
     let normalized_tables: Vec<TableDef> = tables
         .into_iter()
         .map(|t| {
-            t.normalize().map_err(|e| {
-                anyhow::anyhow!("Failed to normalize table '{}': {}", t.name, e)
-            })
+            t.normalize()
+                .map_err(|e| anyhow::anyhow!("Failed to normalize table '{}': {}", t.name, e))
         })
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -231,7 +230,7 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
     use vespertide_core::{
-        schema::foreign_key::ForeignKeySyntax, ColumnDef, ColumnType, SimpleColumnType,
+        ColumnDef, ColumnType, SimpleColumnType, schema::foreign_key::ForeignKeySyntax,
     };
 
     struct CwdGuard {
@@ -418,7 +417,11 @@ mod tests {
             constraints: vec![],
             indexes: vec![],
         };
-        fs::write("models/orders.json", serde_json::to_string_pretty(&table).unwrap()).unwrap();
+        fs::write(
+            "models/orders.json",
+            serde_json::to_string_pretty(&table).unwrap(),
+        )
+        .unwrap();
 
         let result = load_models(&VespertideConfig::default());
         assert!(result.is_err());

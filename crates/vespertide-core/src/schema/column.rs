@@ -1,7 +1,10 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::schema::{foreign_key::ForeignKeySyntax, names::ColumnName, primary_key::PrimaryKeySyntax, str_or_bool::StrOrBoolOrArray};
+use crate::schema::{
+    foreign_key::ForeignKeySyntax, names::ColumnName, primary_key::PrimaryKeySyntax,
+    str_or_bool::StrOrBoolOrArray,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -52,7 +55,9 @@ impl ColumnType {
             },
             ColumnType::Complex(ty) => match ty {
                 ComplexColumnType::Varchar { length } => format!("VARCHAR({})", length),
-                ComplexColumnType::Numeric { precision, scale } => format!("NUMERIC({}, {})", precision, scale),
+                ComplexColumnType::Numeric { precision, scale } => {
+                    format!("NUMERIC({}, {})", precision, scale)
+                }
                 ComplexColumnType::Char { length } => format!("CHAR({})", length),
                 ComplexColumnType::Custom { custom_type } => custom_type.clone(),
             },
@@ -148,18 +153,6 @@ pub enum ComplexColumnType {
     Custom { custom_type: String },
 }
 
-impl From<SimpleColumnType> for ColumnType {
-    fn from(ty: SimpleColumnType) -> Self {
-        ColumnType::Simple(ty)
-    }
-}
-
-impl From<ComplexColumnType> for ColumnType {
-    fn from(ty: ComplexColumnType) -> Self {
-        ColumnType::Complex(ty)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,7 +179,10 @@ mod tests {
     #[case(SimpleColumnType::Cidr, "CIDR")]
     #[case(SimpleColumnType::Macaddr, "MACADDR")]
     #[case(SimpleColumnType::Xml, "XML")]
-    fn test_simple_column_type_to_sql(#[case] column_type: SimpleColumnType, #[case] expected: &str) {
+    fn test_simple_column_type_to_sql(
+        #[case] column_type: SimpleColumnType,
+        #[case] expected: &str,
+    ) {
         assert_eq!(ColumnType::Simple(column_type).to_sql(), expected);
     }
 
@@ -203,7 +199,10 @@ mod tests {
     #[case(ComplexColumnType::Custom { custom_type: "MONEY".into() }, "MONEY")]
     #[case(ComplexColumnType::Custom { custom_type: "JSONB".into() }, "JSONB")]
     #[case(ComplexColumnType::Custom { custom_type: "CUSTOM_TYPE".into() }, "CUSTOM_TYPE")]
-    fn test_complex_column_type_to_sql(#[case] column_type: ComplexColumnType, #[case] expected: &str) {
+    fn test_complex_column_type_to_sql(
+        #[case] column_type: ComplexColumnType,
+        #[case] expected: &str,
+    ) {
         assert_eq!(ColumnType::Complex(column_type).to_sql(), expected);
     }
 
@@ -228,8 +227,14 @@ mod tests {
     #[case(SimpleColumnType::Cidr, "String")]
     #[case(SimpleColumnType::Macaddr, "String")]
     #[case(SimpleColumnType::Xml, "String")]
-    fn test_simple_column_type_to_rust_type_not_nullable(#[case] column_type: SimpleColumnType, #[case] expected: &str) {
-        assert_eq!(ColumnType::Simple(column_type).to_rust_type(false), expected);
+    fn test_simple_column_type_to_rust_type_not_nullable(
+        #[case] column_type: SimpleColumnType,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(
+            ColumnType::Simple(column_type).to_rust_type(false),
+            expected
+        );
     }
 
     #[rstest]
@@ -253,7 +258,10 @@ mod tests {
     #[case(SimpleColumnType::Cidr, "Option<String>")]
     #[case(SimpleColumnType::Macaddr, "Option<String>")]
     #[case(SimpleColumnType::Xml, "Option<String>")]
-    fn test_simple_column_type_to_rust_type_nullable(#[case] column_type: SimpleColumnType, #[case] expected: &str) {
+    fn test_simple_column_type_to_rust_type_nullable(
+        #[case] column_type: SimpleColumnType,
+        #[case] expected: &str,
+    ) {
         assert_eq!(ColumnType::Simple(column_type).to_rust_type(true), expected);
     }
 
@@ -271,7 +279,10 @@ mod tests {
         #[case] nullable: bool,
         #[case] expected: &str,
     ) {
-        assert_eq!(ColumnType::Complex(column_type).to_rust_type(nullable), expected);
+        assert_eq!(
+            ColumnType::Complex(column_type).to_rust_type(nullable),
+            expected
+        );
     }
 
     #[rstest]
@@ -287,6 +298,9 @@ mod tests {
         #[case] column_type: ComplexColumnType,
         #[case] expected: &str,
     ) {
-        assert_eq!(ColumnType::Complex(column_type).to_rust_type(true), expected);
+        assert_eq!(
+            ColumnType::Complex(column_type).to_rust_type(true),
+            expected
+        );
     }
 }
