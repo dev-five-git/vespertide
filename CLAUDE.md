@@ -50,7 +50,9 @@ cargo run -p vespertide-cli -- log
 
 ### Crate Responsibilities
 
-- **vespertide-core**: Data structures (`TableDef`, `ColumnDef`, `MigrationAction`, `MigrationPlan`, constraints, indexes)
+- **vespertide-core**: Data structures (`TableDef`, `ColumnDef`, `ColumnType`, `MigrationAction`, `MigrationPlan`, constraints, indexes)
+  - `ColumnType` enum with `Simple(SimpleColumnType)` and `Complex(ComplexColumnType)` variants
+  - `ColumnType::to_sql()` and `ColumnType::to_rust_type()` methods for type conversion
 - **vespertide-planner**:
   - `schema_from_plans()`: Replays applied migrations to reconstruct baseline schema
   - `diff_schemas()`: Compares two schemas and generates migration actions
@@ -58,9 +60,11 @@ cargo run -p vespertide-cli -- log
   - `apply_action()`: Applies a single migration action to a schema (used during replay)
   - `validate_*()`: Validates schemas and migration plans
 - **vespertide-query**: Converts `MigrationAction` → PostgreSQL SQL with bind parameters
+  - Uses `ColumnType::to_sql()` method for SQL type conversion
 - **vespertide-config**: Manages `vespertide.json` (models/migrations directories, naming case preferences)
 - **vespertide-cli**: Command-line interface implementation
 - **vespertide-exporter**: Exports schemas to other formats (e.g., SeaORM entities)
+  - Uses `ColumnType::to_rust_type(nullable)` method for Rust type conversion
 - **vespertide-schema-gen**: Generates JSON Schema files for validation
 - **vespertide-macro**: Placeholder for future runtime migration executor
 
@@ -80,7 +84,7 @@ When creating `ColumnDef` instances in tests or code, you must initialize ALL fi
 ```rust
 ColumnDef {
     name: "id".into(),
-    r#type: ColumnType::Integer,
+    r#type: ColumnType::Simple(SimpleColumnType::Integer),
     nullable: false,
     default: None,
     comment: None,
@@ -92,6 +96,25 @@ ColumnDef {
 ```
 
 These inline fields (added recently) allow constraints to be defined directly on columns in addition to table-level `TableConstraint` definitions.
+
+### ColumnType Structure
+`ColumnType` is an enum with two variants:
+- `Simple(SimpleColumnType)`: Built-in types like `Integer`, `Text`, `Boolean`, etc.
+- `Complex(ComplexColumnType)`: Types with parameters like `Varchar { length }` or `Custom { custom_type }`
+
+**Important**: In Rust code, always use `ColumnType::Simple(SimpleColumnType::Integer)` instead of the old `ColumnType::Integer` syntax. The `From` trait is implemented for convenience:
+```rust
+// These are equivalent:
+ColumnType::Simple(SimpleColumnType::Integer)
+SimpleColumnType::Integer.into()
+```
+
+### ColumnType Methods
+`ColumnType` provides two utility methods:
+- `to_sql()`: Returns the PostgreSQL SQL type string (e.g., `"INTEGER"`, `"VARCHAR(255)"`)
+- `to_rust_type(nullable: bool)`: Returns the Rust type string for SeaORM entity generation (e.g., `"i32"` or `"Option<i32>"`)
+
+These methods replace the old standalone functions `column_type_sql()` and `rust_type()`.
 
 ### Foreign Key Definition
 Foreign keys can be defined inline on columns via the `foreign_key` field:
