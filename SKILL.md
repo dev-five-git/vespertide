@@ -73,7 +73,11 @@ Models are JSON files in the `models/` directory:
 
 ## Column Types
 
-### Built-in Types
+Column types in JSON can be either simple (string) or complex (object) values.
+
+### Simple Types (Built-in)
+
+Simple types are represented as strings in JSON (snake_case):
 
 | Type | PostgreSQL | Use Cases |
 |------|------------|-----------|
@@ -96,16 +100,26 @@ Models are JSON files in the `models/` directory:
 | `"cidr"` | CIDR | Network address |
 | `"macaddr"` | MACADDR | MAC address |
 
-### Custom Types
+**Note**: In JSON, simple types are written as lowercase strings (e.g., `"integer"`, `"text"`). The Rust enum uses `SimpleColumnType` wrapped in `ColumnType::Simple()`.
 
-For types not covered above:
+### Complex Types
 
+Complex types are represented as objects with a `kind` field:
+
+**VARCHAR with length:**
 ```json
-{ "custom": "DECIMAL(10,2)" }
-{ "custom": "VARCHAR(255)" }
-{ "custom": "NUMERIC(20,8)" }
-{ "custom": "INTERVAL" }
+{ "kind": "varchar", "length": 255 }
 ```
+
+**Custom types:**
+```json
+{ "kind": "custom", "custom_type": "DECIMAL(10,2)" }
+{ "kind": "custom", "custom_type": "NUMERIC(20,8)" }
+{ "kind": "custom", "custom_type": "INTERVAL" }
+{ "kind": "custom", "custom_type": "UUID" }
+```
+
+**Note**: In Rust code, complex types are represented as `ColumnType::Complex(ComplexColumnType::Varchar { length })` or `ColumnType::Complex(ComplexColumnType::Custom { custom_type })`.
 
 ## Inline Constraints
 
@@ -230,7 +244,7 @@ Reference actions: `"Cascade"`, `"Restrict"`, `"SetNull"`, `"SetDefault"`, `"NoA
   "columns": [
     { "name": "id", "type": "uuid", "nullable": false, "primary_key": true, "default": "gen_random_uuid()" },
     { "name": "customer_id", "type": "integer", "nullable": false, "foreign_key": { "ref_table": "customer", "ref_columns": ["id"], "on_delete": "Restrict" }, "index": true },
-    { "name": "total_amount", "type": { "custom": "DECIMAL(10,2)" }, "nullable": false },
+    { "name": "total_amount", "type": { "kind": "custom", "custom_type": "DECIMAL(10,2)" }, "nullable": false },
     { "name": "status", "type": "text", "nullable": false, "default": "'pending'" },
     { "name": "metadata", "type": "jsonb", "nullable": true },
     { "name": "created_at", "type": "timestamptz", "nullable": false, "default": "NOW()" }

@@ -63,10 +63,10 @@ Models are JSON files in the `models/` directory:
   "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
   "name": "user",
   "columns": [
-    { "name": "id", "type": "Integer", "nullable": false, "primary_key": true },
-    { "name": "email", "type": "Text", "nullable": false, "unique": true },
-    { "name": "name", "type": "Text", "nullable": false },
-    { "name": "created_at", "type": "Timestamp", "nullable": false, "default": "NOW()" }
+    { "name": "id", "type": "integer", "nullable": false, "primary_key": true },
+    { "name": "email", "type": "text", "nullable": false, "unique": true },
+    { "name": "name", "type": "text", "nullable": false },
+    { "name": "created_at", "type": "timestamptz", "nullable": false, "default": "NOW()" }
   ],
   "constraints": [],
   "indexes": []
@@ -75,16 +75,32 @@ Models are JSON files in the `models/` directory:
 
 ### Column Types
 
+**Simple Types** (string values in JSON):
 | Type | PostgreSQL |
 |------|------------|
-| `"Integer"` | INTEGER |
-| `"BigInt"` | BIGINT |
-| `"Text"` | TEXT |
-| `"Boolean"` | BOOLEAN |
-| `"Timestamp"` | TIMESTAMP |
-| `{ "Custom": "UUID" }` | UUID |
-| `{ "Custom": "JSONB" }` | JSONB |
-| `{ "Custom": "DECIMAL(10,2)" }` | DECIMAL(10,2) |
+| `"integer"` | INTEGER |
+| `"big_int"` | BIGINT |
+| `"text"` | TEXT |
+| `"boolean"` | BOOLEAN |
+| `"timestamp"` | TIMESTAMP |
+| `"timestamptz"` | TIMESTAMPTZ |
+| `"uuid"` | UUID |
+| `"jsonb"` | JSONB |
+| `"small_int"` | SMALLINT |
+| `"real"` | REAL |
+| `"double_precision"` | DOUBLE PRECISION |
+| `"date"` | DATE |
+| `"time"` | TIME |
+| `"bytea"` | BYTEA |
+| `"json"` | JSON |
+| `"inet"` | INET |
+| `"cidr"` | CIDR |
+| `"macaddr"` | MACADDR |
+
+**Complex Types** (object values in JSON):
+- `{ "kind": "varchar", "length": 255 }` → VARCHAR(255)
+- `{ "kind": "custom", "custom_type": "DECIMAL(10,2)" }` → DECIMAL(10,2)
+- `{ "kind": "custom", "custom_type": "UUID" }` → UUID
 
 ### Inline Constraints
 
@@ -93,7 +109,7 @@ Constraints can be defined directly on columns:
 ```json
 {
   "name": "user_id",
-  "type": "Integer",
+  "type": "integer",
   "nullable": false,
   "foreign_key": {
     "ref_table": "user",

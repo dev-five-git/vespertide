@@ -836,6 +836,7 @@ mod tests {
     #[case(ColumnType::Simple(SimpleColumnType::Text), "TEXT")]
     #[case(ColumnType::Simple(SimpleColumnType::Boolean), "BOOLEAN")]
     #[case(ColumnType::Simple(SimpleColumnType::Timestamp), "TIMESTAMP")]
+    #[case(ColumnType::Simple(SimpleColumnType::Uuid), "UUID")]
     #[case(ColumnType::Complex(ComplexColumnType::Custom { custom_type: "VARCHAR(255)".to_string() }), "VARCHAR(255)")]
     fn test_column_type_sql(#[case] ty: ColumnType, #[case] expected: &str) {
         assert_eq!(ty.to_sql(), expected);
