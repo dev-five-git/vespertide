@@ -466,6 +466,96 @@ mod tests {
         constraints: vec![],
         indexes: vec![],
     })]
+    #[case("pk_and_fk_together", {
+        use vespertide_core::schema::foreign_key::{ForeignKeyDef, ForeignKeySyntax};
+        use vespertide_core::schema::reference::ReferenceAction;
+        let mut table = TableDef {
+            name: "article_user".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "article_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                    unique: None,
+                    index: Some(vespertide_core::StrOrBoolOrArray::Bool(true)),
+                    foreign_key: Some(ForeignKeySyntax::Object(ForeignKeyDef {
+                        ref_table: "article".into(),
+                        ref_columns: vec!["id".into()],
+                        on_delete: Some(ReferenceAction::Cascade),
+                        on_update: None,
+                    })),
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                    unique: None,
+                    index: Some(vespertide_core::StrOrBoolOrArray::Bool(true)),
+                    foreign_key: Some(ForeignKeySyntax::Object(ForeignKeyDef {
+                        ref_table: "user".into(),
+                        ref_columns: vec!["id".into()],
+                        on_delete: Some(ReferenceAction::Cascade),
+                        on_update: None,
+                    })),
+                },
+                ColumnDef {
+                    name: "author_order".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: Some("1".into()),
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "role".into(),
+                    r#type: ColumnType::Complex(vespertide_core::ComplexColumnType::Varchar { length: 20 }),
+                    nullable: false,
+                    default: Some("'contributor'".into()),
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "is_lead".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Boolean),
+                    nullable: false,
+                    default: Some("false".into()),
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "created_at".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Timestamptz),
+                    nullable: false,
+                    default: Some("now()".into()),
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![],
+            indexes: vec![],
+        };
+        // Normalize to convert inline constraints to table-level
+        table = table.normalize().unwrap();
+        table
+    })]
     fn render_entity_snapshots(#[case] name: &str, #[case] table: TableDef) {
         let rendered = render_entity(&table);
         with_settings!({ snapshot_suffix => format!("params_{}", name) }, {
