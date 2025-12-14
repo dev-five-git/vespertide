@@ -63,20 +63,20 @@ fn test_main_with_init_command() {
 #[test]
 fn test_main_with_new_command() {
     let mut cmd = vespertide();
-    cmd.args(&["new", "test_table"]);
+    cmd.args(["new", "test_table"]);
     let _ = cmd.assert();
 }
 
 #[test]
 fn test_main_with_revision_command() {
     let mut cmd = vespertide();
-    cmd.args(&["revision", "-m", "test message"]);
+    cmd.args(["revision", "-m", "test message"]);
     let _ = cmd.assert();
 }
 
 #[test]
 fn test_main_with_export_command() {
     let mut cmd = vespertide();
-    cmd.args(&["export", "--orm", "seaorm"]);
+    cmd.args(["export", "--orm", "seaorm"]);
     let _ = cmd.assert();
 }
