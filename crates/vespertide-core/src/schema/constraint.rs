@@ -10,6 +10,8 @@ use crate::schema::{
 #[serde(rename_all = "snake_case", tag = "type")]
 pub enum TableConstraint {
     PrimaryKey {
+        #[serde(default)]
+        auto_increment: bool,
         columns: Vec<ColumnName>,
     },
     Unique {

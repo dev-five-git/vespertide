@@ -29,12 +29,24 @@ pub fn load_models(config: &VespertideConfig) -> Result<Vec<TableDef>> {
     let mut tables = Vec::new();
     load_models_recursive(models_dir, &mut tables)?;
 
+    // Normalize tables to convert inline constraints (primary_key, foreign_key, etc.) to table-level constraints
+    // This must happen before validation so that foreign key references can be checked
+    let normalized_tables: Vec<TableDef> = tables
+        .into_iter()
+        .map(|t| {
+            t.normalize().map_err(|e| {
+                anyhow::anyhow!("Failed to normalize table '{}': {}", t.name, e)
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
     // Validate schema integrity before returning
-    if !tables.is_empty() {
-        validate_schema(&tables).map_err(|e| anyhow::anyhow!("schema validation failed: {}", e))?;
+    if !normalized_tables.is_empty() {
+        validate_schema(&normalized_tables)
+            .map_err(|e| anyhow::anyhow!("schema validation failed: {}", e))?;
     }
 
-    Ok(tables)
+    Ok(normalized_tables)
 }
 
 /// Recursively walk directory and load model files.

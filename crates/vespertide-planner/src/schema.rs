@@ -59,13 +59,13 @@ mod tests {
             actions: vec![MigrationAction::CreateTable {
                 table: "users".into(),
                 columns: vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-                constraints: vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
+                constraints: vec![TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] }],
             }],
         }],
         table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
+            vec![TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] }],
             vec![],
         )
     )]
@@ -78,7 +78,7 @@ mod tests {
                 actions: vec![MigrationAction::CreateTable {
                     table: "users".into(),
                     columns: vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-                    constraints: vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
+                    constraints: vec![TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] }],
                 }],
             },
             MigrationPlan {
@@ -98,7 +98,7 @@ mod tests {
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 col("name", ColumnType::Simple(SimpleColumnType::Text)),
             ],
-            vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
+            vec![TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] }],
             vec![],
         )
     )]
@@ -111,7 +111,7 @@ mod tests {
                 actions: vec![MigrationAction::CreateTable {
                     table: "users".into(),
                     columns: vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-                    constraints: vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
+                    constraints: vec![TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] }],
                 }],
             },
             MigrationPlan {
@@ -144,7 +144,7 @@ mod tests {
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 col("name", ColumnType::Simple(SimpleColumnType::Text)),
             ],
-            vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
+            vec![TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] }],
             vec![IndexDef {
                 name: "idx_users_name".into(),
                 columns: vec!["name".into()],

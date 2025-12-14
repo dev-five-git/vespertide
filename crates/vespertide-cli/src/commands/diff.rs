@@ -146,7 +146,7 @@ fn format_action(action: &MigrationAction) -> String {
 
 fn format_constraint_type(constraint: &vespertide_core::TableConstraint) -> String {
     match constraint {
-        vespertide_core::TableConstraint::PrimaryKey { columns } => {
+        vespertide_core::TableConstraint::PrimaryKey { columns, .. } => {
             format!("PRIMARY KEY ({})", columns.join(", "))
         }
         vespertide_core::TableConstraint::Unique { name, columns } => {
@@ -311,6 +311,7 @@ mod tests {
         MigrationAction::AddConstraint {
             table: "users".into(),
             constraint: vespertide_core::TableConstraint::PrimaryKey {
+                auto_increment: false,
                 columns: vec!["id".into()],
             },
         },
@@ -354,6 +355,7 @@ mod tests {
         MigrationAction::RemoveConstraint {
             table: "users".into(),
             constraint: vespertide_core::TableConstraint::PrimaryKey {
+                auto_increment: false,
                 columns: vec!["id".into()],
             },
         },

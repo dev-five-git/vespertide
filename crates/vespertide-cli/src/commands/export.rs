@@ -240,6 +240,7 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
                 columns: vec!["id".into()],
             }],
             indexes: vec![],

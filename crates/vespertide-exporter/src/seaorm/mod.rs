@@ -69,25 +69,29 @@ fn render_column(
 }
 
 fn primary_key_columns(table: &TableDef) -> HashSet<String> {
+    use vespertide_core::schema::primary_key::PrimaryKeySyntax;
     let mut keys = HashSet::new();
-    
+
     // First, check table-level constraints
     for constraint in &table.constraints {
-        if let TableConstraint::PrimaryKey { columns } = constraint {
+        if let TableConstraint::PrimaryKey { columns, .. } = constraint {
             for col in columns {
                 keys.insert(col.clone());
             }
         }
     }
-    
+
     // Then, check inline primary_key on columns
     // This handles cases where primary_key is defined inline but not yet normalized
     for column in &table.columns {
-        if column.primary_key == Some(true) {
-            keys.insert(column.name.clone());
+        match &column.primary_key {
+            Some(PrimaryKeySyntax::Bool(true)) | Some(PrimaryKeySyntax::Object(_)) => {
+                keys.insert(column.name.clone());
+            }
+            _ => {}
         }
     }
-    
+
     keys
 }
 
@@ -378,7 +382,8 @@ mod tests {
     use super::*;
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
-    use vespertide_core::{ColumnType, SimpleColumnType, ComplexColumnType};
+    use vespertide_core::{ColumnType, SimpleColumnType};
+    use vespertide_core::schema::primary_key::PrimaryKeySyntax;
 
     #[rstest]
     #[case("basic_single_pk", TableDef {
@@ -387,7 +392,7 @@ mod tests {
             ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
             ColumnDef { name: "display_name".into(), r#type: ColumnType::Simple(SimpleColumnType::Text), nullable: true, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
         ],
-        constraints: vec![TableConstraint::PrimaryKey { columns: vec!["id".into()] }],
+        constraints: vec![TableConstraint::PrimaryKey { auto_increment: false, columns: vec!["id".into()] }],
         indexes: vec![],
     })]
     #[case("composite_pk", TableDef {
@@ -396,7 +401,7 @@ mod tests {
             ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
             ColumnDef { name: "tenant_id".into(), r#type: ColumnType::Simple(SimpleColumnType::BigInt), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
         ],
-        constraints: vec![TableConstraint::PrimaryKey { columns: vec!["id".into(), "tenant_id".into()] }],
+        constraints: vec![TableConstraint::PrimaryKey { auto_increment: false, columns: vec!["id".into(), "tenant_id".into()] }],
         indexes: vec![],
     })]
     #[case("fk_single", TableDef {
@@ -407,7 +412,7 @@ mod tests {
             ColumnDef { name: "title".into(), r#type: ColumnType::Simple(SimpleColumnType::Text), nullable: true, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
         ],
         constraints: vec![
-            TableConstraint::PrimaryKey { columns: vec!["id".into()] },
+            TableConstraint::PrimaryKey { auto_increment: false, columns: vec!["id".into()] },
             TableConstraint::ForeignKey {
                 name: None,
                 columns: vec!["user_id".into()],
@@ -427,7 +432,7 @@ mod tests {
             ColumnDef { name: "customer_tenant_id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
         ],
         constraints: vec![
-            TableConstraint::PrimaryKey { columns: vec!["id".into()] },
+            TableConstraint::PrimaryKey { auto_increment: false, columns: vec!["id".into()] },
             TableConstraint::ForeignKey {
                 name: None,
                 columns: vec!["customer_id".into(), "customer_tenant_id".into()],
@@ -442,7 +447,7 @@ mod tests {
     #[case("inline_pk", TableDef {
         name: "users".into(),
         columns: vec![
-            ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Uuid), nullable: false, default: Some("gen_random_uuid()".into()), comment: None, primary_key: Some(true), unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Uuid), nullable: false, default: Some("gen_random_uuid()".into()), comment: None, primary_key: Some(PrimaryKeySyntax::Bool(true)), unique: None, index: None, foreign_key: None },
             ColumnDef { name: "email".into(), r#type: ColumnType::Simple(SimpleColumnType::Text), nullable: false, default: None, comment: None, primary_key: None, unique: Some(vespertide_core::StrOrBoolOrArray::Bool(true)), index: None, foreign_key: None },
         ],
         constraints: vec![],

@@ -11,3 +11,11 @@ pub struct ForeignKeyDef {
     pub on_delete: Option<ReferenceAction>,
     pub on_update: Option<ReferenceAction>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case", untagged)]
+pub enum ForeignKeySyntax {
+    /// table.column
+    String(String),
+    Object(ForeignKeyDef),
+}

@@ -96,16 +96,33 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
                         fill_with: None,
                     });
                     // If column has inline foreign key, add it as a constraint
-                    if let Some(ref fk) = def.foreign_key {
+                    if let Some(ref fk_syntax) = def.foreign_key {
+                        use vespertide_core::schema::foreign_key::ForeignKeySyntax;
+                        let (ref_table, ref_columns, on_delete, on_update) = match fk_syntax {
+                            ForeignKeySyntax::String(s) => {
+                                let parts: Vec<&str> = s.split('.').collect();
+                                if parts.len() == 2 {
+                                    (parts[0].to_string(), vec![parts[1].to_string()], None, None)
+                                } else {
+                                    continue; // Skip invalid foreign key format
+                                }
+                            }
+                            ForeignKeySyntax::Object(fk) => (
+                                fk.ref_table.clone(),
+                                fk.ref_columns.clone(),
+                                fk.on_delete.clone(),
+                                fk.on_update.clone(),
+                            ),
+                        };
                         actions.push(MigrationAction::AddConstraint {
                             table: (*name).to_string(),
                             constraint: TableConstraint::ForeignKey {
                                 name: None,
                                 columns: vec![def.name.clone()],
-                                ref_table: fk.ref_table.clone(),
-                                ref_columns: fk.ref_columns.clone(),
-                                on_delete: fk.on_delete.clone(),
-                                on_update: fk.on_update.clone(),
+                                ref_table,
+                                ref_columns,
+                                on_delete,
+                                on_update,
                             },
                         });
                     }
@@ -396,6 +413,8 @@ mod tests {
         use super::*;
         use vespertide_core::schema::foreign_key::ForeignKeyDef;
         use vespertide_core::{StrOrBoolOrArray, TableConstraint};
+        use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+        use vespertide_core::schema::foreign_key::ForeignKeySyntax;
 
         fn col_with_pk(name: &str, ty: ColumnType) -> ColumnDef {
             ColumnDef {
@@ -404,7 +423,7 @@ mod tests {
                 nullable: false,
                 default: None,
                 comment: None,
-                primary_key: Some(true),
+                primary_key: Some(PrimaryKeySyntax::Bool(true)),
                 unique: None,
                 index: None,
                 foreign_key: None,
@@ -449,12 +468,12 @@ mod tests {
                 primary_key: None,
                 unique: None,
                 index: None,
-                foreign_key: Some(ForeignKeyDef {
+                foreign_key: Some(ForeignKeySyntax::Object(ForeignKeyDef {
                     ref_table: ref_table.to_string(),
                     ref_columns: vec![ref_col.to_string()],
                     on_delete: None,
                     on_update: None,
-                }),
+                })),
             }
         }
 
@@ -479,7 +498,7 @@ mod tests {
                 assert_eq!(constraints.len(), 1);
                 assert!(matches!(
                     &constraints[0],
-                    TableConstraint::PrimaryKey { columns } if columns == &["id".to_string()]
+                    TableConstraint::PrimaryKey { columns, .. } if columns == &["id".to_string()]
                 ));
             } else {
                 panic!("Expected CreateTable action");
@@ -618,7 +637,7 @@ mod tests {
         #[test]
         fn create_table_with_all_inline_constraints() {
             let mut id_col = col("id", ColumnType::Simple(SimpleColumnType::Integer));
-            id_col.primary_key = Some(true);
+            id_col.primary_key = Some(PrimaryKeySyntax::Bool(true));
             id_col.nullable = false;
 
             let mut email_col = col("email", ColumnType::Simple(SimpleColumnType::Text));
@@ -628,12 +647,12 @@ mod tests {
             name_col.index = Some(StrOrBoolOrArray::Bool(true));
 
             let mut org_id_col = col("org_id", ColumnType::Simple(SimpleColumnType::Integer));
-            org_id_col.foreign_key = Some(ForeignKeyDef {
+            org_id_col.foreign_key = Some(ForeignKeySyntax::Object(ForeignKeyDef {
                 ref_table: "orgs".into(),
                 ref_columns: vec!["id".into()],
                 on_delete: None,
                 on_update: None,
-            });
+            }));
 
             let plan = diff_schemas(
                 &[],
