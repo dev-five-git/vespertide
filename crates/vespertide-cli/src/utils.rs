@@ -230,7 +230,9 @@ mod tests {
     use serial_test::serial;
     use std::fs;
     use tempfile::tempdir;
-    use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
+    use vespertide_core::{
+        schema::foreign_key::ForeignKeySyntax, ColumnDef, ColumnType, SimpleColumnType,
+    };
 
     struct CwdGuard {
         original: PathBuf,
@@ -387,5 +389,40 @@ mod tests {
     ) {
         let name = migration_filename_with_format_and_pattern(version, comment, format, pattern);
         assert_eq!(name, expected);
+    }
+
+    #[test]
+    #[serial]
+    fn load_models_fails_on_invalid_fk_format() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        write_config();
+
+        fs::create_dir_all("models").unwrap();
+
+        // Create a model with invalid FK string format (missing dot separator)
+        let table = TableDef {
+            name: "orders".into(),
+            columns: vec![ColumnDef {
+                name: "user_id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                // Invalid FK format: should be "table.column" but missing the dot
+                foreign_key: Some(ForeignKeySyntax::String("invalid_format".into())),
+            }],
+            constraints: vec![],
+            indexes: vec![],
+        };
+        fs::write("models/orders.json", serde_json::to_string_pretty(&table).unwrap()).unwrap();
+
+        let result = load_models(&VespertideConfig::default());
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Failed to normalize table 'orders'"));
     }
 }

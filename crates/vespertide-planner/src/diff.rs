@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use vespertide_core::{MigrationAction, MigrationPlan, TableConstraint, TableDef};
+use vespertide_core::{MigrationAction, MigrationPlan, TableDef};
 
 use crate::error::PlannerError;
 
@@ -88,6 +88,8 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
             }
 
             // Added columns
+            // Note: Inline foreign keys are already converted to TableConstraint::ForeignKey
+            // by normalize(), so they will be handled in the constraint diff below.
             for (col, def) in &to_cols {
                 if !from_cols.contains_key(col) {
                     actions.push(MigrationAction::AddColumn {
@@ -95,37 +97,6 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
                         column: (*def).clone(),
                         fill_with: None,
                     });
-                    // If column has inline foreign key, add it as a constraint
-                    if let Some(ref fk_syntax) = def.foreign_key {
-                        use vespertide_core::schema::foreign_key::ForeignKeySyntax;
-                        let (ref_table, ref_columns, on_delete, on_update) = match fk_syntax {
-                            ForeignKeySyntax::String(s) => {
-                                let parts: Vec<&str> = s.split('.').collect();
-                                if parts.len() == 2 {
-                                    (parts[0].to_string(), vec![parts[1].to_string()], None, None)
-                                } else {
-                                    continue; // Skip invalid foreign key format
-                                }
-                            }
-                            ForeignKeySyntax::Object(fk) => (
-                                fk.ref_table.clone(),
-                                fk.ref_columns.clone(),
-                                fk.on_delete.clone(),
-                                fk.on_update.clone(),
-                            ),
-                        };
-                        actions.push(MigrationAction::AddConstraint {
-                            table: (*name).to_string(),
-                            constraint: TableConstraint::ForeignKey {
-                                name: None,
-                                columns: vec![def.name.clone()],
-                                ref_table,
-                                ref_columns,
-                                on_delete,
-                                on_update,
-                            },
-                        });
-                    }
                 }
             }
 

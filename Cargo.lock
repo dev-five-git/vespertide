@@ -1900,9 +1900,9 @@ dependencies = [
 
 [[package]]
 name = "sea-orm"
-version = "2.0.0-rc.20"
+version = "2.0.0-rc.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "880cc0a64f1ee0320d7d6cd2b9290c27e89750669cfc5b6afdce1654755a2983"
+checksum = "83b0bd6374d233e1553becb8786e22665d958641a1d72d5fdb52b9c07d2ce8d8"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -1932,9 +1932,9 @@ dependencies = [
 
 [[package]]
 name = "sea-orm-macros"
-version = "2.0.0-rc.20"
+version = "2.0.0-rc.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8aae91cb86cf389da96119df71967ffb1b3caf1687303def77336f8dc9d33e78"
+checksum = "c295fd7665874275dd6926efe45efdecd0e54b98b5c177f95970fe4af6b213c9"
 dependencies = [
  "heck 0.5.0",
  "pluralizer",
@@ -2870,6 +2870,7 @@ dependencies = [
 name = "vespertide-core"
 version = "0.1.6"
 dependencies = [
+ "rstest",
  "schemars",
  "serde",
  "thiserror",

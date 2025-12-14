@@ -442,9 +442,38 @@ mod tests {
         let rel_path = Path::new("user copy.json");
         let out = build_output_path(root, rel_path, Orm::SeaOrm);
         assert_eq!(out, Path::new("src/models/user_copy.rs"));
-        
+
         let rel_path2 = Path::new("blog/post name.yaml");
         let out2 = build_output_path(root, rel_path2, Orm::SeaOrm);
         assert_eq!(out2, Path::new("src/models/blog/post_name.rs"));
+    }
+
+    #[test]
+    fn build_output_path_handles_file_without_extension() {
+        use std::path::Path;
+        let root = Path::new("src/models");
+        // File without extension - covers line 88 (else branch)
+        let rel_path = Path::new("users");
+        let out = build_output_path(root, rel_path, Orm::SeaOrm);
+        assert_eq!(out, Path::new("src/models/users.rs"));
+
+        let out_py = build_output_path(root, rel_path, Orm::SqlAlchemy);
+        assert_eq!(out_py, Path::new("src/models/users.py"));
+    }
+
+    #[test]
+    fn build_output_path_handles_special_path_components() {
+        use std::path::Path;
+        let root = Path::new("src/models");
+        // Path with CurDir component (.) - covers line 78 (non-Normal component branch)
+        let rel_path = Path::new("./blog/posts.json");
+        let out = build_output_path(root, rel_path, Orm::SeaOrm);
+        // The . component gets pushed via the else branch
+        assert!(out.to_string_lossy().contains("posts"));
+
+        // Path with ParentDir component (..)
+        let rel_path2 = Path::new("../other/items.yaml");
+        let out2 = build_output_path(root, rel_path2, Orm::SeaOrm);
+        assert!(out2.to_string_lossy().contains("items"));
     }
 }
