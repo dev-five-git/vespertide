@@ -15,7 +15,7 @@
         "name": "id",
         "nullable": false,
         "primary_key": true,
-        "type": "Integer",
+        "type": "integer",
         "unique": null
       },
       "fill_with": "1",
@@ -31,7 +31,7 @@
         "name": "name",
         "nullable": false,
         "primary_key": null,
-        "type": "Text",
+        "type": "text",
         "unique": null
       },
       "fill_with": "John Doe",
@@ -47,7 +47,7 @@
         "name": "email",
         "nullable": false,
         "primary_key": null,
-        "type": "Text",
+        "type": "text",
         "unique": true
       },
       "fill_with": "john.doe@example.com",
@@ -85,7 +85,7 @@
           "name": "id",
           "nullable": false,
           "primary_key": true,
-          "type": "Integer",
+          "type": "integer",
           "unique": null
         },
         {
@@ -96,7 +96,7 @@
           "name": "title",
           "nullable": false,
           "primary_key": null,
-          "type": "Text",
+          "type": "text",
           "unique": null
         },
         {
@@ -107,7 +107,7 @@
           "name": "content",
           "nullable": false,
           "primary_key": null,
-          "type": "Text",
+          "type": "text",
           "unique": null
         },
         {
@@ -118,7 +118,7 @@
           "name": "created_at",
           "nullable": false,
           "primary_key": null,
-          "type": "Timestamp",
+          "type": "timestamp",
           "unique": null
         },
         {
@@ -129,7 +129,7 @@
           "name": "updated_at",
           "nullable": true,
           "primary_key": null,
-          "type": "Timestamp",
+          "type": "timestamp",
           "unique": null
         },
         {
@@ -147,7 +147,7 @@
           "name": "user_id",
           "nullable": false,
           "primary_key": null,
-          "type": "Integer",
+          "type": "integer",
           "unique": null
         }
       ],

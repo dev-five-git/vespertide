@@ -9,7 +9,7 @@
       "columns": [
         {
           "name": "aa",
-          "type": "Integer",
+          "type": "integer",
           "nullable": false,
           "default": null
         }

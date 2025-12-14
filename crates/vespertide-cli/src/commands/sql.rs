@@ -79,7 +79,8 @@ mod tests {
     use tempfile::tempdir;
     use vespertide_config::VespertideConfig;
     use vespertide_core::{
-        ColumnDef, ColumnType, MigrationAction, MigrationPlan, TableConstraint, TableDef,
+        ColumnDef, ColumnType, MigrationAction, MigrationPlan, SimpleColumnType, TableConstraint,
+        TableDef,
     };
 
     struct CwdGuard {
@@ -114,7 +115,7 @@ mod tests {
             name: name.to_string(),
             columns: vec![ColumnDef {
                 name: "id".into(),
-                r#type: ColumnType::Integer,
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
                 nullable: false,
                 default: None,
                 comment: None,
@@ -165,7 +166,7 @@ mod tests {
                 table: "users".into(),
                 columns: vec![ColumnDef {
                     name: "id".into(),
-                    r#type: ColumnType::Integer,
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
                     nullable: false,
                     default: None,
                     comment: None,

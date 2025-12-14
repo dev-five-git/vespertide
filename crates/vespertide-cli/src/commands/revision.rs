@@ -124,7 +124,7 @@ mod tests {
     use std::{env, fs, path::PathBuf};
     use tempfile::tempdir;
     use vespertide_config::{FileFormat, VespertideConfig};
-    use vespertide_core::{ColumnDef, ColumnType, TableDef};
+    use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType, TableDef};
 
     struct CwdGuard {
         original: PathBuf,
@@ -165,7 +165,7 @@ mod tests {
             name: name.to_string(),
             columns: vec![ColumnDef {
                 name: "id".into(),
-                r#type: ColumnType::Integer,
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
                 nullable: false,
                 default: None,
                 comment: None,

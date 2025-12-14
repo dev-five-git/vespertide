@@ -18,7 +18,9 @@ pub fn schema_from_plans(plans: &[MigrationPlan]) -> Result<Vec<TableDef>, Plann
 mod tests {
     use super::*;
     use rstest::rstest;
-    use vespertide_core::{ColumnDef, ColumnType, IndexDef, MigrationAction, TableConstraint};
+    use vespertide_core::{
+        ColumnDef, ColumnType, IndexDef, MigrationAction, SimpleColumnType, TableConstraint,
+    };
 
     fn col(name: &str, ty: ColumnType) -> ColumnDef {
         ColumnDef {
@@ -56,13 +58,13 @@ mod tests {
             version: 1,
             actions: vec![MigrationAction::CreateTable {
                 table: "users".into(),
-                columns: vec![col("id", ColumnType::Integer)],
+                columns: vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
                 constraints: vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
             }],
         }],
         table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
             vec![],
         )
@@ -75,7 +77,7 @@ mod tests {
                 version: 1,
                 actions: vec![MigrationAction::CreateTable {
                     table: "users".into(),
-                    columns: vec![col("id", ColumnType::Integer)],
+                    columns: vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
                     constraints: vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
                 }],
             },
@@ -85,7 +87,7 @@ mod tests {
                 version: 2,
                 actions: vec![MigrationAction::AddColumn {
                     table: "users".into(),
-                    column: col("name", ColumnType::Text),
+                    column: col("name", ColumnType::Simple(SimpleColumnType::Text)),
                     fill_with: None,
                 }],
             },
@@ -93,8 +95,8 @@ mod tests {
         table(
             "users",
             vec![
-                col("id", ColumnType::Integer),
-                col("name", ColumnType::Text),
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("name", ColumnType::Simple(SimpleColumnType::Text)),
             ],
             vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
             vec![],
@@ -108,7 +110,7 @@ mod tests {
                 version: 1,
                 actions: vec![MigrationAction::CreateTable {
                     table: "users".into(),
-                    columns: vec![col("id", ColumnType::Integer)],
+                    columns: vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
                     constraints: vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
                 }],
             },
@@ -118,7 +120,7 @@ mod tests {
                 version: 2,
                 actions: vec![MigrationAction::AddColumn {
                     table: "users".into(),
-                    column: col("name", ColumnType::Text),
+                    column: col("name", ColumnType::Simple(SimpleColumnType::Text)),
                     fill_with: None,
                 }],
             },
@@ -139,8 +141,8 @@ mod tests {
         table(
             "users",
             vec![
-                col("id", ColumnType::Integer),
-                col("name", ColumnType::Text),
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("name", ColumnType::Simple(SimpleColumnType::Text)),
             ],
             vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
             vec![IndexDef {

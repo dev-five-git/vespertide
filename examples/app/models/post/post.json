@@ -3,29 +3,29 @@
   "name": "post",
   "columns": [{
     "name": "id",
-    "type": "Integer",
+    "type": "integer",
     "nullable": false,
     "primary_key": true
   }, {
     "name": "title",
-    "type": "Text",
+    "type": "text",
     "nullable": false
   }, {
     "name": "content",
-    "type": "Text",
+    "type": "text",
     "nullable": false
   }, {
     "name": "created_at",
-    "type": "Timestamp",
+    "type": "timestamp",
     "nullable": false
   }, {
     "name": "updated_at",
-    "type": "Timestamp",
+    "type": "timestamp",
     "nullable": true,
     "index": ["tuple","tuple2"]
   }, {
     "name": "user_id",
-    "type": "Integer",
+    "type": "integer",
     "nullable": false,
     "foreign_key": {
       "ref_table": "user",

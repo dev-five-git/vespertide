@@ -77,20 +77,34 @@ Models are JSON files in the `models/` directory:
 
 | Type | PostgreSQL | Use Cases |
 |------|------------|-----------|
-| `"Integer"` | INTEGER | IDs, counters |
-| `"BigInt"` | BIGINT | Large numbers |
-| `"Text"` | TEXT | Strings |
-| `"Boolean"` | BOOLEAN | Flags |
-| `"Timestamp"` | TIMESTAMP | Date/time |
+| `"small_int"` | SMALLINT | Small integers (-32768 to 32767) |
+| `"integer"` | INTEGER | IDs, counters |
+| `"big_int"` | BIGINT | Large numbers |
+| `"real"` | REAL | Single precision float |
+| `"double_precision"` | DOUBLE PRECISION | Double precision float |
+| `"text"` | TEXT | Strings |
+| `"boolean"` | BOOLEAN | Flags |
+| `"date"` | DATE | Date only |
+| `"time"` | TIME | Time only |
+| `"timestamp"` | TIMESTAMP | Date/time without timezone |
+| `"timestamptz"` | TIMESTAMPTZ | Date/time with timezone |
+| `"bytea"` | BYTEA | Binary data |
+| `"uuid"` | UUID | UUIDs |
+| `"json"` | JSON | JSON data |
+| `"jsonb"` | JSONB | Binary JSON (indexable) |
+| `"inet"` | INET | IPv4/IPv6 address |
+| `"cidr"` | CIDR | Network address |
+| `"macaddr"` | MACADDR | MAC address |
 
 ### Custom Types
 
+For types not covered above:
+
 ```json
-{ "Custom": "UUID" }
-{ "Custom": "JSONB" }
-{ "Custom": "DECIMAL(10,2)" }
-{ "Custom": "VARCHAR(255)" }
-{ "Custom": "TIMESTAMPTZ" }
+{ "custom": "DECIMAL(10,2)" }
+{ "custom": "VARCHAR(255)" }
+{ "custom": "NUMERIC(20,8)" }
+{ "custom": "INTERVAL" }
 ```
 
 ## Inline Constraints
@@ -100,7 +114,7 @@ Models are JSON files in the `models/` directory:
 ```json
 {
   "name": "id",
-  "type": "Integer",
+  "type": "integer",
   "nullable": false,
   "primary_key": true
 }
@@ -109,25 +123,25 @@ Models are JSON files in the `models/` directory:
 ### Unique
 
 ```json
-{ "name": "email", "type": "Text", "nullable": false, "unique": true }
+{ "name": "email", "type": "text", "nullable": false, "unique": true }
 ```
 
 Named or composite unique:
 ```json
-{ "name": "tenant_id", "type": "Integer", "nullable": false, "unique": ["uq_tenant_user"] },
-{ "name": "username", "type": "Text", "nullable": false, "unique": ["uq_tenant_user"] }
+{ "name": "tenant_id", "type": "integer", "nullable": false, "unique": ["uq_tenant_user"] },
+{ "name": "username", "type": "text", "nullable": false, "unique": ["uq_tenant_user"] }
 ```
 
 ### Index
 
 ```json
-{ "name": "email", "type": "Text", "nullable": false, "index": true }
+{ "name": "email", "type": "text", "nullable": false, "index": true }
 ```
 
 Composite index:
 ```json
-{ "name": "user_id", "type": "Integer", "nullable": false, "index": ["idx_user_date"] },
-{ "name": "created_at", "type": "Timestamp", "nullable": false, "index": ["idx_user_date"] }
+{ "name": "user_id", "type": "integer", "nullable": false, "index": ["idx_user_date"] },
+{ "name": "created_at", "type": "timestamp", "nullable": false, "index": ["idx_user_date"] }
 ```
 
 ### Foreign Key
@@ -135,7 +149,7 @@ Composite index:
 ```json
 {
   "name": "user_id",
-  "type": "Integer",
+  "type": "integer",
   "nullable": false,
   "foreign_key": {
     "ref_table": "user",
@@ -178,10 +192,10 @@ Reference actions: `"Cascade"`, `"Restrict"`, `"SetNull"`, `"SetDefault"`, `"NoA
   "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
   "name": "user",
   "columns": [
-    { "name": "id", "type": "Integer", "nullable": false, "primary_key": true },
-    { "name": "email", "type": "Text", "nullable": false, "unique": true, "index": true },
-    { "name": "name", "type": "Text", "nullable": false },
-    { "name": "created_at", "type": "Timestamp", "nullable": false, "default": "NOW()" }
+    { "name": "id", "type": "integer", "nullable": false, "primary_key": true },
+    { "name": "email", "type": "text", "nullable": false, "unique": true, "index": true },
+    { "name": "name", "type": "text", "nullable": false },
+    { "name": "created_at", "type": "timestamptz", "nullable": false, "default": "NOW()" }
   ],
   "constraints": [],
   "indexes": []
@@ -195,12 +209,12 @@ Reference actions: `"Cascade"`, `"Restrict"`, `"SetNull"`, `"SetDefault"`, `"NoA
   "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
   "name": "post",
   "columns": [
-    { "name": "id", "type": "Integer", "nullable": false, "primary_key": true },
-    { "name": "user_id", "type": "Integer", "nullable": false, "foreign_key": { "ref_table": "user", "ref_columns": ["id"], "on_delete": "Cascade" }, "index": true },
-    { "name": "title", "type": "Text", "nullable": false },
-    { "name": "content", "type": "Text", "nullable": false },
-    { "name": "published", "type": "Boolean", "nullable": false, "default": "false" },
-    { "name": "created_at", "type": "Timestamp", "nullable": false, "default": "NOW()" }
+    { "name": "id", "type": "integer", "nullable": false, "primary_key": true },
+    { "name": "user_id", "type": "integer", "nullable": false, "foreign_key": { "ref_table": "user", "ref_columns": ["id"], "on_delete": "Cascade" }, "index": true },
+    { "name": "title", "type": "text", "nullable": false },
+    { "name": "content", "type": "text", "nullable": false },
+    { "name": "published", "type": "boolean", "nullable": false, "default": "false" },
+    { "name": "created_at", "type": "timestamptz", "nullable": false, "default": "NOW()" }
   ],
   "constraints": [],
   "indexes": []
@@ -214,12 +228,12 @@ Reference actions: `"Cascade"`, `"Restrict"`, `"SetNull"`, `"SetDefault"`, `"NoA
   "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
   "name": "order",
   "columns": [
-    { "name": "id", "type": { "Custom": "UUID" }, "nullable": false, "primary_key": true, "default": "gen_random_uuid()" },
-    { "name": "customer_id", "type": "Integer", "nullable": false, "foreign_key": { "ref_table": "customer", "ref_columns": ["id"], "on_delete": "Restrict" }, "index": true },
-    { "name": "total_amount", "type": { "Custom": "DECIMAL(10,2)" }, "nullable": false },
-    { "name": "status", "type": "Text", "nullable": false, "default": "'pending'" },
-    { "name": "metadata", "type": { "Custom": "JSONB" }, "nullable": true },
-    { "name": "created_at", "type": "Timestamp", "nullable": false, "default": "NOW()" }
+    { "name": "id", "type": "uuid", "nullable": false, "primary_key": true, "default": "gen_random_uuid()" },
+    { "name": "customer_id", "type": "integer", "nullable": false, "foreign_key": { "ref_table": "customer", "ref_columns": ["id"], "on_delete": "Restrict" }, "index": true },
+    { "name": "total_amount", "type": { "custom": "DECIMAL(10,2)" }, "nullable": false },
+    { "name": "status", "type": "text", "nullable": false, "default": "'pending'" },
+    { "name": "metadata", "type": "jsonb", "nullable": true },
+    { "name": "created_at", "type": "timestamptz", "nullable": false, "default": "NOW()" }
   ],
   "constraints": [
     { "type": "check", "name": "check_total_positive", "expr": "total_amount >= 0" }
@@ -235,9 +249,9 @@ Reference actions: `"Cascade"`, `"Restrict"`, `"SetNull"`, `"SetDefault"`, `"NoA
   "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
   "name": "user_role",
   "columns": [
-    { "name": "user_id", "type": "Integer", "nullable": false, "primary_key": true, "foreign_key": { "ref_table": "user", "ref_columns": ["id"], "on_delete": "Cascade" } },
-    { "name": "role_id", "type": "Integer", "nullable": false, "primary_key": true, "foreign_key": { "ref_table": "role", "ref_columns": ["id"], "on_delete": "Cascade" } },
-    { "name": "assigned_at", "type": "Timestamp", "nullable": false, "default": "NOW()" }
+    { "name": "user_id", "type": "integer", "nullable": false, "primary_key": true, "foreign_key": { "ref_table": "user", "ref_columns": ["id"], "on_delete": "Cascade" } },
+    { "name": "role_id", "type": "integer", "nullable": false, "primary_key": true, "foreign_key": { "ref_table": "role", "ref_columns": ["id"], "on_delete": "Cascade" } },
+    { "name": "assigned_at", "type": "timestamptz", "nullable": false, "default": "NOW()" }
   ],
   "constraints": [],
   "indexes": [

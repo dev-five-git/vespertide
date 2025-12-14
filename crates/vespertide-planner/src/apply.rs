@@ -231,7 +231,7 @@ fn drop_column_from_indexes(indexes: &mut Vec<IndexDef>, column: &str) {
 mod tests {
     use super::*;
     use rstest::rstest;
-    use vespertide_core::{ColumnDef, ColumnType};
+    use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
 
     fn col(name: &str, ty: ColumnType) -> ColumnDef {
         ColumnDef {
@@ -301,13 +301,13 @@ mod tests {
     #[case(
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
             vec![]
         )],
         MigrationAction::AddColumn {
             table: "users".into(),
-            column: col("id", ColumnType::Integer),
+            column: col("id", ColumnType::Simple(SimpleColumnType::Integer)),
             fill_with: None,
         },
         ErrKind::ColumnExists
@@ -315,7 +315,7 @@ mod tests {
     #[case(
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
             vec![]
         )],
@@ -328,7 +328,7 @@ mod tests {
     #[case(
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
             vec![]
         )],
@@ -340,8 +340,8 @@ mod tests {
     )]
     #[case(
         vec![
-            table("old", vec![col("id", ColumnType::Integer)], vec![], vec![]),
-            table("new", vec![col("id", ColumnType::Integer)], vec![], vec![]),
+            table("old", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![], vec![]),
+            table("new", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![], vec![]),
         ],
         MigrationAction::RenameTable {
             from: "old".into(),
@@ -379,7 +379,7 @@ mod tests {
         actions: vec![
             MigrationAction::CreateTable {
                 table: "users".into(),
-                columns: vec![col("id", ColumnType::Integer)],
+                columns: vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
                 constraints: vec![],
             },
             MigrationAction::DeleteTable {
@@ -392,9 +392,9 @@ mod tests {
         initial: vec![table(
             "users",
             vec![
-                col("id", ColumnType::Integer),
-                col("old", ColumnType::Text),
-                col("ref_id", ColumnType::Integer)
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("old", ColumnType::Simple(SimpleColumnType::Text)),
+                col("ref_id", ColumnType::Simple(SimpleColumnType::Integer))
             ],
             vec![
                 TableConstraint::PrimaryKey{columns: vec!["id".into()] },
@@ -423,7 +423,7 @@ mod tests {
         actions: vec![
             MigrationAction::AddColumn {
                 table: "users".into(),
-                column: col("new_col", ColumnType::Boolean),
+                column: col("new_col", ColumnType::Simple(SimpleColumnType::Boolean)),
                 fill_with: None,
             },
             MigrationAction::RenameColumn {
@@ -435,10 +435,10 @@ mod tests {
         expected: vec![table(
             "users",
             vec![
-                col("id", ColumnType::Integer),
-                col("old", ColumnType::Text),
-                col("renamed", ColumnType::Integer),
-                col("new_col", ColumnType::Boolean)
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("old", ColumnType::Simple(SimpleColumnType::Text)),
+                col("renamed", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("new_col", ColumnType::Simple(SimpleColumnType::Boolean))
             ],
             vec![
                 TableConstraint::PrimaryKey{columns: vec!["id".into()] },
@@ -468,7 +468,7 @@ mod tests {
     #[case(SuccessCase {
         initial: vec![table(
             "users",
-            vec![col("id", ColumnType::Integer), col("old", ColumnType::Text)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer)), col("old", ColumnType::Simple(SimpleColumnType::Text))],
             vec![
                 TableConstraint::PrimaryKey{columns: vec!["id".into()] },
                 TableConstraint::Unique {
@@ -496,7 +496,7 @@ mod tests {
         }],
         expected: vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![
                 TableConstraint::PrimaryKey{columns: vec!["id".into()] },
                 TableConstraint::Check {
@@ -510,7 +510,7 @@ mod tests {
     #[case(SuccessCase {
         initial: vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
             vec![],
         )],
@@ -518,7 +518,7 @@ mod tests {
             MigrationAction::ModifyColumnType {
                 table: "users".into(),
                 column: "id".into(),
-                new_type: ColumnType::Text,
+                new_type: ColumnType::Simple(SimpleColumnType::Text),
             },
             MigrationAction::AddIndex {
                 table: "users".into(),
@@ -531,7 +531,7 @@ mod tests {
         ],
         expected: vec![table(
             "users",
-            vec![col("id", ColumnType::Text)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Text))],
             vec![],
             vec![],
         )],
@@ -539,7 +539,7 @@ mod tests {
     #[case(SuccessCase {
         initial: vec![table(
             "old",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
             vec![],
         )],
@@ -549,13 +549,13 @@ mod tests {
         }],
         expected: vec![table(
             "new",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
             vec![],
         )],
     })]
     #[case(SuccessCase {
-        initial: vec![table("users", vec![col("id", ColumnType::Integer)], vec![], vec![])],
+        initial: vec![table("users", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![], vec![])],
         actions: vec![MigrationAction::AddConstraint {
             table: "users".into(),
             constraint: TableConstraint::PrimaryKey {
@@ -564,7 +564,7 @@ mod tests {
         }],
         expected: vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![TableConstraint::PrimaryKey {
                 columns: vec!["id".into()],
             }],
@@ -574,7 +574,7 @@ mod tests {
     #[case(SuccessCase {
         initial: vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![TableConstraint::PrimaryKey {
                 columns: vec!["id".into()],
             }],
@@ -586,14 +586,14 @@ mod tests {
                 columns: vec!["id".into()],
             },
         }],
-        expected: vec![table("users", vec![col("id", ColumnType::Integer)], vec![], vec![])],
+        expected: vec![table("users", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![], vec![])],
     })]
     #[case(SuccessCase {
-        initial: vec![table("users", vec![col("id", ColumnType::Integer)], vec![], vec![])],
+        initial: vec![table("users", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![], vec![])],
         actions: vec![MigrationAction::RawSql {
             sql: "SELECT 1;".to_string(),
         }],
-        expected: vec![table("users", vec![col("id", ColumnType::Integer)], vec![], vec![])],
+        expected: vec![table("users", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![], vec![])],
     })]
     fn apply_action_success_cases(#[case] case: SuccessCase) {
         let mut schema = case.initial;

@@ -15,7 +15,9 @@ pub fn build_plan_queries(plan: &MigrationPlan) -> Result<Vec<BuiltQuery>, Query
 mod tests {
     use super::*;
     use rstest::rstest;
-    use vespertide_core::{ColumnDef, ColumnType, MigrationAction, MigrationPlan};
+    use vespertide_core::{
+        ColumnDef, ColumnType, MigrationAction, MigrationPlan, SimpleColumnType,
+    };
 
     fn col(name: &str, ty: ColumnType) -> ColumnDef {
         ColumnDef {
@@ -62,7 +64,7 @@ mod tests {
             actions: vec![
                 MigrationAction::CreateTable {
                     table: "users".into(),
-                    columns: vec![col("id", ColumnType::Integer)],
+                    columns: vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
                     constraints: vec![],
                 },
                 MigrationAction::DeleteTable {
