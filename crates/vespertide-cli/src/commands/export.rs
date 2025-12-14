@@ -191,6 +191,7 @@ fn walk_models(root: &Path, current: &Path, acc: &mut Vec<(TableDef, PathBuf)>) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
     use serial_test::serial;
     use std::fs;
     use tempfile::tempdir;
@@ -420,21 +421,23 @@ mod tests {
         assert_eq!(resolved, override_dir);
     }
 
-    #[test]
-    fn orm_arg_maps_to_enum() {
-        assert!(matches!(Orm::from(OrmArg::Seaorm), Orm::SeaOrm));
-        assert!(matches!(Orm::from(OrmArg::Sqlalchemy), Orm::SqlAlchemy));
-        assert!(matches!(Orm::from(OrmArg::Sqlmodel), Orm::SqlModel));
+    #[rstest]
+    #[case(OrmArg::Seaorm, Orm::SeaOrm)]
+    #[case(OrmArg::Sqlalchemy, Orm::SqlAlchemy)]
+    #[case(OrmArg::Sqlmodel, Orm::SqlModel)]
+    fn orm_arg_maps_to_enum(#[case] arg: OrmArg, #[case] expected: Orm) {
+        assert_eq!(Orm::from(arg), expected);
     }
 
-    #[test]
-    fn test_sanitize_filename() {
-        assert_eq!(sanitize_filename("normal_name"), "normal_name");
-        assert_eq!(sanitize_filename("user copy"), "user_copy");
-        assert_eq!(sanitize_filename("user  copy"), "user__copy");
-        assert_eq!(sanitize_filename("user-copy"), "user-copy");
-        assert_eq!(sanitize_filename("user.copy"), "user_copy");
-        assert_eq!(sanitize_filename("user copy.json"), "user_copy_json");
+    #[rstest]
+    #[case("normal_name", "normal_name")]
+    #[case("user copy", "user_copy")]
+    #[case("user  copy", "user__copy")]
+    #[case("user-copy", "user-copy")]
+    #[case("user.copy", "user_copy")]
+    #[case("user copy.json", "user_copy_json")]
+    fn test_sanitize_filename(#[case] input: &str, #[case] expected: &str) {
+        assert_eq!(sanitize_filename(input), expected);
     }
 
     #[test]
