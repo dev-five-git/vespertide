@@ -32,6 +32,17 @@ pub fn cmd_export(orm: OrmArg, export_dir: Option<PathBuf>) -> Result<()> {
     let config = load_config()?;
     let models = load_models_recursive(config.models_dir()).context("load models recursively")?;
 
+    // Normalize tables to convert inline constraints (primary_key, foreign_key, etc.) to table-level constraints
+    let normalized_models: Vec<(TableDef, PathBuf)> = models
+        .into_iter()
+        .map(|(table, rel_path)| {
+            table
+                .normalize()
+                .map_err(|e| anyhow::anyhow!("Failed to normalize table '{}': {}", table.name, e))
+                .map(|normalized| (normalized, rel_path))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
     let target_root = resolve_export_dir(export_dir, &config);
     if !target_root.exists() {
         fs::create_dir_all(&target_root)
@@ -40,7 +51,7 @@ pub fn cmd_export(orm: OrmArg, export_dir: Option<PathBuf>) -> Result<()> {
 
     let orm_kind: Orm = orm.into();
 
-    for (table, rel_path) in &models {
+    for (table, rel_path) in &normalized_models {
         let code = render_entity(orm_kind, table).map_err(|e| anyhow::anyhow!(e))?;
         let out_path = build_output_path(&target_root, rel_path, orm_kind);
         if let Some(parent) = out_path.parent() {
