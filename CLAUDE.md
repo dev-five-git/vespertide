@@ -46,7 +46,7 @@ cargo run -p vespertide-cli -- log
 2. **Baseline Reconstruction**: Applied migrations are replayed to rebuild the baseline schema
 3. **Diffing**: Current models are compared against the baseline to compute changes
 4. **Planning**: Changes are converted into a `MigrationPlan` with versioned actions
-5. **SQL Generation**: Migration actions are translated into PostgreSQL SQL statements
+5. **SQL Generation**: Migration actions are translated into SQL statements
 
 ### Crate Responsibilities
 
@@ -59,7 +59,7 @@ cargo run -p vespertide-cli -- log
   - `plan_next_migration()`: Combines baseline reconstruction + diffing to create the next migration
   - `apply_action()`: Applies a single migration action to a schema (used during replay)
   - `validate_*()`: Validates schemas and migration plans
-- **vespertide-query**: Converts `MigrationAction` → PostgreSQL SQL with bind parameters
+- **vespertide-query**: Converts `MigrationAction` → SQL with bind parameters
   - Uses `ColumnType::to_sql()` method for SQL type conversion
 - **vespertide-config**: Manages `vespertide.json` (models/migrations directories, naming case preferences)
 - **vespertide-cli**: Command-line interface implementation
@@ -111,7 +111,7 @@ SimpleColumnType::Integer.into()
 
 ### ColumnType Methods
 `ColumnType` provides two utility methods:
-- `to_sql()`: Returns the PostgreSQL SQL type string (e.g., `"INTEGER"`, `"VARCHAR(255)"`)
+- `to_sql()`: Returns the SQL type string (e.g., `"INTEGER"`, `"VARCHAR(255)"`)
 - `to_rust_type(nullable: bool)`: Returns the Rust type string for SeaORM entity generation (e.g., `"i32"` or `"Option<i32>"`)
 
 These methods replace the old standalone functions `column_type_sql()` and `rust_type()`.
@@ -134,7 +134,7 @@ pub struct ForeignKeyDef {
 - The planner validates that column/table names follow the configured naming case
 
 ### SQL Generation Target
-All SQL generation currently targets **PostgreSQL only**. When modifying the query builder, ensure PostgreSQL compatibility.
+SQL generation currently uses PostgreSQL-compatible syntax. The query builder can be extended to support other database systems.
 
 ### JSON Schema Generation
 The `vespertide-schema-gen` crate uses `schemars` to generate JSON Schemas from the Rust types. After modifying core data structures, regenerate schemas with:
@@ -155,4 +155,4 @@ Schema base URL can be overridden via `VESP_SCHEMA_BASE_URL` environment variabl
 
 - YAML loading is not implemented (templates can be generated but not parsed)
 - Runtime migration executor (`run_migrations`) in `vespertide-macro` is not implemented
-- Only PostgreSQL SQL generation is supported
+- SQL generation currently uses PostgreSQL-compatible syntax

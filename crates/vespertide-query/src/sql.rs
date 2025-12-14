@@ -202,7 +202,7 @@ pub fn build_action_queries(action: &MigrationAction) -> Result<Vec<BuiltQuery>,
             // For removing constraints, we need to handle each type differently
             let drop_sql = match constraint {
                 TableConstraint::PrimaryKey { .. } => {
-                    // PostgreSQL syntax for dropping primary key
+                    // Syntax for dropping primary key
                     format!("ALTER TABLE {t} DROP CONSTRAINT {t}_pkey;")
                 }
                 TableConstraint::Unique { name, columns } => {

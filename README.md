@@ -1,6 +1,6 @@
 # Vespertide
 
-Declarative database schema management for PostgreSQL. Define your schemas in JSON, and Vespertide automatically generates migration plans and SQL from model diffs.
+Declarative database schema management. Define your schemas in JSON, and Vespertide automatically generates migration plans and SQL from model diffs.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![GitHub Actions](https://img.shields.io/github/actions/workflow/status/dev-five-git/vespertide/CI.yml?branch=main&label=CI)](https://github.com/dev-five-git/vespertide/actions)
@@ -12,7 +12,7 @@ Declarative database schema management for PostgreSQL. Define your schemas in JS
 - **Declarative Schema**: Define your desired database state in JSON files
 - **Automatic Diffing**: Vespertide compares your models against applied migrations to compute changes
 - **Migration Planning**: Generates typed migration actions (not raw SQL) for safety and portability
-- **PostgreSQL SQL Generation**: Converts migration actions to parameterized PostgreSQL statements
+- **SQL Generation**: Converts migration actions to parameterized SQL statements
 - **JSON Schema Validation**: Ships with JSON Schemas for IDE autocompletion and validation
 - **ORM Export**: Export schemas to SeaORM entities
 
@@ -76,7 +76,7 @@ Models are JSON files in the `models/` directory:
 ### Column Types
 
 **Simple Types** (string values in JSON):
-| Type | PostgreSQL |
+| Type | SQL Type |
 |------|------------|
 | `"integer"` | INTEGER |
 | `"big_int"` | BIGINT |
@@ -128,7 +128,7 @@ See [SKILL.md](SKILL.md) for complete documentation on model definitions.
 vespertide/
 ├── vespertide-core      # Data structures (TableDef, ColumnDef, MigrationAction)
 ├── vespertide-planner   # Schema diffing and migration planning
-├── vespertide-query     # PostgreSQL SQL generation
+├── vespertide-query     # SQL generation
 ├── vespertide-config    # Configuration management
 ├── vespertide-cli       # Command-line interface
 ├── vespertide-exporter  # ORM code generation (SeaORM)
@@ -142,7 +142,7 @@ vespertide/
 2. **Replay Migrations**: Applied migrations are replayed to reconstruct the baseline schema
 3. **Diff Schemas**: Current models are compared against the baseline
 4. **Generate Plan**: Changes are converted into typed `MigrationAction` enums
-5. **Emit SQL**: Migration actions are translated to PostgreSQL SQL
+5. **Emit SQL**: Migration actions are translated to SQL
 
 ## Configuration
 
@@ -179,7 +179,7 @@ cargo run -p vespertide-schema-gen -- --out schemas
 
 ## Limitations
 
-- SQL generation targets **PostgreSQL only**
+- SQL generation currently uses PostgreSQL-compatible syntax
 - YAML loading is not yet implemented (templates can be generated but not parsed)
 - Runtime migration executor is not implemented
 

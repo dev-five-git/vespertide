@@ -28,7 +28,7 @@ pub enum ColumnType {
 }
 
 impl ColumnType {
-    /// Convert column type to PostgreSQL SQL type string
+    /// Convert column type to SQL type string
     pub fn to_sql(&self) -> String {
         match self {
             ColumnType::Simple(ty) => match ty {

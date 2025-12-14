@@ -6,7 +6,7 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 documentation.workspace = true
-description = "Converts migration actions into PostgreSQL SQL statements with bind parameters"
+description = "Converts migration actions into SQL statements with bind parameters"
 
 [dependencies]
 vespertide-core = { workspace = true }

@@ -1,11 +1,11 @@
 ---
 name: vespertide
-description: Define PostgreSQL database schemas in JSON and generate migration plans. Use this skill when creating or modifying database models, defining tables with columns, constraints, indexes, and foreign keys for Vespertide-based projects.
+description: Define database schemas in JSON and generate migration plans. Use this skill when creating or modifying database models, defining tables with columns, constraints, indexes, and foreign keys for Vespertide-based projects.
 ---
 
 # Vespertide Database Schema Definition
 
-This skill helps you create and manage database models using Vespertide, a declarative schema management tool for PostgreSQL.
+This skill helps you create and manage database models using Vespertide, a declarative schema management tool.
 
 ## Installation
 
@@ -79,7 +79,7 @@ Column types in JSON can be either simple (string) or complex (object) values.
 
 Simple types are represented as strings in JSON (snake_case):
 
-| Type | PostgreSQL | Use Cases |
+| Type | SQL Type | Use Cases |
 |------|------------|-----------|
 | `"small_int"` | SMALLINT | Small integers (-32768 to 32767) |
 | `"integer"` | INTEGER | IDs, counters |
