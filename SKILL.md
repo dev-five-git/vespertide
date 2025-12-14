@@ -1,0 +1,267 @@
+---
+name: vespertide
+description: Define PostgreSQL database schemas in JSON and generate migration plans. Use this skill when creating or modifying database models, defining tables with columns, constraints, indexes, and foreign keys for Vespertide-based projects.
+---
+
+# Vespertide Database Schema Definition
+
+This skill helps you create and manage database models using Vespertide, a declarative schema management tool for PostgreSQL.
+
+## Installation
+
+```bash
+cargo install vespertide-cli
+```
+
+## CLI Commands
+
+```bash
+vespertide init                    # Initialize project with vespertide.json
+vespertide new <name>              # Create a new model template
+vespertide diff                    # Show pending changes
+vespertide sql                     # Preview SQL for pending migration
+vespertide revision -m "message"   # Create migration file
+vespertide status                  # Show project status
+vespertide log                     # List applied migrations
+```
+
+## Model File Structure
+
+Models are JSON files in the `models/` directory:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
+  "name": "table_name",
+  "columns": [],
+  "constraints": [],
+  "indexes": []
+}
+```
+
+### Required Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Table name (snake_case) |
+| `columns` | array | Column definitions |
+| `constraints` | array | Table-level constraints (can be empty `[]`) |
+| `indexes` | array | Index definitions (can be empty `[]`) |
+
+## Column Definition
+
+### Required Fields
+
+```json
+{
+  "name": "column_name",
+  "type": "ColumnType",
+  "nullable": false
+}
+```
+
+### Optional Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `default` | string | Default value expression (e.g., `"NOW()"`, `"'pending'"`) |
+| `comment` | string | Column description |
+| `primary_key` | boolean | Inline primary key |
+| `unique` | boolean \| string \| string[] | Inline unique constraint |
+| `index` | boolean \| string \| string[] | Inline index |
+| `foreign_key` | object | Inline foreign key definition |
+
+## Column Types
+
+### Built-in Types
+
+| Type | PostgreSQL | Use Cases |
+|------|------------|-----------|
+| `"Integer"` | INTEGER | IDs, counters |
+| `"BigInt"` | BIGINT | Large numbers |
+| `"Text"` | TEXT | Strings |
+| `"Boolean"` | BOOLEAN | Flags |
+| `"Timestamp"` | TIMESTAMP | Date/time |
+
+### Custom Types
+
+```json
+{ "Custom": "UUID" }
+{ "Custom": "JSONB" }
+{ "Custom": "DECIMAL(10,2)" }
+{ "Custom": "VARCHAR(255)" }
+{ "Custom": "TIMESTAMPTZ" }
+```
+
+## Inline Constraints
+
+### Primary Key
+
+```json
+{
+  "name": "id",
+  "type": "Integer",
+  "nullable": false,
+  "primary_key": true
+}
+```
+
+### Unique
+
+```json
+{ "name": "email", "type": "Text", "nullable": false, "unique": true }
+```
+
+Named or composite unique:
+```json
+{ "name": "tenant_id", "type": "Integer", "nullable": false, "unique": ["uq_tenant_user"] },
+{ "name": "username", "type": "Text", "nullable": false, "unique": ["uq_tenant_user"] }
+```
+
+### Index
+
+```json
+{ "name": "email", "type": "Text", "nullable": false, "index": true }
+```
+
+Composite index:
+```json
+{ "name": "user_id", "type": "Integer", "nullable": false, "index": ["idx_user_date"] },
+{ "name": "created_at", "type": "Timestamp", "nullable": false, "index": ["idx_user_date"] }
+```
+
+### Foreign Key
+
+```json
+{
+  "name": "user_id",
+  "type": "Integer",
+  "nullable": false,
+  "foreign_key": {
+    "ref_table": "user",
+    "ref_columns": ["id"],
+    "on_delete": "Cascade",
+    "on_update": null
+  },
+  "index": true
+}
+```
+
+Reference actions: `"Cascade"`, `"Restrict"`, `"SetNull"`, `"SetDefault"`, `"NoAction"`
+
+## Table-Level Constraints
+
+```json
+"constraints": [
+  { "type": "primary_key", "columns": ["id"] },
+  { "type": "unique", "name": "uq_email", "columns": ["email"] },
+  { "type": "foreign_key", "name": "fk_post_user", "columns": ["user_id"], "ref_table": "user", "ref_columns": ["id"], "on_delete": "Cascade" },
+  { "type": "check", "name": "check_positive", "expr": "amount > 0" }
+]
+```
+
+## Table-Level Indexes
+
+```json
+"indexes": [
+  { "name": "idx_user_email", "columns": ["email"], "unique": false },
+  { "name": "idx_composite", "columns": ["user_id", "created_at"], "unique": false }
+]
+```
+
+## Examples
+
+### Basic User Table
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
+  "name": "user",
+  "columns": [
+    { "name": "id", "type": "Integer", "nullable": false, "primary_key": true },
+    { "name": "email", "type": "Text", "nullable": false, "unique": true, "index": true },
+    { "name": "name", "type": "Text", "nullable": false },
+    { "name": "created_at", "type": "Timestamp", "nullable": false, "default": "NOW()" }
+  ],
+  "constraints": [],
+  "indexes": []
+}
+```
+
+### Post Table with Foreign Key
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
+  "name": "post",
+  "columns": [
+    { "name": "id", "type": "Integer", "nullable": false, "primary_key": true },
+    { "name": "user_id", "type": "Integer", "nullable": false, "foreign_key": { "ref_table": "user", "ref_columns": ["id"], "on_delete": "Cascade" }, "index": true },
+    { "name": "title", "type": "Text", "nullable": false },
+    { "name": "content", "type": "Text", "nullable": false },
+    { "name": "published", "type": "Boolean", "nullable": false, "default": "false" },
+    { "name": "created_at", "type": "Timestamp", "nullable": false, "default": "NOW()" }
+  ],
+  "constraints": [],
+  "indexes": []
+}
+```
+
+### Order Table with Custom Types and Check Constraint
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
+  "name": "order",
+  "columns": [
+    { "name": "id", "type": { "Custom": "UUID" }, "nullable": false, "primary_key": true, "default": "gen_random_uuid()" },
+    { "name": "customer_id", "type": "Integer", "nullable": false, "foreign_key": { "ref_table": "customer", "ref_columns": ["id"], "on_delete": "Restrict" }, "index": true },
+    { "name": "total_amount", "type": { "Custom": "DECIMAL(10,2)" }, "nullable": false },
+    { "name": "status", "type": "Text", "nullable": false, "default": "'pending'" },
+    { "name": "metadata", "type": { "Custom": "JSONB" }, "nullable": true },
+    { "name": "created_at", "type": "Timestamp", "nullable": false, "default": "NOW()" }
+  ],
+  "constraints": [
+    { "type": "check", "name": "check_total_positive", "expr": "total_amount >= 0" }
+  ],
+  "indexes": []
+}
+```
+
+### Many-to-Many Join Table
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
+  "name": "user_role",
+  "columns": [
+    { "name": "user_id", "type": "Integer", "nullable": false, "primary_key": true, "foreign_key": { "ref_table": "user", "ref_columns": ["id"], "on_delete": "Cascade" } },
+    { "name": "role_id", "type": "Integer", "nullable": false, "primary_key": true, "foreign_key": { "ref_table": "role", "ref_columns": ["id"], "on_delete": "Cascade" } },
+    { "name": "assigned_at", "type": "Timestamp", "nullable": false, "default": "NOW()" }
+  ],
+  "constraints": [],
+  "indexes": [
+    { "name": "idx_user_role_role", "columns": ["role_id"], "unique": false }
+  ]
+}
+```
+
+## Guidelines
+
+1. **Always include `$schema`** for IDE validation and autocompletion
+2. **Always specify `nullable`** on every column
+3. **Always include empty arrays** for `constraints` and `indexes` even if unused
+4. **Add indexes on foreign key columns** for query performance
+5. **Use named constraints** (especially CHECK) for easier management
+6. **Naming conventions**:
+   - Tables: `snake_case` (e.g., `user_role`)
+   - Columns: `snake_case` (e.g., `created_at`)
+   - Indexes: `idx_{table}_{columns}`
+   - Unique constraints: `uq_{table}_{columns}`
+   - Foreign keys: `fk_{table}_{ref_table}`
+   - Check constraints: `check_{description}`
+7. **Timestamp columns**:
+   - `created_at`: `"default": "NOW()"`, `nullable: false`
+   - `updated_at`: `nullable: true` (managed by application)
+8. **Boolean defaults**: Use string format `"true"` or `"false"`
+9. **Adding NOT NULL columns** to existing tables requires either a `default` value or `fill_with` in migration

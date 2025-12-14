@@ -1,72 +1,172 @@
-# vespertide
+# Vespertide
 
-Rust workspace for defining database schemas in JSON (YAML planned) and generating migration plans and SQL from model diffs. Ships with a CLI and JSON Schemas for validation.
+Declarative database schema management for PostgreSQL. Define your schemas in JSON, and Vespertide automatically generates migration plans and SQL from model diffs.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![GitHub Actions](https://img.shields.io/github/actions/workflow/status/dev-five-git/vespertide/CI.yml?branch=main&label=CI)](https://github.com/dev-five-git/vespertide/actions)
 [![Codecov](https://img.shields.io/codecov/c/github/dev-five-git/vespertide)](https://codecov.io/gh/dev-five-git/vespertide)
-[![GitHub stars](https://img.shields.io/github/stars/dev-five-git/vespertide.svg?style=social&label=Star)](https://github.com/dev-five-git/vespertide)
-[![GitHub forks](https://img.shields.io/github/forks/dev-five-git/vespertide.svg?style=social&label=Fork)](https://github.com/dev-five-git/vespertide/fork)
-[![GitHub issues](https://img.shields.io/github/issues/dev-five-git/vespertide.svg)](https://github.com/dev-five-git/vespertide/issues)
-[![GitHub pull requests](https://img.shields.io/github/issues-pr/dev-five-git/vespertide.svg)](https://github.com/dev-five-git/vespertide/pulls)
-[![GitHub last commit](https://img.shields.io/github/last-commit/dev-five-git/vespertide.svg)](https://github.com/dev-five-git/vespertide/commits/main)
-[![OpenAPI](https://img.shields.io/badge/OpenAPI-3.1-green.svg)](https://www.openapis.org/)
+[![Crates.io](https://img.shields.io/crates/v/vespertide-cli.svg)](https://crates.io/crates/vespertide-cli)
 
+## Features
 
-## Components
-- `crates/vespertide-core`: Data models for tables, columns, constraints, indexes, and migration actions.
-- `crates/vespertide-planner`: Replays applied migrations to rebuild a baseline, then diffs against current models to compute the next migration plan.
-- `crates/vespertide-query`: Converts migration actions into PostgreSQL SQL statements with bind parameters.
-- `crates/vespertide-config`: Manages models/migrations directories and naming-case preferences.
-- `crates/vespertide-cli`: `vespertide` command (model template, diff, SQL, revision, status, log).
-- `crates/vespertide-schema-gen`: Emits JSON Schemas (`schemas/`).
-- `crates/vespertide-macro`: Macro entry for runtime migration execution (logic not implemented yet).
-- `examples/app`: Minimal sample project (`vespertide.json`, `models/user.json`).
+- **Declarative Schema**: Define your desired database state in JSON files
+- **Automatic Diffing**: Vespertide compares your models against applied migrations to compute changes
+- **Migration Planning**: Generates typed migration actions (not raw SQL) for safety and portability
+- **PostgreSQL SQL Generation**: Converts migration actions to parameterized PostgreSQL statements
+- **JSON Schema Validation**: Ships with JSON Schemas for IDE autocompletion and validation
+- **ORM Export**: Export schemas to SeaORM entities
 
-## Quickstart
-1) Build the workspace
+## Installation
+
+```bash
+cargo install vespertide-cli
 ```
-cargo build
-```
-2) Create default config
-```
-cargo run -p vespertide-cli -- init
-```
-3) Create a model template (e.g., `user.json`)
-```
-cargo run -p vespertide-cli -- new user
-```
-4) Edit the model and generate a migration
-```
-cargo run -p vespertide-cli -- revision -m "initial schema"
-```
-5) Preview the planned SQL
-```
-cargo run -p vespertide-cli -- sql
+
+## Quick Start
+
+```bash
+# Initialize a new project
+vespertide init
+
+# Create a model template
+vespertide new user
+
+# Edit models/user.json, then check changes
+vespertide diff
+
+# Preview the SQL
+vespertide sql
+
+# Generate a migration file
+vespertide revision -m "create user table"
 ```
 
 ## CLI Commands
-- `init`: Create `vespertide.json`.
-- `new <name> [-f json|yaml|yml]`: Create a model template with `$schema` (loader currently supports JSON only).
-- `diff`: Summarize changes between applied migrations and current models.
-- `sql`: Print SQL for the next migration plan (with binds).
-- `revision -m "<msg>"`: Persist pending changes as a migration JSON file.
-- `status`: Show config/models/migrations overview and sync status.
-- `log`: List applied migrations and generated SQL in chronological order.
 
-## Model & Migration Format
-- Model (`TableDef`): Table name, columns, table constraints (Primary/Unique/Foreign/Check), indexes in JSON.
-- Migration (`MigrationPlan`): Version, comment, and action list—create/delete/rename table, add/delete/rename/modify column, add/remove index.
-- JSON Schemas live in `schemas/`; override the base URL with `VESP_SCHEMA_BASE_URL`.
+| Command | Description |
+|---------|-------------|
+| `vespertide init` | Create `vespertide.json` configuration file |
+| `vespertide new <name>` | Create a new model template with JSON Schema reference |
+| `vespertide diff` | Show pending changes between migrations and current models |
+| `vespertide sql` | Print SQL statements for the next migration |
+| `vespertide revision -m "<msg>"` | Persist pending changes as a migration file |
+| `vespertide status` | Show configuration and sync status overview |
+| `vespertide log` | List applied migrations with generated SQL |
+| `vespertide export --orm seaorm` | Export models to SeaORM entity code |
 
-## Limitations & Roadmap
-- Runtime executor (`run_migrations` in `vespertide-macro`) is not implemented.
-- YAML loading is not supported; only JSON is parsed (YAML templates can be generated but not read).
-- SQL generation targets PostgreSQL.
+## Model Definition
+
+Models are JSON files in the `models/` directory:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
+  "name": "user",
+  "columns": [
+    { "name": "id", "type": "Integer", "nullable": false, "primary_key": true },
+    { "name": "email", "type": "Text", "nullable": false, "unique": true },
+    { "name": "name", "type": "Text", "nullable": false },
+    { "name": "created_at", "type": "Timestamp", "nullable": false, "default": "NOW()" }
+  ],
+  "constraints": [],
+  "indexes": []
+}
+```
+
+### Column Types
+
+| Type | PostgreSQL |
+|------|------------|
+| `"Integer"` | INTEGER |
+| `"BigInt"` | BIGINT |
+| `"Text"` | TEXT |
+| `"Boolean"` | BOOLEAN |
+| `"Timestamp"` | TIMESTAMP |
+| `{ "Custom": "UUID" }` | UUID |
+| `{ "Custom": "JSONB" }` | JSONB |
+| `{ "Custom": "DECIMAL(10,2)" }` | DECIMAL(10,2) |
+
+### Inline Constraints
+
+Constraints can be defined directly on columns:
+
+```json
+{
+  "name": "user_id",
+  "type": "Integer",
+  "nullable": false,
+  "foreign_key": {
+    "ref_table": "user",
+    "ref_columns": ["id"],
+    "on_delete": "Cascade"
+  },
+  "index": true
+}
+```
+
+See [SKILL.md](SKILL.md) for complete documentation on model definitions.
+
+## Architecture
+
+```
+vespertide/
+├── vespertide-core      # Data structures (TableDef, ColumnDef, MigrationAction)
+├── vespertide-planner   # Schema diffing and migration planning
+├── vespertide-query     # PostgreSQL SQL generation
+├── vespertide-config    # Configuration management
+├── vespertide-cli       # Command-line interface
+├── vespertide-exporter  # ORM code generation (SeaORM)
+├── vespertide-schema-gen # JSON Schema generation
+└── vespertide-macro     # Runtime migration executor (planned)
+```
+
+### How It Works
+
+1. **Define Models**: Write table definitions in JSON files
+2. **Replay Migrations**: Applied migrations are replayed to reconstruct the baseline schema
+3. **Diff Schemas**: Current models are compared against the baseline
+4. **Generate Plan**: Changes are converted into typed `MigrationAction` enums
+5. **Emit SQL**: Migration actions are translated to PostgreSQL SQL
+
+## Configuration
+
+`vespertide.json`:
+
+```json
+{
+  "modelsDir": "models",
+  "migrationsDir": "migrations",
+  "tableNamingCase": "snake",
+  "columnNamingCase": "snake",
+  "modelFormat": "json"
+}
+```
 
 ## Development
-- Format/lint/test: `cargo fmt`, `cargo clippy --all-targets --all-features`, `cargo test`.
-- Regenerate schemas: `cargo run -p vespertide-schema-gen -- --out schemas`.
 
-## Example
-- In `examples/app`, run `cargo run -p vespertide-cli -- diff` to see it in action.
+```bash
+# Build
+cargo build
+
+# Test
+cargo test
+
+# Lint
+cargo clippy --all-targets --all-features
+
+# Format
+cargo fmt
+
+# Regenerate JSON Schemas
+cargo run -p vespertide-schema-gen -- --out schemas
+```
+
+## Limitations
+
+- SQL generation targets **PostgreSQL only**
+- YAML loading is not yet implemented (templates can be generated but not parsed)
+- Runtime migration executor is not implemented
+
+## License
+
+Apache-2.0
