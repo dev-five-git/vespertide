@@ -197,7 +197,7 @@ mod helper_tests {
 
     #[test]
     fn test_rust_type() {
-        use vespertide_core::{ColumnType, SimpleColumnType};
+        use vespertide_core::{ColumnType, SimpleColumnType, ComplexColumnType};
         // Numeric types
         assert_eq!(
             ColumnType::Simple(SimpleColumnType::SmallInt).to_rust_type(false),
@@ -313,6 +313,28 @@ mod helper_tests {
             ColumnType::Simple(SimpleColumnType::Macaddr).to_rust_type(false),
             "String"
         );
+
+        // Interval type
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::Interval).to_rust_type(false),
+            "String"
+        );
+
+        // XML type
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::Xml).to_rust_type(false),
+            "String"
+        );
+
+        // Complex types
+        assert_eq!(
+            ColumnType::Complex(ComplexColumnType::Numeric { precision: 10, scale: 2 }).to_rust_type(false),
+            "Decimal"
+        );
+        assert_eq!(
+            ColumnType::Complex(ComplexColumnType::Char { length: 10 }).to_rust_type(false),
+            "String"
+        );
     }
 
     #[test]
@@ -341,7 +363,7 @@ mod tests {
     use super::*;
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
-    use vespertide_core::{ColumnType, SimpleColumnType};
+    use vespertide_core::{ColumnType, SimpleColumnType, ComplexColumnType};
 
     #[rstest]
     #[case("basic_single_pk", TableDef {

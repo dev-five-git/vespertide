@@ -132,6 +132,48 @@
         {
           "type": "object",
           "properties": {
+            "kind": {
+              "type": "string",
+              "const": "numeric"
+            },
+            "precision": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "scale": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "precision",
+            "scale"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "char"
+            },
+            "length": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "length"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
             "custom_type": {
               "type": "string"
             },
@@ -231,13 +273,15 @@
         "time",
         "timestamp",
         "timestamptz",
+        "interval",
         "bytea",
         "uuid",
         "json",
         "jsonb",
         "inet",
         "cidr",
-        "macaddr"
+        "macaddr",
+        "xml"
       ]
     },
     "StrOrBoolOrArray": {

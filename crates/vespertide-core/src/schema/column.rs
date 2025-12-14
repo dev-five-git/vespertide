@@ -40,6 +40,7 @@ impl ColumnType {
                 SimpleColumnType::Time => "TIME".into(),
                 SimpleColumnType::Timestamp => "TIMESTAMP".into(),
                 SimpleColumnType::Timestamptz => "TIMESTAMPTZ".into(),
+                SimpleColumnType::Interval => "INTERVAL".into(),
                 SimpleColumnType::Bytea => "BYTEA".into(),
                 SimpleColumnType::Uuid => "UUID".into(),
                 SimpleColumnType::Json => "JSON".into(),
@@ -47,9 +48,12 @@ impl ColumnType {
                 SimpleColumnType::Inet => "INET".into(),
                 SimpleColumnType::Cidr => "CIDR".into(),
                 SimpleColumnType::Macaddr => "MACADDR".into(),
+                SimpleColumnType::Xml => "XML".into(),
             },
             ColumnType::Complex(ty) => match ty {
                 ComplexColumnType::Varchar { length } => format!("VARCHAR({})", length),
+                ComplexColumnType::Numeric { precision, scale } => format!("NUMERIC({}, {})", precision, scale),
+                ComplexColumnType::Char { length } => format!("CHAR({})", length),
                 ComplexColumnType::Custom { custom_type } => custom_type.clone(),
             },
         }
@@ -70,14 +74,18 @@ impl ColumnType {
                 SimpleColumnType::Time => "Time".to_string(),
                 SimpleColumnType::Timestamp => "DateTime".to_string(),
                 SimpleColumnType::Timestamptz => "DateTimeWithTimeZone".to_string(),
+                SimpleColumnType::Interval => "String".to_string(),
                 SimpleColumnType::Bytea => "Vec<u8>".to_string(),
                 SimpleColumnType::Uuid => "Uuid".to_string(),
                 SimpleColumnType::Json | SimpleColumnType::Jsonb => "Json".to_string(),
                 SimpleColumnType::Inet | SimpleColumnType::Cidr => "String".to_string(),
                 SimpleColumnType::Macaddr => "String".to_string(),
+                SimpleColumnType::Xml => "String".to_string(),
             },
             ColumnType::Complex(ty) => match ty {
                 ComplexColumnType::Varchar { .. } => "String".to_string(),
+                ComplexColumnType::Numeric { .. } => "Decimal".to_string(),
+                ComplexColumnType::Char { .. } => "String".to_string(),
                 ComplexColumnType::Custom { .. } => "String".to_string(), // Default for custom types
             },
         };
@@ -110,6 +118,7 @@ pub enum SimpleColumnType {
     Time,
     Timestamp,
     Timestamptz,
+    Interval,
 
     // Binary type
     Bytea,
@@ -125,12 +134,17 @@ pub enum SimpleColumnType {
     Inet,
     Cidr,
     Macaddr,
+
+    // XML type
+    Xml,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case", tag = "kind")]
 pub enum ComplexColumnType {
     Varchar { length: u32 },
+    Numeric { precision: u32, scale: u32 },
+    Char { length: u32 },
     Custom { custom_type: String },
 }
 

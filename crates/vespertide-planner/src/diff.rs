@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use vespertide_core::{MigrationAction, MigrationPlan, TableDef};
+use vespertide_core::{MigrationAction, MigrationPlan, TableConstraint, TableDef};
 
 use crate::error::PlannerError;
 
@@ -95,6 +95,20 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
                         column: (*def).clone(),
                         fill_with: None,
                     });
+                    // If column has inline foreign key, add it as a constraint
+                    if let Some(ref fk) = def.foreign_key {
+                        actions.push(MigrationAction::AddConstraint {
+                            table: (*name).to_string(),
+                            constraint: TableConstraint::ForeignKey {
+                                name: None,
+                                columns: vec![def.name.clone()],
+                                ref_table: fk.ref_table.clone(),
+                                ref_columns: fk.ref_columns.clone(),
+                                on_delete: fk.on_delete.clone(),
+                                on_update: fk.on_update.clone(),
+                            },
+                        });
+                    }
                 }
             }
 
