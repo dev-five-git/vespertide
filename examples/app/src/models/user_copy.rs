@@ -5,9 +5,13 @@ use sea_orm::entity::prelude::*;
 #[sea_orm(table_name = "user")]
 pub struct Model {
     #[sea_orm(primary_key)]
-    pub id: i32,
-    pub name: String,
+    pub id: Uuid,
     pub email: String,
+    pub password: String,
+    pub name: String,
+    pub profile_image: Option<String>,
+    pub created_at: DateTimeWithTimeZone,
+    pub updated_at: Option<DateTimeWithTimeZone>,
 }
 
 impl ActiveModelBehavior for ActiveModel {}

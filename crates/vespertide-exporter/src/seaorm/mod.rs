@@ -70,6 +70,8 @@ fn render_column(
 
 fn primary_key_columns(table: &TableDef) -> HashSet<String> {
     let mut keys = HashSet::new();
+    
+    // First, check table-level constraints
     for constraint in &table.constraints {
         if let TableConstraint::PrimaryKey { columns } = constraint {
             for col in columns {
@@ -77,6 +79,15 @@ fn primary_key_columns(table: &TableDef) -> HashSet<String> {
             }
         }
     }
+    
+    // Then, check inline primary_key on columns
+    // This handles cases where primary_key is defined inline but not yet normalized
+    for column in &table.columns {
+        if column.primary_key == Some(true) {
+            keys.insert(column.name.clone());
+        }
+    }
+    
     keys
 }
 
@@ -343,6 +354,10 @@ mod helper_tests {
         assert_eq!(sanitize_field_name("123name"), "_123name");
         assert_eq!(sanitize_field_name("name-with-dash"), "name_with_dash");
         assert_eq!(sanitize_field_name("name.with.dot"), "name_with_dot");
+        assert_eq!(sanitize_field_name("name with space"), "name_with_space");
+        assert_eq!(sanitize_field_name("name  with  multiple  spaces"), "name__with__multiple__spaces");
+        assert_eq!(sanitize_field_name(" name_with_leading_space"), "_name_with_leading_space");
+        assert_eq!(sanitize_field_name("name_with_trailing_space "), "name_with_trailing_space_");
         assert_eq!(sanitize_field_name(""), "_col");
         assert_eq!(sanitize_field_name("a"), "a");
     }
@@ -422,6 +437,15 @@ mod tests {
                 on_update: None,
             },
         ],
+        indexes: vec![],
+    })]
+    #[case("inline_pk", TableDef {
+        name: "users".into(),
+        columns: vec![
+            ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Uuid), nullable: false, default: Some("gen_random_uuid()".into()), comment: None, primary_key: Some(true), unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "email".into(), r#type: ColumnType::Simple(SimpleColumnType::Text), nullable: false, default: None, comment: None, primary_key: None, unique: Some(vespertide_core::StrOrBoolOrArray::Bool(true)), index: None, foreign_key: None },
+        ],
+        constraints: vec![],
         indexes: vec![],
     })]
     fn render_entity_snapshots(#[case] name: &str, #[case] table: TableDef) {

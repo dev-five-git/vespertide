@@ -67,14 +67,50 @@ fn resolve_export_dir(export_dir: Option<PathBuf>, config: &VespertideConfig) ->
 }
 
 fn build_output_path(root: &Path, rel_path: &Path, orm: Orm) -> PathBuf {
-    let mut out = root.join(rel_path);
-    // swap extension based on ORM
-    let ext = match orm {
-        Orm::SeaOrm => "rs",
-        Orm::SqlAlchemy | Orm::SqlModel => "py",
-    };
-    out.set_extension(ext);
+    // Sanitize file name: replace spaces with underscores
+    let mut out = root.to_path_buf();
+    
+    // Reconstruct path with sanitized file name
+    for component in rel_path.components() {
+        if let std::path::Component::Normal(name) = component {
+            out.push(name);
+        } else {
+            out.push(component.as_os_str());
+        }
+    }
+    
+    // Sanitize the file name (last component)
+    if let Some(file_name) = out.file_name().and_then(|n| n.to_str()) {
+        // Remove extension, sanitize, then add new extension
+        let (stem, _ext) = if let Some(dot_idx) = file_name.rfind('.') {
+            file_name.split_at(dot_idx)
+        } else {
+            (file_name, "")
+        };
+        
+        let sanitized = sanitize_filename(stem);
+        let ext = match orm {
+            Orm::SeaOrm => "rs",
+            Orm::SqlAlchemy | Orm::SqlModel => "py",
+        };
+        out.set_file_name(format!("{}.{}", sanitized, ext));
+    }
+    
     out
+}
+
+fn sanitize_filename(name: &str) -> String {
+    name.chars()
+        .map(|ch| {
+            if ch.is_alphanumeric() || ch == '_' || ch == '-' {
+                ch
+            } else if ch == ' ' {
+                '_'
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
 }
 
 fn load_models_recursive(base: &Path) -> Result<Vec<(TableDef, PathBuf)>> {
@@ -91,7 +127,7 @@ fn ensure_mod_chain(root: &Path, rel_path: &Path) -> Result<()> {
     let mut comps: Vec<String> = rel_path
         .with_extension("")
         .components()
-        .filter_map(|c| c.as_os_str().to_str().map(|s| s.to_string()))
+        .filter_map(|c| c.as_os_str().to_str().map(|s| sanitize_filename(s).to_string()))
         .collect();
     if comps.is_empty() {
         return Ok(());
@@ -386,5 +422,28 @@ mod tests {
         assert!(matches!(Orm::from(OrmArg::Seaorm), Orm::SeaOrm));
         assert!(matches!(Orm::from(OrmArg::Sqlalchemy), Orm::SqlAlchemy));
         assert!(matches!(Orm::from(OrmArg::Sqlmodel), Orm::SqlModel));
+    }
+
+    #[test]
+    fn test_sanitize_filename() {
+        assert_eq!(sanitize_filename("normal_name"), "normal_name");
+        assert_eq!(sanitize_filename("user copy"), "user_copy");
+        assert_eq!(sanitize_filename("user  copy"), "user__copy");
+        assert_eq!(sanitize_filename("user-copy"), "user-copy");
+        assert_eq!(sanitize_filename("user.copy"), "user_copy");
+        assert_eq!(sanitize_filename("user copy.json"), "user_copy_json");
+    }
+
+    #[test]
+    fn build_output_path_sanitizes_spaces() {
+        use std::path::Path;
+        let root = Path::new("src/models");
+        let rel_path = Path::new("user copy.json");
+        let out = build_output_path(root, rel_path, Orm::SeaOrm);
+        assert_eq!(out, Path::new("src/models/user_copy.rs"));
+        
+        let rel_path2 = Path::new("blog/post name.yaml");
+        let out2 = build_output_path(root, rel_path2, Orm::SeaOrm);
+        assert_eq!(out2, Path::new("src/models/blog/post_name.rs"));
     }
 }
