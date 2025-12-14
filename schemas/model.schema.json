@@ -100,27 +100,49 @@
       ]
     },
     "ColumnType": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SimpleColumnType"
+        },
+        {
+          "$ref": "#/$defs/ComplexColumnType"
+        }
+      ]
+    },
+    "ComplexColumnType": {
       "oneOf": [
         {
-          "type": "string",
-          "enum": [
-            "Integer",
-            "BigInt",
-            "Text",
-            "Boolean",
-            "Timestamp"
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "varchar"
+            },
+            "length": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "length"
           ]
         },
         {
           "type": "object",
           "properties": {
-            "Custom": {
+            "custom_type": {
               "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "const": "custom"
             }
           },
-          "additionalProperties": false,
           "required": [
-            "Custom"
+            "kind",
+            "custom_type"
           ]
         }
       ]
@@ -193,6 +215,29 @@
         "SetNull",
         "SetDefault",
         "NoAction"
+      ]
+    },
+    "SimpleColumnType": {
+      "type": "string",
+      "enum": [
+        "small_int",
+        "integer",
+        "big_int",
+        "real",
+        "double_precision",
+        "text",
+        "boolean",
+        "date",
+        "time",
+        "timestamp",
+        "timestamptz",
+        "bytea",
+        "uuid",
+        "json",
+        "jsonb",
+        "inet",
+        "cidr",
+        "macaddr"
       ]
     },
     "StrOrBoolOrArray": {

@@ -188,7 +188,7 @@ mod tests {
     use std::path::PathBuf;
     use tempfile::tempdir;
     use vespertide_config::VespertideConfig;
-    use vespertide_core::{ColumnDef, ColumnType, TableDef};
+    use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType, TableDef};
 
     struct CwdGuard {
         original: PathBuf,
@@ -221,7 +221,7 @@ mod tests {
             name: name.to_string(),
             columns: vec![ColumnDef {
                 name: "id".into(),
-                r#type: ColumnType::Integer,
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
                 nullable: false,
                 default: None,
                 comment: None,
@@ -251,7 +251,7 @@ mod tests {
             table: "users".into(),
             column: ColumnDef {
                 name: "name".into(),
-                r#type: ColumnType::Text,
+                r#type: ColumnType::Simple(SimpleColumnType::Text),
                 nullable: true,
                 default: None,
                 comment: None,
@@ -280,7 +280,7 @@ mod tests {
         MigrationAction::ModifyColumnType {
             table: "users".into(),
             column: "id".into(),
-            new_type: ColumnType::Integer,
+            new_type: ColumnType::Simple(SimpleColumnType::Integer),
         },
         format!("{} {}.{}", "Modify column type:".bright_yellow(), "users".bright_cyan(), "id".bright_cyan().bold())
     )]

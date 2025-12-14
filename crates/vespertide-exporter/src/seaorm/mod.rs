@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::orm::OrmExporter;
-use vespertide_core::{ColumnDef, ColumnType, IndexDef, TableConstraint, TableDef};
+use vespertide_core::{ColumnDef, IndexDef, TableConstraint, TableDef};
 
 pub struct SeaOrmExporter;
 
@@ -64,7 +64,7 @@ fn render_column(
     }
 
     let field_name = sanitize_field_name(&column.name);
-    let ty = rust_type(&column.r#type, column.nullable);
+    let ty = column.r#type.to_rust_type(column.nullable);
     lines.push(format!("    pub {}: {},", field_name, ty));
 }
 
@@ -129,23 +129,6 @@ fn render_indexes(lines: &mut Vec<String>, indexes: &[IndexDef]) {
     }
 }
 
-fn rust_type(column_type: &ColumnType, nullable: bool) -> String {
-    let base = match column_type {
-        ColumnType::Integer => "i32".to_string(),
-        ColumnType::BigInt => "i64".to_string(),
-        ColumnType::Text => "String".to_string(),
-        ColumnType::Boolean => "bool".to_string(),
-        ColumnType::Timestamp => "DateTimeWithTimeZone".to_string(),
-        ColumnType::Custom(custom) => custom.clone(),
-    };
-
-    if nullable {
-        format!("Option<{}>", base)
-    } else {
-        base
-    }
-}
-
 fn sanitize_field_name(name: &str) -> String {
     let mut result = String::new();
 
@@ -181,7 +164,7 @@ fn unique_name(base: &str, used: &mut HashSet<String>) -> String {
 #[cfg(test)]
 mod helper_tests {
     use super::*;
-    use vespertide_core::{ColumnType, IndexDef};
+    use vespertide_core::IndexDef;
 
     #[test]
     fn test_render_indexes() {
@@ -214,18 +197,122 @@ mod helper_tests {
 
     #[test]
     fn test_rust_type() {
-        assert_eq!(rust_type(&ColumnType::Integer, false), "i32");
-        assert_eq!(rust_type(&ColumnType::Integer, true), "Option<i32>");
-        assert_eq!(rust_type(&ColumnType::BigInt, false), "i64");
-        assert_eq!(rust_type(&ColumnType::BigInt, true), "Option<i64>");
-        assert_eq!(rust_type(&ColumnType::Text, false), "String");
-        assert_eq!(rust_type(&ColumnType::Text, true), "Option<String>");
-        assert_eq!(rust_type(&ColumnType::Boolean, false), "bool");
-        assert_eq!(rust_type(&ColumnType::Boolean, true), "Option<bool>");
-        assert_eq!(rust_type(&ColumnType::Timestamp, false), "DateTimeWithTimeZone");
-        assert_eq!(rust_type(&ColumnType::Timestamp, true), "Option<DateTimeWithTimeZone>");
-        assert_eq!(rust_type(&ColumnType::Custom("MyType".into()), false), "MyType");
-        assert_eq!(rust_type(&ColumnType::Custom("MyType".into()), true), "Option<MyType>");
+        use vespertide_core::{ColumnType, SimpleColumnType};
+        // Numeric types
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::SmallInt).to_rust_type(false),
+            "i16"
+        );
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::SmallInt).to_rust_type(true),
+            "Option<i16>"
+        );
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::Integer).to_rust_type(false),
+            "i32"
+        );
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::Integer).to_rust_type(true),
+            "Option<i32>"
+        );
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::BigInt).to_rust_type(false),
+            "i64"
+        );
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::BigInt).to_rust_type(true),
+            "Option<i64>"
+        );
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::Real).to_rust_type(false),
+            "f32"
+        );
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::DoublePrecision).to_rust_type(false),
+            "f64"
+        );
+
+        // Text type
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::Text).to_rust_type(false),
+            "String"
+        );
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::Text).to_rust_type(true),
+            "Option<String>"
+        );
+
+        // Boolean type
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::Boolean).to_rust_type(false),
+            "bool"
+        );
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::Boolean).to_rust_type(true),
+            "Option<bool>"
+        );
+
+        // Date/Time types
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::Date).to_rust_type(false),
+            "Date"
+        );
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::Time).to_rust_type(false),
+            "Time"
+        );
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::Timestamp).to_rust_type(false),
+            "DateTime"
+        );
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::Timestamp).to_rust_type(true),
+            "Option<DateTime>"
+        );
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::Timestamptz).to_rust_type(false),
+            "DateTimeWithTimeZone"
+        );
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::Timestamptz).to_rust_type(true),
+            "Option<DateTimeWithTimeZone>"
+        );
+
+        // Binary type
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::Bytea).to_rust_type(false),
+            "Vec<u8>"
+        );
+
+        // UUID type
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::Uuid).to_rust_type(false),
+            "Uuid"
+        );
+
+        // JSON types
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::Json).to_rust_type(false),
+            "Json"
+        );
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::Jsonb).to_rust_type(false),
+            "Json"
+        );
+
+        // Network types
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::Inet).to_rust_type(false),
+            "String"
+        );
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::Cidr).to_rust_type(false),
+            "String"
+        );
+        assert_eq!(
+            ColumnType::Simple(SimpleColumnType::Macaddr).to_rust_type(false),
+            "String"
+        );
     }
 
     #[test]
@@ -254,13 +341,14 @@ mod tests {
     use super::*;
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
+    use vespertide_core::{ColumnType, SimpleColumnType};
 
     #[rstest]
     #[case("basic_single_pk", TableDef {
         name: "users".into(),
         columns: vec![
-            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
-            ColumnDef { name: "display_name".into(), r#type: ColumnType::Text, nullable: true, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "display_name".into(), r#type: ColumnType::Simple(SimpleColumnType::Text), nullable: true, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
         ],
         constraints: vec![TableConstraint::PrimaryKey { columns: vec!["id".into()] }],
         indexes: vec![],
@@ -268,8 +356,8 @@ mod tests {
     #[case("composite_pk", TableDef {
         name: "accounts".into(),
         columns: vec![
-            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
-            ColumnDef { name: "tenant_id".into(), r#type: ColumnType::BigInt, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "tenant_id".into(), r#type: ColumnType::Simple(SimpleColumnType::BigInt), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
         ],
         constraints: vec![TableConstraint::PrimaryKey { columns: vec!["id".into(), "tenant_id".into()] }],
         indexes: vec![],
@@ -277,9 +365,9 @@ mod tests {
     #[case("fk_single", TableDef {
         name: "posts".into(),
         columns: vec![
-            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
-            ColumnDef { name: "user_id".into(), r#type: ColumnType::Integer, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
-            ColumnDef { name: "title".into(), r#type: ColumnType::Text, nullable: true, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "user_id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "title".into(), r#type: ColumnType::Simple(SimpleColumnType::Text), nullable: true, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
         ],
         constraints: vec![
             TableConstraint::PrimaryKey { columns: vec!["id".into()] },
@@ -297,9 +385,9 @@ mod tests {
     #[case("fk_composite", TableDef {
         name: "invoices".into(),
         columns: vec![
-            ColumnDef { name: "id".into(), r#type: ColumnType::Integer, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
-            ColumnDef { name: "customer_id".into(), r#type: ColumnType::Integer, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
-            ColumnDef { name: "customer_tenant_id".into(), r#type: ColumnType::Integer, nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "customer_id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "customer_tenant_id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
         ],
         constraints: vec![
             TableConstraint::PrimaryKey { columns: vec!["id".into()] },

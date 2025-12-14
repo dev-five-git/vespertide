@@ -223,7 +223,7 @@ pub fn validate_migration_plan(plan: &MigrationPlan) -> Result<(), PlannerError>
 mod tests {
     use super::*;
     use rstest::rstest;
-    use vespertide_core::{ColumnDef, ColumnType, IndexDef, TableConstraint};
+    use vespertide_core::{ColumnDef, ColumnType, IndexDef, SimpleColumnType, TableConstraint};
 
     fn col(name: &str, ty: ColumnType) -> ColumnDef {
         ColumnDef {
@@ -281,7 +281,7 @@ mod tests {
     #[case::valid_schema(
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
             vec![],
         )],
@@ -289,15 +289,15 @@ mod tests {
     )]
     #[case::duplicate_table(
         vec![
-            table("users", vec![col("id", ColumnType::Integer)], vec![], vec![]),
-            table("users", vec![col("id", ColumnType::Integer)], vec![], vec![]),
+            table("users", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![], vec![]),
+            table("users", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![], vec![]),
         ],
         Some(is_duplicate as fn(&PlannerError) -> bool)
     )]
     #[case::fk_missing_table(
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![TableConstraint::ForeignKey {
                 name: None,
                 columns: vec!["id".into()],
@@ -312,10 +312,10 @@ mod tests {
     )]
     #[case::fk_missing_column(
         vec![
-            table("posts", vec![col("id", ColumnType::Integer)], vec![], vec![]),
+            table("posts", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![], vec![]),
             table(
                 "users",
-                vec![col("id", ColumnType::Integer)],
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
                 vec![TableConstraint::ForeignKey {
                     name: None,
                     columns: vec!["id".into()],
@@ -331,10 +331,10 @@ mod tests {
     )]
     #[case::fk_local_missing_column(
         vec![
-            table("posts", vec![col("id", ColumnType::Integer)], vec![], vec![]),
+            table("posts", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![], vec![]),
             table(
                 "users",
-                vec![col("id", ColumnType::Integer)],
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
                 vec![TableConstraint::ForeignKey {
                     name: None,
                     columns: vec!["missing".into()],
@@ -352,13 +352,13 @@ mod tests {
         vec![
             table(
                 "posts",
-                vec![col("id", ColumnType::Integer)],
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
                 vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
                 vec![],
             ),
             table(
                 "users",
-                vec![col("id", ColumnType::Integer), col("post_id", ColumnType::Integer)],
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer)), col("post_id", ColumnType::Simple(SimpleColumnType::Integer))],
                 vec![TableConstraint::ForeignKey {
                     name: None,
                     columns: vec!["post_id".into()],
@@ -375,7 +375,7 @@ mod tests {
     #[case::index_missing_column(
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
             vec![IndexDef {
                 name: "idx_name".into(),
@@ -388,7 +388,7 @@ mod tests {
     #[case::constraint_missing_column(
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![TableConstraint::PrimaryKey{columns: vec!["nonexistent".into()] }],
             vec![],
         )],
@@ -397,7 +397,7 @@ mod tests {
     #[case::unique_empty_columns(
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![TableConstraint::Unique {
                 name: Some("u".into()),
                 columns: vec![],
@@ -409,7 +409,7 @@ mod tests {
     #[case::unique_missing_column(
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![TableConstraint::Unique {
                 name: None,
                 columns: vec!["missing".into()],
@@ -421,7 +421,7 @@ mod tests {
     #[case::empty_primary_key(
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![TableConstraint::PrimaryKey{columns: vec![] }],
             vec![],
         )],
@@ -431,13 +431,13 @@ mod tests {
         vec![
             table(
                 "posts",
-                vec![col("id", ColumnType::Integer)],
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
                 vec![],
                 vec![],
             ),
             table(
                 "users",
-                vec![col("id", ColumnType::Integer), col("post_id", ColumnType::Integer)],
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer)), col("post_id", ColumnType::Simple(SimpleColumnType::Integer))],
                 vec![TableConstraint::ForeignKey {
                     name: None,
                     columns: vec!["id".into(), "post_id".into()],
@@ -454,7 +454,7 @@ mod tests {
     #[case::fk_empty_columns(
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![TableConstraint::ForeignKey {
                 name: None,
                 columns: vec![],
@@ -471,13 +471,13 @@ mod tests {
         vec![
             table(
                 "posts",
-                vec![col("id", ColumnType::Integer)],
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
                 vec![],
                 vec![],
             ),
             table(
                 "users",
-                vec![col("id", ColumnType::Integer)],
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
                 vec![TableConstraint::ForeignKey {
                     name: None,
                     columns: vec!["id".into()],
@@ -494,7 +494,7 @@ mod tests {
     #[case::index_empty_columns(
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
             vec![IndexDef {
                 name: "idx".into(),
@@ -507,7 +507,7 @@ mod tests {
     #[case::index_valid(
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer), col("name", ColumnType::Text)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer)), col("name", ColumnType::Simple(SimpleColumnType::Text))],
             vec![],
             vec![IndexDef {
                 name: "idx_name".into(),
@@ -520,7 +520,7 @@ mod tests {
     #[case::check_constraint_ok(
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![TableConstraint::Check {
                 name: Some("ck".into()),
                 expr: "id > 0".into(),
@@ -555,7 +555,7 @@ mod tests {
                 table: "users".into(),
                 column: ColumnDef {
                     name: "email".into(),
-                    r#type: ColumnType::Text,
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
                     nullable: false,
                     default: None,
                     comment: None,
@@ -591,7 +591,7 @@ mod tests {
                 table: "users".into(),
                 column: ColumnDef {
                     name: "email".into(),
-                    r#type: ColumnType::Text,
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
                     nullable: false,
                     default: None,
                     comment: None,
@@ -620,7 +620,7 @@ mod tests {
                 table: "users".into(),
                 column: ColumnDef {
                     name: "email".into(),
-                    r#type: ColumnType::Text,
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
                     nullable: true,
                     default: None,
                     comment: None,
@@ -649,7 +649,7 @@ mod tests {
                 table: "users".into(),
                 column: ColumnDef {
                     name: "email".into(),
-                    r#type: ColumnType::Text,
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
                     nullable: false,
                     default: Some("default@example.com".into()),
                     comment: None,

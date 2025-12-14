@@ -27,7 +27,7 @@ pub fn plan_next_migration(
 mod tests {
     use super::*;
     use rstest::rstest;
-    use vespertide_core::{ColumnDef, ColumnType, MigrationAction};
+    use vespertide_core::{ColumnDef, ColumnType, MigrationAction, SimpleColumnType};
 
     fn col(name: &str, ty: ColumnType) -> ColumnDef {
         ColumnDef {
@@ -65,7 +65,7 @@ mod tests {
             version: 1,
             actions: vec![MigrationAction::CreateTable {
                 table: "users".into(),
-                columns: vec![col("id", ColumnType::Integer)],
+                columns: vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
                 constraints: vec![],
             }],
         }];
@@ -73,8 +73,8 @@ mod tests {
         let target_schema = vec![table(
             "users",
             vec![
-                col("id", ColumnType::Integer),
-                col("name", ColumnType::Text),
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("name", ColumnType::Simple(SimpleColumnType::Text)),
             ],
             vec![],
             vec![],

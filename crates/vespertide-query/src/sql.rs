@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use vespertide_core::{ColumnDef, ColumnType, MigrationAction, TableConstraint};
+use vespertide_core::{ColumnDef, MigrationAction, TableConstraint};
 
 use crate::error::QueryError;
 
@@ -123,7 +123,7 @@ pub fn build_action_queries(action: &MigrationAction) -> Result<Vec<BuiltQuery>,
                 let c = bind(&mut binds, column);
                 format!(
                     "ALTER TABLE {t} ALTER COLUMN {c} TYPE {};",
-                    column_type_sql(new_type)
+                    new_type.to_sql()
                 )
             },
             binds: {
@@ -269,7 +269,7 @@ fn create_table_sql(
 
 fn column_def_sql(column: &ColumnDef, binds: &mut Vec<String>) -> String {
     let name = bind(binds, &column.name);
-    let mut parts = vec![format!("{name} {}", column_type_sql(&column.r#type))];
+    let mut parts = vec![format!("{name} {}", column.r#type.to_sql())];
     if !column.nullable {
         parts.push("NOT NULL".into());
     }
@@ -278,17 +278,6 @@ fn column_def_sql(column: &ColumnDef, binds: &mut Vec<String>) -> String {
         parts.push(format!("DEFAULT {p}"));
     }
     parts.join(" ")
-}
-
-fn column_type_sql(ty: &ColumnType) -> String {
-    match ty {
-        ColumnType::Integer => "INTEGER".into(),
-        ColumnType::BigInt => "BIGINT".into(),
-        ColumnType::Text => "TEXT".into(),
-        ColumnType::Boolean => "BOOLEAN".into(),
-        ColumnType::Timestamp => "TIMESTAMP".into(),
-        ColumnType::Custom(s) => s.clone(),
-    }
 }
 
 fn table_constraint_sql(
@@ -402,7 +391,8 @@ mod tests {
     use super::*;
     use rstest::rstest;
     use vespertide_core::{
-        ColumnDef, ColumnType, IndexDef, MigrationAction, ReferenceAction, TableConstraint,
+        ColumnDef, ColumnType, ComplexColumnType, IndexDef, MigrationAction, ReferenceAction,
+        SimpleColumnType, TableConstraint,
     };
 
     fn col(name: &str, ty: ColumnType) -> ColumnDef {
@@ -448,8 +438,8 @@ mod tests {
         MigrationAction::CreateTable {
             table: "users".into(),
             columns: vec![
-                col("id", ColumnType::Integer),
-                col("name", ColumnType::Text),
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("name", ColumnType::Simple(SimpleColumnType::Text)),
             ],
             constraints: vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
         },
@@ -467,7 +457,7 @@ mod tests {
     #[case::add_column_nullable(
         MigrationAction::AddColumn {
             table: "users".into(),
-            column: col("email", ColumnType::Text),
+            column: col("email", ColumnType::Simple(SimpleColumnType::Text)),
             fill_with: None,
         },
         vec![(
@@ -477,7 +467,7 @@ mod tests {
     )]
     #[case::add_column_not_null_with_default(
         {
-            let mut c = col("email", ColumnType::Text);
+            let mut c = col("email", ColumnType::Simple(SimpleColumnType::Text));
             c.nullable = false;
             c.default = Some("''".to_string());
             MigrationAction::AddColumn {
@@ -493,7 +483,7 @@ mod tests {
     )]
     #[case::add_column_not_null_with_fill(
         {
-            let mut c = col("email", ColumnType::Text);
+            let mut c = col("email", ColumnType::Simple(SimpleColumnType::Text));
             c.nullable = false;
             MigrationAction::AddColumn {
                 table: "users".into(),
@@ -518,7 +508,7 @@ mod tests {
     )]
     #[case::add_column_not_null_without_default_without_fill(
         {
-            let mut c = col("email", ColumnType::Text);
+            let mut c = col("email", ColumnType::Simple(SimpleColumnType::Text));
             c.nullable = false;
             MigrationAction::AddColumn {
                 table: "users".into(),
@@ -556,7 +546,7 @@ mod tests {
         MigrationAction::ModifyColumnType {
             table: "users".into(),
             column: "age".into(),
-            new_type: ColumnType::BigInt,
+            new_type: ColumnType::Simple(SimpleColumnType::BigInt),
         },
         vec![(
             "ALTER TABLE $1 ALTER COLUMN $2 TYPE BIGINT;".to_string(),
@@ -769,7 +759,7 @@ mod tests {
     #[rstest]
     #[case::simple(
         "users",
-        vec![col("id", ColumnType::Integer), col("name", ColumnType::Text)],
+        vec![col("id", ColumnType::Simple(SimpleColumnType::Integer)), col("name", ColumnType::Simple(SimpleColumnType::Text))],
         vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
         (
             "CREATE TABLE $1 ($2 INTEGER, $3 TEXT, PRIMARY KEY ($4));".to_string(),
@@ -778,7 +768,7 @@ mod tests {
     )]
     #[case::multiple_constraints(
         "users",
-        vec![col("id", ColumnType::Integer), col("email", ColumnType::Text)],
+        vec![col("id", ColumnType::Simple(SimpleColumnType::Integer)), col("email", ColumnType::Simple(SimpleColumnType::Text))],
         vec![
             TableConstraint::PrimaryKey{columns: vec!["id".into()] },
             TableConstraint::Unique {
@@ -811,12 +801,12 @@ mod tests {
 
     #[rstest]
     #[case::nullable(
-        col("name", ColumnType::Text),
+        col("name", ColumnType::Simple(SimpleColumnType::Text)),
         ("$1 TEXT".to_string(), vec!["name".to_string()])
     )]
     #[case::not_null(
         {
-            let mut c = col("name", ColumnType::Text);
+            let mut c = col("name", ColumnType::Simple(SimpleColumnType::Text));
             c.nullable = false;
             c
         },
@@ -824,7 +814,7 @@ mod tests {
     )]
     #[case::with_default(
         {
-            let mut c = col("name", ColumnType::Text);
+            let mut c = col("name", ColumnType::Simple(SimpleColumnType::Text));
             c.default = Some("'default'".to_string());
             c
         },
@@ -841,14 +831,14 @@ mod tests {
     }
 
     #[rstest]
-    #[case(ColumnType::Integer, "INTEGER")]
-    #[case(ColumnType::BigInt, "BIGINT")]
-    #[case(ColumnType::Text, "TEXT")]
-    #[case(ColumnType::Boolean, "BOOLEAN")]
-    #[case(ColumnType::Timestamp, "TIMESTAMP")]
-    #[case(ColumnType::Custom("VARCHAR(255)".to_string()), "VARCHAR(255)")]
+    #[case(ColumnType::Simple(SimpleColumnType::Integer), "INTEGER")]
+    #[case(ColumnType::Simple(SimpleColumnType::BigInt), "BIGINT")]
+    #[case(ColumnType::Simple(SimpleColumnType::Text), "TEXT")]
+    #[case(ColumnType::Simple(SimpleColumnType::Boolean), "BOOLEAN")]
+    #[case(ColumnType::Simple(SimpleColumnType::Timestamp), "TIMESTAMP")]
+    #[case(ColumnType::Complex(ComplexColumnType::Custom { custom_type: "VARCHAR(255)".to_string() }), "VARCHAR(255)")]
     fn test_column_type_sql(#[case] ty: ColumnType, #[case] expected: &str) {
-        assert_eq!(column_type_sql(&ty), expected);
+        assert_eq!(ty.to_sql(), expected);
     }
 
     #[rstest]

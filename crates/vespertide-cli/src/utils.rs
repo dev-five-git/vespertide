@@ -218,7 +218,7 @@ mod tests {
     use serial_test::serial;
     use std::fs;
     use tempfile::tempdir;
-    use vespertide_core::{ColumnDef, ColumnType};
+    use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
 
     struct CwdGuard {
         original: PathBuf,
@@ -265,7 +265,7 @@ mod tests {
             name: "users".into(),
             columns: vec![ColumnDef {
                 name: "id".into(),
-                r#type: ColumnType::Integer,
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
                 nullable: false,
                 default: None,
                 comment: None,
@@ -292,13 +292,13 @@ mod tests {
         write_config();
 
         fs::create_dir_all("models/subdir").unwrap();
-        
+
         // Create model in subdirectory
         let table = TableDef {
             name: "subtable".into(),
             columns: vec![ColumnDef {
                 name: "id".into(),
-                r#type: ColumnType::Integer,
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
                 nullable: false,
                 default: None,
                 comment: None,
@@ -356,7 +356,13 @@ mod tests {
     }
 
     #[rstest]
-    #[case(5, Some("Hello! World"), FileFormat::Yml, "%04v_%m", "0005_hello__world.yml")]
+    #[case(
+        5,
+        Some("Hello! World"),
+        FileFormat::Yml,
+        "%04v_%m",
+        "0005_hello__world.yml"
+    )]
     #[case(3, None, FileFormat::Json, "%0v__", "0003.json")] // width 0 falls back to default version and trailing separators are trimmed
     #[case(12, None, FileFormat::Json, "%v", "0012.json")]
     #[case(7, None, FileFormat::Json, "%m", "0007.json")] // uses default when comment only and empty

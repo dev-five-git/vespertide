@@ -15,7 +15,10 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
         .iter()
         .map(|t| {
             t.normalize().map_err(|e| {
-                PlannerError::TableValidation(format!("Failed to normalize table '{}': {}", t.name, e))
+                PlannerError::TableValidation(format!(
+                    "Failed to normalize table '{}': {}",
+                    t.name, e
+                ))
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -23,7 +26,10 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
         .iter()
         .map(|t| {
             t.normalize().map_err(|e| {
-                PlannerError::TableValidation(format!("Failed to normalize table '{}': {}", t.name, e))
+                PlannerError::TableValidation(format!(
+                    "Failed to normalize table '{}': {}",
+                    t.name, e
+                ))
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -136,10 +142,10 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
                         table: (*name).to_string(),
                         constraint: to_constraint.clone(),
                     });
+                }
             }
         }
     }
-}
 
     // Create new tables (and their indexes).
     for (name, tbl) in &to_map {
@@ -170,7 +176,7 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
 mod tests {
     use super::*;
     use rstest::rstest;
-    use vespertide_core::{ColumnDef, ColumnType, IndexDef, MigrationAction};
+    use vespertide_core::{ColumnDef, ColumnType, IndexDef, MigrationAction, SimpleColumnType};
 
     fn col(name: &str, ty: ColumnType) -> ColumnDef {
         ColumnDef {
@@ -204,15 +210,15 @@ mod tests {
     #[case::add_column_and_index(
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
             vec![],
         )],
         vec![table(
             "users",
             vec![
-                col("id", ColumnType::Integer),
-                col("name", ColumnType::Text),
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("name", ColumnType::Simple(SimpleColumnType::Text)),
             ],
             vec![],
             vec![IndexDef {
@@ -224,7 +230,7 @@ mod tests {
         vec![
             MigrationAction::AddColumn {
                 table: "users".into(),
-                column: col("name", ColumnType::Text),
+                column: col("name", ColumnType::Simple(SimpleColumnType::Text)),
                 fill_with: None,
             },
             MigrationAction::AddIndex {
@@ -240,7 +246,7 @@ mod tests {
     #[case::drop_table(
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
             vec![],
         )],
@@ -253,7 +259,7 @@ mod tests {
         vec![],
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
             vec![IndexDef {
                 name: "idx_users_id".into(),
@@ -264,7 +270,7 @@ mod tests {
         vec![
             MigrationAction::CreateTable {
                 table: "users".into(),
-                columns: vec![col("id", ColumnType::Integer)],
+                columns: vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
                 constraints: vec![],
             },
             MigrationAction::AddIndex {
@@ -280,13 +286,13 @@ mod tests {
     #[case::delete_column(
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer), col("name", ColumnType::Text)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer)), col("name", ColumnType::Simple(SimpleColumnType::Text))],
             vec![],
             vec![],
         )],
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
             vec![],
         )],
@@ -298,26 +304,26 @@ mod tests {
     #[case::modify_column_type(
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
             vec![],
         )],
         vec![table(
             "users",
-            vec![col("id", ColumnType::Text)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Text))],
             vec![],
             vec![],
         )],
         vec![MigrationAction::ModifyColumnType {
             table: "users".into(),
             column: "id".into(),
-            new_type: ColumnType::Text,
+            new_type: ColumnType::Simple(SimpleColumnType::Text),
         }]
     )]
     #[case::remove_index(
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
             vec![IndexDef {
                 name: "idx_users_id".into(),
@@ -327,7 +333,7 @@ mod tests {
         )],
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
             vec![],
         )],
@@ -339,13 +345,13 @@ mod tests {
     #[case::add_index_existing_table(
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
             vec![],
         )],
         vec![table(
             "users",
-            vec![col("id", ColumnType::Integer)],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
             vec![IndexDef {
                 name: "idx_users_id".into(),
@@ -445,8 +451,8 @@ mod tests {
                 &[table(
                     "users",
                     vec![
-                        col_with_pk("id", ColumnType::Integer),
-                        col("name", ColumnType::Text),
+                        col_with_pk("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                        col("name", ColumnType::Simple(SimpleColumnType::Text)),
                     ],
                     vec![],
                     vec![],
@@ -473,8 +479,8 @@ mod tests {
                 &[table(
                     "users",
                     vec![
-                        col("id", ColumnType::Integer),
-                        col_with_unique("email", ColumnType::Text),
+                        col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                        col_with_unique("email", ColumnType::Simple(SimpleColumnType::Text)),
                     ],
                     vec![],
                     vec![],
@@ -501,8 +507,8 @@ mod tests {
                 &[table(
                     "users",
                     vec![
-                        col("id", ColumnType::Integer),
-                        col_with_index("name", ColumnType::Text),
+                        col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                        col_with_index("name", ColumnType::Simple(SimpleColumnType::Text)),
                     ],
                     vec![],
                     vec![],
@@ -531,8 +537,13 @@ mod tests {
                 &[table(
                     "posts",
                     vec![
-                        col("id", ColumnType::Integer),
-                        col_with_fk("user_id", ColumnType::Integer, "users", "id"),
+                        col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                        col_with_fk(
+                            "user_id",
+                            ColumnType::Simple(SimpleColumnType::Integer),
+                            "users",
+                            "id",
+                        ),
                     ],
                     vec![],
                     vec![],
@@ -562,8 +573,8 @@ mod tests {
                 &[table(
                     "users",
                     vec![
-                        col("id", ColumnType::Integer),
-                        col("name", ColumnType::Text),
+                        col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                        col("name", ColumnType::Simple(SimpleColumnType::Text)),
                     ],
                     vec![],
                     vec![],
@@ -571,8 +582,8 @@ mod tests {
                 &[table(
                     "users",
                     vec![
-                        col("id", ColumnType::Integer),
-                        col_with_index("name", ColumnType::Text),
+                        col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                        col_with_index("name", ColumnType::Simple(SimpleColumnType::Text)),
                     ],
                     vec![],
                     vec![],
@@ -592,17 +603,17 @@ mod tests {
 
         #[test]
         fn create_table_with_all_inline_constraints() {
-            let mut id_col = col("id", ColumnType::Integer);
+            let mut id_col = col("id", ColumnType::Simple(SimpleColumnType::Integer));
             id_col.primary_key = Some(true);
             id_col.nullable = false;
 
-            let mut email_col = col("email", ColumnType::Text);
+            let mut email_col = col("email", ColumnType::Simple(SimpleColumnType::Text));
             email_col.unique = Some(StrOrBoolOrArray::Bool(true));
 
-            let mut name_col = col("name", ColumnType::Text);
+            let mut name_col = col("name", ColumnType::Simple(SimpleColumnType::Text));
             name_col.index = Some(StrOrBoolOrArray::Bool(true));
 
-            let mut org_id_col = col("org_id", ColumnType::Integer);
+            let mut org_id_col = col("org_id", ColumnType::Simple(SimpleColumnType::Integer));
             org_id_col.foreign_key = Some(ForeignKeyDef {
                 ref_table: "orgs".into(),
                 ref_columns: vec!["id".into()],
@@ -640,14 +651,20 @@ mod tests {
             // Add a unique constraint to an existing table
             let from_schema = vec![table(
                 "users",
-                vec![col("id", ColumnType::Integer), col("email", ColumnType::Text)],
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("email", ColumnType::Simple(SimpleColumnType::Text)),
+                ],
                 vec![],
                 vec![],
             )];
 
             let to_schema = vec![table(
                 "users",
-                vec![col("id", ColumnType::Integer), col("email", ColumnType::Text)],
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("email", ColumnType::Simple(SimpleColumnType::Text)),
+                ],
                 vec![vespertide_core::TableConstraint::Unique {
                     name: Some("uq_users_email".into()),
                     columns: vec!["email".into()],
@@ -674,7 +691,10 @@ mod tests {
             // Remove a unique constraint from an existing table
             let from_schema = vec![table(
                 "users",
-                vec![col("id", ColumnType::Integer), col("email", ColumnType::Text)],
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("email", ColumnType::Simple(SimpleColumnType::Text)),
+                ],
                 vec![vespertide_core::TableConstraint::Unique {
                     name: Some("uq_users_email".into()),
                     columns: vec!["email".into()],
@@ -684,7 +704,10 @@ mod tests {
 
             let to_schema = vec![table(
                 "users",
-                vec![col("id", ColumnType::Integer), col("email", ColumnType::Text)],
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("email", ColumnType::Simple(SimpleColumnType::Text)),
+                ],
                 vec![],
                 vec![],
             )];
@@ -699,20 +722,23 @@ mod tests {
                         if n == "uq_users_email" && columns == &vec!["email".to_string()]
                 ));
             } else {
-                panic!("Expected RemoveConstraint action, got {:?}", plan.actions[0]);
+                panic!(
+                    "Expected RemoveConstraint action, got {:?}",
+                    plan.actions[0]
+                );
             }
         }
 
         #[test]
         fn diff_schemas_with_normalize_error() {
             // Test that normalize errors are properly propagated
-            let mut col1 = col("col1", ColumnType::Text);
+            let mut col1 = col("col1", ColumnType::Simple(SimpleColumnType::Text));
             col1.index = Some(StrOrBoolOrArray::Str("idx1".into()));
 
             let table = TableDef {
                 name: "test".into(),
                 columns: vec![
-                    col("id", ColumnType::Integer),
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                     col1.clone(),
                     {
                         // Same column with same index name - should error
@@ -738,13 +764,13 @@ mod tests {
         #[test]
         fn diff_schemas_with_normalize_error_in_from_schema() {
             // Test that normalize errors in 'from' schema are properly propagated
-            let mut col1 = col("col1", ColumnType::Text);
+            let mut col1 = col("col1", ColumnType::Simple(SimpleColumnType::Text));
             col1.index = Some(StrOrBoolOrArray::Str("idx1".into()));
 
             let table = TableDef {
                 name: "test".into(),
                 columns: vec![
-                    col("id", ColumnType::Integer),
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                     col1.clone(),
                     {
                         // Same column with same index name - should error

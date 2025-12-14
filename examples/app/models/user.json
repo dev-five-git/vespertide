@@ -3,16 +3,16 @@
   "name": "user",
   "columns": [{
     "name": "id",
-    "type": "Integer",
+    "type": "integer",
     "nullable": false,
     "primary_key": true
   }, {
     "name": "name",
-    "type": "Text",
+    "type": "text",
     "nullable": false
   }, {
     "name": "email",
-    "type": "Text",
+    "type": "text",
     "nullable": false,
     "unique": true
   }],

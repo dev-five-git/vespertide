@@ -156,7 +156,7 @@ mod tests {
     use serial_test::serial;
     use std::fs;
     use tempfile::tempdir;
-    use vespertide_core::{ColumnDef, ColumnType, TableConstraint};
+    use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType, TableConstraint};
 
     struct CwdGuard {
         original: PathBuf,
@@ -194,7 +194,7 @@ mod tests {
             name: name.to_string(),
             columns: vec![ColumnDef {
                 name: "id".into(),
-                r#type: ColumnType::Integer,
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
                 nullable: false,
                 default: None,
                 comment: None,
