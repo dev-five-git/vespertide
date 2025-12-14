@@ -51,7 +51,7 @@
         "foreign_key": {
           "anyOf": [
             {
-              "$ref": "#/$defs/ForeignKeyDef"
+              "$ref": "#/$defs/ForeignKeySyntax"
             },
             {
               "type": "null"
@@ -75,9 +75,13 @@
           "type": "boolean"
         },
         "primary_key": {
-          "type": [
-            "boolean",
-            "null"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PrimaryKeySyntax"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "type": {
@@ -226,6 +230,17 @@
       "required": [
         "ref_table",
         "ref_columns"
+      ]
+    },
+    "ForeignKeySyntax": {
+      "anyOf": [
+        {
+          "description": "table.column",
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/ForeignKeyDef"
+        }
       ]
     },
     "IndexDef": {
@@ -511,6 +526,34 @@
         }
       ]
     },
+    "PrimaryKeyDef": {
+      "type": "object",
+      "properties": {
+        "auto_increment": {
+          "type": "boolean",
+          "default": false
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "columns"
+      ]
+    },
+    "PrimaryKeySyntax": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/$defs/PrimaryKeyDef"
+        }
+      ]
+    },
     "ReferenceAction": {
       "type": "string",
       "enum": [
@@ -567,6 +610,10 @@
         {
           "type": "object",
           "properties": {
+            "auto_increment": {
+              "type": "boolean",
+              "default": false
+            },
             "columns": {
               "type": "array",
               "items": {
