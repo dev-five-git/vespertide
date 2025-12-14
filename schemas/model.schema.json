@@ -50,7 +50,7 @@
         "foreign_key": {
           "anyOf": [
             {
-              "$ref": "#/$defs/ForeignKeyDef"
+              "$ref": "#/$defs/ForeignKeySyntax"
             },
             {
               "type": "null"
@@ -74,9 +74,13 @@
           "type": "boolean"
         },
         "primary_key": {
-          "type": [
-            "boolean",
-            "null"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PrimaryKeySyntax"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "type": {
@@ -117,6 +121,48 @@
             "kind": {
               "type": "string",
               "const": "varchar"
+            },
+            "length": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "length"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "numeric"
+            },
+            "precision": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "scale": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "precision",
+            "scale"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "char"
             },
             "length": {
               "type": "integer",
@@ -185,6 +231,17 @@
         "ref_columns"
       ]
     },
+    "ForeignKeySyntax": {
+      "anyOf": [
+        {
+          "description": "table.column",
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/ForeignKeyDef"
+        }
+      ]
+    },
     "IndexDef": {
       "type": "object",
       "properties": {
@@ -205,6 +262,34 @@
         "name",
         "columns",
         "unique"
+      ]
+    },
+    "PrimaryKeyDef": {
+      "type": "object",
+      "properties": {
+        "auto_increment": {
+          "type": "boolean",
+          "default": false
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "columns"
+      ]
+    },
+    "PrimaryKeySyntax": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/$defs/PrimaryKeyDef"
+        }
       ]
     },
     "ReferenceAction": {
@@ -231,13 +316,15 @@
         "time",
         "timestamp",
         "timestamptz",
+        "interval",
         "bytea",
         "uuid",
         "json",
         "jsonb",
         "inet",
         "cidr",
-        "macaddr"
+        "macaddr",
+        "xml"
       ]
     },
     "StrOrBoolOrArray": {
@@ -261,6 +348,10 @@
         {
           "type": "object",
           "properties": {
+            "auto_increment": {
+              "type": "boolean",
+              "default": false
+            },
             "columns": {
               "type": "array",
               "items": {

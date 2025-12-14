@@ -29,12 +29,23 @@ pub fn load_models(config: &VespertideConfig) -> Result<Vec<TableDef>> {
     let mut tables = Vec::new();
     load_models_recursive(models_dir, &mut tables)?;
 
+    // Normalize tables to convert inline constraints (primary_key, foreign_key, etc.) to table-level constraints
+    // This must happen before validation so that foreign key references can be checked
+    let normalized_tables: Vec<TableDef> = tables
+        .into_iter()
+        .map(|t| {
+            t.normalize()
+                .map_err(|e| anyhow::anyhow!("Failed to normalize table '{}': {}", t.name, e))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
     // Validate schema integrity before returning
-    if !tables.is_empty() {
-        validate_schema(&tables).map_err(|e| anyhow::anyhow!("schema validation failed: {}", e))?;
+    if !normalized_tables.is_empty() {
+        validate_schema(&normalized_tables)
+            .map_err(|e| anyhow::anyhow!("schema validation failed: {}", e))?;
     }
 
-    Ok(tables)
+    Ok(normalized_tables)
 }
 
 /// Recursively walk directory and load model files.
@@ -218,7 +229,9 @@ mod tests {
     use serial_test::serial;
     use std::fs;
     use tempfile::tempdir;
-    use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
+    use vespertide_core::{
+        ColumnDef, ColumnType, SimpleColumnType, schema::foreign_key::ForeignKeySyntax,
+    };
 
     struct CwdGuard {
         original: PathBuf,
@@ -375,5 +388,44 @@ mod tests {
     ) {
         let name = migration_filename_with_format_and_pattern(version, comment, format, pattern);
         assert_eq!(name, expected);
+    }
+
+    #[test]
+    #[serial]
+    fn load_models_fails_on_invalid_fk_format() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        write_config();
+
+        fs::create_dir_all("models").unwrap();
+
+        // Create a model with invalid FK string format (missing dot separator)
+        let table = TableDef {
+            name: "orders".into(),
+            columns: vec![ColumnDef {
+                name: "user_id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                // Invalid FK format: should be "table.column" but missing the dot
+                foreign_key: Some(ForeignKeySyntax::String("invalid_format".into())),
+            }],
+            constraints: vec![],
+            indexes: vec![],
+        };
+        fs::write(
+            "models/orders.json",
+            serde_json::to_string_pretty(&table).unwrap(),
+        )
+        .unwrap();
+
+        let result = load_models(&VespertideConfig::default());
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Failed to normalize table 'orders'"));
     }
 }

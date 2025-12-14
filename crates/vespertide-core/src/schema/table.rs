@@ -4,8 +4,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
 use crate::schema::{
-    StrOrBoolOrArray, column::ColumnDef, constraint::TableConstraint, index::IndexDef,
-    names::TableName,
+    StrOrBoolOrArray, column::ColumnDef, constraint::TableConstraint,
+    foreign_key::ForeignKeySyntax, index::IndexDef, names::TableName,
+    primary_key::PrimaryKeySyntax,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,6 +14,10 @@ pub enum TableValidationError {
     DuplicateIndexColumn {
         index_name: String,
         column_name: String,
+    },
+    InvalidForeignKeyFormat {
+        column_name: String,
+        value: String,
     },
 }
 
@@ -27,6 +32,13 @@ impl std::fmt::Display for TableValidationError {
                     f,
                     "Duplicate index '{}' on column '{}': the same index name cannot be applied to the same column multiple times",
                     index_name, column_name
+                )
+            }
+            TableValidationError::InvalidForeignKeyFormat { column_name, value } => {
+                write!(
+                    f,
+                    "Invalid foreign key format '{}' on column '{}': expected 'table.column' format",
+                    value, column_name
                 )
             }
         }
@@ -56,13 +68,26 @@ impl TableDef {
         let mut constraints = self.constraints.clone();
         let mut indexes = self.indexes.clone();
 
-        // Collect columns with inline primary_key
-        let pk_columns: Vec<String> = self
-            .columns
-            .iter()
-            .filter(|c| c.primary_key == Some(true))
-            .map(|c| c.name.clone())
-            .collect();
+        // Collect columns with inline primary_key and check for auto_increment
+        let mut pk_columns: Vec<String> = Vec::new();
+        let mut pk_auto_increment = false;
+
+        for col in &self.columns {
+            if let Some(ref pk) = col.primary_key {
+                match pk {
+                    PrimaryKeySyntax::Bool(true) => {
+                        pk_columns.push(col.name.clone());
+                    }
+                    PrimaryKeySyntax::Bool(false) => {}
+                    PrimaryKeySyntax::Object(pk_def) => {
+                        pk_columns.push(col.name.clone());
+                        if pk_def.auto_increment {
+                            pk_auto_increment = true;
+                        }
+                    }
+                }
+            }
+        }
 
         // Add primary key constraint if any columns have inline pk and no existing pk constraint
         if !pk_columns.is_empty() {
@@ -71,6 +96,7 @@ impl TableDef {
                 .any(|c| matches!(c, TableConstraint::PrimaryKey { .. }));
             if !has_pk {
                 constraints.push(TableConstraint::PrimaryKey {
+                    auto_increment: pk_auto_increment,
                     columns: pk_columns,
                 });
             }
@@ -158,7 +184,28 @@ impl TableDef {
             }
 
             // Handle inline foreign_key
-            if let Some(ref fk) = col.foreign_key {
+            if let Some(ref fk_syntax) = col.foreign_key {
+                // Convert ForeignKeySyntax to ForeignKeyDef
+                let (ref_table, ref_columns, on_delete, on_update) = match fk_syntax {
+                    ForeignKeySyntax::String(s) => {
+                        // Parse "table.column" format
+                        let parts: Vec<&str> = s.split('.').collect();
+                        if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
+                            return Err(TableValidationError::InvalidForeignKeyFormat {
+                                column_name: col.name.clone(),
+                                value: s.clone(),
+                            });
+                        }
+                        (parts[0].to_string(), vec![parts[1].to_string()], None, None)
+                    }
+                    ForeignKeySyntax::Object(fk_def) => (
+                        fk_def.ref_table.clone(),
+                        fk_def.ref_columns.clone(),
+                        fk_def.on_delete.clone(),
+                        fk_def.on_update.clone(),
+                    ),
+                };
+
                 // Check if this foreign key already exists
                 let exists = constraints.iter().any(|c| {
                     if let TableConstraint::ForeignKey { columns, .. } = c {
@@ -172,10 +219,10 @@ impl TableDef {
                     constraints.push(TableConstraint::ForeignKey {
                         name: None,
                         columns: vec![col.name.clone()],
-                        ref_table: fk.ref_table.clone(),
-                        ref_columns: fk.ref_columns.clone(),
-                        on_delete: fk.on_delete.clone(),
-                        on_update: fk.on_update.clone(),
+                        ref_table,
+                        ref_columns,
+                        on_delete,
+                        on_update,
                     });
                 }
             }
@@ -326,7 +373,8 @@ impl TableDef {
 mod tests {
     use super::*;
     use crate::schema::column::{ColumnType, SimpleColumnType};
-    use crate::schema::foreign_key::ForeignKeyDef;
+    use crate::schema::foreign_key::{ForeignKeyDef, ForeignKeySyntax};
+    use crate::schema::primary_key::PrimaryKeySyntax;
     use crate::schema::reference::ReferenceAction;
     use crate::schema::str_or_bool::StrOrBoolOrArray;
 
@@ -347,7 +395,7 @@ mod tests {
     #[test]
     fn normalize_inline_primary_key() {
         let mut id_col = col("id", ColumnType::Simple(SimpleColumnType::Integer));
-        id_col.primary_key = Some(true);
+        id_col.primary_key = Some(PrimaryKeySyntax::Bool(true));
 
         let table = TableDef {
             name: "users".into(),
@@ -363,17 +411,17 @@ mod tests {
         assert_eq!(normalized.constraints.len(), 1);
         assert!(matches!(
             &normalized.constraints[0],
-            TableConstraint::PrimaryKey { columns } if columns == &["id".to_string()]
+            TableConstraint::PrimaryKey { columns, .. } if columns == &["id".to_string()]
         ));
     }
 
     #[test]
     fn normalize_multiple_inline_primary_keys() {
         let mut id_col = col("id", ColumnType::Simple(SimpleColumnType::Integer));
-        id_col.primary_key = Some(true);
+        id_col.primary_key = Some(PrimaryKeySyntax::Bool(true));
 
         let mut tenant_col = col("tenant_id", ColumnType::Simple(SimpleColumnType::Integer));
-        tenant_col.primary_key = Some(true);
+        tenant_col.primary_key = Some(PrimaryKeySyntax::Bool(true));
 
         let table = TableDef {
             name: "users".into(),
@@ -386,19 +434,20 @@ mod tests {
         assert_eq!(normalized.constraints.len(), 1);
         assert!(matches!(
             &normalized.constraints[0],
-            TableConstraint::PrimaryKey { columns } if columns == &["id".to_string(), "tenant_id".to_string()]
+            TableConstraint::PrimaryKey { columns, .. } if columns == &["id".to_string(), "tenant_id".to_string()]
         ));
     }
 
     #[test]
     fn normalize_does_not_duplicate_existing_pk() {
         let mut id_col = col("id", ColumnType::Simple(SimpleColumnType::Integer));
-        id_col.primary_key = Some(true);
+        id_col.primary_key = Some(PrimaryKeySyntax::Bool(true));
 
         let table = TableDef {
             name: "users".into(),
             columns: vec![id_col],
             constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
                 columns: vec!["id".into()],
             }],
             indexes: vec![],
@@ -406,6 +455,26 @@ mod tests {
 
         let normalized = table.normalize().unwrap();
         assert_eq!(normalized.constraints.len(), 1);
+    }
+
+    #[test]
+    fn normalize_ignores_primary_key_false() {
+        let mut id_col = col("id", ColumnType::Simple(SimpleColumnType::Integer));
+        id_col.primary_key = Some(PrimaryKeySyntax::Bool(false));
+
+        let table = TableDef {
+            name: "users".into(),
+            columns: vec![
+                id_col,
+                col("name", ColumnType::Simple(SimpleColumnType::Text)),
+            ],
+            constraints: vec![],
+            indexes: vec![],
+        };
+
+        let normalized = table.normalize().unwrap();
+        // primary_key: false should be ignored, so no primary key constraint should be added
+        assert_eq!(normalized.constraints.len(), 0);
     }
 
     #[test]
@@ -500,12 +569,12 @@ mod tests {
     #[test]
     fn normalize_inline_foreign_key() {
         let mut user_id_col = col("user_id", ColumnType::Simple(SimpleColumnType::Integer));
-        user_id_col.foreign_key = Some(ForeignKeyDef {
+        user_id_col.foreign_key = Some(ForeignKeySyntax::Object(ForeignKeyDef {
             ref_table: "users".into(),
             ref_columns: vec!["id".into()],
             on_delete: Some(ReferenceAction::Cascade),
             on_update: None,
-        });
+        }));
 
         let table = TableDef {
             name: "posts".into(),
@@ -537,7 +606,7 @@ mod tests {
     #[test]
     fn normalize_all_inline_constraints() {
         let mut id_col = col("id", ColumnType::Simple(SimpleColumnType::Integer));
-        id_col.primary_key = Some(true);
+        id_col.primary_key = Some(PrimaryKeySyntax::Bool(true));
 
         let mut email_col = col("email", ColumnType::Simple(SimpleColumnType::Text));
         email_col.unique = Some(StrOrBoolOrArray::Bool(true));
@@ -546,12 +615,12 @@ mod tests {
         name_col.index = Some(StrOrBoolOrArray::Bool(true));
 
         let mut user_id_col = col("org_id", ColumnType::Simple(SimpleColumnType::Integer));
-        user_id_col.foreign_key = Some(ForeignKeyDef {
+        user_id_col.foreign_key = Some(ForeignKeySyntax::Object(ForeignKeyDef {
             ref_table: "orgs".into(),
             ref_columns: vec!["id".into()],
             on_delete: None,
             on_update: None,
-        });
+        }));
 
         let table = TableDef {
             name: "users".into(),
@@ -868,12 +937,12 @@ mod tests {
     fn normalize_inline_foreign_key_already_exists() {
         // Test that existing foreign key constraint is not duplicated
         let mut user_id_col = col("user_id", ColumnType::Simple(SimpleColumnType::Integer));
-        user_id_col.foreign_key = Some(ForeignKeyDef {
+        user_id_col.foreign_key = Some(ForeignKeySyntax::Object(ForeignKeyDef {
             ref_table: "users".into(),
             ref_columns: vec!["id".into()],
             on_delete: None,
             on_update: None,
-        });
+        }));
 
         let table = TableDef {
             name: "posts".into(),
@@ -1031,6 +1100,7 @@ mod tests {
             constraints: vec![
                 // Add a PrimaryKey constraint (different type) - should not match
                 TableConstraint::PrimaryKey {
+                    auto_increment: false,
                     columns: vec!["id".into()],
                 },
             ],
@@ -1057,6 +1127,7 @@ mod tests {
             constraints: vec![
                 // Add a PrimaryKey constraint (different type) - should not match
                 TableConstraint::PrimaryKey {
+                    auto_increment: false,
                     columns: vec!["id".into()],
                 },
             ],
@@ -1103,5 +1174,182 @@ mod tests {
         } else {
             panic!("Expected DuplicateIndexColumn error");
         }
+    }
+
+    #[test]
+    fn normalize_inline_foreign_key_string_syntax() {
+        // Test ForeignKeySyntax::String with valid "table.column" format
+        let mut user_id_col = col("user_id", ColumnType::Simple(SimpleColumnType::Integer));
+        user_id_col.foreign_key = Some(ForeignKeySyntax::String("users.id".into()));
+
+        let table = TableDef {
+            name: "posts".into(),
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                user_id_col,
+            ],
+            constraints: vec![],
+            indexes: vec![],
+        };
+
+        let normalized = table.normalize().unwrap();
+        assert_eq!(normalized.constraints.len(), 1);
+        assert!(matches!(
+            &normalized.constraints[0],
+            TableConstraint::ForeignKey {
+                name: None,
+                columns,
+                ref_table,
+                ref_columns,
+                on_delete: None,
+                on_update: None,
+            } if columns == &["user_id".to_string()]
+                && ref_table == "users"
+                && ref_columns == &["id".to_string()]
+        ));
+    }
+
+    #[test]
+    fn normalize_inline_foreign_key_invalid_format_no_dot() {
+        // Test ForeignKeySyntax::String with invalid format (no dot)
+        let mut user_id_col = col("user_id", ColumnType::Simple(SimpleColumnType::Integer));
+        user_id_col.foreign_key = Some(ForeignKeySyntax::String("usersid".into()));
+
+        let table = TableDef {
+            name: "posts".into(),
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                user_id_col,
+            ],
+            constraints: vec![],
+            indexes: vec![],
+        };
+
+        let result = table.normalize();
+        assert!(result.is_err());
+        if let Err(TableValidationError::InvalidForeignKeyFormat { column_name, value }) = result {
+            assert_eq!(column_name, "user_id");
+            assert_eq!(value, "usersid");
+        } else {
+            panic!("Expected InvalidForeignKeyFormat error");
+        }
+    }
+
+    #[test]
+    fn normalize_inline_foreign_key_invalid_format_empty_table() {
+        // Test ForeignKeySyntax::String with empty table part
+        let mut user_id_col = col("user_id", ColumnType::Simple(SimpleColumnType::Integer));
+        user_id_col.foreign_key = Some(ForeignKeySyntax::String(".id".into()));
+
+        let table = TableDef {
+            name: "posts".into(),
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                user_id_col,
+            ],
+            constraints: vec![],
+            indexes: vec![],
+        };
+
+        let result = table.normalize();
+        assert!(result.is_err());
+        if let Err(TableValidationError::InvalidForeignKeyFormat { column_name, value }) = result {
+            assert_eq!(column_name, "user_id");
+            assert_eq!(value, ".id");
+        } else {
+            panic!("Expected InvalidForeignKeyFormat error");
+        }
+    }
+
+    #[test]
+    fn normalize_inline_foreign_key_invalid_format_empty_column() {
+        // Test ForeignKeySyntax::String with empty column part
+        let mut user_id_col = col("user_id", ColumnType::Simple(SimpleColumnType::Integer));
+        user_id_col.foreign_key = Some(ForeignKeySyntax::String("users.".into()));
+
+        let table = TableDef {
+            name: "posts".into(),
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                user_id_col,
+            ],
+            constraints: vec![],
+            indexes: vec![],
+        };
+
+        let result = table.normalize();
+        assert!(result.is_err());
+        if let Err(TableValidationError::InvalidForeignKeyFormat { column_name, value }) = result {
+            assert_eq!(column_name, "user_id");
+            assert_eq!(value, "users.");
+        } else {
+            panic!("Expected InvalidForeignKeyFormat error");
+        }
+    }
+
+    #[test]
+    fn normalize_inline_foreign_key_invalid_format_too_many_parts() {
+        // Test ForeignKeySyntax::String with too many parts
+        let mut user_id_col = col("user_id", ColumnType::Simple(SimpleColumnType::Integer));
+        user_id_col.foreign_key = Some(ForeignKeySyntax::String("schema.users.id".into()));
+
+        let table = TableDef {
+            name: "posts".into(),
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                user_id_col,
+            ],
+            constraints: vec![],
+            indexes: vec![],
+        };
+
+        let result = table.normalize();
+        assert!(result.is_err());
+        if let Err(TableValidationError::InvalidForeignKeyFormat { column_name, value }) = result {
+            assert_eq!(column_name, "user_id");
+            assert_eq!(value, "schema.users.id");
+        } else {
+            panic!("Expected InvalidForeignKeyFormat error");
+        }
+    }
+
+    #[test]
+    fn normalize_inline_primary_key_with_auto_increment() {
+        use crate::schema::primary_key::PrimaryKeyDef;
+
+        let mut id_col = col("id", ColumnType::Simple(SimpleColumnType::Integer));
+        id_col.primary_key = Some(PrimaryKeySyntax::Object(PrimaryKeyDef {
+            auto_increment: true,
+            columns: vec![], // columns is ignored for inline definition
+        }));
+
+        let table = TableDef {
+            name: "users".into(),
+            columns: vec![
+                id_col,
+                col("name", ColumnType::Simple(SimpleColumnType::Text)),
+            ],
+            constraints: vec![],
+            indexes: vec![],
+        };
+
+        let normalized = table.normalize().unwrap();
+        assert_eq!(normalized.constraints.len(), 1);
+        assert!(matches!(
+            &normalized.constraints[0],
+            TableConstraint::PrimaryKey { auto_increment: true, columns } if columns == &["id".to_string()]
+        ));
+    }
+
+    #[test]
+    fn test_invalid_foreign_key_format_error_display() {
+        let error = TableValidationError::InvalidForeignKeyFormat {
+            column_name: "user_id".into(),
+            value: "invalid".into(),
+        };
+        let error_msg = format!("{}", error);
+        assert!(error_msg.contains("user_id"));
+        assert!(error_msg.contains("invalid"));
+        assert!(error_msg.contains("table.column"));
     }
 }

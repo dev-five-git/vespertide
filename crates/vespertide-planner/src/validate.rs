@@ -64,7 +64,7 @@ fn validate_constraint(
     table_map: &std::collections::HashMap<&str, HashSet<&str>>,
 ) -> Result<(), PlannerError> {
     match constraint {
-        TableConstraint::PrimaryKey { columns } => {
+        TableConstraint::PrimaryKey { columns, .. } => {
             if columns.is_empty() {
                 return Err(PlannerError::EmptyConstraintColumns(
                     table_name.to_string(),
@@ -282,7 +282,7 @@ mod tests {
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
+            vec![TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] }],
             vec![],
         )],
         None
@@ -353,7 +353,7 @@ mod tests {
             table(
                 "posts",
                 vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-                vec![TableConstraint::PrimaryKey{columns: vec!["id".into()] }],
+                vec![TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] }],
                 vec![],
             ),
             table(
@@ -389,7 +389,7 @@ mod tests {
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![TableConstraint::PrimaryKey{columns: vec!["nonexistent".into()] }],
+            vec![TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["nonexistent".into()] }],
             vec![],
         )],
         Some(is_constraint_column as fn(&PlannerError) -> bool)
@@ -422,7 +422,7 @@ mod tests {
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![TableConstraint::PrimaryKey{columns: vec![] }],
+            vec![TableConstraint::PrimaryKey{ auto_increment: false, columns: vec![] }],
             vec![],
         )],
         Some(is_empty_columns as fn(&PlannerError) -> bool)

@@ -88,6 +88,8 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
             }
 
             // Added columns
+            // Note: Inline foreign keys are already converted to TableConstraint::ForeignKey
+            // by normalize(), so they will be handled in the constraint diff below.
             for (col, def) in &to_cols {
                 if !from_cols.contains_key(col) {
                     actions.push(MigrationAction::AddColumn {
@@ -381,6 +383,8 @@ mod tests {
     mod inline_constraints {
         use super::*;
         use vespertide_core::schema::foreign_key::ForeignKeyDef;
+        use vespertide_core::schema::foreign_key::ForeignKeySyntax;
+        use vespertide_core::schema::primary_key::PrimaryKeySyntax;
         use vespertide_core::{StrOrBoolOrArray, TableConstraint};
 
         fn col_with_pk(name: &str, ty: ColumnType) -> ColumnDef {
@@ -390,7 +394,7 @@ mod tests {
                 nullable: false,
                 default: None,
                 comment: None,
-                primary_key: Some(true),
+                primary_key: Some(PrimaryKeySyntax::Bool(true)),
                 unique: None,
                 index: None,
                 foreign_key: None,
@@ -435,12 +439,12 @@ mod tests {
                 primary_key: None,
                 unique: None,
                 index: None,
-                foreign_key: Some(ForeignKeyDef {
+                foreign_key: Some(ForeignKeySyntax::Object(ForeignKeyDef {
                     ref_table: ref_table.to_string(),
                     ref_columns: vec![ref_col.to_string()],
                     on_delete: None,
                     on_update: None,
-                }),
+                })),
             }
         }
 
@@ -465,7 +469,7 @@ mod tests {
                 assert_eq!(constraints.len(), 1);
                 assert!(matches!(
                     &constraints[0],
-                    TableConstraint::PrimaryKey { columns } if columns == &["id".to_string()]
+                    TableConstraint::PrimaryKey { columns, .. } if columns == &["id".to_string()]
                 ));
             } else {
                 panic!("Expected CreateTable action");
@@ -604,7 +608,7 @@ mod tests {
         #[test]
         fn create_table_with_all_inline_constraints() {
             let mut id_col = col("id", ColumnType::Simple(SimpleColumnType::Integer));
-            id_col.primary_key = Some(true);
+            id_col.primary_key = Some(PrimaryKeySyntax::Bool(true));
             id_col.nullable = false;
 
             let mut email_col = col("email", ColumnType::Simple(SimpleColumnType::Text));
@@ -614,12 +618,12 @@ mod tests {
             name_col.index = Some(StrOrBoolOrArray::Bool(true));
 
             let mut org_id_col = col("org_id", ColumnType::Simple(SimpleColumnType::Integer));
-            org_id_col.foreign_key = Some(ForeignKeyDef {
+            org_id_col.foreign_key = Some(ForeignKeySyntax::Object(ForeignKeyDef {
                 ref_table: "orgs".into(),
                 ref_columns: vec!["id".into()],
                 on_delete: None,
                 on_update: None,
-            });
+            }));
 
             let plan = diff_schemas(
                 &[],

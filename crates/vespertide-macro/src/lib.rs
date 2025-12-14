@@ -1,14 +1,11 @@
 // MigrationOptions and MigrationError are now in vespertide-core
 
+mod loader;
+
 use proc_macro::TokenStream;
 use quote::quote;
-use std::env;
-use std::fs;
-use std::path::PathBuf;
 use syn::parse::{Parse, ParseStream};
 use syn::{Expr, Ident, Token, parse_macro_input};
-use vespertide_config::VespertideConfig;
-use vespertide_core::MigrationPlan;
 use vespertide_query::build_plan_queries;
 
 struct MacroInput {
@@ -57,7 +54,7 @@ pub fn vespertide_migration(input: TokenStream) -> TokenStream {
         .unwrap_or_else(|| "vespertide_version".to_string());
 
     // Load migration files and build SQL at compile time
-    let migrations = match load_migrations_at_compile_time() {
+    let migrations = match loader::load_migrations_at_compile_time() {
         Ok(migrations) => migrations,
         Err(e) => {
             return syn::Error::new(
@@ -180,53 +177,4 @@ pub fn vespertide_migration(input: TokenStream) -> TokenStream {
     };
 
     generated.into()
-}
-
-fn load_migrations_at_compile_time() -> Result<Vec<MigrationPlan>, Box<dyn std::error::Error>> {
-    // Locate project root from CARGO_MANIFEST_DIR
-    let manifest_dir = env::var("CARGO_MANIFEST_DIR")
-        .map_err(|_| "CARGO_MANIFEST_DIR environment variable not set")?;
-    let project_root = PathBuf::from(manifest_dir);
-
-    // Read vespertide.json
-    let config_path = project_root.join("vespertide.json");
-    let config: VespertideConfig = if config_path.exists() {
-        let content = fs::read_to_string(&config_path)?;
-        serde_json::from_str(&content)?
-    } else {
-        // Fall back to defaults if config is missing
-        VespertideConfig::default()
-    };
-
-    // Read migrations directory
-    let migrations_dir = project_root.join(config.migrations_dir());
-    if !migrations_dir.exists() {
-        return Ok(Vec::new());
-    }
-
-    let mut plans = Vec::new();
-    let entries = fs::read_dir(&migrations_dir)?;
-
-    for entry in entries {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_file() {
-            let ext = path.extension().and_then(|s| s.to_str());
-            if ext == Some("json") || ext == Some("yaml") || ext == Some("yml") {
-                let content = fs::read_to_string(&path)?;
-
-                let plan: MigrationPlan = if ext == Some("json") {
-                    serde_json::from_str(&content)?
-                } else {
-                    serde_yaml::from_str(&content)?
-                };
-
-                plans.push(plan);
-            }
-        }
-    }
-
-    // Sort by version
-    plans.sort_by_key(|p| p.version);
-    Ok(plans)
 }

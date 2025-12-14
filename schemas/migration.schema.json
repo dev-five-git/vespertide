@@ -51,7 +51,7 @@
         "foreign_key": {
           "anyOf": [
             {
-              "$ref": "#/$defs/ForeignKeyDef"
+              "$ref": "#/$defs/ForeignKeySyntax"
             },
             {
               "type": "null"
@@ -75,9 +75,13 @@
           "type": "boolean"
         },
         "primary_key": {
-          "type": [
-            "boolean",
-            "null"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PrimaryKeySyntax"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "type": {
@@ -118,6 +122,48 @@
             "kind": {
               "type": "string",
               "const": "varchar"
+            },
+            "length": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "length"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "numeric"
+            },
+            "precision": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "scale": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "precision",
+            "scale"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "char"
             },
             "length": {
               "type": "integer",
@@ -186,6 +232,17 @@
         "ref_columns"
       ]
     },
+    "ForeignKeySyntax": {
+      "anyOf": [
+        {
+          "description": "table.column",
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/ForeignKeyDef"
+        }
+      ]
+    },
     "IndexDef": {
       "type": "object",
       "properties": {
@@ -230,7 +287,7 @@
             },
             "type": {
               "type": "string",
-              "const": "CreateTable"
+              "const": "create_table"
             }
           },
           "required": [
@@ -248,7 +305,7 @@
             },
             "type": {
               "type": "string",
-              "const": "DeleteTable"
+              "const": "delete_table"
             }
           },
           "required": [
@@ -274,7 +331,7 @@
             },
             "type": {
               "type": "string",
-              "const": "AddColumn"
+              "const": "add_column"
             }
           },
           "required": [
@@ -297,7 +354,7 @@
             },
             "type": {
               "type": "string",
-              "const": "RenameColumn"
+              "const": "rename_column"
             }
           },
           "required": [
@@ -318,7 +375,7 @@
             },
             "type": {
               "type": "string",
-              "const": "DeleteColumn"
+              "const": "delete_column"
             }
           },
           "required": [
@@ -341,7 +398,7 @@
             },
             "type": {
               "type": "string",
-              "const": "ModifyColumnType"
+              "const": "modify_column_type"
             }
           },
           "required": [
@@ -362,7 +419,7 @@
             },
             "type": {
               "type": "string",
-              "const": "AddIndex"
+              "const": "add_index"
             }
           },
           "required": [
@@ -382,7 +439,7 @@
             },
             "type": {
               "type": "string",
-              "const": "RemoveIndex"
+              "const": "remove_index"
             }
           },
           "required": [
@@ -402,7 +459,7 @@
             },
             "type": {
               "type": "string",
-              "const": "AddConstraint"
+              "const": "add_constraint"
             }
           },
           "required": [
@@ -422,7 +479,7 @@
             },
             "type": {
               "type": "string",
-              "const": "RemoveConstraint"
+              "const": "remove_constraint"
             }
           },
           "required": [
@@ -442,7 +499,7 @@
             },
             "type": {
               "type": "string",
-              "const": "RenameTable"
+              "const": "rename_table"
             }
           },
           "required": [
@@ -459,13 +516,41 @@
             },
             "type": {
               "type": "string",
-              "const": "RawSql"
+              "const": "raw_sql"
             }
           },
           "required": [
             "type",
             "sql"
           ]
+        }
+      ]
+    },
+    "PrimaryKeyDef": {
+      "type": "object",
+      "properties": {
+        "auto_increment": {
+          "type": "boolean",
+          "default": false
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "columns"
+      ]
+    },
+    "PrimaryKeySyntax": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/$defs/PrimaryKeyDef"
         }
       ]
     },
@@ -493,13 +578,15 @@
         "time",
         "timestamp",
         "timestamptz",
+        "interval",
         "bytea",
         "uuid",
         "json",
         "jsonb",
         "inet",
         "cidr",
-        "macaddr"
+        "macaddr",
+        "xml"
       ]
     },
     "StrOrBoolOrArray": {
@@ -523,6 +610,10 @@
         {
           "type": "object",
           "properties": {
+            "auto_increment": {
+              "type": "boolean",
+              "default": false
+            },
             "columns": {
               "type": "array",
               "items": {

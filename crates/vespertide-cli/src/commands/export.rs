@@ -67,14 +67,48 @@ fn resolve_export_dir(export_dir: Option<PathBuf>, config: &VespertideConfig) ->
 }
 
 fn build_output_path(root: &Path, rel_path: &Path, orm: Orm) -> PathBuf {
-    let mut out = root.join(rel_path);
-    // swap extension based on ORM
-    let ext = match orm {
-        Orm::SeaOrm => "rs",
-        Orm::SqlAlchemy | Orm::SqlModel => "py",
-    };
-    out.set_extension(ext);
+    // Sanitize file name: replace spaces with underscores
+    let mut out = root.to_path_buf();
+
+    // Reconstruct path with sanitized file name
+    for component in rel_path.components() {
+        if let std::path::Component::Normal(name) = component {
+            out.push(name);
+        } else {
+            out.push(component.as_os_str());
+        }
+    }
+
+    // Sanitize the file name (last component)
+    if let Some(file_name) = out.file_name().and_then(|n| n.to_str()) {
+        // Remove extension, sanitize, then add new extension
+        let (stem, _ext) = if let Some(dot_idx) = file_name.rfind('.') {
+            file_name.split_at(dot_idx)
+        } else {
+            (file_name, "")
+        };
+
+        let sanitized = sanitize_filename(stem);
+        let ext = match orm {
+            Orm::SeaOrm => "rs",
+            Orm::SqlAlchemy | Orm::SqlModel => "py",
+        };
+        out.set_file_name(format!("{}.{}", sanitized, ext));
+    }
+
     out
+}
+
+fn sanitize_filename(name: &str) -> String {
+    name.chars()
+        .map(|ch| {
+            if ch.is_alphanumeric() || ch == '_' || ch == '-' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
 }
 
 fn load_models_recursive(base: &Path) -> Result<Vec<(TableDef, PathBuf)>> {
@@ -91,7 +125,11 @@ fn ensure_mod_chain(root: &Path, rel_path: &Path) -> Result<()> {
     let mut comps: Vec<String> = rel_path
         .with_extension("")
         .components()
-        .filter_map(|c| c.as_os_str().to_str().map(|s| s.to_string()))
+        .filter_map(|c| {
+            c.as_os_str()
+                .to_str()
+                .map(|s| sanitize_filename(s).to_string())
+        })
         .collect();
     if comps.is_empty() {
         return Ok(());
@@ -153,6 +191,7 @@ fn walk_models(root: &Path, current: &Path, acc: &mut Vec<(TableDef, PathBuf)>) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
     use serial_test::serial;
     use std::fs;
     use tempfile::tempdir;
@@ -204,6 +243,7 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
                 columns: vec!["id".into()],
             }],
             indexes: vec![],
@@ -381,10 +421,64 @@ mod tests {
         assert_eq!(resolved, override_dir);
     }
 
+    #[rstest]
+    #[case(OrmArg::Seaorm, Orm::SeaOrm)]
+    #[case(OrmArg::Sqlalchemy, Orm::SqlAlchemy)]
+    #[case(OrmArg::Sqlmodel, Orm::SqlModel)]
+    fn orm_arg_maps_to_enum(#[case] arg: OrmArg, #[case] expected: Orm) {
+        assert_eq!(Orm::from(arg), expected);
+    }
+
+    #[rstest]
+    #[case("normal_name", "normal_name")]
+    #[case("user copy", "user_copy")]
+    #[case("user  copy", "user__copy")]
+    #[case("user-copy", "user-copy")]
+    #[case("user.copy", "user_copy")]
+    #[case("user copy.json", "user_copy_json")]
+    fn test_sanitize_filename(#[case] input: &str, #[case] expected: &str) {
+        assert_eq!(sanitize_filename(input), expected);
+    }
+
     #[test]
-    fn orm_arg_maps_to_enum() {
-        assert!(matches!(Orm::from(OrmArg::Seaorm), Orm::SeaOrm));
-        assert!(matches!(Orm::from(OrmArg::Sqlalchemy), Orm::SqlAlchemy));
-        assert!(matches!(Orm::from(OrmArg::Sqlmodel), Orm::SqlModel));
+    fn build_output_path_sanitizes_spaces() {
+        use std::path::Path;
+        let root = Path::new("src/models");
+        let rel_path = Path::new("user copy.json");
+        let out = build_output_path(root, rel_path, Orm::SeaOrm);
+        assert_eq!(out, Path::new("src/models/user_copy.rs"));
+
+        let rel_path2 = Path::new("blog/post name.yaml");
+        let out2 = build_output_path(root, rel_path2, Orm::SeaOrm);
+        assert_eq!(out2, Path::new("src/models/blog/post_name.rs"));
+    }
+
+    #[test]
+    fn build_output_path_handles_file_without_extension() {
+        use std::path::Path;
+        let root = Path::new("src/models");
+        // File without extension - covers line 88 (else branch)
+        let rel_path = Path::new("users");
+        let out = build_output_path(root, rel_path, Orm::SeaOrm);
+        assert_eq!(out, Path::new("src/models/users.rs"));
+
+        let out_py = build_output_path(root, rel_path, Orm::SqlAlchemy);
+        assert_eq!(out_py, Path::new("src/models/users.py"));
+    }
+
+    #[test]
+    fn build_output_path_handles_special_path_components() {
+        use std::path::Path;
+        let root = Path::new("src/models");
+        // Path with CurDir component (.) - covers line 78 (non-Normal component branch)
+        let rel_path = Path::new("./blog/posts.json");
+        let out = build_output_path(root, rel_path, Orm::SeaOrm);
+        // The . component gets pushed via the else branch
+        assert!(out.to_string_lossy().contains("posts"));
+
+        // Path with ParentDir component (..)
+        let rel_path2 = Path::new("../other/items.yaml");
+        let out2 = build_output_path(root, rel_path2, Orm::SeaOrm);
+        assert!(out2.to_string_lossy().contains("items"));
     }
 }

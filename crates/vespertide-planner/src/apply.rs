@@ -155,7 +155,7 @@ pub fn apply_action(
 fn rename_column_in_constraints(constraints: &mut [TableConstraint], from: &str, to: &str) {
     for constraint in constraints {
         match constraint {
-            TableConstraint::PrimaryKey { columns } => {
+            TableConstraint::PrimaryKey { columns, .. } => {
                 for c in columns.iter_mut() {
                     if c == from {
                         *c = to.to_string();
@@ -202,7 +202,7 @@ fn rename_column_in_indexes(indexes: &mut [IndexDef], from: &str, to: &str) {
 
 fn drop_column_from_constraints(constraints: &mut Vec<TableConstraint>, column: &str) {
     constraints.retain_mut(|c| match c {
-        TableConstraint::PrimaryKey { columns } => {
+        TableConstraint::PrimaryKey { columns, .. } => {
             columns.retain(|c| c != column);
             !columns.is_empty()
         }
@@ -397,7 +397,7 @@ mod tests {
                 col("ref_id", ColumnType::Simple(SimpleColumnType::Integer))
             ],
             vec![
-                TableConstraint::PrimaryKey{columns: vec!["id".into()] },
+                TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] },
                 TableConstraint::Unique {
                     name: Some("u_old".into()),
                     columns: vec!["old".into()],
@@ -441,7 +441,7 @@ mod tests {
                 col("new_col", ColumnType::Simple(SimpleColumnType::Boolean))
             ],
             vec![
-                TableConstraint::PrimaryKey{columns: vec!["id".into()] },
+                TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] },
                 TableConstraint::Unique {
                     name: Some("u_old".into()),
                     columns: vec!["old".into()],
@@ -470,7 +470,7 @@ mod tests {
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer)), col("old", ColumnType::Simple(SimpleColumnType::Text))],
             vec![
-                TableConstraint::PrimaryKey{columns: vec!["id".into()] },
+                TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] },
                 TableConstraint::Unique {
                     name: Some("u_old".into()),
                     columns: vec!["old".into()],
@@ -498,7 +498,7 @@ mod tests {
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![
-                TableConstraint::PrimaryKey{columns: vec!["id".into()] },
+                TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] },
                 TableConstraint::Check {
                     name: None,
                     expr: "old IS NOT NULL".into(),
@@ -559,6 +559,7 @@ mod tests {
         actions: vec![MigrationAction::AddConstraint {
             table: "users".into(),
             constraint: TableConstraint::PrimaryKey {
+                auto_increment: false,
                 columns: vec!["id".into()],
             },
         }],
@@ -566,6 +567,7 @@ mod tests {
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
                 columns: vec!["id".into()],
             }],
             vec![],
@@ -576,6 +578,7 @@ mod tests {
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
                 columns: vec!["id".into()],
             }],
             vec![],
@@ -583,6 +586,7 @@ mod tests {
         actions: vec![MigrationAction::RemoveConstraint {
             table: "users".into(),
             constraint: TableConstraint::PrimaryKey {
+                auto_increment: false,
                 columns: vec!["id".into()],
             },
         }],
@@ -606,7 +610,7 @@ mod tests {
     #[rstest]
     #[case(
         vec![
-            TableConstraint::PrimaryKey{columns: vec!["id".into(), "old".into()] },
+            TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into(), "old".into()] },
             TableConstraint::Unique {
                 name: None,
                 columns: vec!["old".into(), "keep".into()],
@@ -628,7 +632,7 @@ mod tests {
         "old",
         "new",
         vec![
-            TableConstraint::PrimaryKey{columns: vec!["id".into(), "new".into()] },
+            TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into(), "new".into()] },
             TableConstraint::Unique {
                 name: None,
                 columns: vec!["new".into(), "keep".into()],
@@ -650,7 +654,7 @@ mod tests {
     )]
     #[case(
         vec![
-            TableConstraint::PrimaryKey{columns: vec!["id".into()] },
+            TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] },
             TableConstraint::Check {
                 name: None,
                 expr: "id > 0".into(),
@@ -660,7 +664,7 @@ mod tests {
         "missing",
         "new",
         vec![
-            TableConstraint::PrimaryKey{columns: vec!["id".into()] },
+            TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] },
             TableConstraint::Check {
                 name: None,
                 expr: "id > 0".into(),
