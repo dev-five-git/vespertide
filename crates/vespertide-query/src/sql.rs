@@ -975,7 +975,7 @@ mod tests {
             new_type: ColumnType::Complex(ComplexColumnType::Varchar { length: 50 }),
         },
         DatabaseBackend::MySql,
-        &["ALTER TABLE `users` MODIFY COLUMN `age` VARCHAR(50)"]
+        &["ALTER TABLE `users` MODIFY COLUMN `age` varchar(50)"]
     )]
     #[case::modify_column_type_sqlite(
         "modify_column_type_sqlite",
@@ -1003,7 +1003,7 @@ mod tests {
             to: "accounts".into(),
         },
         DatabaseBackend::MySql,
-        &["ALTER TABLE `users` RENAME TO `accounts`"]
+        &["RENAME TABLE `users` TO `accounts`"]
     )]
     #[case::rename_table_action_sqlite(
         "rename_table_action_sqlite",
@@ -1141,7 +1141,7 @@ mod tests {
             },
         },
         DatabaseBackend::MySql,
-        &["ALTER TABLE `users` ADD PRIMARY KEY (`id`)"]
+        &["ALTER TABLE \"users\" ADD PRIMARY KEY (\"id\")"]
     )]
     #[case::add_constraint_primary_key_sqlite(
         "add_constraint_primary_key_sqlite",
