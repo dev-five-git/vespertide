@@ -1,5 +1,5 @@
 ---
 source: crates/vespertide-query/src/sql.rs
-expression: q.build(backend)
+expression: sql
 ---
 ALTER TABLE `a` DROP FOREIGN KEY `fk`

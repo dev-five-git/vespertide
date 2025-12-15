@@ -1,5 +1,5 @@
 ---
 source: crates/vespertide-query/src/sql.rs
-expression: q.build(backend)
+expression: sql
 ---
 CREATE INDEX "idx" ON "t" ("c")

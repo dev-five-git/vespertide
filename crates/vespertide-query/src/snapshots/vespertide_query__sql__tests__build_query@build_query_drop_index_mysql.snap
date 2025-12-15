@@ -1,5 +1,5 @@
 ---
 source: crates/vespertide-query/src/sql.rs
-expression: q.build(backend)
+expression: sql
 ---
 DROP INDEX `idx` ON `t`
