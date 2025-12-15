@@ -169,11 +169,7 @@ fn format_constraint_type(constraint: &vespertide_core::TableConstraint) -> Stri
             }
         }
         vespertide_core::TableConstraint::Check { name, expr } => {
-            if let Some(n) = name {
-                format!("{} CHECK ({})", n, expr)
-            } else {
-                format!("CHECK ({})", expr)
-            }
+            format!("{} CHECK ({})", name, expr)
         }
     }
 }
@@ -345,7 +341,7 @@ mod tests {
         MigrationAction::AddConstraint {
             table: "users".into(),
             constraint: vespertide_core::TableConstraint::Check {
-                name: Some("check_age".into()),
+                name: "check_age".into(),
                 expr: "age > 0".into(),
             },
         },
@@ -389,7 +385,7 @@ mod tests {
         MigrationAction::RemoveConstraint {
             table: "users".into(),
             constraint: vespertide_core::TableConstraint::Check {
-                name: None,
+                name: "check_age".into(),
                 expr: "age > 0".into(),
             },
         },

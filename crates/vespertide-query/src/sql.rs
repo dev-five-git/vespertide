@@ -514,14 +514,10 @@ fn build_add_constraint(
             Ok(vec![BuiltQuery::Raw(sql)])
         }
         TableConstraint::Check { name, expr } => {
-            let sql = if let Some(n) = name {
-                format!(
-                    "ALTER TABLE \"{}\" ADD CONSTRAINT \"{}\" CHECK ({})",
-                    table, n, expr
-                )
-            } else {
-                format!("ALTER TABLE \"{}\" ADD CHECK ({})", table, expr)
-            };
+            let sql = format!(
+                "ALTER TABLE \"{}\" ADD CONSTRAINT \"{}\" CHECK ({})",
+                table, name, expr
+            );
             Ok(vec![BuiltQuery::Raw(sql)])
         }
     }
@@ -566,14 +562,8 @@ fn build_remove_constraint(
             Ok(vec![BuiltQuery::Raw(sql)])
         }
         TableConstraint::Check { name, .. } => {
-            if let Some(n) = name {
-                let sql = format!("ALTER TABLE \"{}\" DROP CONSTRAINT \"{}\"", table, n);
-                Ok(vec![BuiltQuery::Raw(sql)])
-            } else {
-                Err(QueryError::Other(
-                    "Cannot drop unnamed CHECK constraint".to_string(),
-                ))
-            }
+            let sql = format!("ALTER TABLE \"{}\" DROP CONSTRAINT \"{}\"", table, name);
+            Ok(vec![BuiltQuery::Raw(sql)])
         }
     }
 }
@@ -597,18 +587,6 @@ mod tests {
             index: None,
             foreign_key: None,
         }
-    }
-
-    #[test]
-    fn test_remove_unnamed_check_constraint_errors() {
-        let result = build_remove_constraint(
-            "users",
-            &TableConstraint::Check {
-                name: None,
-                expr: "age > 0".into(),
-            },
-        );
-        assert!(result.is_err());
     }
 
     #[rstest]
@@ -1302,7 +1280,7 @@ mod tests {
         MigrationAction::AddConstraint {
             table: "users".into(),
             constraint: TableConstraint::Check {
-                name: Some("chk_age".into()),
+                name: "chk_age".into(),
                 expr: "age > 0".into(),
             },
         },
@@ -1314,7 +1292,7 @@ mod tests {
         MigrationAction::AddConstraint {
             table: "users".into(),
             constraint: TableConstraint::Check {
-                name: Some("chk_age".into()),
+                name: "chk_age".into(),
                 expr: "age > 0".into(),
             },
         },
@@ -1326,48 +1304,12 @@ mod tests {
         MigrationAction::AddConstraint {
             table: "users".into(),
             constraint: TableConstraint::Check {
-                name: Some("chk_age".into()),
+                name: "chk_age".into(),
                 expr: "age > 0".into(),
             },
         },
         DatabaseBackend::Sqlite,
         &["ADD CONSTRAINT \"chk_age\" CHECK (age > 0)"]
-    )]
-    #[case::add_constraint_check_unnamed_postgres(
-        "add_constraint_check_unnamed_postgres",
-        MigrationAction::AddConstraint {
-            table: "users".into(),
-            constraint: TableConstraint::Check {
-                name: None,
-                expr: "age > 0".into(),
-            },
-        },
-        DatabaseBackend::Postgres,
-        &["ADD CHECK (age > 0)"]
-    )]
-    #[case::add_constraint_check_unnamed_mysql(
-        "add_constraint_check_unnamed_mysql",
-        MigrationAction::AddConstraint {
-            table: "users".into(),
-            constraint: TableConstraint::Check {
-                name: None,
-                expr: "age > 0".into(),
-            },
-        },
-        DatabaseBackend::MySql,
-        &["ADD CHECK (age > 0)"]
-    )]
-    #[case::add_constraint_check_unnamed_sqlite(
-        "add_constraint_check_unnamed_sqlite",
-        MigrationAction::AddConstraint {
-            table: "users".into(),
-            constraint: TableConstraint::Check {
-                name: None,
-                expr: "age > 0".into(),
-            },
-        },
-        DatabaseBackend::Sqlite,
-        &["ADD CHECK (age > 0)"]
     )]
     #[case::remove_constraint_primary_key_postgres(
         "remove_constraint_primary_key_postgres",
@@ -1578,7 +1520,7 @@ mod tests {
         MigrationAction::RemoveConstraint {
             table: "users".into(),
             constraint: TableConstraint::Check {
-                name: Some("chk_age".into()),
+                name: "chk_age".into(),
                 expr: "age > 0".into(),
             },
         },
@@ -1590,7 +1532,7 @@ mod tests {
         MigrationAction::RemoveConstraint {
             table: "users".into(),
             constraint: TableConstraint::Check {
-                name: Some("chk_age".into()),
+                name: "chk_age".into(),
                 expr: "age > 0".into(),
             },
         },
@@ -1602,48 +1544,12 @@ mod tests {
         MigrationAction::RemoveConstraint {
             table: "users".into(),
             constraint: TableConstraint::Check {
-                name: Some("chk_age".into()),
+                name: "chk_age".into(),
                 expr: "age > 0".into(),
             },
         },
         DatabaseBackend::Sqlite,
         &["DROP CONSTRAINT \"chk_age\""]
-    )]
-    #[case::remove_constraint_check_unnamed_postgres(
-        "remove_constraint_check_unnamed_postgres",
-        MigrationAction::RemoveConstraint {
-            table: "users".into(),
-            constraint: TableConstraint::Check {
-                name: None,
-                expr: "age > 0".into(),
-            },
-        },
-        DatabaseBackend::Postgres,
-        &["DROP CHECK \"users_age_check\""]
-    )]
-    #[case::remove_constraint_check_unnamed_mysql(
-        "remove_constraint_check_unnamed_mysql",
-        MigrationAction::RemoveConstraint {
-            table: "users".into(),
-            constraint: TableConstraint::Check {
-                name: None,
-                expr: "age > 0".into(),
-            },
-        },
-        DatabaseBackend::MySql,
-        &["DROP CHECK \"users_age_check\""]
-    )]
-    #[case::remove_constraint_check_unnamed_sqlite(
-        "remove_constraint_check_unnamed_sqlite",
-        MigrationAction::RemoveConstraint {
-            table: "users".into(),
-            constraint: TableConstraint::Check {
-                name: None,
-                expr: "age > 0".into(),
-            },
-        },
-        DatabaseBackend::Sqlite,
-        &["DROP CHECK \"users_age_check\""]
     )]
     #[case::remove_index_postgres(
         "remove_index_postgres",

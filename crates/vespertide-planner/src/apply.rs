@@ -411,7 +411,7 @@ mod tests {
                     on_update: None,
                 },
                 TableConstraint::Check {
-                    name: None,
+                    name: "ck_old".into(),
                     expr: "old IS NOT NULL".into(),
                 },
             ],
@@ -455,7 +455,7 @@ mod tests {
                     on_update: None,
                 },
                 TableConstraint::Check {
-                    name: None,
+                    name: "ck_old".into(),
                     expr: "old IS NOT NULL".into(),
                 },
             ],
@@ -484,7 +484,7 @@ mod tests {
                     on_update: None,
                 },
                 TableConstraint::Check {
-                    name: None,
+                    name: "ck_old".into(),
                     expr: "old IS NOT NULL".into(),
                 },
             ],
@@ -500,7 +500,7 @@ mod tests {
             vec![
                 TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] },
                 TableConstraint::Check {
-                    name: None,
+                    name: "ck_old".into(),
                     expr: "old IS NOT NULL".into(),
                 },
             ],
@@ -624,7 +624,7 @@ mod tests {
                 on_update: None,
             },
             TableConstraint::Check {
-                name: None,
+                name: "ck_old".into(),
                 expr: "old > 0".into(),
             },
         ],
@@ -646,7 +646,7 @@ mod tests {
                 on_update: None,
             },
             TableConstraint::Check {
-                name: None,
+                name: "ck_old".into(),
                 expr: "old > 0".into(),
             },
         ],
@@ -656,7 +656,7 @@ mod tests {
         vec![
             TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] },
             TableConstraint::Check {
-                name: None,
+                name: "ck_id".into(),
                 expr: "id > 0".into(),
             },
         ],
@@ -666,7 +666,7 @@ mod tests {
         vec![
             TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] },
             TableConstraint::Check {
-                name: None,
+                name: "ck_id".into(),
                 expr: "id > 0".into(),
             },
         ],
