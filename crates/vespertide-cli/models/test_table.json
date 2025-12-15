@@ -1,0 +1,7 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
+  "columns": [],
+  "constraints": [],
+  "indexes": [],
+  "name": "test_table"
+}

@@ -54,10 +54,10 @@ pub fn cmd_log() -> Result<()> {
             println!(
                 "    {}. {}",
                 (i + 1).to_string().bright_magenta().bold(),
-                q.sql.trim().bright_white()
+                q.sql().trim().bright_white()
             );
-            if !q.binds.is_empty() {
-                println!("       {} {:?}", "binds:".bright_cyan(), q.binds);
+            if !q.binds().is_empty() {
+                println!("       {} {:?}", "binds:".bright_cyan(), q.binds());
             }
         }
         println!();

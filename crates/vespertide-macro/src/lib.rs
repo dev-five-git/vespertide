@@ -6,7 +6,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
 use syn::{Expr, Ident, Token, parse_macro_input};
-use vespertide_query::build_plan_queries;
+use vespertide_query::{DatabaseBackend, build_plan_queries};
 
 struct MacroInput {
     pool: Expr,
@@ -85,16 +85,21 @@ pub fn vespertide_migration(input: TokenStream) -> TokenStream {
             }
         };
 
-        // Statically embed SQL text and bind parameters (as values)
+        // Pre-generate SQL for all backends at compile time
         let sql_statements: Vec<_> = queries
             .iter()
             .map(|q| {
-                let sql = &q.sql;
-                let binds = &q.binds;
-                let value_tokens = binds.iter().map(|b| {
-                    quote! { sea_orm::Value::String(Some(#b.to_string())) }
-                });
-                quote! { (#sql, vec![#(#value_tokens),*]) }
+                let pg_sql = q.build(DatabaseBackend::Postgres);
+                let mysql_sql = q.build(DatabaseBackend::MySql);
+                let sqlite_sql = q.build(DatabaseBackend::Sqlite);
+                quote! {
+                    match backend {
+                        sea_orm::DatabaseBackend::Postgres => #pg_sql,
+                        sea_orm::DatabaseBackend::MySql => #mysql_sql,
+                        sea_orm::DatabaseBackend::Sqlite => #sqlite_sql,
+                        _ => #pg_sql, // Fallback to PostgreSQL syntax for unknown backends
+                    }
+                }
             })
             .collect();
 
@@ -109,20 +114,22 @@ pub fn vespertide_migration(input: TokenStream) -> TokenStream {
                 // Execute SQL statements
                 #(
                     {
-                        let (sql, values) = #sql_statements;
-                        let stmt = sea_orm::Statement::from_sql_and_values(backend, sql, values);
+                        let sql: &str = #sql_statements;
+                        let stmt = sea_orm::Statement::from_string(backend, sql);
                         txn.execute_raw(stmt).await.map_err(|e| {
-                            ::vespertide::MigrationError::DatabaseError(format!("Failed to execute SQL: {}", e))
+                            ::vespertide::MigrationError::DatabaseError(format!("Failed to execute SQL '{}': {}", sql, e))
                         })?;
                     }
                 )*
 
                 // Insert version record for this migration
-                let stmt = sea_orm::Statement::from_sql_and_values(
-                    backend,
-                    &format!("INSERT INTO {} (version) VALUES (?)", version_table),
-                    vec![sea_orm::Value::Int(Some(#version as i32))],
-                );
+                let insert_sql = match backend {
+                    sea_orm::DatabaseBackend::Postgres => format!("INSERT INTO \"{}\" (version) VALUES ({})", version_table, #version),
+                    sea_orm::DatabaseBackend::MySql => format!("INSERT INTO `{}` (version) VALUES ({})", version_table, #version),
+                    sea_orm::DatabaseBackend::Sqlite => format!("INSERT INTO \"{}\" (version) VALUES ({})", version_table, #version),
+                    _ => format!("INSERT INTO \"{}\" (version) VALUES ({})", version_table, #version), // Fallback
+                };
+                let stmt = sea_orm::Statement::from_string(backend, insert_sql);
                 txn.execute_raw(stmt).await.map_err(|e| {
                     ::vespertide::MigrationError::DatabaseError(format!("Failed to insert version: {}", e))
                 })?;
@@ -147,20 +154,37 @@ pub fn vespertide_migration(input: TokenStream) -> TokenStream {
 
             // Create version table if it does not exist
             // Table structure: version (INTEGER PRIMARY KEY), created_at (timestamp)
-            let create_table_sql = format!(
-                "CREATE TABLE IF NOT EXISTS {} (version INTEGER PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
-                version_table
-            );
+            let create_table_sql = match backend {
+                sea_orm::DatabaseBackend::Postgres => format!(
+                    "CREATE TABLE IF NOT EXISTS \"{}\" (version INTEGER PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
+                    version_table
+                ),
+                sea_orm::DatabaseBackend::MySql => format!(
+                    "CREATE TABLE IF NOT EXISTS `{}` (version INTEGER PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
+                    version_table
+                ),
+                sea_orm::DatabaseBackend::Sqlite => format!(
+                    "CREATE TABLE IF NOT EXISTS \"{}\" (version INTEGER PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
+                    version_table
+                ),
+                _ => format!(
+                    "CREATE TABLE IF NOT EXISTS \"{}\" (version INTEGER PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
+                    version_table
+                ), // Fallback
+            };
             let stmt = sea_orm::Statement::from_string(backend, create_table_sql);
             __pool.execute_raw(stmt).await.map_err(|e| {
                 ::vespertide::MigrationError::DatabaseError(format!("Failed to create version table: {}", e))
             })?;
 
             // Read current maximum version (latest applied migration)
-            let stmt = sea_orm::Statement::from_string(
-                backend,
-                format!("SELECT MAX(version) as version FROM {}", version_table),
-            );
+            let select_sql = match backend {
+                sea_orm::DatabaseBackend::Postgres => format!("SELECT MAX(version) as version FROM \"{}\"", version_table),
+                sea_orm::DatabaseBackend::MySql => format!("SELECT MAX(version) as version FROM `{}`", version_table),
+                sea_orm::DatabaseBackend::Sqlite => format!("SELECT MAX(version) as version FROM \"{}\"", version_table),
+                _ => format!("SELECT MAX(version) as version FROM \"{}\"", version_table), // Fallback
+            };
+            let stmt = sea_orm::Statement::from_string(backend, select_sql);
             let version_result = __pool.query_one_raw(stmt).await.map_err(|e| {
                 ::vespertide::MigrationError::DatabaseError(format!("Failed to read version: {}", e))
             })?;
