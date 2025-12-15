@@ -650,14 +650,16 @@ mod tests {
         apply_column_type(&mut col, &ColumnType::Complex(ty));
     }
 
-    #[test]
-    fn test_reference_action_conversion() {
+    #[rstest]
+    #[case::cascade(ReferenceAction::Cascade, ForeignKeyAction::Cascade)]
+    #[case::restrict(ReferenceAction::Restrict, ForeignKeyAction::Restrict)]
+    #[case::set_null(ReferenceAction::SetNull, ForeignKeyAction::SetNull)]
+    #[case::set_default(ReferenceAction::SetDefault, ForeignKeyAction::SetDefault)]
+    #[case::no_action(ReferenceAction::NoAction, ForeignKeyAction::NoAction)]
+    fn test_reference_action_conversion(#[case] action: ReferenceAction, #[case] expected: ForeignKeyAction) {
         // Just ensure the function doesn't panic and returns valid ForeignKeyAction
-        let _ = to_sea_fk_action(&ReferenceAction::Cascade);
-        let _ = to_sea_fk_action(&ReferenceAction::Restrict);
-        let _ = to_sea_fk_action(&ReferenceAction::SetNull);
-        let _ = to_sea_fk_action(&ReferenceAction::SetDefault);
-        let _ = to_sea_fk_action(&ReferenceAction::NoAction);
+        let result = to_sea_fk_action(&action);
+        assert!(matches!(result, _expected), "Expected {:?}, got {:?}", expected, result);
     }
 
     #[test]
@@ -682,7 +684,6 @@ mod tests {
         assert!(sqlite_sql.contains("\"users\""));
     }
 
-    // ===== MySQL/SQLite backend coverage for all BuiltQuery variants =====
     #[rstest]
     #[case::create_table_postgres(
         "create_table_postgres",
