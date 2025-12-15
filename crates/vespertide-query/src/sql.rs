@@ -759,6 +759,126 @@ mod tests {
         DatabaseBackend::Sqlite,
         &["CREATE TABLE \"users\" ( \"id\" integer )"]
     )]
+    #[case::create_table_with_default_postgres(
+        "create_table_with_default_postgres",
+        MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![ColumnDef {
+                name: "status".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Text),
+                nullable: true,
+                default: Some("'active'".into()),
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        },
+        DatabaseBackend::Postgres,
+        &["DEFAULT", "'active'"]
+    )]
+    #[case::create_table_with_default_mysql(
+        "create_table_with_default_mysql",
+        MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![ColumnDef {
+                name: "status".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Text),
+                nullable: true,
+                default: Some("'active'".into()),
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        },
+        DatabaseBackend::MySql,
+        &["DEFAULT 'active'"]
+    )]
+    #[case::create_table_with_default_sqlite(
+        "create_table_with_default_sqlite",
+        MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![ColumnDef {
+                name: "status".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Text),
+                nullable: true,
+                default: Some("'active'".into()),
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        },
+        DatabaseBackend::Sqlite,
+        &["DEFAULT 'active'"]
+    )]
+    #[case::create_table_with_inline_primary_key_postgres(
+        "create_table_with_inline_primary_key_postgres",
+        MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        },
+        DatabaseBackend::Postgres,
+        &["PRIMARY KEY"]
+    )]
+    #[case::create_table_with_inline_primary_key_mysql(
+        "create_table_with_inline_primary_key_mysql",
+        MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        },
+        DatabaseBackend::MySql,
+        &["PRIMARY KEY"]
+    )]
+    #[case::create_table_with_inline_primary_key_sqlite(
+        "create_table_with_inline_primary_key_sqlite",
+        MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        },
+        DatabaseBackend::Sqlite,
+        &["PRIMARY KEY"]
+    )]
     #[case::create_table_with_inline_constraints_postgres(
         "create_table_with_inline_constraints_postgres",
         MigrationAction::CreateTable {
