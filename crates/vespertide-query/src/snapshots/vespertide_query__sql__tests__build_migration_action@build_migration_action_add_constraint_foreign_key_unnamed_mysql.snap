@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql.rs
+expression: "result.iter().map(|q| q.build(backend)).collect::<Vec<String>>().join(\"\\n\")"
+---
+ALTER TABLE "posts" ADD FOREIGN KEY ("user_id") REFERENCES "users" ("id")

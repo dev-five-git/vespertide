@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql.rs
+expression: "result.iter().map(|q| q.build(backend)).collect::<Vec<String>>().join(\"\\n\")"
+---
+CREATE INDEX `idx_email` ON `users` (`email`)

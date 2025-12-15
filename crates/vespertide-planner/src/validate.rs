@@ -522,7 +522,7 @@ mod tests {
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![TableConstraint::Check {
-                name: Some("ck".into()),
+                name: "ck".into(),
                 expr: "id > 0".into(),
             }],
             vec![],

@@ -11,6 +11,8 @@ description = "Converts migration actions into SQL statements with bind paramete
 [dependencies]
 vespertide-core = { workspace = true }
 thiserror = "2"
+sea-query = "0.32"
 
 [dev-dependencies]
 rstest = "0.26"
+insta = "1.44"

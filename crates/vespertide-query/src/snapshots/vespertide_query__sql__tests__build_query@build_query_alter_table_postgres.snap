@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql.rs
+expression: sql
+---
+ALTER TABLE "t" ADD COLUMN "c" integer

@@ -66,7 +66,7 @@ pub fn load_migrations_from_dir(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
+    use std::{env, fs};
     use tempfile::TempDir;
 
     #[test]
@@ -216,5 +216,40 @@ actions:
         assert!(result.is_ok());
         let plans = result.unwrap();
         assert_eq!(plans.len(), 1);
+    }
+
+    #[test]
+    fn test_load_migrations_at_compile_time_reads_manifest_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        let config_content = r#"{
+            "modelsDir": "models",
+            "migrationsDir": "migrations",
+            "tableNamingCase": "snake",
+            "columnNamingCase": "snake"
+        }"#;
+        fs::write(root.join("vespertide.json"), config_content).unwrap();
+
+        let migrations_dir = root.join("migrations");
+        fs::create_dir_all(&migrations_dir).unwrap();
+        fs::write(
+            migrations_dir.join("0001_test.json"),
+            r#"{"version":1,"actions":[]}"#,
+        )
+        .unwrap();
+
+        unsafe {
+            env::set_var("CARGO_MANIFEST_DIR", root);
+        }
+        let result = load_migrations_at_compile_time();
+        unsafe {
+            env::remove_var("CARGO_MANIFEST_DIR");
+        }
+
+        assert!(result.is_ok());
+        let plans = result.unwrap();
+        assert_eq!(plans.len(), 1);
+        assert_eq!(plans[0].version, 1);
     }
 }

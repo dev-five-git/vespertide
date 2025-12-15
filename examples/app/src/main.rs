@@ -6,8 +6,9 @@ use std::time::Duration;
 async fn main() -> Result<()> {
     println!("Hello, world!");
 
-    // Configure SQLite connection
-    let mut opt = ConnectOptions::new("sqlite://./local.db?mode=rwc");
+    let mut opt = ConnectOptions::new("postgres://postgres:password@localhost:5432/postgres");
+    // // Configure SQLite connection
+    // let mut opt = ConnectOptions::new("sqlite://./local.db?mode=rwc");
     opt.max_connections(100)
         .min_connections(5)
         .connect_timeout(Duration::from_secs(8))

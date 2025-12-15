@@ -1993,7 +1993,7 @@ dependencies = [
  "pgvector",
  "rust_decimal",
  "sea-orm-macros",
- "sea-query",
+ "sea-query 1.0.0-rc.22",
  "sea-query-sqlx",
  "sea-schema",
  "serde",
@@ -2024,6 +2024,16 @@ dependencies = [
 
 [[package]]
 name = "sea-query"
+version = "0.32.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a5d1c518eaf5eda38e5773f902b26ab6d5e9e9e2bb2349ca6c64cf96f80448c"
+dependencies = [
+ "inherent",
+ "sea-query-derive 0.4.3",
+]
+
+[[package]]
+name = "sea-query"
 version = "1.0.0-rc.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "58df33eded14fba318338034b4bd197973fd7570a9f93ee5f88a27a7731f44f3"
@@ -2033,10 +2043,24 @@ dependencies = [
  "inherent",
  "ordered-float",
  "rust_decimal",
- "sea-query-derive",
+ "sea-query-derive 1.0.0-rc.11",
  "serde_json",
  "time",
  "uuid",
+]
+
+[[package]]
+name = "sea-query-derive"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bae0cbad6ab996955664982739354128c58d16e126114fe88c2a493642502aab"
+dependencies = [
+ "darling",
+ "heck 0.4.1",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.111",
+ "thiserror",
 ]
 
 [[package]]
@@ -2062,7 +2086,7 @@ dependencies = [
  "bigdecimal",
  "chrono",
  "rust_decimal",
- "sea-query",
+ "sea-query 1.0.0-rc.22",
  "serde_json",
  "sqlx",
  "time",
@@ -2076,7 +2100,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "845b7ed3e7a4f4458fe7218931b54e92be0dce01fc3c310d996c7b76d9a37ea5"
 dependencies = [
  "async-trait",
- "sea-query",
+ "sea-query 1.0.0-rc.22",
  "sea-query-sqlx",
  "sea-schema-derive",
  "sqlx",
@@ -3000,7 +3024,9 @@ dependencies = [
 name = "vespertide-query"
 version = "0.1.7"
 dependencies = [
+ "insta",
  "rstest",
+ "sea-query 0.32.7",
  "thiserror",
  "vespertide-core",
 ]

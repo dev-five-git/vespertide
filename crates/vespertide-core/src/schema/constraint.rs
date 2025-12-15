@@ -27,7 +27,7 @@ pub enum TableConstraint {
         on_update: Option<ReferenceAction>,
     },
     Check {
-        name: Option<String>,
+        name: String,
         expr: String,
     },
 }

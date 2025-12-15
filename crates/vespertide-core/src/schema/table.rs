@@ -89,12 +89,13 @@ impl TableDef {
             }
         }
 
-        // Add primary key constraint if any columns have inline pk and no existing pk constraint
+        // Add primary key constraint if any columns have inline pk and no existing pk constraint.
         if !pk_columns.is_empty() {
-            let has_pk = constraints
+            let has_pk_constraint = constraints
                 .iter()
                 .any(|c| matches!(c, TableConstraint::PrimaryKey { .. }));
-            if !has_pk {
+
+            if !has_pk_constraint {
                 constraints.push(TableConstraint::PrimaryKey {
                     auto_increment: pk_auto_increment,
                     columns: pk_columns,
