@@ -573,7 +573,10 @@ mod tests {
     use super::*;
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
-    use vespertide_core::IndexDef;
+    use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+    use vespertide_core::{
+        ColumnDef, ColumnType, ComplexColumnType, IndexDef, SimpleColumnType, StrOrBoolOrArray,
+    };
 
     fn col(name: &str, ty: ColumnType) -> ColumnDef {
         ColumnDef {
@@ -674,6 +677,33 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
+    fn test_sqlite_create_foreign_key_build_panics() {
+        let fk = ForeignKey::create()
+            .name("fk")
+            .from_tbl(Alias::new("a"))
+            .from_col(Alias::new("c"))
+            .to_tbl(Alias::new("b"))
+            .to_col(Alias::new("id"))
+            .to_owned();
+        let q = BuiltQuery::CreateForeignKey(Box::new(fk));
+        // sea-query panics when building FK SQL for SQLite; exercise that branch
+        let _ = q.build(DatabaseBackend::Sqlite);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_sqlite_drop_foreign_key_build_panics() {
+        let fk = ForeignKey::drop()
+            .name("fk")
+            .table(Alias::new("a"))
+            .to_owned();
+        let q = BuiltQuery::DropForeignKey(Box::new(fk));
+        // sea-query panics when building FK SQL for SQLite; exercise that branch
+        let _ = q.build(DatabaseBackend::Sqlite);
+    }
+
+    #[test]
     fn test_backend_specific_quoting() {
         let action = MigrationAction::CreateTable {
             table: "users".into(),
@@ -728,6 +758,144 @@ mod tests {
         },
         DatabaseBackend::Sqlite,
         &["CREATE TABLE \"users\" ( \"id\" integer )"]
+    )]
+    #[case::create_table_with_inline_constraints_postgres(
+        "create_table_with_inline_constraints_postgres",
+        MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: Some(StrOrBoolOrArray::Bool(true)),
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![
+                TableConstraint::PrimaryKey {
+                    auto_increment: false,
+                    columns: vec!["id".into()],
+                },
+                TableConstraint::Unique {
+                    name: Some("uq_email".into()),
+                    columns: vec!["email".into()],
+                },
+                TableConstraint::Check {
+                    name: "chk_always_true".into(),
+                    expr: "1 = 1".into(),
+                },
+            ],
+        },
+        DatabaseBackend::Postgres,
+        &["PRIMARY KEY", "UNIQUE"]
+    )]
+    #[case::create_table_with_inline_constraints_mysql(
+        "create_table_with_inline_constraints_mysql",
+        MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: Some(StrOrBoolOrArray::Bool(true)),
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![
+                TableConstraint::PrimaryKey {
+                    auto_increment: false,
+                    columns: vec!["id".into()],
+                },
+                TableConstraint::Unique {
+                    name: Some("uq_email".into()),
+                    columns: vec!["email".into()],
+                },
+                TableConstraint::Check {
+                    name: "chk_always_true".into(),
+                    expr: "1 = 1".into(),
+                },
+            ],
+        },
+        DatabaseBackend::Postgres,
+        &["PRIMARY KEY", "UNIQUE"]
+    )]
+    #[case::create_table_with_inline_constraints_sqlite(
+        "create_table_with_inline_constraints_sqlite",
+        MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: Some(StrOrBoolOrArray::Bool(true)),
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![
+                TableConstraint::PrimaryKey {
+                    auto_increment: false,
+                    columns: vec!["id".into()],
+                },
+                TableConstraint::Unique {
+                    name: Some("uq_email".into()),
+                    columns: vec!["email".into()],
+                },
+                TableConstraint::Check {
+                    name: "chk_always_true".into(),
+                    expr: "1 = 1".into(),
+                },
+            ],
+        },
+        DatabaseBackend::Postgres,
+        &["PRIMARY KEY", "UNIQUE"]
     )]
     #[case::create_table_with_fk_postgres(
         "create_table_with_fk_postgres",
@@ -1259,6 +1427,54 @@ mod tests {
         },
         DatabaseBackend::MySql,
         &["FOREIGN KEY (\"user_id\")", "REFERENCES \"users\" (\"id\")", "ON DELETE CASCADE", "ON UPDATE RESTRICT"]
+    )]
+    #[case::add_constraint_foreign_key_unnamed_postgres(
+        "add_constraint_foreign_key_unnamed_postgres",
+        MigrationAction::AddConstraint {
+            table: "posts".into(),
+            constraint: TableConstraint::ForeignKey {
+                name: None,
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            },
+        },
+        DatabaseBackend::Postgres,
+        &["ADD FOREIGN KEY (\"user_id\") REFERENCES \"users\" (\"id\")"]
+    )]
+    #[case::add_constraint_foreign_key_unnamed_mysql(
+        "add_constraint_foreign_key_unnamed_mysql",
+        MigrationAction::AddConstraint {
+            table: "posts".into(),
+            constraint: TableConstraint::ForeignKey {
+                name: None,
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            },
+        },
+        DatabaseBackend::MySql,
+        &["ADD FOREIGN KEY (\"user_id\") REFERENCES \"users\" (\"id\")"]
+    )]
+    #[case::add_constraint_foreign_key_unnamed_sqlite(
+        "add_constraint_foreign_key_unnamed_sqlite",
+        MigrationAction::AddConstraint {
+            table: "posts".into(),
+            constraint: TableConstraint::ForeignKey {
+                name: None,
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            },
+        },
+        DatabaseBackend::Sqlite,
+        &["ADD FOREIGN KEY (\"user_id\") REFERENCES \"users\" (\"id\")"]
     )]
     #[case::add_constraint_foreign_key_sqlite(
         "add_constraint_foreign_key_sqlite",
