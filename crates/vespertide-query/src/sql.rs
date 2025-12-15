@@ -581,9 +581,9 @@ fn build_remove_constraint(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rstest::rstest;
-    use vespertide_core::{IndexDef, StrOrBoolOrArray, schema::primary_key::PrimaryKeySyntax};
     use insta::{assert_snapshot, with_settings};
+    use rstest::rstest;
+    use vespertide_core::IndexDef;
 
     fn col(name: &str, ty: ColumnType) -> ColumnDef {
         ColumnDef {
@@ -668,10 +668,18 @@ mod tests {
     #[case::set_null(ReferenceAction::SetNull, ForeignKeyAction::SetNull)]
     #[case::set_default(ReferenceAction::SetDefault, ForeignKeyAction::SetDefault)]
     #[case::no_action(ReferenceAction::NoAction, ForeignKeyAction::NoAction)]
-    fn test_reference_action_conversion(#[case] action: ReferenceAction, #[case] expected: ForeignKeyAction) {
+    fn test_reference_action_conversion(
+        #[case] action: ReferenceAction,
+        #[case] expected: ForeignKeyAction,
+    ) {
         // Just ensure the function doesn't panic and returns valid ForeignKeyAction
         let result = to_sea_fk_action(&action);
-        assert!(matches!(result, _expected), "Expected {:?}, got {:?}", expected, result);
+        assert!(
+            matches!(result, _expected),
+            "Expected {:?}, got {:?}",
+            expected,
+            result
+        );
     }
 
     #[rstest]
@@ -680,7 +688,10 @@ mod tests {
     #[case(ReferenceAction::SetNull, "SET NULL")]
     #[case(ReferenceAction::SetDefault, "SET DEFAULT")]
     #[case(ReferenceAction::NoAction, "NO ACTION")]
-    fn test_reference_action_sql_all_variants(#[case] action: ReferenceAction, #[case] expected: &str) {
+    fn test_reference_action_sql_all_variants(
+        #[case] action: ReferenceAction,
+        #[case] expected: &str,
+    ) {
         assert_eq!(reference_action_sql(&action), expected);
     }
 
@@ -778,7 +789,7 @@ mod tests {
             }],
         },
         DatabaseBackend::MySql,
-        &["REFERENCES \"users\" (\"id\")", "ON DELETE CASCADE", "ON UPDATE RESTRICT"]
+        &["REFERENCES `users` (`id`)", "ON DELETE CASCADE", "ON UPDATE RESTRICT"]
     )]
     #[case::create_table_with_fk_sqlite(
         "create_table_with_fk_sqlite",
@@ -848,8 +859,8 @@ mod tests {
         DatabaseBackend::Sqlite,
         &["ALTER TABLE \"users\" RENAME COLUMN \"email\" TO \"contact_email\""]
     )]
-    #[case::add_column_with_backfill(
-        "add_column_with_backfill",
+    #[case::add_column_with_backfill_postgres(
+        "add_column_with_backfill_postgres",
         MigrationAction::AddColumn {
             table: "users".into(),
             column: ColumnDef {
@@ -868,8 +879,48 @@ mod tests {
         DatabaseBackend::Postgres,
         &["ALTER TABLE \"users\" ADD COLUMN \"age\""]
     )]
-    #[case::add_column_simple(
-        "add_column_simple",
+    #[case::add_column_with_backfill_mysql(
+        "add_column_with_backfill_mysql",
+        MigrationAction::AddColumn {
+            table: "users".into(),
+            column: ColumnDef {
+                name: "age".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            },
+            fill_with: Some("0".into()),
+        },
+        DatabaseBackend::MySql,
+        &["ALTER TABLE `users` ADD COLUMN `age` int"]
+    )]
+    #[case::add_column_with_backfill_sqlite(
+        "add_column_with_backfill_sqlite",
+        MigrationAction::AddColumn {
+            table: "users".into(),
+            column: ColumnDef {
+                name: "age".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            },
+            fill_with: Some("0".into()),
+        },
+        DatabaseBackend::Sqlite,
+        &["ALTER TABLE \"users\" ADD COLUMN \"age\""]
+    )]
+    #[case::add_column_simple_postgres(
+        "add_column_simple_postgres",
         MigrationAction::AddColumn {
             table: "users".into(),
             column: ColumnDef {
@@ -888,8 +939,48 @@ mod tests {
         DatabaseBackend::Postgres,
         &["ALTER TABLE \"users\" ADD COLUMN \"nickname\""]
     )]
-    #[case::modify_column_type(
-        "modify_column_type",
+    #[case::add_column_simple_mysql(
+        "add_column_simple_mysql",
+        MigrationAction::AddColumn {
+            table: "users".into(),
+            column: ColumnDef {
+                name: "nickname".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Text),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            },
+            fill_with: None,
+        },
+        DatabaseBackend::MySql,
+        &["ALTER TABLE `users` ADD COLUMN `nickname` text"]
+    )]
+    #[case::add_column_simple_sqlite(
+        "add_column_simple_sqlite",
+        MigrationAction::AddColumn {
+            table: "users".into(),
+            column: ColumnDef {
+                name: "nickname".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Text),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            },
+            fill_with: None,
+        },
+        DatabaseBackend::Sqlite,
+        &["ALTER TABLE \"users\" ADD COLUMN \"nickname\""]
+    )]
+    #[case::modify_column_type_postgres(
+        "modify_column_type_postgres",
         MigrationAction::ModifyColumnType {
             table: "users".into(),
             column: "age".into(),
@@ -897,6 +988,26 @@ mod tests {
         },
         DatabaseBackend::Postgres,
         &["ALTER TABLE \"users\"", "\"age\""]
+    )]
+    #[case::modify_column_type_mysql(
+        "modify_column_type_mysql",
+        MigrationAction::ModifyColumnType {
+            table: "users".into(),
+            column: "age".into(),
+            new_type: ColumnType::Complex(ComplexColumnType::Varchar { length: 50 }),
+        },
+        DatabaseBackend::MySql,
+        &["ALTER TABLE `users` MODIFY COLUMN `age` VARCHAR(50)"]
+    )]
+    #[case::modify_column_type_sqlite(
+        "modify_column_type_sqlite",
+        MigrationAction::ModifyColumnType {
+            table: "users".into(),
+            column: "age".into(),
+            new_type: ColumnType::Complex(ComplexColumnType::Varchar { length: 50 }),
+        },
+        DatabaseBackend::Sqlite,
+        &["ALTER TABLE \"users\" MODIFY COLUMN \"age\" VARCHAR(50)"]
     )]
     #[case::rename_table_action_postgres(
         "rename_table_action_postgres",
@@ -907,12 +1018,46 @@ mod tests {
         DatabaseBackend::Postgres,
         &["ALTER TABLE \"users\" RENAME TO \"accounts\""]
     )]
-    #[case::raw_sql_action(
-        "raw_sql_action",
+    #[case::rename_table_action_mysql(
+        "rename_table_action_mysql",
+        MigrationAction::RenameTable {
+            from: "users".into(),
+            to: "accounts".into(),
+        },
+        DatabaseBackend::MySql,
+        &["ALTER TABLE `users` RENAME TO `accounts`"]
+    )]
+    #[case::rename_table_action_sqlite(
+        "rename_table_action_sqlite",
+        MigrationAction::RenameTable {
+            from: "users".into(),
+            to: "accounts".into(),
+        },
+        DatabaseBackend::Sqlite,
+        &["ALTER TABLE \"users\" RENAME TO \"accounts\""]
+    )]
+    #[case::raw_sql_action_postgres(
+        "raw_sql_action_postgres",
         MigrationAction::RawSql {
             sql: "SELECT 1".into(),
         },
         DatabaseBackend::Postgres,
+        &["SELECT 1"]
+    )]
+    #[case::raw_sql_action_mysql(
+        "raw_sql_action_mysql",
+        MigrationAction::RawSql {
+            sql: "SELECT 1".into(),
+        },
+        DatabaseBackend::MySql,
+        &["SELECT 1"]
+    )]
+    #[case::raw_sql_action_sqlite(
+        "raw_sql_action_sqlite",
+        MigrationAction::RawSql {
+            sql: "SELECT 1".into(),
+        },
+        DatabaseBackend::Sqlite,
         &["SELECT 1"]
     )]
     #[case::delete_column_postgres(
@@ -996,8 +1141,8 @@ mod tests {
         DatabaseBackend::Sqlite,
         &["CREATE UNIQUE INDEX \"idx_email\" ON \"users\" (\"email\")"]
     )]
-    #[case::add_constraint_primary_key(
-        "add_constraint_primary_key",
+    #[case::add_constraint_primary_key_postgres(
+        "add_constraint_primary_key_postgres",
         MigrationAction::AddConstraint {
             table: "users".into(),
             constraint: TableConstraint::PrimaryKey {
@@ -1008,8 +1153,32 @@ mod tests {
         DatabaseBackend::Postgres,
         &["ALTER TABLE \"users\" ADD PRIMARY KEY (\"id\")"]
     )]
-    #[case::add_constraint_unique_named(
-        "add_constraint_unique_named",
+    #[case::add_constraint_primary_key_mysql(
+        "add_constraint_primary_key_mysql",
+        MigrationAction::AddConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::PrimaryKey {
+                columns: vec!["id".into()],
+                auto_increment: false,
+            },
+        },
+        DatabaseBackend::MySql,
+        &["ALTER TABLE `users` ADD PRIMARY KEY (`id`)"]
+    )]
+    #[case::add_constraint_primary_key_sqlite(
+        "add_constraint_primary_key_sqlite",
+        MigrationAction::AddConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::PrimaryKey {
+                columns: vec!["id".into()],
+                auto_increment: false,
+            },
+        },
+        DatabaseBackend::Sqlite,
+        &["ALTER TABLE \"users\" ADD PRIMARY KEY (\"id\")"]
+    )]
+    #[case::add_constraint_unique_named_postgres(
+        "add_constraint_unique_named_postgres",
         MigrationAction::AddConstraint {
             table: "users".into(),
             constraint: TableConstraint::Unique {
@@ -1020,8 +1189,32 @@ mod tests {
         DatabaseBackend::Postgres,
         &["ADD CONSTRAINT \"uq_email\" UNIQUE (\"email\")"]
     )]
-    #[case::add_constraint_unique_unnamed(
-        "add_constraint_unique_unnamed",
+    #[case::add_constraint_unique_named_mysql(
+        "add_constraint_unique_named_mysql",
+        MigrationAction::AddConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Unique {
+                name: Some("uq_email".into()),
+                columns: vec!["email".into()],
+            },
+        },
+        DatabaseBackend::MySql,
+        &["ADD CONSTRAINT \"uq_email\" UNIQUE (\"email\")"]
+    )]
+    #[case::add_constraint_unique_named_sqlite(
+        "add_constraint_unique_named_sqlite",
+        MigrationAction::AddConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Unique {
+                name: Some("uq_email".into()),
+                columns: vec!["email".into()],
+            },
+        },
+        DatabaseBackend::Sqlite,
+        &["ADD CONSTRAINT \"uq_email\" UNIQUE (\"email\")"]
+    )]
+    #[case::add_constraint_unique_unnamed_postgres(
+        "add_constraint_unique_unnamed_postgres",
         MigrationAction::AddConstraint {
             table: "users".into(),
             constraint: TableConstraint::Unique {
@@ -1032,8 +1225,32 @@ mod tests {
         DatabaseBackend::Postgres,
         &["ADD UNIQUE (\"email\")"]
     )]
-    #[case::add_constraint_foreign_key(
-        "add_constraint_foreign_key",
+    #[case::add_constraint_unique_unnamed_mysql(
+        "add_constraint_unique_unnamed_mysql",
+        MigrationAction::AddConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Unique {
+                name: None,
+                columns: vec!["email".into()],
+            },
+        },
+        DatabaseBackend::MySql,
+        &["ADD UNIQUE (\"email\")"]
+    )]
+    #[case::add_constraint_unique_unnamed_sqlite(
+        "add_constraint_unique_unnamed_sqlite",
+        MigrationAction::AddConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Unique {
+                name: None,
+                columns: vec!["email".into()],
+            },
+        },
+        DatabaseBackend::Sqlite,
+        &["ADD UNIQUE (\"email\")"]
+    )]
+    #[case::add_constraint_foreign_key_postgres(
+        "add_constraint_foreign_key_postgres",
         MigrationAction::AddConstraint {
             table: "posts".into(),
             constraint: TableConstraint::ForeignKey {
@@ -1048,8 +1265,40 @@ mod tests {
         DatabaseBackend::Postgres,
         &["FOREIGN KEY (\"user_id\")", "REFERENCES \"users\" (\"id\")", "ON DELETE CASCADE", "ON UPDATE RESTRICT"]
     )]
-    #[case::add_constraint_check_named(
-        "add_constraint_check_named",
+    #[case::add_constraint_foreign_key_mysql(
+        "add_constraint_foreign_key_mysql",
+        MigrationAction::AddConstraint {
+            table: "posts".into(),
+            constraint: TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: Some(ReferenceAction::Cascade),
+                on_update: Some(ReferenceAction::Restrict),
+            },
+        },
+        DatabaseBackend::MySql,
+        &["FOREIGN KEY (\"user_id\")", "REFERENCES \"users\" (\"id\")", "ON DELETE CASCADE", "ON UPDATE RESTRICT"]
+    )]
+    #[case::add_constraint_foreign_key_sqlite(
+        "add_constraint_foreign_key_sqlite",
+        MigrationAction::AddConstraint {
+            table: "posts".into(),
+            constraint: TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: Some(ReferenceAction::Cascade),
+                on_update: Some(ReferenceAction::Restrict),
+            },
+        },
+        DatabaseBackend::Sqlite,
+        &["FOREIGN KEY (\"user_id\")", "REFERENCES \"users\" (\"id\")", "ON DELETE CASCADE", "ON UPDATE RESTRICT"]
+    )]
+    #[case::add_constraint_check_named_postgres(
+        "add_constraint_check_named_postgres",
         MigrationAction::AddConstraint {
             table: "users".into(),
             constraint: TableConstraint::Check {
@@ -1060,8 +1309,32 @@ mod tests {
         DatabaseBackend::Postgres,
         &["ADD CONSTRAINT \"chk_age\" CHECK (age > 0)"]
     )]
-    #[case::add_constraint_check_unnamed(
-        "add_constraint_check_unnamed",
+    #[case::add_constraint_check_named_mysql(
+        "add_constraint_check_named_mysql",
+        MigrationAction::AddConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Check {
+                name: Some("chk_age".into()),
+                expr: "age > 0".into(),
+            },
+        },
+        DatabaseBackend::MySql,
+        &["ADD CONSTRAINT \"chk_age\" CHECK (age > 0)"]
+    )]
+    #[case::add_constraint_check_named_sqlite(
+        "add_constraint_check_named_sqlite",
+        MigrationAction::AddConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Check {
+                name: Some("chk_age".into()),
+                expr: "age > 0".into(),
+            },
+        },
+        DatabaseBackend::Sqlite,
+        &["ADD CONSTRAINT \"chk_age\" CHECK (age > 0)"]
+    )]
+    #[case::add_constraint_check_unnamed_postgres(
+        "add_constraint_check_unnamed_postgres",
         MigrationAction::AddConstraint {
             table: "users".into(),
             constraint: TableConstraint::Check {
@@ -1072,8 +1345,32 @@ mod tests {
         DatabaseBackend::Postgres,
         &["ADD CHECK (age > 0)"]
     )]
-    #[case::remove_constraint_primary_key(
-        "remove_constraint_primary_key",
+    #[case::add_constraint_check_unnamed_mysql(
+        "add_constraint_check_unnamed_mysql",
+        MigrationAction::AddConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Check {
+                name: None,
+                expr: "age > 0".into(),
+            },
+        },
+        DatabaseBackend::MySql,
+        &["ADD CHECK (age > 0)"]
+    )]
+    #[case::add_constraint_check_unnamed_sqlite(
+        "add_constraint_check_unnamed_sqlite",
+        MigrationAction::AddConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Check {
+                name: None,
+                expr: "age > 0".into(),
+            },
+        },
+        DatabaseBackend::Sqlite,
+        &["ADD CHECK (age > 0)"]
+    )]
+    #[case::remove_constraint_primary_key_postgres(
+        "remove_constraint_primary_key_postgres",
         MigrationAction::RemoveConstraint {
             table: "users".into(),
             constraint: TableConstraint::PrimaryKey {
@@ -1084,8 +1381,32 @@ mod tests {
         DatabaseBackend::Postgres,
         &["DROP CONSTRAINT \"users_pkey\""]
     )]
-    #[case::remove_constraint_unique_named(
-        "remove_constraint_unique_named",
+    #[case::remove_constraint_primary_key_mysql(
+        "remove_constraint_primary_key_mysql",
+        MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::PrimaryKey {
+                columns: vec!["id".into()],
+                auto_increment: false,
+            },
+        },
+        DatabaseBackend::MySql,
+        &["DROP CONSTRAINT \"users_pkey\""]
+    )]
+    #[case::remove_constraint_primary_key_sqlite(
+        "remove_constraint_primary_key_sqlite",
+        MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::PrimaryKey {
+                columns: vec!["id".into()],
+                auto_increment: false,
+            },
+        },
+        DatabaseBackend::Sqlite,
+        &["DROP CONSTRAINT \"users_pkey\""]
+    )]
+    #[case::remove_constraint_unique_named_postgres(
+        "remove_constraint_unique_named_postgres",
         MigrationAction::RemoveConstraint {
             table: "users".into(),
             constraint: TableConstraint::Unique {
@@ -1096,8 +1417,32 @@ mod tests {
         DatabaseBackend::Postgres,
         &["DROP CONSTRAINT \"uq_email\""]
     )]
-    #[case::remove_constraint_unique_unnamed(
-        "remove_constraint_unique_unnamed",
+    #[case::remove_constraint_unique_named_mysql(
+        "remove_constraint_unique_named_mysql",
+        MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Unique {
+                name: Some("uq_email".into()),
+                columns: vec!["email".into()],
+            },
+        },
+        DatabaseBackend::MySql,
+        &["DROP CONSTRAINT \"uq_email\""]
+    )]
+    #[case::remove_constraint_unique_named_sqlite(
+        "remove_constraint_unique_named_sqlite",
+        MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Unique {
+                name: Some("uq_email".into()),
+                columns: vec!["email".into()],
+            },
+        },
+        DatabaseBackend::Sqlite,
+        &["DROP CONSTRAINT \"uq_email\""]
+    )]
+    #[case::remove_constraint_unique_unnamed_postgres(
+        "remove_constraint_unique_unnamed_postgres",
         MigrationAction::RemoveConstraint {
             table: "users".into(),
             constraint: TableConstraint::Unique {
@@ -1108,8 +1453,32 @@ mod tests {
         DatabaseBackend::Postgres,
         &["DROP CONSTRAINT \"users_email_key\""]
     )]
-    #[case::remove_constraint_foreign_key_named(
-        "remove_constraint_foreign_key_named",
+    #[case::remove_constraint_unique_unnamed_mysql(
+        "remove_constraint_unique_unnamed_mysql",
+        MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Unique {
+                name: None,
+                columns: vec!["email".into()],
+            },
+        },
+        DatabaseBackend::MySql,
+        &["DROP CONSTRAINT \"users_email_key\""]
+    )]
+    #[case::remove_constraint_unique_unnamed_sqlite(
+        "remove_constraint_unique_unnamed_sqlite",
+        MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Unique {
+                name: None,
+                columns: vec!["email".into()],
+            },
+        },
+        DatabaseBackend::Sqlite,
+        &["DROP CONSTRAINT \"users_email_key\""]
+    )]
+    #[case::remove_constraint_foreign_key_named_postgres(
+        "remove_constraint_foreign_key_named_postgres",
         MigrationAction::RemoveConstraint {
             table: "posts".into(),
             constraint: TableConstraint::ForeignKey {
@@ -1124,8 +1493,40 @@ mod tests {
         DatabaseBackend::Postgres,
         &["DROP CONSTRAINT \"fk_user\""]
     )]
-    #[case::remove_constraint_foreign_key_unnamed(
-        "remove_constraint_foreign_key_unnamed",
+    #[case::remove_constraint_foreign_key_named_mysql(
+        "remove_constraint_foreign_key_named_mysql",
+        MigrationAction::RemoveConstraint {
+            table: "posts".into(),
+            constraint: TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            },
+        },
+        DatabaseBackend::MySql,
+        &["DROP CONSTRAINT \"fk_user\""]
+    )]
+    #[case::remove_constraint_foreign_key_named_sqlite(
+        "remove_constraint_foreign_key_named_sqlite",
+        MigrationAction::RemoveConstraint {
+            table: "posts".into(),
+            constraint: TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            },
+        },
+        DatabaseBackend::Sqlite,
+        &["DROP CONSTRAINT \"fk_user\""]
+    )]
+    #[case::remove_constraint_foreign_key_unnamed_postgres(
+        "remove_constraint_foreign_key_unnamed_postgres",
         MigrationAction::RemoveConstraint {
             table: "posts".into(),
             constraint: TableConstraint::ForeignKey {
@@ -1140,8 +1541,40 @@ mod tests {
         DatabaseBackend::Postgres,
         &["DROP CONSTRAINT \"posts_user_id_fkey\""]
     )]
-    #[case::remove_constraint_check_named(
-        "remove_constraint_check_named",
+    #[case::remove_constraint_foreign_key_unnamed_mysql(
+        "remove_constraint_foreign_key_unnamed_mysql",
+        MigrationAction::RemoveConstraint {
+            table: "posts".into(),
+            constraint: TableConstraint::ForeignKey {
+                name: None,
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            },
+        },
+        DatabaseBackend::MySql,
+        &["DROP CONSTRAINT \"posts_user_id_fkey\""]
+    )]
+    #[case::remove_constraint_foreign_key_unnamed_sqlite(
+        "remove_constraint_foreign_key_unnamed_sqlite",
+        MigrationAction::RemoveConstraint {
+            table: "posts".into(),
+            constraint: TableConstraint::ForeignKey {
+                name: None,
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            },
+        },
+        DatabaseBackend::Sqlite,
+        &["DROP CONSTRAINT \"posts_user_id_fkey\""]
+    )]
+    #[case::remove_constraint_check_named_postgres(
+        "remove_constraint_check_named_postgres",
         MigrationAction::RemoveConstraint {
             table: "users".into(),
             constraint: TableConstraint::Check {
@@ -1151,6 +1584,66 @@ mod tests {
         },
         DatabaseBackend::Postgres,
         &["DROP CONSTRAINT \"chk_age\""]
+    )]
+    #[case::remove_constraint_check_named_mysql(
+        "remove_constraint_check_named_mysql",
+        MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Check {
+                name: Some("chk_age".into()),
+                expr: "age > 0".into(),
+            },
+        },
+        DatabaseBackend::MySql,
+        &["DROP CONSTRAINT \"chk_age\""]
+    )]
+    #[case::remove_constraint_check_named_sqlite(
+        "remove_constraint_check_named_sqlite",
+        MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Check {
+                name: Some("chk_age".into()),
+                expr: "age > 0".into(),
+            },
+        },
+        DatabaseBackend::Sqlite,
+        &["DROP CONSTRAINT \"chk_age\""]
+    )]
+    #[case::remove_constraint_check_unnamed_postgres(
+        "remove_constraint_check_unnamed_postgres",
+        MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Check {
+                name: None,
+                expr: "age > 0".into(),
+            },
+        },
+        DatabaseBackend::Postgres,
+        &["DROP CHECK \"users_age_check\""]
+    )]
+    #[case::remove_constraint_check_unnamed_mysql(
+        "remove_constraint_check_unnamed_mysql",
+        MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Check {
+                name: None,
+                expr: "age > 0".into(),
+            },
+        },
+        DatabaseBackend::MySql,
+        &["DROP CHECK \"users_age_check\""]
+    )]
+    #[case::remove_constraint_check_unnamed_sqlite(
+        "remove_constraint_check_unnamed_sqlite",
+        MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Check {
+                name: None,
+                expr: "age > 0".into(),
+            },
+        },
+        DatabaseBackend::Sqlite,
+        &["DROP CHECK \"users_age_check\""]
     )]
     #[case::remove_index_postgres(
         "remove_index_postgres",
@@ -1179,7 +1672,12 @@ mod tests {
         DatabaseBackend::Sqlite,
         &["DROP INDEX \"idx_email\""]
     )]
-    fn test_build_migration_action(#[case] title: &str, #[case] action: MigrationAction, #[case] backend: DatabaseBackend, #[case] expected: &[&str]) {
+    fn test_build_migration_action(
+        #[case] title: &str,
+        #[case] action: MigrationAction,
+        #[case] backend: DatabaseBackend,
+        #[case] expected: &[&str],
+    ) {
         let result = build_action_queries(&action).unwrap();
         let sql = result[0].build(backend);
         for exp in expected {
@@ -1208,6 +1706,14 @@ mod tests {
         DatabaseBackend::Postgres,
         &["CREATE TABLE \"t\""]
     )]
+    #[case::create_table_query_mysql("create_table_query_mysql", BuiltQuery::CreateTable(Box::new(Table::create()
+            .table(Alias::new("t"))
+            .col(SeaColumnDef::new(Alias::new("id")).integer().to_owned())
+            .to_owned())),DatabaseBackend::MySql, &["CREATE TABLE `t`"])]
+    #[case::create_table_query_sqlite("create_table_query_sqlite", BuiltQuery::CreateTable(Box::new(Table::create()
+            .table(Alias::new("t"))
+            .col(SeaColumnDef::new(Alias::new("id")).integer().to_owned())
+            .to_owned())),DatabaseBackend::Sqlite, &["CREATE TABLE \"t\""])]
     #[case::drop_table_query_postgres(
         "drop_table_query_postgres",
         BuiltQuery::DropTable(Box::new(
@@ -1216,12 +1722,16 @@ mod tests {
         DatabaseBackend::Postgres,
         &["DROP TABLE \"t\""]
     )]
+    #[case::drop_table_query_mysql("drop_table_query_mysql", BuiltQuery::DropTable(Box::new(Table::drop().table(Alias::new("t")).to_owned())), DatabaseBackend::MySql, &["DROP TABLE `t`"])]
+    #[case::drop_table_query_sqlite("drop_table_query_sqlite", BuiltQuery::DropTable(Box::new(Table::drop().table(Alias::new("t")).to_owned())), DatabaseBackend::Sqlite, &["DROP TABLE \"t\""])]
     #[case::raw_query_postgres(
         "raw_query_postgres",
         BuiltQuery::Raw("SELECT 1".into()),
         DatabaseBackend::Postgres,
         &["SELECT 1"]
     )]
+    #[case::raw_query_mysql("raw_query_mysql", BuiltQuery::Raw("SELECT 1".into()), DatabaseBackend::MySql, &["SELECT 1"])]
+    #[case::raw_query_sqlite("raw_query_sqlite", BuiltQuery::Raw("SELECT 1".into()), DatabaseBackend::Sqlite, &["SELECT 1"])]
     #[case::alter_table_postgres("alter_table_postgres", BuiltQuery::AlterTable(Box::new(Table::alter()
             .table(Alias::new("t"))
             .add_column(SeaColumnDef::new(Alias::new("c")).integer().to_owned())
@@ -1261,7 +1771,7 @@ mod tests {
     #[case::rename_table_sqlite("rename_table_sqlite", BuiltQuery::RenameTable(Box::new(Table::rename()
             .table(Alias::new("a"), Alias::new("b"))
             .to_owned())),DatabaseBackend::Sqlite, &["ALTER TABLE \"a\" RENAME TO \"b\""])]
-            #[case::create_foreign_key_postgres("create_foreign_key_postgres", BuiltQuery::CreateForeignKey(Box::new(ForeignKey::create()
+    #[case::create_foreign_key_postgres("create_foreign_key_postgres", BuiltQuery::CreateForeignKey(Box::new(ForeignKey::create()
             .name("fk")
             .from_tbl(Alias::new("a"))
             .from_col(Alias::new("c"))
@@ -1275,7 +1785,13 @@ mod tests {
             .to_tbl(Alias::new("b"))
             .to_col(Alias::new("id"))
             .to_owned())),DatabaseBackend::MySql, &["ALTER TABLE `a` ADD CONSTRAINT `fk` FOREIGN KEY (`c`) REFERENCES `b` (`id`)"])]
-    // SQLite FK tests removed - sea-query panics on SQLite FK operations
+    #[case::create_foreign_key_sqlite("create_foreign_key_sqlite", BuiltQuery::CreateForeignKey(Box::new(ForeignKey::create()
+            .name("fk")
+            .from_tbl(Alias::new("a"))
+            .from_col(Alias::new("c"))
+            .to_tbl(Alias::new("b"))
+            .to_col(Alias::new("id"))
+            .to_owned())),DatabaseBackend::Sqlite, &["ALTER TABLE \"a\" ADD CONSTRAINT \"fk\" FOREIGN KEY (\"c\") REFERENCES \"b\" (\"id\")"])]
     #[case::drop_foreign_key_postgres("drop_foreign_key_postgres", BuiltQuery::DropForeignKey(Box::new(ForeignKey::drop()
             .name("fk")
             .table(Alias::new("a"))
@@ -1284,8 +1800,16 @@ mod tests {
             .name("fk")
             .table(Alias::new("a"))
             .to_owned())),DatabaseBackend::MySql, &["ALTER TABLE `a` DROP FOREIGN KEY `fk`"])]
-    // SQLite drop FK test removed - sea-query panics on SQLite FK operations
-    fn test_build_query(#[case] title: &str, #[case] q: BuiltQuery, #[case] backend: DatabaseBackend, #[case] expected: &[&str]) {
+    #[case::drop_foreign_key_sqlite("drop_foreign_key_sqlite", BuiltQuery::DropForeignKey(Box::new(ForeignKey::drop()
+            .name("fk")
+            .table(Alias::new("a"))
+            .to_owned())),DatabaseBackend::Sqlite, &["ALTER TABLE \"a\" DROP CONSTRAINT \"fk\""])]
+    fn test_build_query(
+        #[case] title: &str,
+        #[case] q: BuiltQuery,
+        #[case] backend: DatabaseBackend,
+        #[case] expected: &[&str],
+    ) {
         let sql = q.build(backend);
         for exp in expected {
             assert!(
