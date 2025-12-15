@@ -561,6 +561,86 @@ mod tests {
     use rstest::rstest;
     use vespertide_core::IndexDef;
 
+    #[rstest]
+    #[case(BuiltQuery::Raw("RAW".into()), DatabaseBackend::Postgres, "RAW")]
+    #[case(
+        BuiltQuery::CreateTable(Box::new(
+            Table::create().table(Alias::new("t")).to_owned()
+        )),
+        DatabaseBackend::Postgres,
+        "CREATE TABLE \"t\" (  )"
+    )] // sea-query inserts two spaces when there are no columns
+    #[case(
+        BuiltQuery::DropTable(Box::new(
+            Table::drop().table(Alias::new("t")).to_owned()
+        )),
+        DatabaseBackend::Sqlite,
+        "DROP TABLE \"t\""
+    )]
+    #[case(
+        BuiltQuery::AlterTable(Box::new(
+            Table::alter()
+                .table(Alias::new("t"))
+                .add_column(
+                    SeaColumnDef::new(Alias::new("c"))
+                        .integer()
+                        .not_null()
+                        .to_owned(),
+                )
+                .to_owned()
+        )),
+        DatabaseBackend::Postgres,
+        "ALTER TABLE \"t\" ADD COLUMN \"c\" integer NOT NULL"
+    )]
+    #[case(
+        BuiltQuery::CreateIndex(Box::new(
+            Index::create().name("idx").table(Alias::new("t")).col(Alias::new("c")).to_owned()
+        )),
+        DatabaseBackend::Postgres,
+        "CREATE INDEX \"idx\" ON \"t\" (\"c\")"
+    )]
+    #[case(
+        BuiltQuery::DropIndex(Box::new(Index::drop().name("idx").table(Alias::new("t")).to_owned())),
+        DatabaseBackend::Postgres,
+        "DROP INDEX \"idx\""
+    )]
+    #[case(
+        BuiltQuery::RenameTable(Box::new(
+            Table::rename().table(Alias::new("a"), Alias::new("b")).to_owned()
+        )),
+        DatabaseBackend::Sqlite,
+        "ALTER TABLE \"a\" RENAME TO \"b\""
+    )]
+    #[case(
+        BuiltQuery::CreateForeignKey(Box::new(
+            ForeignKey::create()
+                .name("fk")
+                .from_tbl(Alias::new("a"))
+                .from_col(Alias::new("c"))
+                .to_tbl(Alias::new("b"))
+                .to_col(Alias::new("id"))
+                .to_owned()
+        )),
+        DatabaseBackend::Postgres,
+        "ALTER TABLE \"a\" ADD CONSTRAINT \"fk\" FOREIGN KEY (\"c\") REFERENCES \"b\" (\"id\")"
+    )]
+    #[case(
+        BuiltQuery::DropForeignKey(Box::new(
+            ForeignKey::drop().name("fk").table(Alias::new("a")).to_owned()
+        )),
+        DatabaseBackend::Postgres,
+        "ALTER TABLE \"a\" DROP CONSTRAINT \"fk\""
+    )]
+    fn test_built_query_builds_sql(
+        #[case] q: BuiltQuery,
+        #[case] backend: DatabaseBackend,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(q.build(backend), expected);
+        assert_eq!(q.sql(), q.build(DatabaseBackend::Postgres));
+        assert!(q.binds().is_empty());
+    }
+
     fn col(name: &str, ty: ColumnType) -> ColumnDef {
         ColumnDef {
             name: name.to_string(),
