@@ -22,14 +22,14 @@ pub enum DatabaseBackend {
 /// Represents a built query that can be converted to SQL for any database backend
 #[derive(Debug, Clone)]
 pub enum BuiltQuery {
-    CreateTable(TableCreateStatement),
-    DropTable(TableDropStatement),
-    AlterTable(TableAlterStatement),
-    CreateIndex(IndexCreateStatement),
-    DropIndex(IndexDropStatement),
-    RenameTable(TableRenameStatement),
-    CreateForeignKey(ForeignKeyCreateStatement),
-    DropForeignKey(ForeignKeyDropStatement),
+    CreateTable(Box<TableCreateStatement>),
+    DropTable(Box<TableDropStatement>),
+    AlterTable(Box<TableAlterStatement>),
+    CreateIndex(Box<IndexCreateStatement>),
+    DropIndex(Box<IndexDropStatement>),
+    RenameTable(Box<TableRenameStatement>),
+    CreateForeignKey(Box<ForeignKeyCreateStatement>),
+    DropForeignKey(Box<ForeignKeyDropStatement>),
     Raw(String),
 }
 
@@ -211,7 +211,7 @@ pub fn build_action_queries(action: &MigrationAction) -> Result<Vec<BuiltQuery>,
 
         MigrationAction::DeleteTable { table } => {
             let stmt = Table::drop().table(Alias::new(table)).to_owned();
-            Ok(vec![BuiltQuery::DropTable(stmt)])
+            Ok(vec![BuiltQuery::DropTable(Box::new(stmt))])
         }
 
         MigrationAction::AddColumn {
@@ -225,7 +225,7 @@ pub fn build_action_queries(action: &MigrationAction) -> Result<Vec<BuiltQuery>,
                 .table(Alias::new(table))
                 .rename_column(Alias::new(from), Alias::new(to))
                 .to_owned();
-            Ok(vec![BuiltQuery::AlterTable(stmt)])
+            Ok(vec![BuiltQuery::AlterTable(Box::new(stmt))])
         }
 
         MigrationAction::DeleteColumn { table, column } => {
@@ -233,7 +233,7 @@ pub fn build_action_queries(action: &MigrationAction) -> Result<Vec<BuiltQuery>,
                 .table(Alias::new(table))
                 .drop_column(Alias::new(column))
                 .to_owned();
-            Ok(vec![BuiltQuery::AlterTable(stmt)])
+            Ok(vec![BuiltQuery::AlterTable(Box::new(stmt))])
         }
 
         MigrationAction::ModifyColumnType {
@@ -248,7 +248,7 @@ pub fn build_action_queries(action: &MigrationAction) -> Result<Vec<BuiltQuery>,
                 .table(Alias::new(table))
                 .modify_column(col)
                 .to_owned();
-            Ok(vec![BuiltQuery::AlterTable(stmt)])
+            Ok(vec![BuiltQuery::AlterTable(Box::new(stmt))])
         }
 
         MigrationAction::AddIndex { table, index } => {
@@ -265,19 +265,19 @@ pub fn build_action_queries(action: &MigrationAction) -> Result<Vec<BuiltQuery>,
                 stmt = stmt.unique().to_owned();
             }
 
-            Ok(vec![BuiltQuery::CreateIndex(stmt)])
+            Ok(vec![BuiltQuery::CreateIndex(Box::new(stmt))])
         }
 
         MigrationAction::RemoveIndex { name, .. } => {
             let stmt = Index::drop().name(name).to_owned();
-            Ok(vec![BuiltQuery::DropIndex(stmt)])
+            Ok(vec![BuiltQuery::DropIndex(Box::new(stmt))])
         }
 
         MigrationAction::RenameTable { from, to } => {
             let stmt = Table::rename()
                 .table(Alias::new(from), Alias::new(to))
                 .to_owned();
-            Ok(vec![BuiltQuery::RenameTable(stmt)])
+            Ok(vec![BuiltQuery::RenameTable(Box::new(stmt))])
         }
 
         MigrationAction::RawSql { sql } => Ok(vec![BuiltQuery::Raw(sql.clone())]),
@@ -384,7 +384,7 @@ fn build_create_table(
         }
     }
 
-    Ok(BuiltQuery::CreateTable(stmt))
+    Ok(BuiltQuery::CreateTable(Box::new(stmt)))
 }
 
 fn build_add_column(
@@ -407,7 +407,7 @@ fn build_add_column(
             .table(Alias::new(table))
             .add_column(col_def)
             .to_owned();
-        stmts.push(BuiltQuery::AlterTable(stmt));
+        stmts.push(BuiltQuery::AlterTable(Box::new(stmt)));
 
         // Backfill with provided value
         if let Some(fill) = fill_with {
@@ -427,7 +427,7 @@ fn build_add_column(
             .table(Alias::new(table))
             .add_column(col_def)
             .to_owned();
-        stmts.push(BuiltQuery::AlterTable(stmt));
+        stmts.push(BuiltQuery::AlterTable(Box::new(stmt)));
     }
 
     Ok(stmts)
@@ -490,7 +490,7 @@ fn build_add_constraint(
             if let Some(action) = on_update {
                 fk = fk.on_update(to_sea_fk_action(action)).to_owned();
             }
-            Ok(vec![BuiltQuery::CreateForeignKey(fk)])
+            Ok(vec![BuiltQuery::CreateForeignKey(Box::new(fk))])
         }
         TableConstraint::Check { name, expr } => {
             let sql = if let Some(n) = name {
@@ -540,7 +540,7 @@ fn build_remove_constraint(
                 .table(Alias::new(table))
                 .name(&constraint_name)
                 .to_owned();
-            Ok(vec![BuiltQuery::DropForeignKey(stmt)])
+            Ok(vec![BuiltQuery::DropForeignKey(Box::new(stmt))])
         }
         TableConstraint::Check { name, .. } => {
             if let Some(n) = name {
