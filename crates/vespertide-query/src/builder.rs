@@ -124,27 +124,4 @@ mod tests {
         let sql2_mysql = result[1].build(DatabaseBackend::MySql);
         assert!(sql2_mysql.contains("`posts`"));
     }
-
-    #[test]
-    fn test_backward_compatibility_methods() {
-        let plan = MigrationPlan {
-            comment: None,
-            created_at: None,
-            version: 1,
-            actions: vec![MigrationAction::DeleteTable {
-                table: "users".into(),
-            }],
-        };
-
-        let result = build_plan_queries(&plan).unwrap();
-        assert_eq!(result.len(), 1);
-
-        // Test backward compatibility methods
-        let sql = result[0].sql();
-        assert!(sql.contains("DROP TABLE"));
-
-        // binds() should return empty for DDL statements
-        let binds = result[0].binds();
-        assert!(binds.is_empty());
-    }
 }

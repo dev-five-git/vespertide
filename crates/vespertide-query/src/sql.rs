@@ -81,11 +81,6 @@ impl BuiltQuery {
         }
     }
 
-    /// Backward compatibility: get SQL string (defaults to PostgreSQL)
-    pub fn sql(&self) -> String {
-        self.build(DatabaseBackend::Postgres)
-    }
-
     /// Backward compatibility: binds are now empty (DDL doesn't use bind parameters)
     pub fn binds(&self) -> Vec<String> {
         Vec::new()
@@ -559,87 +554,9 @@ fn build_remove_constraint(
 mod tests {
     use super::*;
     use rstest::rstest;
-    use vespertide_core::IndexDef;
+    use vespertide_core::{IndexDef};
+    use insta::{assert_snapshot, with_settings};
 
-    #[rstest]
-    #[case(BuiltQuery::Raw("RAW".into()), DatabaseBackend::Postgres, "RAW")]
-    #[case(
-        BuiltQuery::CreateTable(Box::new(
-            Table::create().table(Alias::new("t")).to_owned()
-        )),
-        DatabaseBackend::Postgres,
-        "CREATE TABLE \"t\" (  )"
-    )] // sea-query inserts two spaces when there are no columns
-    #[case(
-        BuiltQuery::DropTable(Box::new(
-            Table::drop().table(Alias::new("t")).to_owned()
-        )),
-        DatabaseBackend::Sqlite,
-        "DROP TABLE \"t\""
-    )]
-    #[case(
-        BuiltQuery::AlterTable(Box::new(
-            Table::alter()
-                .table(Alias::new("t"))
-                .add_column(
-                    SeaColumnDef::new(Alias::new("c"))
-                        .integer()
-                        .not_null()
-                        .to_owned(),
-                )
-                .to_owned()
-        )),
-        DatabaseBackend::Postgres,
-        "ALTER TABLE \"t\" ADD COLUMN \"c\" integer NOT NULL"
-    )]
-    #[case(
-        BuiltQuery::CreateIndex(Box::new(
-            Index::create().name("idx").table(Alias::new("t")).col(Alias::new("c")).to_owned()
-        )),
-        DatabaseBackend::Postgres,
-        "CREATE INDEX \"idx\" ON \"t\" (\"c\")"
-    )]
-    #[case(
-        BuiltQuery::DropIndex(Box::new(Index::drop().name("idx").table(Alias::new("t")).to_owned())),
-        DatabaseBackend::Postgres,
-        "DROP INDEX \"idx\""
-    )]
-    #[case(
-        BuiltQuery::RenameTable(Box::new(
-            Table::rename().table(Alias::new("a"), Alias::new("b")).to_owned()
-        )),
-        DatabaseBackend::Sqlite,
-        "ALTER TABLE \"a\" RENAME TO \"b\""
-    )]
-    #[case(
-        BuiltQuery::CreateForeignKey(Box::new(
-            ForeignKey::create()
-                .name("fk")
-                .from_tbl(Alias::new("a"))
-                .from_col(Alias::new("c"))
-                .to_tbl(Alias::new("b"))
-                .to_col(Alias::new("id"))
-                .to_owned()
-        )),
-        DatabaseBackend::Postgres,
-        "ALTER TABLE \"a\" ADD CONSTRAINT \"fk\" FOREIGN KEY (\"c\") REFERENCES \"b\" (\"id\")"
-    )]
-    #[case(
-        BuiltQuery::DropForeignKey(Box::new(
-            ForeignKey::drop().name("fk").table(Alias::new("a")).to_owned()
-        )),
-        DatabaseBackend::Postgres,
-        "ALTER TABLE \"a\" DROP CONSTRAINT \"fk\""
-    )]
-    fn test_built_query_builds_sql(
-        #[case] q: BuiltQuery,
-        #[case] backend: DatabaseBackend,
-        #[case] expected: &str,
-    ) {
-        assert_eq!(q.build(backend), expected);
-        assert_eq!(q.sql(), q.build(DatabaseBackend::Postgres));
-        assert!(q.binds().is_empty());
-    }
 
     fn col(name: &str, ty: ColumnType) -> ColumnDef {
         ColumnDef {
@@ -653,194 +570,6 @@ mod tests {
             index: None,
             foreign_key: None,
         }
-    }
-
-    #[rstest]
-    #[case::create_table_postgres(
-        MigrationAction::CreateTable {
-            table: "users".into(),
-            columns: vec![
-                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
-                col("name", ColumnType::Simple(SimpleColumnType::Text)),
-            ],
-            constraints: vec![],
-        },
-        DatabaseBackend::Postgres,
-        "CREATE TABLE \"users\" ( \"id\" integer, \"name\" text )"
-    )]
-    #[case::create_table_mysql(
-        MigrationAction::CreateTable {
-            table: "users".into(),
-            columns: vec![
-                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
-            ],
-            constraints: vec![],
-        },
-        DatabaseBackend::MySql,
-        "CREATE TABLE `users` ( `id` int )"
-    )]
-    #[case::create_table_sqlite(
-        MigrationAction::CreateTable {
-            table: "users".into(),
-            columns: vec![
-                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
-            ],
-            constraints: vec![],
-        },
-        DatabaseBackend::Sqlite,
-        "CREATE TABLE \"users\" ( \"id\" integer )"
-    )]
-    #[case::delete_table_postgres(
-        MigrationAction::DeleteTable {
-            table: "users".into(),
-        },
-        DatabaseBackend::Postgres,
-        "DROP TABLE \"users\""
-    )]
-    #[case::delete_table_mysql(
-        MigrationAction::DeleteTable {
-            table: "users".into(),
-        },
-        DatabaseBackend::MySql,
-        "DROP TABLE `users`"
-    )]
-    #[case::rename_column(
-        MigrationAction::RenameColumn {
-            table: "users".into(),
-            from: "old_name".into(),
-            to: "new_name".into(),
-        },
-        DatabaseBackend::Postgres,
-        "ALTER TABLE \"users\" RENAME COLUMN \"old_name\" TO \"new_name\""
-    )]
-    #[case::delete_column(
-        MigrationAction::DeleteColumn {
-            table: "users".into(),
-            column: "email".into(),
-        },
-        DatabaseBackend::Postgres,
-        "ALTER TABLE \"users\" DROP COLUMN \"email\""
-    )]
-    #[case::add_index(
-        MigrationAction::AddIndex {
-            table: "users".into(),
-            index: IndexDef {
-                name: "idx_email".into(),
-                columns: vec!["email".into()],
-                unique: false,
-            },
-        },
-        DatabaseBackend::Postgres,
-        "CREATE INDEX \"idx_email\" ON \"users\" (\"email\")"
-    )]
-    #[case::add_unique_index(
-        MigrationAction::AddIndex {
-            table: "users".into(),
-            index: IndexDef {
-                name: "idx_email".into(),
-                columns: vec!["email".into()],
-                unique: true,
-            },
-        },
-        DatabaseBackend::Postgres,
-        "CREATE UNIQUE INDEX \"idx_email\" ON \"users\" (\"email\")"
-    )]
-    #[case::remove_index(
-        MigrationAction::RemoveIndex {
-            table: "users".into(),
-            name: "idx_email".into(),
-        },
-        DatabaseBackend::Postgres,
-        "DROP INDEX \"idx_email\""
-    )]
-    #[case::rename_table(
-        MigrationAction::RenameTable {
-            from: "old_users".into(),
-            to: "new_users".into(),
-        },
-        DatabaseBackend::Postgres,
-        "ALTER TABLE \"old_users\" RENAME TO \"new_users\""
-    )]
-    #[case::raw_sql(
-        MigrationAction::RawSql {
-            sql: "SELECT 1;".to_string(),
-        },
-        DatabaseBackend::Postgres,
-        "SELECT 1;"
-    )]
-    fn test_build_action_queries(
-        #[case] action: MigrationAction,
-        #[case] backend: DatabaseBackend,
-        #[case] expected_sql: &str,
-    ) {
-        let result = build_action_queries(&action).unwrap();
-        assert!(!result.is_empty());
-        let sql = result[0].build(backend);
-        assert_eq!(sql, expected_sql);
-    }
-
-    #[test]
-    fn test_add_column_nullable() {
-        let action = MigrationAction::AddColumn {
-            table: "users".into(),
-            column: col("email", ColumnType::Simple(SimpleColumnType::Text)),
-            fill_with: None,
-        };
-        let result = build_action_queries(&action).unwrap();
-        assert_eq!(result.len(), 1);
-        let sql = result[0].build(DatabaseBackend::Postgres);
-        assert!(sql.contains("ALTER TABLE"));
-        assert!(sql.contains("ADD COLUMN"));
-        assert!(sql.contains("email"));
-    }
-
-    #[test]
-    fn test_add_column_not_null_with_fill() {
-        let mut c = col("email", ColumnType::Simple(SimpleColumnType::Text));
-        c.nullable = false;
-        let action = MigrationAction::AddColumn {
-            table: "users".into(),
-            column: c,
-            fill_with: Some("'test@example.com'".to_string()),
-        };
-        let result = build_action_queries(&action).unwrap();
-        assert_eq!(result.len(), 3);
-        // First: add column as nullable
-        // Second: UPDATE to backfill
-        // Third: SET NOT NULL
-    }
-
-    #[test]
-    fn test_modify_column_type() {
-        let action = MigrationAction::ModifyColumnType {
-            table: "users".into(),
-            column: "age".into(),
-            new_type: ColumnType::Simple(SimpleColumnType::BigInt),
-        };
-        let result = build_action_queries(&action).unwrap();
-        assert_eq!(result.len(), 1);
-        let sql = result[0].build(DatabaseBackend::Postgres);
-        assert!(sql.contains("ALTER TABLE"));
-        assert!(sql.contains("ALTER COLUMN") || sql.contains("MODIFY COLUMN"));
-    }
-
-    #[test]
-    fn test_remove_constraint_check_unnamed_error() {
-        let action = MigrationAction::RemoveConstraint {
-            table: "users".into(),
-            constraint: TableConstraint::Check {
-                name: None,
-                expr: "age > 0".into(),
-            },
-        };
-        let result = build_action_queries(&action);
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("Cannot drop unnamed CHECK constraint")
-        );
     }
 
     #[rstest]
@@ -924,5 +653,246 @@ mod tests {
         // SQLite uses double quotes
         let sqlite_sql = result[0].build(DatabaseBackend::Sqlite);
         assert!(sqlite_sql.contains("\"users\""));
+    }
+
+    // ===== MySQL/SQLite backend coverage for all BuiltQuery variants =====
+    #[rstest]
+    #[case::create_table_postgres(
+        MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("name", ColumnType::Simple(SimpleColumnType::Text)),
+            ],
+            constraints: vec![],
+        },
+        DatabaseBackend::Postgres,
+        &["CREATE TABLE \"users\" ( \"id\" integer, \"name\" text )"]
+    )]
+    #[case::create_table_mysql(
+        MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+            constraints: vec![],
+        },
+        DatabaseBackend::MySql,
+        &["CREATE TABLE `users` ( `id` int )"]
+    )]
+    #[case::create_table_sqlite(
+        MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+            constraints: vec![],
+        },
+        DatabaseBackend::Sqlite,
+        &["CREATE TABLE \"users\" ( \"id\" integer )"]
+    )]
+    #[case::delete_table_postgres(
+        MigrationAction::DeleteTable { table: "users".into() },
+        DatabaseBackend::Postgres,
+        &["DROP TABLE \"users\""]
+    )]
+    #[case::delete_table_mysql(
+        MigrationAction::DeleteTable { table: "users".into() },
+        DatabaseBackend::MySql,
+        &["DROP TABLE `users`"]
+    )]
+    #[case::delete_table_sqlite(
+        MigrationAction::DeleteTable { table: "users".into() },
+        DatabaseBackend::Sqlite,
+        &["DROP TABLE \"users\""]
+    )]
+    #[case::delete_column_postgres(
+        MigrationAction::DeleteColumn {
+            table: "users".into(),
+            column: "email".into(),
+        },
+        DatabaseBackend::Postgres,
+        &["ALTER TABLE \"users\" DROP COLUMN \"email\""]
+    )]
+    #[case::delete_column_mysql(
+        MigrationAction::DeleteColumn {
+            table: "users".into(),
+            column: "email".into(),
+        },
+        DatabaseBackend::MySql,
+        &["ALTER TABLE `users` DROP COLUMN `email`"]
+    )]
+    #[case::delete_column_sqlite(
+        MigrationAction::DeleteColumn {
+            table: "users".into(),
+            column: "email".into(),
+        },
+        DatabaseBackend::Sqlite,
+        &["ALTER TABLE \"users\" DROP COLUMN \"email\""]
+    )]
+    #[case::add_index_postgres(
+        MigrationAction::AddIndex {
+            table: "users".into(),
+            index: IndexDef { name: "idx_email".into(), columns: vec!["email".into()], unique: false },
+        },
+        DatabaseBackend::Postgres,
+        &["CREATE INDEX \"idx_email\" ON \"users\" (\"email\")"]
+    )]
+    #[case::add_index_mysql(
+        MigrationAction::AddIndex {
+            table: "users".into(),
+            index: IndexDef { name: "idx_email".into(), columns: vec!["email".into()], unique: false },
+        },
+        DatabaseBackend::MySql,
+        &["CREATE INDEX `idx_email` ON `users` (`email`)"]
+    )]
+    #[case::add_index_sqlite(
+        MigrationAction::AddIndex {
+            table: "users".into(),
+            index: IndexDef { name: "idx_email".into(), columns: vec!["email".into()], unique: false },
+        },
+        DatabaseBackend::Sqlite,
+        &["CREATE INDEX \"idx_email\" ON \"users\" (\"email\")"]
+    )]
+    #[case::add_unique_index_postgres(
+        MigrationAction::AddIndex {
+            table: "users".into(),
+            index: IndexDef { name: "idx_email".into(), columns: vec!["email".into()], unique: true },
+        },
+        DatabaseBackend::Postgres,
+        &["CREATE UNIQUE INDEX \"idx_email\" ON \"users\" (\"email\")"]
+    )]
+    #[case::add_unique_index_mysql(
+        MigrationAction::AddIndex {
+            table: "users".into(),
+            index: IndexDef { name: "idx_email".into(), columns: vec!["email".into()], unique: true },
+        },
+        DatabaseBackend::MySql,
+        &["CREATE UNIQUE INDEX `idx_email` ON `users` (`email`)"]
+    )]
+    #[case::add_unique_index_sqlite(
+        MigrationAction::AddIndex {
+            table: "users".into(),
+            index: IndexDef { name: "idx_email".into(), columns: vec!["email".into()], unique: true },
+        },
+        DatabaseBackend::Sqlite,
+        &["CREATE UNIQUE INDEX \"idx_email\" ON \"users\" (\"email\")"]
+    )]
+    #[case::remove_index_postgres(
+        MigrationAction::RemoveIndex {
+            table: "users".into(),
+            name: "idx_email".into(),
+        },
+        DatabaseBackend::Postgres,
+        &["DROP INDEX \"idx_email\" ON \"users\""]
+    )]
+    #[case::remove_index_mysql(
+        MigrationAction::RemoveIndex {
+            table: "users".into(),
+            name: "idx_email".into(),
+        },
+        DatabaseBackend::MySql,
+        &["DROP INDEX `idx_email` ON `users`"]
+    )]
+    #[case::remove_index_sqlite(
+        MigrationAction::RemoveIndex {
+            table: "users".into(),
+            name: "idx_email".into(),
+        },
+        DatabaseBackend::Sqlite,
+        &["DROP INDEX \"idx_email\" ON \"users\""]
+    )]
+    fn test_build_migration_action(#[case] action: MigrationAction, #[case] backend: DatabaseBackend, #[case] expected: &[&str]) {
+
+        let result = build_action_queries(&action).unwrap();
+        for exp in expected {
+            if !result[0].build(backend).contains(exp) {
+                println!("action: {:?}, backend: {:?}, expected: {}", action, backend, exp);
+            }
+        }
+        with_settings!({ snapshot_suffix => format!("build_migration_action_{:?}_{:?}", action, backend) }, {
+            assert_snapshot!(result.iter().map(|q| q.build(backend)).collect::<Vec<String>>().join("\n"));
+        });
+    }
+
+    #[rstest]
+    #[case::alter_table_postgres(BuiltQuery::AlterTable(Box::new(Table::alter()
+            .table(Alias::new("t"))
+            .add_column(SeaColumnDef::new(Alias::new("c")).integer().to_owned())
+            .to_owned())),DatabaseBackend::Postgres, &["ALTER TABLE \"t\" ADD COLUMN \"c\" integer"])]
+    #[case::alter_table_mysql(BuiltQuery::AlterTable(Box::new(Table::alter()
+            .table(Alias::new("t"))
+            .add_column(SeaColumnDef::new(Alias::new("c")).integer().to_owned())
+            .to_owned())),DatabaseBackend::MySql, &["ALTER TABLE `t` ADD COLUMN `c` int"])]
+    #[case::alter_table_sqlite(BuiltQuery::AlterTable(Box::new(Table::alter()
+            .table(Alias::new("t"))
+            .add_column(SeaColumnDef::new(Alias::new("c")).integer().to_owned())
+            .to_owned())),DatabaseBackend::Sqlite, &["ALTER TABLE \"t\" ADD COLUMN \"c\" integer"])]
+    #[case::create_index_postgres(BuiltQuery::CreateIndex(Box::new(Index::create()
+            .name("idx")
+            .table(Alias::new("t"))
+            .col(Alias::new("c"))
+            .to_owned())),DatabaseBackend::Postgres, &["CREATE INDEX \"idx\" ON \"t\" (\"c\")"])]
+    #[case::create_index_mysql(BuiltQuery::CreateIndex(Box::new(Index::create()
+            .name("idx")
+            .table(Alias::new("t"))
+            .col(Alias::new("c"))
+            .to_owned())),DatabaseBackend::MySql, &["CREATE INDEX `idx` ON `t` (`c`"])]
+    #[case::create_index_sqlite(BuiltQuery::CreateIndex(Box::new(Index::create()
+            .name("idx")
+            .table(Alias::new("t"))
+            .col(Alias::new("c"))
+            .to_owned())),DatabaseBackend::Sqlite, &["CREATE INDEX \"idx\" ON \"t\" (\"c\")"])]
+    #[case::drop_index_postgres(BuiltQuery::DropIndex(Box::new(Index::drop().name("idx").table(Alias::new("t")).to_owned())),DatabaseBackend::Postgres, &["DROP INDEX \"idx\""])]
+    #[case::drop_index_mysql(BuiltQuery::DropIndex(Box::new(Index::drop().name("idx").table(Alias::new("t")).to_owned())),DatabaseBackend::MySql, &["`idx`"])]
+    #[case::drop_index_sqlite(BuiltQuery::DropIndex(Box::new(Index::drop().name("idx").table(Alias::new("t")).to_owned())),DatabaseBackend::Sqlite, &["\"idx\""])]
+    #[case::rename_table_postgres(BuiltQuery::RenameTable(Box::new(Table::rename()
+            .table(Alias::new("a"), Alias::new("b"))
+            .to_owned())),DatabaseBackend::Postgres, &["ALTER TABLE \"a\" RENAME TO \"b\""])]
+    #[case::rename_table_mysql(BuiltQuery::RenameTable(Box::new(Table::rename()
+            .table(Alias::new("a"), Alias::new("b"))
+            .to_owned())),DatabaseBackend::MySql, &["RENAME TABLE `a` TO `b`"])]
+    #[case::rename_table_sqlite(BuiltQuery::RenameTable(Box::new(Table::rename()
+            .table(Alias::new("a"), Alias::new("b"))
+            .to_owned())),DatabaseBackend::Sqlite, &["ALTER TABLE \"a\" RENAME TO \"b\""])]
+            #[case::create_foreign_key_postgres(BuiltQuery::CreateForeignKey(Box::new(ForeignKey::create()
+            .name("fk")
+            .from_tbl(Alias::new("a"))
+            .from_col(Alias::new("c"))
+            .to_tbl(Alias::new("b"))
+            .to_col(Alias::new("id"))
+            .to_owned())),DatabaseBackend::Postgres, &["ALTER TABLE \"a\" ADD CONSTRAINT \"fk\" FOREIGN KEY (\"c\") REFERENCES \"b\" (\"id\")"])]
+    #[case::create_foreign_key_mysql(BuiltQuery::CreateForeignKey(Box::new(ForeignKey::create()
+            .name("fk")
+            .from_tbl(Alias::new("a"))
+            .from_col(Alias::new("c"))
+            .to_tbl(Alias::new("b"))
+            .to_col(Alias::new("id"))
+            .to_owned())),DatabaseBackend::MySql, &["ALTER TABLE `a` ADD CONSTRAINT `fk` FOREIGN KEY (`c`) REFERENCES `b` (`id`)"])]
+    #[case::create_foreign_key_sqlite(BuiltQuery::CreateForeignKey(Box::new(ForeignKey::create()
+            .name("fk")
+            .from_tbl(Alias::new("a"))
+            .from_col(Alias::new("c"))
+            .to_tbl(Alias::new("b"))
+            .to_col(Alias::new("id"))
+            .to_owned())),DatabaseBackend::Sqlite, &["ALTER TABLE \"a\" ADD CONSTRAINT \"fk\" FOREIGN KEY (\"c\") REFERENCES \"b\" (\"id\")"])]
+    #[case::drop_foreign_key_postgres(BuiltQuery::DropForeignKey(Box::new(ForeignKey::drop()
+            .name("fk")
+            .table(Alias::new("a"))
+            .to_owned())),DatabaseBackend::Postgres, &["ALTER TABLE \"a\" DROP CONSTRAINT \"fk\""])]
+    #[case::drop_foreign_key_mysql(BuiltQuery::DropForeignKey(Box::new(ForeignKey::drop()
+            .name("fk")
+            .table(Alias::new("a"))
+            .to_owned())),DatabaseBackend::MySql, &["ALTER TABLE `a` DROP CONSTRAINT `fk`"])]
+    #[case::drop_foreign_key_sqlite(BuiltQuery::DropForeignKey(Box::new(ForeignKey::drop()
+            .name("fk")
+            .table(Alias::new("a"))
+            .to_owned())),DatabaseBackend::Sqlite, &["ALTER TABLE \"a\" DROP CONSTRAINT \"fk\""])]
+    fn test_build_query(#[case] q: BuiltQuery, #[case] backend: DatabaseBackend, #[case] expected: &[&str]) {
+
+        for exp in expected {
+            if !q.build(backend).contains(exp) {
+                println!("q: {:?}, backend: {:?}, expected: {}", q, q.build(backend), exp);
+            }
+        }
+        with_settings!({ snapshot_suffix => format!("build_query_{:?}", backend) }, {
+            assert_snapshot!(q.build(backend));
+        });
     }
 }

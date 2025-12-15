@@ -3024,6 +3024,7 @@ dependencies = [
 name = "vespertide-query"
 version = "0.1.7"
 dependencies = [
+ "insta",
  "rstest",
  "sea-query 0.32.7",
  "thiserror",

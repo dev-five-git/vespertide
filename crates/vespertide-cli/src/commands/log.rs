@@ -1,6 +1,6 @@
 use anyhow::Result;
 use colored::Colorize;
-use vespertide_query::build_plan_queries;
+use vespertide_query::{DatabaseBackend, build_plan_queries};
 
 use crate::utils::load_migrations;
 
@@ -27,7 +27,11 @@ pub fn cmd_log() -> Result<()> {
             plan.version.to_string().bright_magenta().bold()
         );
         if let Some(created) = &plan.created_at {
-            println!("  {} {}", "Created at:".bright_cyan(), created.bright_white());
+            println!(
+                "  {} {}",
+                "Created at:".bright_cyan(),
+                created.bright_white()
+            );
         }
         if let Some(comment) = &plan.comment {
             println!("  {} {}", "Comment:".bright_cyan(), comment.bright_white());
@@ -50,7 +54,7 @@ pub fn cmd_log() -> Result<()> {
             println!(
                 "    {}. {}",
                 (i + 1).to_string().bright_magenta().bold(),
-                q.sql().trim().bright_white()
+                q.build(DatabaseBackend::Postgres).trim().bright_white()
             );
             println!("       {} {:?}", "binds:".bright_cyan(), q.binds());
         }
