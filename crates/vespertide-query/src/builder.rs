@@ -75,10 +75,7 @@ mod tests {
         },
         2
     )]
-    fn test_build_plan_queries(
-        #[case] plan: MigrationPlan,
-        #[case] expected_count: usize,
-    ) {
+    fn test_build_plan_queries(#[case] plan: MigrationPlan, #[case] expected_count: usize) {
         let result = build_plan_queries(&plan).unwrap();
         assert_eq!(
             result.len(),

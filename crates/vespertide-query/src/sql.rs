@@ -96,32 +96,80 @@ impl BuiltQuery {
 fn apply_column_type(col: &mut SeaColumnDef, ty: &ColumnType) {
     match ty {
         ColumnType::Simple(simple) => match simple {
-            SimpleColumnType::SmallInt => { col.small_integer(); }
-            SimpleColumnType::Integer => { col.integer(); }
-            SimpleColumnType::BigInt => { col.big_integer(); }
-            SimpleColumnType::Real => { col.float(); }
-            SimpleColumnType::DoublePrecision => { col.double(); }
-            SimpleColumnType::Text => { col.text(); }
-            SimpleColumnType::Boolean => { col.boolean(); }
-            SimpleColumnType::Date => { col.date(); }
-            SimpleColumnType::Time => { col.time(); }
-            SimpleColumnType::Timestamp => { col.timestamp(); }
-            SimpleColumnType::Timestamptz => { col.timestamp_with_time_zone(); }
-            SimpleColumnType::Interval => { col.interval(None, None); }
-            SimpleColumnType::Bytea => { col.binary(); }
-            SimpleColumnType::Uuid => { col.uuid(); }
-            SimpleColumnType::Json => { col.json(); }
-            SimpleColumnType::Jsonb => { col.json_binary(); }
-            SimpleColumnType::Inet => { col.custom(Alias::new("INET")); }
-            SimpleColumnType::Cidr => { col.custom(Alias::new("CIDR")); }
-            SimpleColumnType::Macaddr => { col.custom(Alias::new("MACADDR")); }
-            SimpleColumnType::Xml => { col.custom(Alias::new("XML")); }
+            SimpleColumnType::SmallInt => {
+                col.small_integer();
+            }
+            SimpleColumnType::Integer => {
+                col.integer();
+            }
+            SimpleColumnType::BigInt => {
+                col.big_integer();
+            }
+            SimpleColumnType::Real => {
+                col.float();
+            }
+            SimpleColumnType::DoublePrecision => {
+                col.double();
+            }
+            SimpleColumnType::Text => {
+                col.text();
+            }
+            SimpleColumnType::Boolean => {
+                col.boolean();
+            }
+            SimpleColumnType::Date => {
+                col.date();
+            }
+            SimpleColumnType::Time => {
+                col.time();
+            }
+            SimpleColumnType::Timestamp => {
+                col.timestamp();
+            }
+            SimpleColumnType::Timestamptz => {
+                col.timestamp_with_time_zone();
+            }
+            SimpleColumnType::Interval => {
+                col.interval(None, None);
+            }
+            SimpleColumnType::Bytea => {
+                col.binary();
+            }
+            SimpleColumnType::Uuid => {
+                col.uuid();
+            }
+            SimpleColumnType::Json => {
+                col.json();
+            }
+            SimpleColumnType::Jsonb => {
+                col.json_binary();
+            }
+            SimpleColumnType::Inet => {
+                col.custom(Alias::new("INET"));
+            }
+            SimpleColumnType::Cidr => {
+                col.custom(Alias::new("CIDR"));
+            }
+            SimpleColumnType::Macaddr => {
+                col.custom(Alias::new("MACADDR"));
+            }
+            SimpleColumnType::Xml => {
+                col.custom(Alias::new("XML"));
+            }
         },
         ColumnType::Complex(complex) => match complex {
-            ComplexColumnType::Varchar { length } => { col.string_len(*length); }
-            ComplexColumnType::Numeric { precision, scale } => { col.decimal_len(*precision, *scale); }
-            ComplexColumnType::Char { length } => { col.char_len(*length); }
-            ComplexColumnType::Custom { custom_type } => { col.custom(Alias::new(custom_type)); }
+            ComplexColumnType::Varchar { length } => {
+                col.string_len(*length);
+            }
+            ComplexColumnType::Numeric { precision, scale } => {
+                col.decimal_len(*precision, *scale);
+            }
+            ComplexColumnType::Char { length } => {
+                col.char_len(*length);
+            }
+            ComplexColumnType::Custom { custom_type } => {
+                col.custom(Alias::new(custom_type));
+            }
         },
     }
 }
@@ -251,12 +299,16 @@ fn build_create_table(
 ) -> Result<BuiltQuery, QueryError> {
     let mut stmt = Table::create().table(Alias::new(table)).to_owned();
 
+    let has_table_primary_key = constraints
+        .iter()
+        .any(|c| matches!(c, TableConstraint::PrimaryKey { .. }));
+
     // Add columns
     for column in columns {
         let mut col = build_sea_column_def(column);
 
         // Check for inline primary key
-        if column.primary_key.is_some() {
+        if column.primary_key.is_some() && !has_table_primary_key {
             col.primary_key();
         }
 
@@ -282,7 +334,10 @@ fn build_create_table(
                 }
                 stmt = stmt.primary_key(&mut pk_idx).to_owned();
             }
-            TableConstraint::Unique { name, columns: unique_cols } => {
+            TableConstraint::Unique {
+                name,
+                columns: unique_cols,
+            } => {
                 let mut idx = Index::create();
                 if let Some(n) = name {
                     idx = idx.name(n).to_owned();
@@ -356,10 +411,7 @@ fn build_add_column(
 
         // Backfill with provided value
         if let Some(fill) = fill_with {
-            let sql = format!(
-                "UPDATE \"{}\" SET \"{}\" = {}",
-                table, column.name, fill
-            );
+            let sql = format!("UPDATE \"{}\" SET \"{}\" = {}", table, column.name, fill);
             stmts.push(BuiltQuery::Raw(sql));
         }
 
@@ -703,10 +755,12 @@ mod tests {
         };
         let result = build_action_queries(&action);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Cannot drop unnamed CHECK constraint"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Cannot drop unnamed CHECK constraint")
+        );
     }
 
     #[rstest]
