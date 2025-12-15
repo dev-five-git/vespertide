@@ -4,4 +4,4 @@ expression: "result.iter().map(|q| q.build(backend)).collect::<Vec<String>>().jo
 ---
 ALTER TABLE "users" ADD COLUMN "age" integer
 UPDATE "users" SET "age" = 0
-ALTER TABLE "users" ALTER COLUMN "age" SET NOT NULL
+-- SQLite: ALTER TABLE "users" requires table recreation to set NOT NULL on "age"

@@ -3,5 +3,5 @@ source: crates/vespertide-query/src/sql.rs
 expression: "result.iter().map(|q| q.build(backend)).collect::<Vec<String>>().join(\"\\n\")"
 ---
 ALTER TABLE `users` ADD COLUMN `age` int
-UPDATE "users" SET "age" = 0
-ALTER TABLE "users" ALTER COLUMN "age" SET NOT NULL
+UPDATE `users` SET `age` = 0
+ALTER TABLE `users` MODIFY COLUMN `age` NOT NULL

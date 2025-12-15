@@ -557,11 +557,11 @@
     "ReferenceAction": {
       "type": "string",
       "enum": [
-        "Cascade",
-        "Restrict",
-        "SetNull",
-        "SetDefault",
-        "NoAction"
+        "cascade",
+        "restrict",
+        "set_null",
+        "set_default",
+        "no_action"
       ]
     },
     "SimpleColumnType": {
@@ -718,10 +718,7 @@
               "type": "string"
             },
             "name": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "type": {
               "type": "string",
@@ -730,6 +727,7 @@
           },
           "required": [
             "type",
+            "name",
             "expr"
           ]
         }

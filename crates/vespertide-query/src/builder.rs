@@ -3,9 +3,6 @@ use vespertide_core::MigrationPlan;
 use crate::error::QueryError;
 use crate::sql::{BuiltQuery, build_action_queries};
 
-#[cfg(test)]
-use crate::sql::DatabaseBackend;
-
 pub fn build_plan_queries(plan: &MigrationPlan) -> Result<Vec<BuiltQuery>, QueryError> {
     let mut queries: Vec<BuiltQuery> = Vec::new();
     for action in &plan.actions {
@@ -17,6 +14,7 @@ pub fn build_plan_queries(plan: &MigrationPlan) -> Result<Vec<BuiltQuery>, Query
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sql::DatabaseBackend;
     use rstest::rstest;
     use vespertide_core::{
         ColumnDef, ColumnType, MigrationAction, MigrationPlan, SimpleColumnType,

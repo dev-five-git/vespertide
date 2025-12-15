@@ -1,8 +1,8 @@
 use sea_query::{
     Alias, ColumnDef as SeaColumnDef, ForeignKey, ForeignKeyAction, ForeignKeyCreateStatement,
     ForeignKeyDropStatement, Index, IndexCreateStatement, IndexDropStatement, MysqlQueryBuilder,
-    PostgresQueryBuilder, SqliteQueryBuilder, Table, TableAlterStatement, TableCreateStatement,
-    TableDropStatement, TableRenameStatement,
+    PostgresQueryBuilder, SimpleExpr, SqliteQueryBuilder, Table, TableAlterStatement,
+    TableCreateStatement, TableDropStatement, TableRenameStatement,
 };
 use vespertide_core::{
     ColumnDef, ColumnType, ComplexColumnType, MigrationAction, ReferenceAction, SimpleColumnType,
@@ -22,7 +22,18 @@ pub enum DatabaseBackend {
 /// Represents a built query that can be converted to SQL for any database backend
 #[derive(Debug, Clone)]
 pub enum BuiltQuery {
-    CreateTable(Box<TableCreateStatement>),
+    /// Backend-specific create table statements (for tables with backend-specific defaults)
+    CreateTablePerBackend {
+        postgres: Box<TableCreateStatement>,
+        mysql: Box<TableCreateStatement>,
+        sqlite: Box<TableCreateStatement>,
+    },
+    /// Backend-specific alter table statements
+    AlterTablePerBackend {
+        postgres: Box<TableAlterStatement>,
+        mysql: Box<TableAlterStatement>,
+        sqlite: Box<TableAlterStatement>,
+    },
     DropTable(Box<TableDropStatement>),
     AlterTable(Box<TableAlterStatement>),
     CreateIndex(Box<IndexCreateStatement>),
@@ -30,17 +41,59 @@ pub enum BuiltQuery {
     RenameTable(Box<TableRenameStatement>),
     CreateForeignKey(Box<ForeignKeyCreateStatement>),
     DropForeignKey(Box<ForeignKeyDropStatement>),
-    Raw(String),
+    /// Raw SQL with backend-specific variants
+    Raw(RawSql),
+}
+
+/// Raw SQL that may have backend-specific variants
+#[derive(Debug, Clone)]
+pub struct RawSql {
+    pub postgres: String,
+    pub mysql: String,
+    pub sqlite: String,
+}
+
+impl RawSql {
+    /// Create a RawSql with the same SQL for all backends
+    pub fn uniform(sql: String) -> Self {
+        Self {
+            postgres: sql.clone(),
+            mysql: sql.clone(),
+            sqlite: sql,
+        }
+    }
+
+    /// Create a RawSql with different SQL for each backend
+    pub fn per_backend(postgres: String, mysql: String, sqlite: String) -> Self {
+        Self {
+            postgres,
+            mysql,
+            sqlite,
+        }
+    }
 }
 
 impl BuiltQuery {
     /// Build SQL string for the specified database backend
     pub fn build(&self, backend: DatabaseBackend) -> String {
         match self {
-            BuiltQuery::CreateTable(stmt) => match backend {
-                DatabaseBackend::Postgres => stmt.to_string(PostgresQueryBuilder),
-                DatabaseBackend::MySql => stmt.to_string(MysqlQueryBuilder),
-                DatabaseBackend::Sqlite => stmt.to_string(SqliteQueryBuilder),
+            BuiltQuery::CreateTablePerBackend {
+                postgres,
+                mysql,
+                sqlite,
+            } => match backend {
+                DatabaseBackend::Postgres => postgres.to_string(PostgresQueryBuilder),
+                DatabaseBackend::MySql => mysql.to_string(MysqlQueryBuilder),
+                DatabaseBackend::Sqlite => sqlite.to_string(SqliteQueryBuilder),
+            },
+            BuiltQuery::AlterTablePerBackend {
+                postgres,
+                mysql,
+                sqlite,
+            } => match backend {
+                DatabaseBackend::Postgres => postgres.to_string(PostgresQueryBuilder),
+                DatabaseBackend::MySql => mysql.to_string(MysqlQueryBuilder),
+                DatabaseBackend::Sqlite => sqlite.to_string(SqliteQueryBuilder),
             },
             BuiltQuery::DropTable(stmt) => match backend {
                 DatabaseBackend::Postgres => stmt.to_string(PostgresQueryBuilder),
@@ -77,7 +130,11 @@ impl BuiltQuery {
                 DatabaseBackend::MySql => stmt.to_string(MysqlQueryBuilder),
                 DatabaseBackend::Sqlite => stmt.to_string(SqliteQueryBuilder),
             },
-            BuiltQuery::Raw(sql) => sql.clone(),
+            BuiltQuery::Raw(raw) => match backend {
+                DatabaseBackend::Postgres => raw.postgres.clone(),
+                DatabaseBackend::MySql => raw.mysql.clone(),
+                DatabaseBackend::Sqlite => raw.sqlite.clone(),
+            },
         }
     }
 
@@ -191,8 +248,25 @@ fn reference_action_sql(action: &ReferenceAction) -> &'static str {
     }
 }
 
-/// Build sea_query ColumnDef from vespertide ColumnDef
-fn build_sea_column_def(column: &ColumnDef) -> SeaColumnDef {
+/// Convert a default value string to the appropriate backend-specific expression
+fn convert_default_for_backend(default: &str, backend: DatabaseBackend) -> String {
+    match default {
+        "gen_random_uuid()" => match backend {
+            DatabaseBackend::Postgres => "gen_random_uuid()".to_string(),
+            DatabaseBackend::MySql => "(UUID())".to_string(),
+            DatabaseBackend::Sqlite => "(lower(hex(randomblob(16))))".to_string(),
+        },
+        "current_timestamp()" | "now()" | "CURRENT_TIMESTAMP" => match backend {
+            DatabaseBackend::Postgres => "CURRENT_TIMESTAMP".to_string(),
+            DatabaseBackend::MySql => "CURRENT_TIMESTAMP".to_string(),
+            DatabaseBackend::Sqlite => "CURRENT_TIMESTAMP".to_string(),
+        },
+        other => other.to_string(),
+    }
+}
+
+/// Build sea_query ColumnDef from vespertide ColumnDef for a specific backend
+fn build_sea_column_def(backend: DatabaseBackend, column: &ColumnDef) -> SeaColumnDef {
     let mut col = SeaColumnDef::new(Alias::new(&column.name));
     apply_column_type(&mut col, &column.r#type);
 
@@ -201,7 +275,8 @@ fn build_sea_column_def(column: &ColumnDef) -> SeaColumnDef {
     }
 
     if let Some(default) = &column.default {
-        col.default(sea_query::Expr::cust(default));
+        let converted = convert_default_for_backend(default, backend);
+        col.default(Into::<SimpleExpr>::into(sea_query::Expr::cust(converted)));
     }
 
     col
@@ -286,7 +361,7 @@ pub fn build_action_queries(action: &MigrationAction) -> Result<Vec<BuiltQuery>,
             Ok(vec![BuiltQuery::RenameTable(Box::new(stmt))])
         }
 
-        MigrationAction::RawSql { sql } => Ok(vec![BuiltQuery::Raw(sql.clone())]),
+        MigrationAction::RawSql { sql } => Ok(vec![BuiltQuery::Raw(RawSql::uniform(sql.clone()))]),
 
         MigrationAction::AddConstraint { table, constraint } => {
             build_add_constraint(table, constraint)
@@ -298,11 +373,12 @@ pub fn build_action_queries(action: &MigrationAction) -> Result<Vec<BuiltQuery>,
     }
 }
 
-fn build_create_table(
+fn build_create_table_for_backend(
+    backend: DatabaseBackend,
     table: &str,
     columns: &[ColumnDef],
     constraints: &[TableConstraint],
-) -> Result<BuiltQuery, QueryError> {
+) -> TableCreateStatement {
     let mut stmt = Table::create().table(Alias::new(table)).to_owned();
 
     let has_table_primary_key = constraints
@@ -311,7 +387,7 @@ fn build_create_table(
 
     // Add columns
     for column in columns {
-        let mut col = build_sea_column_def(column);
+        let mut col = build_sea_column_def(backend, column);
 
         // Check for inline primary key
         if column.primary_key.is_some() && !has_table_primary_key {
@@ -390,7 +466,46 @@ fn build_create_table(
         }
     }
 
-    Ok(BuiltQuery::CreateTable(Box::new(stmt)))
+    stmt
+}
+
+fn build_create_table(
+    table: &str,
+    columns: &[ColumnDef],
+    constraints: &[TableConstraint],
+) -> Result<BuiltQuery, QueryError> {
+    Ok(BuiltQuery::CreateTablePerBackend {
+        postgres: Box::new(build_create_table_for_backend(
+            DatabaseBackend::Postgres,
+            table,
+            columns,
+            constraints,
+        )),
+        mysql: Box::new(build_create_table_for_backend(
+            DatabaseBackend::MySql,
+            table,
+            columns,
+            constraints,
+        )),
+        sqlite: Box::new(build_create_table_for_backend(
+            DatabaseBackend::Sqlite,
+            table,
+            columns,
+            constraints,
+        )),
+    })
+}
+
+fn build_add_column_alter_for_backend(
+    backend: DatabaseBackend,
+    table: &str,
+    column: &ColumnDef,
+) -> TableAlterStatement {
+    let col_def = build_sea_column_def(backend, column);
+    Table::alter()
+        .table(Alias::new(table))
+        .add_column(col_def)
+        .to_owned()
 }
 
 fn build_add_column(
@@ -407,33 +522,72 @@ fn build_add_column(
         // Add as nullable first
         let mut temp_col = column.clone();
         temp_col.nullable = true;
-        let col_def = build_sea_column_def(&temp_col);
 
-        let stmt = Table::alter()
-            .table(Alias::new(table))
-            .add_column(col_def)
-            .to_owned();
-        stmts.push(BuiltQuery::AlterTable(Box::new(stmt)));
+        stmts.push(BuiltQuery::AlterTablePerBackend {
+            postgres: Box::new(build_add_column_alter_for_backend(
+                DatabaseBackend::Postgres,
+                table,
+                &temp_col,
+            )),
+            mysql: Box::new(build_add_column_alter_for_backend(
+                DatabaseBackend::MySql,
+                table,
+                &temp_col,
+            )),
+            sqlite: Box::new(build_add_column_alter_for_backend(
+                DatabaseBackend::Sqlite,
+                table,
+                &temp_col,
+            )),
+        });
 
         // Backfill with provided value
         if let Some(fill) = fill_with {
-            let sql = format!("UPDATE \"{}\" SET \"{}\" = {}", table, column.name, fill);
-            stmts.push(BuiltQuery::Raw(sql));
+            // PostgreSQL and SQLite use double quotes, MySQL uses backticks
+            let pg_sql = format!("UPDATE \"{}\" SET \"{}\" = {}", table, column.name, fill);
+            let mysql_sql = format!("UPDATE `{}` SET `{}` = {}", table, column.name, fill);
+            stmts.push(BuiltQuery::Raw(RawSql::per_backend(
+                pg_sql.clone(),
+                mysql_sql,
+                pg_sql,
+            )));
         }
 
-        // Set NOT NULL
-        let sql = format!(
+        // Set NOT NULL - different syntax per backend
+        let pg_sql = format!(
             "ALTER TABLE \"{}\" ALTER COLUMN \"{}\" SET NOT NULL",
             table, column.name
         );
-        stmts.push(BuiltQuery::Raw(sql));
+        let mysql_sql = format!(
+            "ALTER TABLE `{}` MODIFY COLUMN `{}` NOT NULL",
+            table, column.name
+        );
+        // SQLite doesn't support ALTER COLUMN, would need table recreation
+        let sqlite_sql = format!(
+            "-- SQLite: ALTER TABLE \"{}\" requires table recreation to set NOT NULL on \"{}\"",
+            table, column.name
+        );
+        stmts.push(BuiltQuery::Raw(RawSql::per_backend(
+            pg_sql, mysql_sql, sqlite_sql,
+        )));
     } else {
-        let col_def = build_sea_column_def(column);
-        let stmt = Table::alter()
-            .table(Alias::new(table))
-            .add_column(col_def)
-            .to_owned();
-        stmts.push(BuiltQuery::AlterTable(Box::new(stmt)));
+        stmts.push(BuiltQuery::AlterTablePerBackend {
+            postgres: Box::new(build_add_column_alter_for_backend(
+                DatabaseBackend::Postgres,
+                table,
+                column,
+            )),
+            mysql: Box::new(build_add_column_alter_for_backend(
+                DatabaseBackend::MySql,
+                table,
+                column,
+            )),
+            sqlite: Box::new(build_add_column_alter_for_backend(
+                DatabaseBackend::Sqlite,
+                table,
+                column,
+            )),
+        });
     }
 
     Ok(stmts)
@@ -446,29 +600,55 @@ fn build_add_constraint(
     match constraint {
         TableConstraint::PrimaryKey { columns, .. } => {
             // Use raw SQL for adding primary key constraint
-            let cols = columns
+            let pg_cols = columns
                 .iter()
                 .map(|c| format!("\"{}\"", c))
                 .collect::<Vec<_>>()
                 .join(", ");
-            let sql = format!("ALTER TABLE \"{}\" ADD PRIMARY KEY ({})", table, cols);
-            Ok(vec![BuiltQuery::Raw(sql)])
+            let mysql_cols = columns
+                .iter()
+                .map(|c| format!("`{}`", c))
+                .collect::<Vec<_>>()
+                .join(", ");
+            Ok(vec![BuiltQuery::Raw(RawSql::per_backend(
+                format!("ALTER TABLE \"{}\" ADD PRIMARY KEY ({})", table, pg_cols),
+                format!("ALTER TABLE `{}` ADD PRIMARY KEY ({})", table, mysql_cols),
+                format!("ALTER TABLE \"{}\" ADD PRIMARY KEY ({})", table, pg_cols),
+            ))])
         }
         TableConstraint::Unique { name, columns } => {
-            let cols = columns
+            let pg_cols = columns
                 .iter()
                 .map(|c| format!("\"{}\"", c))
                 .collect::<Vec<_>>()
                 .join(", ");
-            let sql = if let Some(n) = name {
-                format!(
-                    "ALTER TABLE \"{}\" ADD CONSTRAINT \"{}\" UNIQUE ({})",
-                    table, n, cols
+            let mysql_cols = columns
+                .iter()
+                .map(|c| format!("`{}`", c))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let (pg_sql, mysql_sql) = if let Some(n) = name {
+                (
+                    format!(
+                        "ALTER TABLE \"{}\" ADD CONSTRAINT \"{}\" UNIQUE ({})",
+                        table, n, pg_cols
+                    ),
+                    format!(
+                        "ALTER TABLE `{}` ADD CONSTRAINT `{}` UNIQUE ({})",
+                        table, n, mysql_cols
+                    ),
                 )
             } else {
-                format!("ALTER TABLE \"{}\" ADD UNIQUE ({})", table, cols)
+                (
+                    format!("ALTER TABLE \"{}\" ADD UNIQUE ({})", table, pg_cols),
+                    format!("ALTER TABLE `{}` ADD UNIQUE ({})", table, mysql_cols),
+                )
             };
-            Ok(vec![BuiltQuery::Raw(sql)])
+            Ok(vec![BuiltQuery::Raw(RawSql::per_backend(
+                pg_sql.clone(),
+                mysql_sql,
+                pg_sql,
+            ))])
         }
         TableConstraint::ForeignKey {
             name,
@@ -481,44 +661,82 @@ fn build_add_constraint(
             // Use Raw SQL for FK creation to avoid SQLite panic from sea-query
             // SQLite doesn't support ALTER TABLE ADD CONSTRAINT for FK, but we generate
             // the SQL anyway - runtime will need to handle SQLite FK differently (table recreation)
-            let cols = columns
+            let pg_cols = columns
                 .iter()
                 .map(|c| format!("\"{}\"", c))
                 .collect::<Vec<_>>()
                 .join(", ");
-            let ref_cols = ref_columns
+            let mysql_cols = columns
+                .iter()
+                .map(|c| format!("`{}`", c))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let pg_ref_cols = ref_columns
                 .iter()
                 .map(|c| format!("\"{}\"", c))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let mysql_ref_cols = ref_columns
+                .iter()
+                .map(|c| format!("`{}`", c))
                 .collect::<Vec<_>>()
                 .join(", ");
 
-            let mut sql = if let Some(n) = name {
-                format!(
-                    "ALTER TABLE \"{}\" ADD CONSTRAINT \"{}\" FOREIGN KEY ({}) REFERENCES \"{}\" ({})",
-                    table, n, cols, ref_table, ref_cols
+            let (mut pg_sql, mut mysql_sql) = if let Some(n) = name {
+                (
+                    format!(
+                        "ALTER TABLE \"{}\" ADD CONSTRAINT \"{}\" FOREIGN KEY ({}) REFERENCES \"{}\" ({})",
+                        table, n, pg_cols, ref_table, pg_ref_cols
+                    ),
+                    format!(
+                        "ALTER TABLE `{}` ADD CONSTRAINT `{}` FOREIGN KEY ({}) REFERENCES `{}` ({})",
+                        table, n, mysql_cols, ref_table, mysql_ref_cols
+                    ),
                 )
             } else {
-                format!(
-                    "ALTER TABLE \"{}\" ADD FOREIGN KEY ({}) REFERENCES \"{}\" ({})",
-                    table, cols, ref_table, ref_cols
+                (
+                    format!(
+                        "ALTER TABLE \"{}\" ADD FOREIGN KEY ({}) REFERENCES \"{}\" ({})",
+                        table, pg_cols, ref_table, pg_ref_cols
+                    ),
+                    format!(
+                        "ALTER TABLE `{}` ADD FOREIGN KEY ({}) REFERENCES `{}` ({})",
+                        table, mysql_cols, ref_table, mysql_ref_cols
+                    ),
                 )
             };
 
             if let Some(action) = on_delete {
-                sql.push_str(&format!(" ON DELETE {}", reference_action_sql(action)));
+                let action_sql = format!(" ON DELETE {}", reference_action_sql(action));
+                pg_sql.push_str(&action_sql);
+                mysql_sql.push_str(&action_sql);
             }
             if let Some(action) = on_update {
-                sql.push_str(&format!(" ON UPDATE {}", reference_action_sql(action)));
+                let action_sql = format!(" ON UPDATE {}", reference_action_sql(action));
+                pg_sql.push_str(&action_sql);
+                mysql_sql.push_str(&action_sql);
             }
 
-            Ok(vec![BuiltQuery::Raw(sql)])
+            Ok(vec![BuiltQuery::Raw(RawSql::per_backend(
+                pg_sql.clone(),
+                mysql_sql,
+                pg_sql,
+            ))])
         }
         TableConstraint::Check { name, expr } => {
-            let sql = format!(
+            let pg_sql = format!(
                 "ALTER TABLE \"{}\" ADD CONSTRAINT \"{}\" CHECK ({})",
                 table, name, expr
             );
-            Ok(vec![BuiltQuery::Raw(sql)])
+            let mysql_sql = format!(
+                "ALTER TABLE `{}` ADD CONSTRAINT `{}` CHECK ({})",
+                table, name, expr
+            );
+            Ok(vec![BuiltQuery::Raw(RawSql::per_backend(
+                pg_sql.clone(),
+                mysql_sql,
+                pg_sql,
+            ))])
         }
     }
 }
@@ -529,11 +747,16 @@ fn build_remove_constraint(
 ) -> Result<Vec<BuiltQuery>, QueryError> {
     match constraint {
         TableConstraint::PrimaryKey { .. } => {
-            let sql = format!(
+            let pg_sql = format!(
                 "ALTER TABLE \"{}\" DROP CONSTRAINT \"{}_pkey\"",
                 table, table
             );
-            Ok(vec![BuiltQuery::Raw(sql)])
+            let mysql_sql = format!("ALTER TABLE `{}` DROP PRIMARY KEY", table);
+            Ok(vec![BuiltQuery::Raw(RawSql::per_backend(
+                pg_sql.clone(),
+                mysql_sql,
+                pg_sql,
+            ))])
         }
         TableConstraint::Unique { name, columns } => {
             let constraint_name = if let Some(n) = name {
@@ -541,11 +764,16 @@ fn build_remove_constraint(
             } else {
                 format!("{}_{}_key", table, columns.join("_"))
             };
-            let sql = format!(
+            let pg_sql = format!(
                 "ALTER TABLE \"{}\" DROP CONSTRAINT \"{}\"",
                 table, constraint_name
             );
-            Ok(vec![BuiltQuery::Raw(sql)])
+            let mysql_sql = format!("ALTER TABLE `{}` DROP INDEX `{}`", table, constraint_name);
+            Ok(vec![BuiltQuery::Raw(RawSql::per_backend(
+                pg_sql.clone(),
+                mysql_sql,
+                pg_sql,
+            ))])
         }
         TableConstraint::ForeignKey { name, columns, .. } => {
             // Use Raw SQL to avoid SQLite panic from sea-query
@@ -555,15 +783,28 @@ fn build_remove_constraint(
             } else {
                 format!("{}_{}_fkey", table, columns.join("_"))
             };
-            let sql = format!(
+            let pg_sql = format!(
                 "ALTER TABLE \"{}\" DROP CONSTRAINT \"{}\"",
                 table, constraint_name
             );
-            Ok(vec![BuiltQuery::Raw(sql)])
+            let mysql_sql = format!(
+                "ALTER TABLE `{}` DROP FOREIGN KEY `{}`",
+                table, constraint_name
+            );
+            Ok(vec![BuiltQuery::Raw(RawSql::per_backend(
+                pg_sql.clone(),
+                mysql_sql,
+                pg_sql,
+            ))])
         }
         TableConstraint::Check { name, .. } => {
-            let sql = format!("ALTER TABLE \"{}\" DROP CONSTRAINT \"{}\"", table, name);
-            Ok(vec![BuiltQuery::Raw(sql)])
+            let pg_sql = format!("ALTER TABLE \"{}\" DROP CONSTRAINT \"{}\"", table, name);
+            let mysql_sql = format!("ALTER TABLE `{}` DROP CHECK `{}`", table, name);
+            Ok(vec![BuiltQuery::Raw(RawSql::per_backend(
+                pg_sql.clone(),
+                mysql_sql,
+                pg_sql,
+            ))])
         }
     }
 }
@@ -1430,7 +1671,7 @@ mod tests {
             },
         },
         DatabaseBackend::MySql,
-        &["ALTER TABLE \"users\" ADD PRIMARY KEY (\"id\")"]
+        &["ALTER TABLE `users` ADD PRIMARY KEY (`id`)"]
     )]
     #[case::add_constraint_primary_key_sqlite(
         "add_constraint_primary_key_sqlite",
@@ -1466,7 +1707,7 @@ mod tests {
             },
         },
         DatabaseBackend::MySql,
-        &["ADD CONSTRAINT \"uq_email\" UNIQUE (\"email\")"]
+        &["ADD CONSTRAINT `uq_email` UNIQUE (`email`)"]
     )]
     #[case::add_constraint_unique_named_sqlite(
         "add_constraint_unique_named_sqlite",
@@ -1502,7 +1743,7 @@ mod tests {
             },
         },
         DatabaseBackend::MySql,
-        &["ADD UNIQUE (\"email\")"]
+        &["ADD UNIQUE (`email`)"]
     )]
     #[case::add_constraint_unique_unnamed_sqlite(
         "add_constraint_unique_unnamed_sqlite",
@@ -1546,7 +1787,7 @@ mod tests {
             },
         },
         DatabaseBackend::MySql,
-        &["FOREIGN KEY (\"user_id\")", "REFERENCES \"users\" (\"id\")", "ON DELETE CASCADE", "ON UPDATE RESTRICT"]
+        &["FOREIGN KEY (`user_id`)", "REFERENCES `users` (`id`)", "ON DELETE CASCADE", "ON UPDATE RESTRICT"]
     )]
     #[case::add_constraint_foreign_key_unnamed_postgres(
         "add_constraint_foreign_key_unnamed_postgres",
@@ -1578,7 +1819,7 @@ mod tests {
             },
         },
         DatabaseBackend::MySql,
-        &["ADD FOREIGN KEY (\"user_id\") REFERENCES \"users\" (\"id\")"]
+        &["ADD FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)"]
     )]
     #[case::add_constraint_foreign_key_unnamed_sqlite(
         "add_constraint_foreign_key_unnamed_sqlite",
@@ -1634,7 +1875,7 @@ mod tests {
             },
         },
         DatabaseBackend::MySql,
-        &["ADD CONSTRAINT \"chk_age\" CHECK (age > 0)"]
+        &["ADD CONSTRAINT `chk_age` CHECK (age > 0)"]
     )]
     #[case::add_constraint_check_named_sqlite(
         "add_constraint_check_named_sqlite",
@@ -1670,7 +1911,7 @@ mod tests {
             },
         },
         DatabaseBackend::MySql,
-        &["DROP CONSTRAINT \"users_pkey\""]
+        &["DROP PRIMARY KEY"]
     )]
     #[case::remove_constraint_primary_key_sqlite(
         "remove_constraint_primary_key_sqlite",
@@ -1706,7 +1947,7 @@ mod tests {
             },
         },
         DatabaseBackend::MySql,
-        &["DROP CONSTRAINT \"uq_email\""]
+        &["DROP INDEX `uq_email`"]
     )]
     #[case::remove_constraint_unique_named_sqlite(
         "remove_constraint_unique_named_sqlite",
@@ -1742,7 +1983,7 @@ mod tests {
             },
         },
         DatabaseBackend::MySql,
-        &["DROP CONSTRAINT \"users_email_key\""]
+        &["DROP INDEX `users_email_key`"]
     )]
     #[case::remove_constraint_unique_unnamed_sqlite(
         "remove_constraint_unique_unnamed_sqlite",
@@ -1786,7 +2027,7 @@ mod tests {
             },
         },
         DatabaseBackend::MySql,
-        &["DROP CONSTRAINT \"fk_user\""]
+        &["DROP FOREIGN KEY `fk_user`"]
     )]
     #[case::remove_constraint_foreign_key_named_sqlite(
         "remove_constraint_foreign_key_named_sqlite",
@@ -1834,7 +2075,7 @@ mod tests {
             },
         },
         DatabaseBackend::MySql,
-        &["DROP CONSTRAINT \"posts_user_id_fkey\""]
+        &["DROP FOREIGN KEY `posts_user_id_fkey`"]
     )]
     #[case::remove_constraint_foreign_key_unnamed_sqlite(
         "remove_constraint_foreign_key_unnamed_sqlite",
@@ -1874,7 +2115,7 @@ mod tests {
             },
         },
         DatabaseBackend::MySql,
-        &["DROP CONSTRAINT \"chk_age\""]
+        &["DROP CHECK `chk_age`"]
     )]
     #[case::remove_constraint_check_named_sqlite(
         "remove_constraint_check_named_sqlite",
@@ -1937,26 +2178,44 @@ mod tests {
         });
     }
 
+    fn create_table_stmt() -> TableCreateStatement {
+        Table::create()
+            .table(Alias::new("t"))
+            .col(SeaColumnDef::new(Alias::new("id")).integer().to_owned())
+            .to_owned()
+    }
+
     #[rstest]
     #[case::create_table_query_postgres(
         "create_table_query_postgres",
-        BuiltQuery::CreateTable(Box::new(
-            Table::create()
-                .table(Alias::new("t"))
-                .col(SeaColumnDef::new(Alias::new("id")).integer().to_owned())
-                .to_owned(),
-        )),
+        BuiltQuery::CreateTablePerBackend {
+            postgres: Box::new(create_table_stmt()),
+            mysql: Box::new(create_table_stmt()),
+            sqlite: Box::new(create_table_stmt()),
+        },
         DatabaseBackend::Postgres,
         &["CREATE TABLE \"t\""]
     )]
-    #[case::create_table_query_mysql("create_table_query_mysql", BuiltQuery::CreateTable(Box::new(Table::create()
-            .table(Alias::new("t"))
-            .col(SeaColumnDef::new(Alias::new("id")).integer().to_owned())
-            .to_owned())),DatabaseBackend::MySql, &["CREATE TABLE `t`"])]
-    #[case::create_table_query_sqlite("create_table_query_sqlite", BuiltQuery::CreateTable(Box::new(Table::create()
-            .table(Alias::new("t"))
-            .col(SeaColumnDef::new(Alias::new("id")).integer().to_owned())
-            .to_owned())),DatabaseBackend::Sqlite, &["CREATE TABLE \"t\""])]
+    #[case::create_table_query_mysql(
+        "create_table_query_mysql",
+        BuiltQuery::CreateTablePerBackend {
+            postgres: Box::new(create_table_stmt()),
+            mysql: Box::new(create_table_stmt()),
+            sqlite: Box::new(create_table_stmt()),
+        },
+        DatabaseBackend::MySql,
+        &["CREATE TABLE `t`"]
+    )]
+    #[case::create_table_query_sqlite(
+        "create_table_query_sqlite",
+        BuiltQuery::CreateTablePerBackend {
+            postgres: Box::new(create_table_stmt()),
+            mysql: Box::new(create_table_stmt()),
+            sqlite: Box::new(create_table_stmt()),
+        },
+        DatabaseBackend::Sqlite,
+        &["CREATE TABLE \"t\""]
+    )]
     #[case::drop_table_query_postgres(
         "drop_table_query_postgres",
         BuiltQuery::DropTable(Box::new(
@@ -1969,12 +2228,12 @@ mod tests {
     #[case::drop_table_query_sqlite("drop_table_query_sqlite", BuiltQuery::DropTable(Box::new(Table::drop().table(Alias::new("t")).to_owned())), DatabaseBackend::Sqlite, &["DROP TABLE \"t\""])]
     #[case::raw_query_postgres(
         "raw_query_postgres",
-        BuiltQuery::Raw("SELECT 1".into()),
+        BuiltQuery::Raw(RawSql::uniform("SELECT 1".into())),
         DatabaseBackend::Postgres,
         &["SELECT 1"]
     )]
-    #[case::raw_query_mysql("raw_query_mysql", BuiltQuery::Raw("SELECT 1".into()), DatabaseBackend::MySql, &["SELECT 1"])]
-    #[case::raw_query_sqlite("raw_query_sqlite", BuiltQuery::Raw("SELECT 1".into()), DatabaseBackend::Sqlite, &["SELECT 1"])]
+    #[case::raw_query_mysql("raw_query_mysql", BuiltQuery::Raw(RawSql::uniform("SELECT 1".into())), DatabaseBackend::MySql, &["SELECT 1"])]
+    #[case::raw_query_sqlite("raw_query_sqlite", BuiltQuery::Raw(RawSql::uniform("SELECT 1".into())), DatabaseBackend::Sqlite, &["SELECT 1"])]
     #[case::alter_table_postgres("alter_table_postgres", BuiltQuery::AlterTable(Box::new(Table::alter()
             .table(Alias::new("t"))
             .add_column(SeaColumnDef::new(Alias::new("c")).integer().to_owned())

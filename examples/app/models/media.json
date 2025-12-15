@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
-  "name": "user",
+  "name": "media",
   "columns": [
     {
       "name": "id",
@@ -10,26 +10,30 @@
       "primary_key": true
     },
     {
-      "name": "email",
-      "type": { "kind": "varchar", "length": 255 },
-      "nullable": false,
-      "unique": true,
-      "index": true
-    },
-    {
-      "name": "password",
-      "type": { "kind": "varchar", "length": 255 },
-      "nullable": false
-    },
-    {
       "name": "name",
       "type": { "kind": "varchar", "length": 100 },
       "nullable": false
     },
     {
-      "name": "profile_image",
+      "name": "description",
       "type": "text",
       "nullable": true
+    },
+    {
+      "name": "logo",
+      "type": "text",
+      "nullable": true
+    },
+    {
+      "name": "owner_id",
+      "type": "uuid",
+      "nullable": false,
+      "foreign_key": {
+        "ref_table": "user",
+        "ref_columns": ["id"],
+        "on_delete": "cascade"
+      },
+      "index": true
     },
     {
       "name": "created_at",

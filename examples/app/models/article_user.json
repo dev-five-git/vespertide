@@ -1,0 +1,50 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
+  "name": "article_user",
+  "columns": [
+    {
+      "name": "article_id",
+      "type": "uuid",
+      "nullable": false,
+      "foreign_key": {
+        "ref_table": "article",
+        "ref_columns": ["id"],
+        "on_delete": "cascade"
+      },
+      "index": true,
+      "primary_key": true
+    },
+    {
+      "name": "user_id",
+      "type": "uuid",
+      "nullable": false,
+      "foreign_key": {
+        "ref_table": "user",
+        "ref_columns": ["id"],
+        "on_delete": "cascade"
+      },
+      "index": true,
+      "primary_key": true
+    },
+    {
+      "name": "author_order",
+      "type": "integer",
+      "nullable": false,
+      "default": "1"
+    },
+    {
+      "name": "role",
+      "type": { "kind": "varchar", "length": 20 },
+      "nullable": false,
+      "default": "'contributor'"
+    },
+    {
+      "name": "created_at",
+      "type": "timestamptz",
+      "nullable": false,
+      "default": "now()"
+    }
+  ],
+  "constraints": [],
+  "indexes": []
+}
