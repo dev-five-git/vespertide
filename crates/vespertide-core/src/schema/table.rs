@@ -90,8 +90,6 @@ impl TableDef {
         }
 
         // Add primary key constraint if any columns have inline pk and no existing pk constraint.
-        // Inline 선언이든 테이블 제약이든 의미를 동일하게 맞추기 위해, 항상 테이블 제약으로 승격해 둔다.
-        // (기존에 테이블 PK가 있으면 중복 추가하지 않음)
         if !pk_columns.is_empty() {
             let has_pk_constraint = constraints
                 .iter()
