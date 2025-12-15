@@ -389,7 +389,13 @@ mod tests {
                 expr: "age > 0".into(),
             },
         },
-        format!("{} {} {} {}", "Remove constraint:".bright_red(), "CHECK (age > 0)".bright_cyan().bold(), "from".bright_white(), "users".bright_cyan())
+        format!(
+            "{} {} {} {}",
+            "Remove constraint:".bright_red(),
+            "check_age CHECK (age > 0)".bright_cyan().bold(),
+            "from".bright_white(),
+            "users".bright_cyan()
+        )
     )]
     #[serial]
     fn format_action_cases(#[case] action: MigrationAction, #[case] expected: String) {
