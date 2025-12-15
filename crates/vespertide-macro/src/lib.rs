@@ -123,12 +123,8 @@ pub fn vespertide_migration(input: TokenStream) -> TokenStream {
                 )*
 
                 // Insert version record for this migration
-                let insert_sql = match backend {
-                    sea_orm::DatabaseBackend::Postgres => format!("INSERT INTO \"{}\" (version) VALUES ({})", version_table, #version),
-                    sea_orm::DatabaseBackend::MySql => format!("INSERT INTO `{}` (version) VALUES ({})", version_table, #version),
-                    sea_orm::DatabaseBackend::Sqlite => format!("INSERT INTO \"{}\" (version) VALUES ({})", version_table, #version),
-                    _ => format!("INSERT INTO \"{}\" (version) VALUES ({})", version_table, #version), // Fallback
-                };
+                let q = if matches!(backend, sea_orm::DatabaseBackend::MySql) { '`' } else { '"' };
+                let insert_sql = format!("INSERT INTO {q}{}{q} (version) VALUES ({})", version_table, #version);
                 let stmt = sea_orm::Statement::from_string(backend, insert_sql);
                 txn.execute_raw(stmt).await.map_err(|e| {
                     ::vespertide::MigrationError::DatabaseError(format!("Failed to insert version: {}", e))
@@ -154,36 +150,18 @@ pub fn vespertide_migration(input: TokenStream) -> TokenStream {
 
             // Create version table if it does not exist
             // Table structure: version (INTEGER PRIMARY KEY), created_at (timestamp)
-            let create_table_sql = match backend {
-                sea_orm::DatabaseBackend::Postgres => format!(
-                    "CREATE TABLE IF NOT EXISTS \"{}\" (version INTEGER PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
-                    version_table
-                ),
-                sea_orm::DatabaseBackend::MySql => format!(
-                    "CREATE TABLE IF NOT EXISTS `{}` (version INTEGER PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
-                    version_table
-                ),
-                sea_orm::DatabaseBackend::Sqlite => format!(
-                    "CREATE TABLE IF NOT EXISTS \"{}\" (version INTEGER PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
-                    version_table
-                ),
-                _ => format!(
-                    "CREATE TABLE IF NOT EXISTS \"{}\" (version INTEGER PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
-                    version_table
-                ), // Fallback
-            };
+            let q = if matches!(backend, sea_orm::DatabaseBackend::MySql) { '`' } else { '"' };
+            let create_table_sql = format!(
+                "CREATE TABLE IF NOT EXISTS {q}{}{q} (version INTEGER PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
+                version_table
+            );
             let stmt = sea_orm::Statement::from_string(backend, create_table_sql);
             __pool.execute_raw(stmt).await.map_err(|e| {
                 ::vespertide::MigrationError::DatabaseError(format!("Failed to create version table: {}", e))
             })?;
 
             // Read current maximum version (latest applied migration)
-            let select_sql = match backend {
-                sea_orm::DatabaseBackend::Postgres => format!("SELECT MAX(version) as version FROM \"{}\"", version_table),
-                sea_orm::DatabaseBackend::MySql => format!("SELECT MAX(version) as version FROM `{}`", version_table),
-                sea_orm::DatabaseBackend::Sqlite => format!("SELECT MAX(version) as version FROM \"{}\"", version_table),
-                _ => format!("SELECT MAX(version) as version FROM \"{}\"", version_table), // Fallback
-            };
+            let select_sql = format!("SELECT MAX(version) as version FROM {q}{}{q}", version_table);
             let stmt = sea_orm::Statement::from_string(backend, select_sql);
             let version_result = __pool.query_one_raw(stmt).await.map_err(|e| {
                 ::vespertide::MigrationError::DatabaseError(format!("Failed to read version: {}", e))
