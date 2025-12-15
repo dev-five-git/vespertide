@@ -35,11 +35,7 @@ fn emit_sql(plan: &vespertide_core::MigrationPlan) -> Result<()> {
         plan.version.to_string().bright_magenta()
     );
     if let Some(created_at) = &plan.created_at {
-        println!(
-            "{} {}",
-            "Created at:".bright_cyan(),
-            created_at.bright_white()
-        );
+        println!("{} {}", "Created at:".bright_cyan(), created_at.bright_white());
     }
     if let Some(comment) = &plan.comment {
         println!("{} {}", "Comment:".bright_cyan(), comment.bright_white());
@@ -62,9 +58,7 @@ fn emit_sql(plan: &vespertide_core::MigrationPlan) -> Result<()> {
             (i + 1).to_string().bright_magenta().bold(),
             q.sql().trim().bright_white()
         );
-        if !q.binds().is_empty() {
-            println!("   {} {:?}", "binds:".bright_cyan(), q.binds());
-        }
+        println!("   {} {:?}", "binds:".bright_cyan(), q.binds());
     }
 
     Ok(())
@@ -137,30 +131,27 @@ mod tests {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
-        let cfg = write_config();
+        let _cfg = write_config();
         write_model("users");
-        fs::create_dir_all(cfg.migrations_dir()).unwrap();
 
+        // No migrations yet -> plan will create table
         let result = cmd_sql();
         assert!(result.is_ok());
     }
 
     #[test]
-    fn emit_sql_no_actions_early_return() {
+    #[serial]
+    fn cmd_sql_no_changes() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+
+        let cfg = write_config();
+        write_model("users");
+
+        // Create initial migration to establish baseline
         let plan = MigrationPlan {
             comment: None,
             created_at: None,
-            version: 1,
-            actions: vec![],
-        };
-        assert!(emit_sql(&plan).is_ok());
-    }
-
-    #[test]
-    fn emit_sql_with_metadata() {
-        let plan = MigrationPlan {
-            comment: Some("init".into()),
-            created_at: Some("2024-01-01T00:00:00Z".into()),
             version: 1,
             actions: vec![MigrationAction::CreateTable {
                 table: "users".into(),
@@ -181,6 +172,27 @@ mod tests {
                 }],
             }],
         };
-        assert!(emit_sql(&plan).is_ok());
+        fs::create_dir_all(cfg.migrations_dir()).unwrap();
+        let path = cfg.migrations_dir().join("0001_init.json");
+        fs::write(path, serde_json::to_string_pretty(&plan).unwrap()).unwrap();
+
+        let result = cmd_sql();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn emit_sql_prints_created_at_and_comment() {
+        let plan = MigrationPlan {
+            comment: Some("with comment".into()),
+            created_at: Some("2024-01-02T00:00:00Z".into()),
+            version: 1,
+            actions: vec![MigrationAction::RawSql {
+                sql: "SELECT 1;".into(),
+            }],
+        };
+
+        let result = emit_sql(&plan);
+        assert!(result.is_ok());
     }
 }
