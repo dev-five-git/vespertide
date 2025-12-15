@@ -778,6 +778,42 @@ mod tests {
         apply_column_type(&mut col, &ty);
     }
 
+    #[rstest]
+    #[case(SimpleColumnType::SmallInt)]
+    #[case(SimpleColumnType::Integer)]
+    #[case(SimpleColumnType::BigInt)]
+    #[case(SimpleColumnType::Real)]
+    #[case(SimpleColumnType::DoublePrecision)]
+    #[case(SimpleColumnType::Text)]
+    #[case(SimpleColumnType::Boolean)]
+    #[case(SimpleColumnType::Date)]
+    #[case(SimpleColumnType::Time)]
+    #[case(SimpleColumnType::Timestamp)]
+    #[case(SimpleColumnType::Timestamptz)]
+    #[case(SimpleColumnType::Interval)]
+    #[case(SimpleColumnType::Bytea)]
+    #[case(SimpleColumnType::Uuid)]
+    #[case(SimpleColumnType::Json)]
+    #[case(SimpleColumnType::Jsonb)]
+    #[case(SimpleColumnType::Inet)]
+    #[case(SimpleColumnType::Cidr)]
+    #[case(SimpleColumnType::Macaddr)]
+    #[case(SimpleColumnType::Xml)]
+    fn test_all_simple_types_cover_branches(#[case] ty: SimpleColumnType) {
+        let mut col = SeaColumnDef::new(Alias::new("t"));
+        apply_column_type(&mut col, &ColumnType::Simple(ty));
+    }
+
+    #[rstest]
+    #[case(ComplexColumnType::Varchar { length: 42 })]
+    #[case(ComplexColumnType::Numeric { precision: 8, scale: 3 })]
+    #[case(ComplexColumnType::Char { length: 3 })]
+    #[case(ComplexColumnType::Custom { custom_type: "GEOGRAPHY".into() })]
+    fn test_all_complex_types_cover_branches(#[case] ty: ComplexColumnType) {
+        let mut col = SeaColumnDef::new(Alias::new("t"));
+        apply_column_type(&mut col, &ColumnType::Complex(ty));
+    }
+
     #[test]
     fn test_reference_action_conversion() {
         // Just ensure the function doesn't panic and returns valid ForeignKeyAction
