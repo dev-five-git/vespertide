@@ -259,4 +259,220 @@ mod tests {
             assert_snapshot!(result.iter().map(|q| q.build(backend)).collect::<Vec<String>>().join("\n"));
         });
     }
+
+    #[test]
+    fn test_add_column_sqlite_table_not_found() {
+        let column = ColumnDef {
+            name: "nickname".into(),
+            r#type: ColumnType::Simple(SimpleColumnType::Text),
+            nullable: false,
+            default: None,
+            comment: None,
+            primary_key: None,
+            unique: None,
+            index: None,
+            foreign_key: None,
+        };
+        let current_schema = vec![]; // Empty schema - table not found
+        let result = build_add_column(
+            &DatabaseBackend::Sqlite,
+            "users",
+            &column,
+            None,
+            &current_schema,
+        );
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Table 'users' not found in current schema"));
+    }
+
+    #[test]
+    fn test_add_column_sqlite_with_default() {
+        let column = ColumnDef {
+            name: "age".into(),
+            r#type: ColumnType::Simple(SimpleColumnType::Integer),
+            nullable: false,
+            default: Some("18".into()),
+            comment: None,
+            primary_key: None,
+            unique: None,
+            index: None,
+            foreign_key: None,
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            indexes: vec![],
+        }];
+        let result = build_add_column(
+            &DatabaseBackend::Sqlite,
+            "users",
+            &column,
+            None,
+            &current_schema,
+        );
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries.iter().map(|q| q.build(DatabaseBackend::Sqlite)).collect::<Vec<String>>().join("\n");
+        // Should use default value (18) for fill
+        assert!(sql.contains("18"));
+    }
+
+    #[test]
+    fn test_add_column_sqlite_without_fill_or_default() {
+        let column = ColumnDef {
+            name: "age".into(),
+            r#type: ColumnType::Simple(SimpleColumnType::Integer),
+            nullable: false,
+            default: None,
+            comment: None,
+            primary_key: None,
+            unique: None,
+            index: None,
+            foreign_key: None,
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            indexes: vec![],
+        }];
+        let result = build_add_column(
+            &DatabaseBackend::Sqlite,
+            "users",
+            &column,
+            None,
+            &current_schema,
+        );
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries.iter().map(|q| q.build(DatabaseBackend::Sqlite)).collect::<Vec<String>>().join("\n");
+        // Should use NULL for fill
+        assert!(sql.contains("NULL"));
+    }
+
+    #[test]
+    fn test_add_column_sqlite_with_indexes() {
+        use vespertide_core::IndexDef;
+        
+        let column = ColumnDef {
+            name: "nickname".into(),
+            r#type: ColumnType::Simple(SimpleColumnType::Text),
+            nullable: false,
+            default: None,
+            comment: None,
+            primary_key: None,
+            unique: None,
+            index: None,
+            foreign_key: None,
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            indexes: vec![
+                IndexDef {
+                    name: "idx_id".into(),
+                    columns: vec!["id".into()],
+                    unique: false,
+                },
+            ],
+        }];
+        let result = build_add_column(
+            &DatabaseBackend::Sqlite,
+            "users",
+            &column,
+            None,
+            &current_schema,
+        );
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries.iter().map(|q| q.build(DatabaseBackend::Sqlite)).collect::<Vec<String>>().join("\n");
+        // Should recreate index
+        assert!(sql.contains("CREATE INDEX"));
+        assert!(sql.contains("idx_id"));
+    }
+
+    #[test]
+    fn test_add_column_sqlite_with_unique_index() {
+        use vespertide_core::IndexDef;
+        
+        let column = ColumnDef {
+            name: "nickname".into(),
+            r#type: ColumnType::Simple(SimpleColumnType::Text),
+            nullable: false,
+            default: None,
+            comment: None,
+            primary_key: None,
+            unique: None,
+            index: None,
+            foreign_key: None,
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            indexes: vec![
+                IndexDef {
+                    name: "idx_email".into(),
+                    columns: vec!["email".into()],
+                    unique: true,
+                },
+            ],
+        }];
+        let result = build_add_column(
+            &DatabaseBackend::Sqlite,
+            "users",
+            &column,
+            None,
+            &current_schema,
+        );
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries.iter().map(|q| q.build(DatabaseBackend::Sqlite)).collect::<Vec<String>>().join("\n");
+        // Should recreate unique index
+        assert!(sql.contains("CREATE UNIQUE INDEX"));
+        assert!(sql.contains("idx_email"));
+    }
 }
