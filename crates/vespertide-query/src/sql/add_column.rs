@@ -76,17 +76,17 @@ mod tests {
     #[case::add_column_with_backfill_postgres(
         "add_column_with_backfill_postgres",
         DatabaseBackend::Postgres,
-        &["ALTER TABLE \"users\" ADD COLUMN \"age\""]
+        &["ALTER TABLE \"users\" ADD COLUMN \"nickname\" text"]
     )]
     #[case::add_column_with_backfill_mysql(
         "add_column_with_backfill_mysql",
         DatabaseBackend::MySql,
-        &["ALTER TABLE `users` ADD COLUMN `age` int"]
+        &["ALTER TABLE `users` ADD COLUMN `nickname` text"]
     )]
     #[case::add_column_with_backfill_sqlite(
         "add_column_with_backfill_sqlite",
         DatabaseBackend::Sqlite,
-        &["ALTER TABLE \"users\" ADD COLUMN \"age\""]
+        &["ALTER TABLE \"users\" ADD COLUMN \"nickname\" text"]
     )]
     #[case::add_column_simple_postgres(
         "add_column_simple_postgres",
