@@ -2,7 +2,7 @@ use sea_query::{Alias, Index};
 
 use vespertide_core::IndexDef;
 
-use super::types::{BuiltQuery, DatabaseBackend};
+use super::types::BuiltQuery;
 
 pub fn build_add_index(table: &str, index: &IndexDef) -> BuiltQuery {
     let mut stmt = Index::create()
@@ -24,6 +24,7 @@ pub fn build_add_index(table: &str, index: &IndexDef) -> BuiltQuery {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sql::types::DatabaseBackend;
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
     use vespertide_core::IndexDef;

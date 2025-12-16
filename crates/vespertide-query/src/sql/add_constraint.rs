@@ -1,7 +1,7 @@
-use vespertide_core::{ReferenceAction, TableConstraint};
+use vespertide_core::TableConstraint;
 
 use crate::error::QueryError;
-use super::types::{BuiltQuery, DatabaseBackend, RawSql};
+use super::types::{BuiltQuery, RawSql};
 use super::helpers::reference_action_sql;
 
 pub fn build_add_constraint(
@@ -155,6 +155,7 @@ pub fn build_add_constraint(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sql::types::DatabaseBackend;
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
     use vespertide_core::{ReferenceAction, TableConstraint};

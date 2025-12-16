@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use vespertide_config::FileFormat;
 
 // Re-export loader functions for convenience
@@ -107,6 +105,7 @@ mod tests {
     use rstest::rstest;
     use serial_test::serial;
     use std::fs;
+    use std::path::PathBuf;
     use tempfile::tempdir;
     use vespertide_config::VespertideConfig;
     use vespertide_core::{

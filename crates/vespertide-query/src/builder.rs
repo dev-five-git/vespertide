@@ -1,10 +1,11 @@
-use vespertide_core::{MigrationPlan, TableDef};
+use vespertide_core::{MigrationAction, MigrationPlan, TableDef};
 
 use crate::DatabaseBackend;
 use crate::error::QueryError;
 use crate::sql::{BuiltQuery, build_action_queries};
 
 pub struct PlanQueries {
+    pub action: MigrationAction,
     pub postgres: Vec<BuiltQuery>,
     pub mysql: Vec<BuiltQuery>,
     pub sqlite: Vec<BuiltQuery>,
@@ -20,6 +21,7 @@ pub fn build_plan_queries(
         let mysql_queries = build_action_queries(&DatabaseBackend::MySql, action, current_schema)?;
         let sqlite_queries = build_action_queries(&DatabaseBackend::Sqlite, action, current_schema)?;
         queries.push(PlanQueries {
+            action: action.clone(),
             postgres: postgres_queries,
             mysql: mysql_queries,
             sqlite: sqlite_queries,

@@ -1,6 +1,6 @@
 use sea_query::{Alias, Table};
 
-use super::types::{BuiltQuery, DatabaseBackend};
+use super::types::BuiltQuery;
 
 pub fn build_rename_table(from: &str, to: &str) -> BuiltQuery {
     let stmt = Table::rename()
@@ -12,6 +12,7 @@ pub fn build_rename_table(from: &str, to: &str) -> BuiltQuery {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sql::types::DatabaseBackend;
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
 

@@ -1,10 +1,10 @@
-use sea_query::{Alias, ColumnDef as SeaColumnDef, ForeignKey, Index, Table, TableCreateStatement};
+use sea_query::{Alias, ForeignKey, Index, Table, TableCreateStatement};
 
 use vespertide_core::{ColumnDef, TableConstraint};
 
 use crate::error::QueryError;
 use super::types::{BuiltQuery, DatabaseBackend};
-use super::helpers::{apply_column_type, build_sea_column_def, to_sea_fk_action};
+use super::helpers::{build_sea_column_def, to_sea_fk_action};
 
 pub(crate) fn build_create_table_for_backend(
     backend: &DatabaseBackend,
@@ -118,9 +118,8 @@ mod tests {
     use super::*;
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
-    use vespertide_core::schema::primary_key::PrimaryKeySyntax;
     use vespertide_core::{
-        ColumnType, ComplexColumnType, IndexDef, SimpleColumnType, StrOrBoolOrArray,
+        ColumnType, SimpleColumnType,
     };
 
     fn col(name: &str, ty: ColumnType) -> ColumnDef {

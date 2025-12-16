@@ -101,7 +101,7 @@ mod tests {
     use rstest::rstest;
     use vespertide_core::schema::primary_key::PrimaryKeySyntax;
     use vespertide_core::{
-        ColumnDef, ColumnType, ComplexColumnType, IndexDef, MigrationAction, SimpleColumnType, StrOrBoolOrArray,
+        ColumnDef, ColumnType, MigrationAction, SimpleColumnType,
         TableConstraint, ReferenceAction,
     };
 

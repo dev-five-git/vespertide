@@ -1,7 +1,7 @@
 use vespertide_core::TableConstraint;
 
 use crate::error::QueryError;
-use super::types::{BuiltQuery, DatabaseBackend, RawSql};
+use super::types::{BuiltQuery, RawSql};
 
 pub fn build_remove_constraint(
     table: &str,
@@ -74,6 +74,7 @@ pub fn build_remove_constraint(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sql::types::DatabaseBackend;
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
     use vespertide_core::TableConstraint;

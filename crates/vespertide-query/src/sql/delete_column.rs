@@ -1,6 +1,6 @@
 use sea_query::{Alias, Table};
 
-use super::types::{BuiltQuery, DatabaseBackend};
+use super::types::BuiltQuery;
 
 pub fn build_delete_column(table: &str, column: &str) -> BuiltQuery {
     let stmt = Table::alter()
@@ -13,6 +13,7 @@ pub fn build_delete_column(table: &str, column: &str) -> BuiltQuery {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sql::types::DatabaseBackend;
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
 

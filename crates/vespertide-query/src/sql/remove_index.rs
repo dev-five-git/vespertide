@@ -1,6 +1,6 @@
 use sea_query::Index;
 
-use super::types::{BuiltQuery, DatabaseBackend};
+use super::types::BuiltQuery;
 
 pub fn build_remove_index(name: &str) -> BuiltQuery {
     let stmt = Index::drop().name(name).to_owned();
@@ -10,6 +10,7 @@ pub fn build_remove_index(name: &str) -> BuiltQuery {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sql::types::DatabaseBackend;
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
 

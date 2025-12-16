@@ -14,7 +14,7 @@ pub fn load_models(config: &VespertideConfig) -> Result<Vec<TableDef>> {
     }
 
     let mut tables = Vec::new();
-    load_models_recursive(&models_dir, &mut tables)?;
+    load_models_recursive(models_dir, &mut tables)?;
 
     // Normalize tables to convert inline constraints (primary_key, foreign_key, etc.) to table-level constraints
     // This must happen before validation so that foreign key references can be checked
@@ -77,8 +77,6 @@ pub fn load_models_from_dir(
     project_root: Option<std::path::PathBuf>,
 ) -> Result<Vec<TableDef>, Box<dyn std::error::Error>> {
     use std::env;
-    use std::fs;
-    use std::path::Path;
 
     // Locate project root from CARGO_MANIFEST_DIR or use provided path
     let project_root = if let Some(root) = project_root {
@@ -111,7 +109,7 @@ pub fn load_models_from_dir(
                 .map_err(|e| format!("Failed to normalize table '{}': {}", t.name, e))
         })
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("{}", e))?;
+        .map_err(|e| e.to_string())?;
 
     Ok(normalized_tables)
 }
@@ -163,7 +161,6 @@ pub fn load_models_at_compile_time() -> Result<Vec<TableDef>, Box<dyn std::error
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rstest::rstest;
     use serial_test::serial;
     use std::fs;
     use tempfile::tempdir;

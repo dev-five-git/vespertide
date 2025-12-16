@@ -76,6 +76,7 @@ fn emit_sql(
             DatabaseBackend::MySql => &pq.mysql,
             DatabaseBackend::Sqlite => &pq.sqlite,
         };
+        println!("{} {}", "Action:".bright_cyan(), pq.action.to_string().bright_white());
         for (j, q) in queries.iter().enumerate() {
             println!(
                 "{}{}. {}",

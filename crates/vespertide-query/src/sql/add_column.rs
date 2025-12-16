@@ -35,7 +35,7 @@ pub fn build_add_column(
         temp_col.nullable = true;
 
         stmts.push(BuiltQuery::AlterTable(
-            Box::new(build_add_column_alter_for_backend(backend, &table, &temp_col)),
+            Box::new(build_add_column_alter_for_backend(backend, table, &temp_col)),
         ));
 
         // Backfill with provided value
