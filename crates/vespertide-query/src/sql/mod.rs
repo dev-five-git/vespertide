@@ -1,0 +1,223 @@
+pub mod types;
+pub mod helpers;
+pub mod create_table;
+pub mod delete_table;
+pub mod add_column;
+pub mod rename_column;
+pub mod delete_column;
+pub mod modify_column_type;
+pub mod add_index;
+pub mod remove_index;
+pub mod rename_table;
+pub mod raw_sql;
+pub mod add_constraint;
+pub mod remove_constraint;
+
+pub use types::{BuiltQuery, DatabaseBackend, RawSql};
+pub use helpers::*;
+
+use vespertide_core::{MigrationAction, ReferenceAction};
+use crate::error::QueryError;
+
+use self::{
+    add_column::build_add_column,
+    add_constraint::build_add_constraint,
+    add_index::build_add_index,
+    create_table::build_create_table,
+    delete_column::build_delete_column,
+    delete_table::build_delete_table,
+    modify_column_type::build_modify_column_type,
+    raw_sql::build_raw_sql,
+    remove_constraint::build_remove_constraint,
+    remove_index::build_remove_index,
+    rename_column::build_rename_column,
+    rename_table::build_rename_table,
+};
+
+pub fn build_action_queries(backend: &DatabaseBackend, action: &MigrationAction) -> Result<Vec<BuiltQuery>, QueryError> {
+    match action {
+        MigrationAction::CreateTable {
+            table,
+            columns,
+            constraints,
+        } => Ok(vec![build_create_table(backend, table, columns, constraints)?]),
+
+        MigrationAction::DeleteTable { table } => {
+            Ok(vec![build_delete_table(table)])
+        }
+
+        MigrationAction::AddColumn {
+            table,
+            column,
+            fill_with,
+        } => build_add_column(backend, table, column, fill_with.as_deref()),
+
+        MigrationAction::RenameColumn { table, from, to } => {
+            Ok(vec![build_rename_column(table, from, to)])
+        }
+
+        MigrationAction::DeleteColumn { table, column } => {
+            Ok(vec![build_delete_column(table, column)])
+        }
+
+        MigrationAction::ModifyColumnType {
+            table,
+            column,
+            new_type,
+        } => Ok(vec![build_modify_column_type(table, column, new_type)]),
+
+        MigrationAction::AddIndex { table, index } => {
+            Ok(vec![build_add_index(table, index)])
+        }
+
+        MigrationAction::RemoveIndex { name, .. } => {
+            Ok(vec![build_remove_index(name)])
+        }
+
+        MigrationAction::RenameTable { from, to } => {
+            Ok(vec![build_rename_table(from, to)])
+        }
+
+        MigrationAction::RawSql { sql } => Ok(vec![build_raw_sql(sql.clone())]),
+
+        MigrationAction::AddConstraint { table, constraint } => {
+            build_add_constraint(table, constraint)
+        }
+
+        MigrationAction::RemoveConstraint { table, constraint } => {
+            build_remove_constraint(table, constraint)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use insta::{assert_snapshot, with_settings};
+    use rstest::rstest;
+    use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+    use vespertide_core::{
+        ColumnDef, ColumnType, ComplexColumnType, IndexDef, MigrationAction, SimpleColumnType, StrOrBoolOrArray,
+        TableConstraint, ReferenceAction,
+    };
+
+    fn col(name: &str, ty: ColumnType) -> ColumnDef {
+        ColumnDef {
+            name: name.to_string(),
+            r#type: ty,
+            nullable: true,
+            default: None,
+            comment: None,
+            primary_key: None,
+            unique: None,
+            index: None,
+            foreign_key: None,
+        }
+    }
+
+    #[test]
+    fn test_backend_specific_quoting() {
+        let action = MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+            constraints: vec![],
+        };
+        let result = build_action_queries(&DatabaseBackend::Postgres, &action).unwrap();
+
+        // PostgreSQL uses double quotes
+        let pg_sql = result[0].build(DatabaseBackend::Postgres);
+        assert!(pg_sql.contains("\"users\""));
+
+        // MySQL uses backticks
+        let mysql_sql = result[0].build(DatabaseBackend::MySql);
+        assert!(mysql_sql.contains("`users`"));
+
+        // SQLite uses double quotes
+        let sqlite_sql = result[0].build(DatabaseBackend::Sqlite);
+        assert!(sqlite_sql.contains("\"users\""));
+    }
+
+    #[rstest]
+    #[case::create_table_with_default_postgres(
+        "create_table_with_default_postgres",
+        MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![ColumnDef {
+                name: "status".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Text),
+                nullable: true,
+                default: Some("'active'".into()),
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        },
+        DatabaseBackend::Postgres,
+        &["DEFAULT", "'active'"]
+    )]
+    #[case::create_table_with_inline_primary_key_postgres(
+        "create_table_with_inline_primary_key_postgres",
+        MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        },
+        DatabaseBackend::Postgres,
+        &["PRIMARY KEY"]
+    )]
+    #[case::create_table_with_fk_postgres(
+        "create_table_with_fk_postgres",
+        MigrationAction::CreateTable {
+            table: "posts".into(),
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("user_id", ColumnType::Simple(SimpleColumnType::Integer)),
+            ],
+            constraints: vec![TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: Some(ReferenceAction::Cascade),
+                on_update: Some(ReferenceAction::Restrict),
+            }],
+        },
+        DatabaseBackend::Postgres,
+        &["REFERENCES \"users\" (\"id\")", "ON DELETE CASCADE", "ON UPDATE RESTRICT"]
+    )]
+    fn test_build_migration_action(
+        #[case] title: &str,
+        #[case] action: MigrationAction,
+        #[case] backend: DatabaseBackend,
+        #[case] expected: &[&str],
+    ) {
+        let result = build_action_queries(&backend, &action).unwrap();
+        let sql = result[0].build(backend);
+        for exp in expected {
+            assert!(
+                sql.contains(exp),
+                "Expected SQL to contain '{}', got: {}",
+                exp,
+                sql
+            );
+        }
+
+        with_settings!({ snapshot_suffix => format!("build_migration_action_{}", title) }, {
+            assert_snapshot!(result.iter().map(|q| q.build(backend)).collect::<Vec<String>>().join("\n"));
+        });
+    }
+
+}
