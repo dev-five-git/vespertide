@@ -2,4 +2,7 @@
 source: crates/vespertide-query/src/sql/remove_constraint.rs
 expression: "result.iter().map(|q| q.build(backend)).collect::<Vec<String>>().join(\"\\n\")"
 ---
-ALTER TABLE "users" DROP CONSTRAINT "chk_age"
+CREATE TABLE "users_temp" ( "id" integer NOT NULL, "age" integer )
+INSERT INTO "users_temp" ("id", "age") SELECT "id", "age" FROM "users"
+DROP TABLE "users"
+ALTER TABLE "users_temp" RENAME TO "users"

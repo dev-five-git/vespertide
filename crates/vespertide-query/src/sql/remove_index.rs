@@ -1,9 +1,13 @@
-use sea_query::Index;
+use sea_query::{Alias, Index};
 
 use super::types::BuiltQuery;
 
-pub fn build_remove_index(name: &str) -> BuiltQuery {
-    let stmt = Index::drop().name(name).to_owned();
+pub fn build_remove_index(table: &str, name: &str) -> BuiltQuery {
+    let stmt = Index::drop()
+        .name(name)
+        // MySQL requires ON <table>; other backends accept this form
+        .table(Alias::new(table))
+        .to_owned();
     BuiltQuery::DropIndex(Box::new(stmt))
 }
 
@@ -23,7 +27,7 @@ mod tests {
     #[case::remove_index_mysql(
         "remove_index_mysql",
         DatabaseBackend::MySql,
-        &["`idx_email`"]
+        &["DROP INDEX `idx_email` ON `users`"]
     )]
     #[case::remove_index_sqlite(
         "remove_index_sqlite",
@@ -35,7 +39,7 @@ mod tests {
         #[case] backend: DatabaseBackend,
         #[case] expected: &[&str],
     ) {
-        let result = build_remove_index("idx_email");
+        let result = build_remove_index("users", "idx_email");
         let sql = result.build(backend);
         for exp in expected {
             assert!(

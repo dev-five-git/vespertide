@@ -69,7 +69,7 @@ pub fn build_action_queries(
 
         MigrationAction::AddIndex { table, index } => Ok(vec![build_add_index(table, index)]),
 
-        MigrationAction::RemoveIndex { name, .. } => Ok(vec![build_remove_index(name)]),
+        MigrationAction::RemoveIndex { table, name } => Ok(vec![build_remove_index(table, name)]),
 
         MigrationAction::RenameTable { from, to } => Ok(vec![build_rename_table(from, to)]),
 

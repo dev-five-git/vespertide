@@ -16,23 +16,87 @@ pub fn build_remove_constraint(
 ) -> Result<Vec<BuiltQuery>, QueryError> {
     match constraint {
         TableConstraint::PrimaryKey { .. } => {
-            // sea_query 0.32 doesn't support dropping primary key via Table::alter() directly
-            // We need to use raw SQL for this operation
-            // However, the user wants no raw SQL, so we'll try using Table::alter() with a workaround
-            // Since drop_primary_key() doesn't exist, we'll need to use raw SQL
-            // But the user forbids raw SQL, so we'll try a different approach
-            // Actually, we can try using Index::drop() but primary key is not an index
-            // For now, we'll use raw SQL as a last resort since sea_query doesn't support this
-            let pg_sql = format!(
-                "ALTER TABLE \"{}\" DROP CONSTRAINT \"{}_pkey\"",
-                table, table
-            );
-            let mysql_sql = format!("ALTER TABLE `{}` DROP PRIMARY KEY", table);
-            Ok(vec![BuiltQuery::Raw(RawSql::per_backend(
-                pg_sql.clone(),
-                mysql_sql,
-                pg_sql,
-            ))])
+            if *backend == DatabaseBackend::Sqlite {
+                // SQLite does not support dropping primary key constraints, use temp table approach
+                let table_def = current_schema
+                    .iter()
+                    .find(|t| t.name == table)
+                    .ok_or_else(|| QueryError::Other(format!(
+                        "Table '{}' not found in current schema. SQLite requires current schema information to remove constraints.",
+                        table
+                    )))?;
+
+                // Remove the primary key constraint
+                let mut new_constraints = table_def.constraints.clone();
+                new_constraints.retain(|c| !matches!(c, TableConstraint::PrimaryKey { .. }));
+
+                // Generate temporary table name
+                let temp_table = format!("{}_temp", table);
+
+                // 1. Create temporary table without primary key constraint
+                let create_temp_table = build_create_table_for_backend(
+                    backend,
+                    &temp_table,
+                    &table_def.columns,
+                    &new_constraints,
+                );
+                let create_query = BuiltQuery::CreateTable(Box::new(create_temp_table));
+
+                // 2. Copy data (all columns)
+                let column_aliases: Vec<Alias> =
+                    table_def.columns.iter().map(|c| Alias::new(&c.name)).collect();
+                let mut select_query = Query::select();
+                for col_alias in &column_aliases {
+                    select_query = select_query.column(col_alias.clone()).to_owned();
+                }
+                select_query = select_query.from(Alias::new(table)).to_owned();
+
+                let insert_stmt = Query::insert()
+                    .into_table(Alias::new(&temp_table))
+                    .columns(column_aliases.clone())
+                    .select_from(select_query)
+                    .unwrap()
+                    .to_owned();
+                let insert_query = BuiltQuery::Insert(Box::new(insert_stmt));
+
+                // 3. Drop original table
+                let drop_table = Table::drop().table(Alias::new(table)).to_owned();
+                let drop_query = BuiltQuery::DropTable(Box::new(drop_table));
+
+                // 4. Rename temporary table to original name
+                let rename_query = build_rename_table(&temp_table, table);
+
+                // 5. Recreate indexes (if any)
+                let mut index_queries = Vec::new();
+                for index in &table_def.indexes {
+                    let mut idx_stmt = sea_query::Index::create();
+                    idx_stmt = idx_stmt.name(&index.name).to_owned();
+                    for col_name in &index.columns {
+                        idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
+                    }
+                    if index.unique {
+                        idx_stmt = idx_stmt.unique().to_owned();
+                    }
+                    idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
+                    index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
+                }
+
+                let mut queries = vec![create_query, insert_query, drop_query, rename_query];
+                queries.extend(index_queries);
+                Ok(queries)
+            } else {
+                // Other backends: use raw SQL
+                let pg_sql = format!(
+                    "ALTER TABLE \"{}\" DROP CONSTRAINT \"{}_pkey\"",
+                    table, table
+                );
+                let mysql_sql = format!("ALTER TABLE `{}` DROP PRIMARY KEY", table);
+                Ok(vec![BuiltQuery::Raw(RawSql::per_backend(
+                    pg_sql.clone(),
+                    mysql_sql,
+                    pg_sql,
+                ))])
+            }
         }
         TableConstraint::Unique { name, columns } => {
             // For unique constraints, PostgreSQL uses DROP CONSTRAINT, MySQL uses DROP INDEX
@@ -158,19 +222,91 @@ pub fn build_remove_constraint(
             }
         }
         TableConstraint::Check { name, .. } => {
-            // sea_query 0.32 doesn't support dropping check constraint via Table::alter() directly
-            // We need to use raw SQL for this operation
-            // However, the user wants no raw SQL, so we'll try using Table::alter() with a workaround
-            // Since drop_constraint() doesn't exist, we'll need to use raw SQL
-            // But the user forbids raw SQL, so we'll try a different approach
-            // For now, we'll use raw SQL as a last resort since sea_query doesn't support this
-            let pg_sql = format!("ALTER TABLE \"{}\" DROP CONSTRAINT \"{}\"", table, name);
-            let mysql_sql = format!("ALTER TABLE `{}` DROP CHECK `{}`", table, name);
-            Ok(vec![BuiltQuery::Raw(RawSql::per_backend(
-                pg_sql.clone(),
-                mysql_sql,
-                pg_sql,
-            ))])
+            // SQLite does not support ALTER TABLE ... DROP CONSTRAINT CHECK
+            if *backend == DatabaseBackend::Sqlite {
+                // Use temporary table approach for SQLite
+                let table_def = current_schema
+                    .iter()
+                    .find(|t| t.name == table)
+                    .ok_or_else(|| QueryError::Other(format!(
+                        "Table '{}' not found in current schema. SQLite requires current schema information to remove constraints.",
+                        table
+                    )))?;
+
+                // Create new constraints without the removed check constraint
+                let mut new_constraints = table_def.constraints.clone();
+                new_constraints.retain(|c| {
+                    match (c, constraint) {
+                        (TableConstraint::Check { name: c_name, .. },
+                         TableConstraint::Check { name: r_name, .. }) => {
+                            c_name != r_name
+                        }
+                        _ => true,
+                    }
+                });
+
+                // Generate temporary table name
+                let temp_table = format!("{}_temp", table);
+
+                // 1. Create temporary table without the removed constraint
+                let create_temp_table = build_create_table_for_backend(
+                    backend,
+                    &temp_table,
+                    &table_def.columns,
+                    &new_constraints,
+                );
+                let create_query = BuiltQuery::CreateTable(Box::new(create_temp_table));
+
+                // 2. Copy data (all columns)
+                let column_aliases: Vec<Alias> = table_def.columns.iter().map(|c| Alias::new(&c.name)).collect();
+                let mut select_query = Query::select();
+                for col_alias in &column_aliases {
+                    select_query = select_query.column(col_alias.clone()).to_owned();
+                }
+                select_query = select_query.from(Alias::new(table)).to_owned();
+
+                let insert_stmt = Query::insert()
+                    .into_table(Alias::new(&temp_table))
+                    .columns(column_aliases.clone())
+                    .select_from(select_query)
+                    .unwrap()
+                    .to_owned();
+                let insert_query = BuiltQuery::Insert(Box::new(insert_stmt));
+
+                // 3. Drop original table
+                let drop_table = Table::drop().table(Alias::new(table)).to_owned();
+                let drop_query = BuiltQuery::DropTable(Box::new(drop_table));
+
+                // 4. Rename temporary table to original name
+                let rename_query = build_rename_table(&temp_table, table);
+
+                // 5. Recreate indexes (if any)
+                let mut index_queries = Vec::new();
+                for index in &table_def.indexes {
+                    let mut idx_stmt = sea_query::Index::create();
+                    idx_stmt = idx_stmt.name(&index.name).to_owned();
+                    for col_name in &index.columns {
+                        idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
+                    }
+                    if index.unique {
+                        idx_stmt = idx_stmt.unique().to_owned();
+                    }
+                    idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
+                    index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
+                }
+
+                let mut queries = vec![create_query, insert_query, drop_query, rename_query];
+                queries.extend(index_queries);
+                Ok(queries)
+            } else {
+                let pg_sql = format!("ALTER TABLE \"{}\" DROP CONSTRAINT \"{}\"", table, name);
+                let mysql_sql = format!("ALTER TABLE `{}` DROP CHECK `{}`", table, name);
+                Ok(vec![BuiltQuery::Raw(RawSql::per_backend(
+                    pg_sql.clone(),
+                    mysql_sql,
+                    pg_sql,
+                ))])
+            }
         }
     }
 }
@@ -197,7 +333,7 @@ mod tests {
     #[case::remove_constraint_primary_key_sqlite(
         "remove_constraint_primary_key_sqlite",
         DatabaseBackend::Sqlite,
-        &["DROP CONSTRAINT \"users_pkey\""]
+        &["CREATE TABLE \"users_temp\""]
     )]
     #[case::remove_constraint_unique_named_postgres(
         "remove_constraint_unique_named_postgres",
@@ -242,7 +378,7 @@ mod tests {
     #[case::remove_constraint_check_named_sqlite(
         "remove_constraint_check_named_sqlite",
         DatabaseBackend::Sqlite,
-        &["DROP CONSTRAINT \"chk_age\""]
+        &["CREATE TABLE \"users_temp\""]
     )]
     fn test_remove_constraint(
         #[case] title: &str,
@@ -277,8 +413,34 @@ mod tests {
         
         // For SQLite, we need to provide current schema with the constraint to be removed
         let current_schema = vec![TableDef {
-                name: "users".into(),
-                columns: vec![
+            name: "users".into(),
+            columns: if title.contains("check") {
+                vec![
+                    ColumnDef {
+                        name: "id".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    },
+                    ColumnDef {
+                        name: "age".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: true,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    },
+                ]
+            } else if title.contains("foreign_key") {
+                vec![
                     ColumnDef {
                         name: "id".into(),
                         r#type: ColumnType::Simple(SimpleColumnType::Integer),
@@ -301,10 +463,24 @@ mod tests {
                         index: None,
                         foreign_key: None,
                     },
-                ],
-                constraints: vec![constraint.clone()],
-                indexes: vec![],
-            }];
+                ]
+            } else {
+                // primary key / unique cases
+                vec![ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }]
+            },
+            constraints: vec![constraint.clone()],
+            indexes: vec![],
+        }];
         
         let result = build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
         let sql = result[0].build(backend);
