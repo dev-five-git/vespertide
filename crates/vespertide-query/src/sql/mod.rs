@@ -38,12 +38,7 @@ pub fn build_action_queries(
             table,
             columns,
             constraints,
-        } => build_create_table(
-            backend,
-            table,
-            columns,
-            constraints,
-        ),
+        } => build_create_table(backend, table, columns, constraints),
 
         MigrationAction::DeleteTable { table } => Ok(vec![build_delete_table(table)]),
 

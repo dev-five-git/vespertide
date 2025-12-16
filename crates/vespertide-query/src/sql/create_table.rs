@@ -114,13 +114,14 @@ pub fn build_create_table(
     constraints: &[TableConstraint],
 ) -> Result<Vec<BuiltQuery>, QueryError> {
     let mut queries = Vec::new();
-    
+
     // Separate unique constraints for Postgres and SQLite (they need separate CREATE INDEX statements)
     // For MySQL, unique constraints are added directly in CREATE TABLE via build_create_table_for_backend
-    let (table_constraints, unique_constraints): (Vec<&TableConstraint>, Vec<&TableConstraint>) = constraints
-        .iter()
-        .partition(|c| !matches!(c, TableConstraint::Unique { .. }));
-    
+    let (table_constraints, unique_constraints): (Vec<&TableConstraint>, Vec<&TableConstraint>) =
+        constraints
+            .iter()
+            .partition(|c| !matches!(c, TableConstraint::Unique { .. }));
+
     // Build CREATE TABLE
     // For MySQL, include unique constraints in CREATE TABLE
     // For Postgres and SQLite, exclude them (will be added as separate CREATE INDEX statements)
@@ -128,19 +129,21 @@ pub fn build_create_table(
         build_create_table_for_backend(backend, table, columns, constraints)
     } else {
         // Convert references to owned values for build_create_table_for_backend
-        let table_constraints_owned: Vec<TableConstraint> = table_constraints.iter().cloned().cloned().collect();
+        let table_constraints_owned: Vec<TableConstraint> =
+            table_constraints.iter().cloned().cloned().collect();
         build_create_table_for_backend(backend, table, columns, &table_constraints_owned)
     };
     queries.push(BuiltQuery::CreateTable(Box::new(create_table_stmt)));
-    
+
     // For Postgres and SQLite, add unique constraints as separate CREATE UNIQUE INDEX statements
     if matches!(backend, DatabaseBackend::Postgres | DatabaseBackend::Sqlite) {
         for constraint in unique_constraints {
-            if let TableConstraint::Unique { name, columns: unique_cols } = constraint {
-                let mut idx = Index::create()
-                    .table(Alias::new(table))
-                    .unique()
-                    .to_owned();
+            if let TableConstraint::Unique {
+                name,
+                columns: unique_cols,
+            } = constraint
+            {
+                let mut idx = Index::create().table(Alias::new(table)).unique().to_owned();
                 if let Some(n) = name {
                     idx = idx.name(n).to_owned();
                 }
@@ -151,7 +154,7 @@ pub fn build_create_table(
             }
         }
     }
-    
+
     Ok(queries)
 }
 
@@ -283,12 +286,19 @@ mod tests {
         // Verify unique constraint is present
         match backend {
             DatabaseBackend::MySql => {
-                assert!(sql.contains("UNIQUE"), "MySQL should have UNIQUE in CREATE TABLE: {}", sql);
+                assert!(
+                    sql.contains("UNIQUE"),
+                    "MySQL should have UNIQUE in CREATE TABLE: {}",
+                    sql
+                );
             }
             _ => {
                 // For Postgres and SQLite, unique constraint should be in a separate CREATE UNIQUE INDEX statement
-                assert!(sql.contains("CREATE UNIQUE INDEX"), 
-                    "Postgres/SQLite should have CREATE UNIQUE INDEX: {}", sql);
+                assert!(
+                    sql.contains("CREATE UNIQUE INDEX"),
+                    "Postgres/SQLite should have CREATE UNIQUE INDEX: {}",
+                    sql
+                );
             }
         }
         with_settings!({ snapshot_suffix => format!("create_table_with_table_level_unique_{:?}", backend) }, {
@@ -324,12 +334,19 @@ mod tests {
         // Verify unique constraint is present
         match backend {
             DatabaseBackend::MySql => {
-                assert!(sql.contains("UNIQUE"), "MySQL should have UNIQUE in CREATE TABLE: {}", sql);
+                assert!(
+                    sql.contains("UNIQUE"),
+                    "MySQL should have UNIQUE in CREATE TABLE: {}",
+                    sql
+                );
             }
             _ => {
                 // For Postgres and SQLite, unique constraint should be in a separate CREATE UNIQUE INDEX statement
-                assert!(sql.contains("CREATE UNIQUE INDEX"), 
-                    "Postgres/SQLite should have CREATE UNIQUE INDEX: {}", sql);
+                assert!(
+                    sql.contains("CREATE UNIQUE INDEX"),
+                    "Postgres/SQLite should have CREATE UNIQUE INDEX: {}",
+                    sql
+                );
             }
         }
         with_settings!({ snapshot_suffix => format!("create_table_with_table_level_unique_no_name_{:?}", backend) }, {

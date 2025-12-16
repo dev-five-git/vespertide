@@ -9,6 +9,43 @@ use super::types::{BuiltQuery, DatabaseBackend};
 use crate::error::QueryError;
 use crate::sql::RawSql;
 
+/// Extract CHECK constraint clauses from a list of constraints
+fn extract_check_clauses(constraints: &[TableConstraint]) -> Vec<String> {
+    constraints
+        .iter()
+        .filter_map(|c| {
+            if let TableConstraint::Check { name, expr } = c {
+                Some(format!("CONSTRAINT \"{}\" CHECK ({})", name, expr))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Build CREATE TABLE query with CHECK constraints properly embedded
+fn build_create_with_checks(
+    backend: &DatabaseBackend,
+    create_stmt: &sea_query::TableCreateStatement,
+    check_clauses: &[String],
+) -> BuiltQuery {
+    if check_clauses.is_empty() {
+        BuiltQuery::CreateTable(Box::new(create_stmt.clone()))
+    } else {
+        let base_sql = build_schema_statement(create_stmt, *backend);
+        let mut modified_sql = base_sql;
+        if let Some(pos) = modified_sql.rfind(')') {
+            let check_sql = check_clauses.join(", ");
+            modified_sql.insert_str(pos, &format!(", {}", check_sql));
+        }
+        BuiltQuery::Raw(RawSql::per_backend(
+            modified_sql.clone(),
+            modified_sql.clone(),
+            modified_sql,
+        ))
+    }
+}
+
 pub fn build_add_constraint(
     backend: &DatabaseBackend,
     table: &str,
@@ -43,46 +80,10 @@ pub fn build_add_constraint(
                     &new_constraints,
                 );
 
-                // If there are CHECK constraints, we need to modify the SQL manually (same as in ForeignKey case)
-                // Actually, build_create_table_for_backend might handle PK correctly if it's in constraints list?
-                // Yes, sea-query create_table handles table-level PK.
-                // But for CHECK constraints in SQLite, sea-query needs raw SQL modification or it ignores them?
-                // Inspecting existing code for ForeignKey suggests CHECK needs special handling.
-                // Let's copy the CHECK handling logic just in case the table ALREADY has check constraints.
-                let check_constraints: Vec<&TableConstraint> = new_constraints
-                    .iter()
-                    .filter(|c| matches!(c, TableConstraint::Check { .. }))
-                    .collect();
-
-                let create_query = if !check_constraints.is_empty() {
-                    let base_sql = build_schema_statement(&create_temp_table, *backend);
-                    let mut modified_sql = base_sql.clone();
-                    if let Some(pos) = modified_sql.rfind(')') {
-                        let check_clauses: Vec<String> = check_constraints
-                            .iter()
-                            .map(|c| {
-                                if let TableConstraint::Check { name, expr } = c {
-                                    format!("CONSTRAINT \"{}\" CHECK ({})", name, expr)
-                                } else {
-                                    String::new()
-                                }
-                            })
-                            .filter(|s| !s.is_empty())
-                            .collect();
-
-                        if !check_clauses.is_empty() {
-                            let check_sql = check_clauses.join(", ");
-                            modified_sql.insert_str(pos, &format!(", {}", check_sql));
-                        }
-                    }
-                    BuiltQuery::Raw(RawSql::per_backend(
-                        modified_sql.clone(),
-                        modified_sql.clone(),
-                        modified_sql,
-                    ))
-                } else {
-                    BuiltQuery::CreateTable(Box::new(create_temp_table))
-                };
+                // Handle CHECK constraints (sea-query doesn't support them natively)
+                let check_clauses = extract_check_clauses(&new_constraints);
+                let create_query =
+                    build_create_with_checks(backend, &create_temp_table, &check_clauses);
 
                 // 2. Copy data
                 let column_aliases: Vec<Alias> = table_def
@@ -188,13 +189,6 @@ pub fn build_add_constraint(
                 let temp_table = format!("{}_temp", table);
 
                 // 1. Create temporary table with new constraints
-                // For CHECK constraints, we need to manually add them to the CREATE TABLE SQL
-                // since sea-query doesn't support table-level CHECK constraints
-                let check_constraints: Vec<&TableConstraint> = new_constraints
-                    .iter()
-                    .filter(|c| matches!(c, TableConstraint::Check { .. }))
-                    .collect();
-
                 let create_temp_table = build_create_table_for_backend(
                     backend,
                     &temp_table,
@@ -202,41 +196,10 @@ pub fn build_add_constraint(
                     &new_constraints,
                 );
 
-                // If there are CHECK constraints, we need to modify the SQL
-                let create_query = if !check_constraints.is_empty() {
-                    // Build the base CREATE TABLE SQL
-                    let base_sql = build_schema_statement(&create_temp_table, *backend);
-
-                    // Find the position to insert CHECK constraints (before the closing parenthesis)
-                    // For SQLite, we need to add CHECK constraints before the closing parenthesis
-                    let mut modified_sql = base_sql.clone();
-                    if let Some(pos) = modified_sql.rfind(')') {
-                        let check_clauses: Vec<String> = check_constraints
-                            .iter()
-                            .map(|c| {
-                                if let TableConstraint::Check { name, expr } = c {
-                                    format!("CONSTRAINT \"{}\" CHECK ({})", name, expr)
-                                } else {
-                                    String::new()
-                                }
-                            })
-                            .filter(|s| !s.is_empty())
-                            .collect();
-
-                        if !check_clauses.is_empty() {
-                            let check_sql = check_clauses.join(", ");
-                            modified_sql.insert_str(pos, &format!(", {}", check_sql));
-                        }
-                    }
-
-                    BuiltQuery::Raw(RawSql::per_backend(
-                        modified_sql.clone(),
-                        modified_sql.clone(),
-                        modified_sql,
-                    ))
-                } else {
-                    BuiltQuery::CreateTable(Box::new(create_temp_table))
-                };
+                // Handle CHECK constraints (sea-query doesn't support them natively)
+                let check_clauses = extract_check_clauses(&new_constraints);
+                let create_query =
+                    build_create_with_checks(backend, &create_temp_table, &check_clauses);
 
                 // 2. Copy data (all columns)
                 let column_aliases: Vec<Alias> = table_def
@@ -326,13 +289,6 @@ pub fn build_add_constraint(
                 let temp_table = format!("{}_temp", table);
 
                 // 1. Create temporary table with new constraints
-                // For CHECK constraints, we need to manually add them to the CREATE TABLE SQL
-                // since sea-query doesn't support table-level CHECK constraints
-                let check_constraints: Vec<&TableConstraint> = new_constraints
-                    .iter()
-                    .filter(|c| matches!(c, TableConstraint::Check { .. }))
-                    .collect();
-
                 let create_temp_table = build_create_table_for_backend(
                     backend,
                     &temp_table,
@@ -340,41 +296,10 @@ pub fn build_add_constraint(
                     &new_constraints,
                 );
 
-                // If there are CHECK constraints, we need to modify the SQL
-                let create_query = if !check_constraints.is_empty() {
-                    // Build the base CREATE TABLE SQL
-                    let base_sql = build_schema_statement(&create_temp_table, *backend);
-
-                    // Find the position to insert CHECK constraints (before the closing parenthesis)
-                    // For SQLite, we need to add CHECK constraints before the closing parenthesis
-                    let mut modified_sql = base_sql.clone();
-                    if let Some(pos) = modified_sql.rfind(')') {
-                        let check_clauses: Vec<String> = check_constraints
-                            .iter()
-                            .map(|c| {
-                                if let TableConstraint::Check { name, expr } = c {
-                                    format!("CONSTRAINT \"{}\" CHECK ({})", name, expr)
-                                } else {
-                                    String::new()
-                                }
-                            })
-                            .filter(|s| !s.is_empty())
-                            .collect();
-
-                        if !check_clauses.is_empty() {
-                            let check_sql = check_clauses.join(", ");
-                            modified_sql.insert_str(pos, &format!(", {}", check_sql));
-                        }
-                    }
-
-                    BuiltQuery::Raw(RawSql::per_backend(
-                        modified_sql.clone(),
-                        modified_sql.clone(),
-                        modified_sql,
-                    ))
-                } else {
-                    BuiltQuery::CreateTable(Box::new(create_temp_table))
-                };
+                // Handle CHECK constraints (sea-query doesn't support them natively)
+                let check_clauses = extract_check_clauses(&new_constraints);
+                let create_query =
+                    build_create_with_checks(backend, &create_temp_table, &check_clauses);
 
                 // 2. Copy data (all columns)
                 let column_aliases: Vec<Alias> = table_def
@@ -1177,5 +1102,105 @@ mod tests {
         // Should recreate unique index
         assert!(sql.contains("CREATE UNIQUE INDEX"));
         assert!(sql.contains("idx_age"));
+    }
+
+    #[test]
+    fn test_extract_check_clauses_with_mixed_constraints() {
+        // Test that extract_check_clauses filters out non-Check constraints
+        let constraints = vec![
+            TableConstraint::Check {
+                name: "chk1".into(),
+                expr: "a > 0".into(),
+            },
+            TableConstraint::PrimaryKey {
+                columns: vec!["id".into()],
+                auto_increment: false,
+            },
+            TableConstraint::Check {
+                name: "chk2".into(),
+                expr: "b < 100".into(),
+            },
+            TableConstraint::Unique {
+                name: Some("uq".into()),
+                columns: vec!["email".into()],
+            },
+        ];
+        let clauses = extract_check_clauses(&constraints);
+        assert_eq!(clauses.len(), 2);
+        assert!(clauses[0].contains("chk1"));
+        assert!(clauses[1].contains("chk2"));
+    }
+
+    #[test]
+    fn test_extract_check_clauses_with_no_check_constraints() {
+        let constraints = vec![
+            TableConstraint::PrimaryKey {
+                columns: vec!["id".into()],
+                auto_increment: false,
+            },
+            TableConstraint::Unique {
+                name: None,
+                columns: vec!["email".into()],
+            },
+        ];
+        let clauses = extract_check_clauses(&constraints);
+        assert!(clauses.is_empty());
+    }
+
+    #[test]
+    fn test_build_create_with_checks_empty_clauses() {
+        use super::build_create_table_for_backend;
+
+        let create_stmt = build_create_table_for_backend(
+            &DatabaseBackend::Sqlite,
+            "test_table",
+            &[ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            &[],
+        );
+
+        // Empty check_clauses should return CreateTable variant
+        let result = build_create_with_checks(&DatabaseBackend::Sqlite, &create_stmt, &[]);
+        let sql = result.build(DatabaseBackend::Sqlite);
+        assert!(sql.contains("CREATE TABLE"));
+    }
+
+    #[test]
+    fn test_build_create_with_checks_with_clauses() {
+        use super::build_create_table_for_backend;
+
+        let create_stmt = build_create_table_for_backend(
+            &DatabaseBackend::Sqlite,
+            "test_table",
+            &[ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            &[],
+        );
+
+        // Non-empty check_clauses should return Raw variant with embedded checks
+        let check_clauses = vec!["CONSTRAINT \"chk1\" CHECK (id > 0)".to_string()];
+        let result =
+            build_create_with_checks(&DatabaseBackend::Sqlite, &create_stmt, &check_clauses);
+        let sql = result.build(DatabaseBackend::Sqlite);
+        assert!(sql.contains("CREATE TABLE"));
+        assert!(sql.contains("CONSTRAINT \"chk1\" CHECK (id > 0)"));
     }
 }
