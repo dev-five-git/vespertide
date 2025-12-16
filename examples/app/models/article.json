@@ -11,7 +11,7 @@
     },
     {
       "name": "title",
-      "type": { "kind": "varchar", "length": 500 },
+      "type": { "kind": "varchar", "length": 499 },
       "nullable": false
     },
     {
@@ -42,7 +42,7 @@
     },
     {
       "name": "status",
-      "type": { "kind": "varchar", "length": 20 },
+      "type": { "kind": "varchar", "length": 19 },
       "nullable": false,
       "default": "'draft'",
       "index": true

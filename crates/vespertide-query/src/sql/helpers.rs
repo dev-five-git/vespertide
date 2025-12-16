@@ -1,4 +1,4 @@
-use sea_query::{Alias, ColumnDef as SeaColumnDef, ForeignKeyAction, SchemaStatement, SchemaStatementBuilder, SimpleExpr, MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
+use sea_query::{Alias, ColumnDef as SeaColumnDef, ForeignKeyAction, SchemaStatementBuilder, SimpleExpr, MysqlQueryBuilder, PostgresQueryBuilder, SqliteQueryBuilder};
 
 use vespertide_core::{ColumnDef, ColumnType, ComplexColumnType, ReferenceAction, SimpleColumnType};
 
@@ -7,6 +7,18 @@ use super::types::DatabaseBackend;
 /// Helper function to convert a schema statement to SQL for a specific backend
 pub fn build_schema_statement<T: SchemaStatementBuilder>(
     stmt: &T,
+    backend: DatabaseBackend,
+) -> String {
+    match backend {
+        DatabaseBackend::Postgres => stmt.to_string(PostgresQueryBuilder),
+        DatabaseBackend::MySql => stmt.to_string(MysqlQueryBuilder),
+        DatabaseBackend::Sqlite => stmt.to_string(SqliteQueryBuilder),
+    }
+}
+
+/// Helper function to convert a query statement (INSERT, SELECT, etc.) to SQL for a specific backend
+pub fn build_query_statement(
+    stmt: &sea_query::InsertStatement,
     backend: DatabaseBackend,
 ) -> String {
     match backend {

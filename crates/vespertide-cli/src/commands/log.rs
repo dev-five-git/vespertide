@@ -1,11 +1,13 @@
 use anyhow::Result;
 use colored::Colorize;
+use vespertide_loader::{load_config, load_models};
 use vespertide_query::{DatabaseBackend, build_plan_queries};
 
 use crate::utils::load_migrations;
 
 pub fn cmd_log(backend: DatabaseBackend) -> Result<()> {
-    let plans = load_migrations(&crate::utils::load_config()?)?;
+    let config = load_config()?;
+    let plans = load_migrations(&config)?;
 
     if plans.is_empty() {
         println!("{}", "No migrations found.".bright_yellow());
@@ -19,7 +21,7 @@ pub fn cmd_log(backend: DatabaseBackend) -> Result<()> {
         plans.len().to_string().bright_yellow().bold()
     );
     println!();
-
+    let current_models = load_models(&config)?;
     for plan in &plans {
         println!(
             "{} {}",
@@ -42,7 +44,7 @@ pub fn cmd_log(backend: DatabaseBackend) -> Result<()> {
             plan.actions.len().to_string().bright_yellow()
         );
 
-        let plan_queries = build_plan_queries(plan)
+        let plan_queries = build_plan_queries(plan, &current_models)
             .map_err(|e| anyhow::anyhow!("query build error for v{}: {}", plan.version, e))?;
 
         for (i, pq) in plan_queries.iter().enumerate() {

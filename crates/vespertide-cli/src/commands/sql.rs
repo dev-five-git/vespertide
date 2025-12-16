@@ -13,10 +13,14 @@ pub fn cmd_sql(backend: DatabaseBackend) -> Result<()> {
     let plan = plan_next_migration(&current_models, &applied_plans)
         .map_err(|e| anyhow::anyhow!("planning error: {}", e))?;
 
-    emit_sql(&plan, backend)
+    emit_sql(&plan, backend, &current_models)
 }
 
-fn emit_sql(plan: &vespertide_core::MigrationPlan, backend: DatabaseBackend) -> Result<()> {
+fn emit_sql(
+    plan: &vespertide_core::MigrationPlan,
+    backend: DatabaseBackend,
+    current_schema: &[vespertide_core::TableDef],
+) -> Result<()> {
     if plan.actions.is_empty() {
         println!(
             "{} {}",
@@ -26,8 +30,8 @@ fn emit_sql(plan: &vespertide_core::MigrationPlan, backend: DatabaseBackend) -> 
         return Ok(());
     }
 
-    let plan_queries =
-        build_plan_queries(plan).map_err(|e| anyhow::anyhow!("query build error: {}", e))?;
+    let plan_queries = build_plan_queries(plan, current_schema)
+        .map_err(|e| anyhow::anyhow!("query build error: {}", e))?;
 
     // Select queries for the specified backend
     let queries: Vec<_> = plan_queries
@@ -66,12 +70,24 @@ fn emit_sql(plan: &vespertide_core::MigrationPlan, backend: DatabaseBackend) -> 
     );
     println!();
 
-    for (i, q) in queries.iter().enumerate() {
-        println!(
-            "{}. {}",
-            (i + 1).to_string().bright_magenta().bold(),
-            q.build(backend).trim().bright_white()
-        );
+    for (i, pq) in plan_queries.iter().enumerate() {
+        let queries = match backend {
+            DatabaseBackend::Postgres => &pq.postgres,
+            DatabaseBackend::MySql => &pq.mysql,
+            DatabaseBackend::Sqlite => &pq.sqlite,
+        };
+        for (j, q) in queries.iter().enumerate() {
+            println!(
+                "{}{}. {}",
+                (i + 1).to_string().bright_magenta().bold(),
+                if queries.len() > 1 {
+                    format!("-{}", j + 1)
+                } else {
+                    "".to_string()
+                }.bright_magenta().bold(),
+                q.build(backend).trim().bright_white()
+            );
+        }
     }
 
     Ok(())
@@ -205,7 +221,7 @@ mod tests {
             }],
         };
 
-        let result = emit_sql(&plan, DatabaseBackend::Postgres);
+        let result = emit_sql(&plan, DatabaseBackend::Postgres, &[]);
         assert!(result.is_ok());
     }
 }

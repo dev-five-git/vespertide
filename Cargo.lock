@@ -524,6 +524,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "dashmap"
+version = "5.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "978747c1d849a7d2ee5e8adc0159961c48fb7e5db2f06af6723b80123bb53856"
+dependencies = [
+ "cfg-if",
+ "hashbrown 0.14.5",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core",
+]
+
+[[package]]
 name = "der"
 version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -887,6 +900,12 @@ checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 dependencies = [
  "ahash",
 ]
+
+[[package]]
+name = "hashbrown"
+version = "0.14.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
 
 [[package]]
 name = "hashbrown"
@@ -2234,6 +2253,20 @@ dependencies = [
 
 [[package]]
 name = "serial_test"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "538c30747ae860d6fb88330addbbd3e0ddbe46d662d032855596d8a8ca260611"
+dependencies = [
+ "dashmap",
+ "futures",
+ "lazy_static",
+ "log",
+ "parking_lot",
+ "serial_test_derive 1.0.0",
+]
+
+[[package]]
+name = "serial_test"
 version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b258109f244e1d6891bf1053a55d63a5cd4f8f4c30cf9a1280989f80e7a1fa9"
@@ -2243,7 +2276,18 @@ dependencies = [
  "once_cell",
  "parking_lot",
  "scc",
- "serial_test_derive",
+ "serial_test_derive 3.2.0",
+]
+
+[[package]]
+name = "serial_test_derive"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "079a83df15f85d89a68d64ae1238f142f172b1fa915d0d76b26a7cba1b659a69"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -2958,11 +3002,12 @@ dependencies = [
  "schemars",
  "serde_json",
  "serde_yaml",
- "serial_test",
+ "serial_test 3.2.0",
  "tempfile",
  "vespertide-config",
  "vespertide-core",
  "vespertide-exporter",
+ "vespertide-loader",
  "vespertide-planner",
  "vespertide-query",
 ]
@@ -2996,18 +3041,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "vespertide-loader"
+version = "0.1.9"
+dependencies = [
+ "anyhow",
+ "rstest",
+ "serde_json",
+ "serde_yaml",
+ "serial_test 1.0.0",
+ "tempfile",
+ "vespertide-config",
+ "vespertide-core",
+ "vespertide-planner",
+]
+
+[[package]]
 name = "vespertide-macro"
 version = "0.1.9"
 dependencies = [
  "proc-macro2",
  "quote",
- "serde_json",
- "serde_yaml",
  "syn 2.0.111",
  "tempfile",
  "thiserror",
  "vespertide-config",
  "vespertide-core",
+ "vespertide-loader",
  "vespertide-query",
 ]
 

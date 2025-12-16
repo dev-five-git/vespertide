@@ -17,6 +17,7 @@ pub enum BuiltQuery {
     RenameTable(Box<sea_query::TableRenameStatement>),
     CreateForeignKey(Box<sea_query::ForeignKeyCreateStatement>),
     DropForeignKey(Box<sea_query::ForeignKeyDropStatement>),
+    Insert(Box<sea_query::InsertStatement>),
     Raw(RawSql),
 }
 
@@ -60,6 +61,7 @@ impl BuiltQuery {
             BuiltQuery::RenameTable(stmt) => crate::sql::helpers::build_schema_statement(stmt.as_ref(), backend),
             BuiltQuery::CreateForeignKey(stmt) => crate::sql::helpers::build_schema_statement(stmt.as_ref(), backend),
             BuiltQuery::DropForeignKey(stmt) => crate::sql::helpers::build_schema_statement(stmt.as_ref(), backend),
+            BuiltQuery::Insert(stmt) => crate::sql::helpers::build_query_statement(stmt.as_ref(), backend),
             BuiltQuery::Raw(raw) => match backend {
                 DatabaseBackend::Postgres => raw.postgres.clone(),
                 DatabaseBackend::MySql => raw.mysql.clone(),

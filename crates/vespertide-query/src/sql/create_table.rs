@@ -6,7 +6,7 @@ use crate::error::QueryError;
 use super::types::{BuiltQuery, DatabaseBackend};
 use super::helpers::{apply_column_type, build_sea_column_def, to_sea_fk_action};
 
-fn build_create_table_for_backend(
+pub(crate) fn build_create_table_for_backend(
     backend: &DatabaseBackend,
     table: &str,
     columns: &[ColumnDef],

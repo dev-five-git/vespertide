@@ -16,7 +16,7 @@ pub mod remove_constraint;
 pub use types::{BuiltQuery, DatabaseBackend, RawSql};
 pub use helpers::*;
 
-use vespertide_core::{MigrationAction, ReferenceAction};
+use vespertide_core::{MigrationAction, TableDef};
 use crate::error::QueryError;
 
 use self::{
@@ -34,7 +34,11 @@ use self::{
     rename_table::build_rename_table,
 };
 
-pub fn build_action_queries(backend: &DatabaseBackend, action: &MigrationAction) -> Result<Vec<BuiltQuery>, QueryError> {
+pub fn build_action_queries(
+    backend: &DatabaseBackend,
+    action: &MigrationAction,
+    current_schema: &[TableDef],
+) -> Result<Vec<BuiltQuery>, QueryError> {
     match action {
         MigrationAction::CreateTable {
             table,
@@ -64,7 +68,7 @@ pub fn build_action_queries(backend: &DatabaseBackend, action: &MigrationAction)
             table,
             column,
             new_type,
-        } => Ok(vec![build_modify_column_type(table, column, new_type)]),
+        } => build_modify_column_type(backend, table, column, new_type, current_schema),
 
         MigrationAction::AddIndex { table, index } => {
             Ok(vec![build_add_index(table, index)])
@@ -122,7 +126,7 @@ mod tests {
             columns: vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             constraints: vec![],
         };
-        let result = build_action_queries(&DatabaseBackend::Postgres, &action).unwrap();
+        let result = build_action_queries(&DatabaseBackend::Postgres, &action, &[]).unwrap();
 
         // PostgreSQL uses double quotes
         let pg_sql = result[0].build(DatabaseBackend::Postgres);
@@ -204,7 +208,7 @@ mod tests {
         #[case] backend: DatabaseBackend,
         #[case] expected: &[&str],
     ) {
-        let result = build_action_queries(&backend, &action).unwrap();
+        let result = build_action_queries(&backend, &action, &[]).unwrap();
         let sql = result[0].build(backend);
         for exp in expected {
             assert!(

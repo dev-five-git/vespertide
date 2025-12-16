@@ -1,4 +1,4 @@
-use vespertide_core::MigrationPlan;
+use vespertide_core::{MigrationPlan, TableDef};
 
 use crate::DatabaseBackend;
 use crate::error::QueryError;
@@ -10,12 +10,15 @@ pub struct PlanQueries {
     pub sqlite: Vec<BuiltQuery>,
 }
 
-pub fn build_plan_queries(plan: &MigrationPlan) -> Result<Vec<PlanQueries>, QueryError> {
+pub fn build_plan_queries(
+    plan: &MigrationPlan,
+    current_schema: &[TableDef],
+) -> Result<Vec<PlanQueries>, QueryError> {
     let mut queries: Vec<PlanQueries> = Vec::new();
     for action in &plan.actions {
-        let postgres_queries = build_action_queries(&DatabaseBackend::Postgres, action)?;
-        let mysql_queries = build_action_queries(&DatabaseBackend::MySql, action)?;
-        let sqlite_queries = build_action_queries(&DatabaseBackend::Sqlite, action)?;
+        let postgres_queries = build_action_queries(&DatabaseBackend::Postgres, action, current_schema)?;
+        let mysql_queries = build_action_queries(&DatabaseBackend::MySql, action, current_schema)?;
+        let sqlite_queries = build_action_queries(&DatabaseBackend::Sqlite, action, current_schema)?;
         queries.push(PlanQueries {
             postgres: postgres_queries,
             mysql: mysql_queries,
@@ -88,7 +91,7 @@ mod tests {
         2
     )]
     fn test_build_plan_queries(#[case] plan: MigrationPlan, #[case] expected_count: usize) {
-        let result = build_plan_queries(&plan).unwrap();
+        let result = build_plan_queries(&plan, &[]).unwrap();
         assert_eq!(
             result.len(),
             expected_count,
@@ -116,7 +119,7 @@ mod tests {
             ],
         };
 
-        let result = build_plan_queries(&plan).unwrap();
+        let result = build_plan_queries(&plan, &[]).unwrap();
         assert_eq!(result.len(), 2);
 
         // Test PostgreSQL output

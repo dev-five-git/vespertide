@@ -1,130 +1,9 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use anyhow::{Context, Result};
-use vespertide_config::{FileFormat, VespertideConfig};
-use vespertide_core::{MigrationPlan, TableDef};
-use vespertide_planner::{validate_migration_plan, validate_schema};
+use vespertide_config::FileFormat;
 
-/// Load vespertide.json config from current directory.
-pub fn load_config() -> Result<VespertideConfig> {
-    let path = PathBuf::from("vespertide.json");
-    if !path.exists() {
-        anyhow::bail!("vespertide.json not found. Run 'vespertide init' first.");
-    }
-
-    let content = fs::read_to_string(&path).context("read vespertide.json")?;
-    let config: VespertideConfig =
-        serde_json::from_str(&content).context("parse vespertide.json")?;
-    Ok(config)
-}
-
-/// Load all model definitions from the models directory (recursively).
-pub fn load_models(config: &VespertideConfig) -> Result<Vec<TableDef>> {
-    let models_dir = config.models_dir();
-    if !models_dir.exists() {
-        return Ok(Vec::new());
-    }
-
-    let mut tables = Vec::new();
-    load_models_recursive(models_dir, &mut tables)?;
-
-    // Normalize tables to convert inline constraints (primary_key, foreign_key, etc.) to table-level constraints
-    // This must happen before validation so that foreign key references can be checked
-    let normalized_tables: Vec<TableDef> = tables
-        .into_iter()
-        .map(|t| {
-            t.normalize()
-                .map_err(|e| anyhow::anyhow!("Failed to normalize table '{}': {}", t.name, e))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    // Validate schema integrity before returning
-    if !normalized_tables.is_empty() {
-        validate_schema(&normalized_tables)
-            .map_err(|e| anyhow::anyhow!("schema validation failed: {}", e))?;
-    }
-
-    Ok(normalized_tables)
-}
-
-/// Recursively walk directory and load model files.
-fn load_models_recursive(dir: &Path, tables: &mut Vec<TableDef>) -> Result<()> {
-    let entries =
-        fs::read_dir(dir).with_context(|| format!("read models directory: {}", dir.display()))?;
-
-    for entry in entries {
-        let entry = entry.context("read directory entry")?;
-        let path = entry.path();
-
-        if path.is_dir() {
-            // Recursively process subdirectories
-            load_models_recursive(&path, tables)?;
-            continue;
-        }
-
-        if path.is_file() {
-            let ext = path.extension().and_then(|s| s.to_str());
-            if matches!(ext, Some("json") | Some("yaml") | Some("yml")) {
-                let content = fs::read_to_string(&path)
-                    .with_context(|| format!("read model file: {}", path.display()))?;
-
-                let table: TableDef = if ext == Some("json") {
-                    serde_json::from_str(&content)
-                        .with_context(|| format!("parse JSON model: {}", path.display()))?
-                } else {
-                    serde_yaml::from_str(&content)
-                        .with_context(|| format!("parse YAML model: {}", path.display()))?
-                };
-
-                tables.push(table);
-            }
-        }
-    }
-
-    Ok(())
-}
-
-/// Load all migration plans from the migrations directory, sorted by version.
-pub fn load_migrations(config: &VespertideConfig) -> Result<Vec<MigrationPlan>> {
-    let migrations_dir = config.migrations_dir();
-    if !migrations_dir.exists() {
-        return Ok(Vec::new());
-    }
-
-    let mut plans = Vec::new();
-    let entries = fs::read_dir(migrations_dir).context("read migrations directory")?;
-
-    for entry in entries {
-        let entry = entry.context("read directory entry")?;
-        let path = entry.path();
-        if path.is_file() {
-            let ext = path.extension().and_then(|s| s.to_str());
-            if ext == Some("json") || ext == Some("yaml") || ext == Some("yml") {
-                let content = fs::read_to_string(&path)
-                    .with_context(|| format!("read migration file: {}", path.display()))?;
-
-                let plan: MigrationPlan = if ext == Some("json") {
-                    serde_json::from_str(&content)
-                        .with_context(|| format!("parse migration: {}", path.display()))?
-                } else {
-                    serde_yaml::from_str(&content)
-                        .with_context(|| format!("parse migration: {}", path.display()))?
-                };
-
-                // Validate the migration plan
-                validate_migration_plan(&plan)
-                    .with_context(|| format!("validate migration: {}", path.display()))?;
-
-                plans.push(plan);
-            }
-        }
-    }
-
-    // Sort by version number
-    plans.sort_by_key(|p| p.version);
-    Ok(plans)
-}
+// Re-export loader functions for convenience
+pub use vespertide_loader::{load_config, load_migrations, load_models};
 
 /// Generate a migration filename from version and optional comment with format and pattern.
 pub fn migration_filename_with_format_and_pattern(
@@ -229,8 +108,10 @@ mod tests {
     use serial_test::serial;
     use std::fs;
     use tempfile::tempdir;
+    use vespertide_config::VespertideConfig;
     use vespertide_core::{
-        ColumnDef, ColumnType, SimpleColumnType, schema::foreign_key::ForeignKeySyntax,
+        ColumnDef, ColumnType, MigrationPlan, SimpleColumnType, TableDef,
+        schema::foreign_key::ForeignKeySyntax,
     };
 
     struct CwdGuard {

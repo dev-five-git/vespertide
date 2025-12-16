@@ -1,11 +1,10 @@
 // MigrationOptions and MigrationError are now in vespertide-core
 
-mod loader;
-
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
 use syn::{Expr, Ident, Token, parse_macro_input};
+use vespertide_loader::{load_migrations_at_compile_time, load_models_at_compile_time};
 use vespertide_query::{DatabaseBackend, build_plan_queries};
 
 struct MacroInput {
@@ -54,7 +53,7 @@ pub fn vespertide_migration(input: TokenStream) -> TokenStream {
         .unwrap_or_else(|| "vespertide_version".to_string());
 
     // Load migration files and build SQL at compile time
-    let migrations = match loader::load_migrations_at_compile_time() {
+    let migrations = match load_migrations_at_compile_time() {
         Ok(migrations) => migrations,
         Err(e) => {
             return syn::Error::new(
@@ -65,12 +64,23 @@ pub fn vespertide_migration(input: TokenStream) -> TokenStream {
             .into();
         }
     };
+    let models = match load_models_at_compile_time() {
+        Ok(models) => models,
+        Err(e) => {
+            return syn::Error::new(
+                proc_macro2::Span::call_site(),
+                format!("Failed to load models at compile time: {}", e),
+            )
+            .to_compile_error()
+            .into();
+        }
+    };
 
     // Build SQL for each migration
     let mut migration_blocks = Vec::new();
     for migration in &migrations {
         let version = migration.version;
-        let queries = match build_plan_queries(migration) {
+        let queries = match build_plan_queries(migration, &models) {
             Ok(queries) => queries,
             Err(e) => {
                 return syn::Error::new(
