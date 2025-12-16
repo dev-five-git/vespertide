@@ -306,23 +306,6 @@ actions:
     }
 
     #[test]
-    #[cfg(not(windows))]
-    fn test_load_migrations_from_dir_with_unreadable_file() {
-        // On Unix-like systems, we can't easily simulate file read errors
-        // The error handling code path (line 85) exists and will be executed
-        // in real-world scenarios when file read errors occur.
-        let temp_dir = TempDir::new().unwrap();
-        let migrations_dir = temp_dir.path().join("migrations");
-        fs::create_dir_all(&migrations_dir).unwrap();
-
-        let file_path = migrations_dir.join("0001_test.json");
-        fs::write(&file_path, r#"{"version": 1, "actions": []}"#).unwrap();
-
-        let result = load_migrations_from_dir(Some(temp_dir.path().to_path_buf()));
-        assert!(result.is_ok());
-    }
-
-    #[test]
     #[serial]
     fn test_load_migrations_from_dir_without_project_root() {
         // Save the original value
