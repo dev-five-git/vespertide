@@ -17,18 +17,24 @@ pub fn build_add_constraint(
 ) -> Result<Vec<BuiltQuery>, QueryError> {
     match constraint {
         TableConstraint::PrimaryKey { columns, .. } => {
-            // sea_query 0.32 doesn't support adding primary key via Table::alter() directly
-            // We'll use Index::create().primary() which creates a primary key index
-            // Note: This generates CREATE UNIQUE INDEX, not ALTER TABLE ADD PRIMARY KEY
-            // but it's functionally equivalent for most databases
-            let mut pk_idx = Index::create()
-                .table(Alias::new(table))
-                .primary()
-                .to_owned();
-            for col in columns {
-                pk_idx = pk_idx.col(Alias::new(col)).to_owned();
-            }
-            Ok(vec![BuiltQuery::CreateIndex(Box::new(pk_idx))])
+            // sea_query lacks ALTER TABLE ADD PRIMARY KEY; emit backend SQL
+            let pg_cols = columns
+                .iter()
+                .map(|c| format!("\"{}\"", c))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let mysql_cols = columns
+                .iter()
+                .map(|c| format!("`{}`", c))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let pg_sql = format!("ALTER TABLE \"{}\" ADD PRIMARY KEY ({})", table, pg_cols);
+            let mysql_sql = format!("ALTER TABLE `{}` ADD PRIMARY KEY ({})", table, mysql_cols);
+            Ok(vec![BuiltQuery::Raw(RawSql::per_backend(
+                pg_sql.clone(),
+                mysql_sql,
+                pg_sql,
+            ))])
         }
         TableConstraint::Unique { name, columns } => {
             // SQLite does not support ALTER TABLE ... ADD CONSTRAINT UNIQUE
