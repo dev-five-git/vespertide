@@ -66,8 +66,11 @@ pub fn build_add_column(
             .from(Alias::new(table))
             .to_owned();
 
-        let mut columns_alias: Vec<Alias> =
-            table_def.columns.iter().map(|c| Alias::new(&c.name)).collect();
+        let mut columns_alias: Vec<Alias> = table_def
+            .columns
+            .iter()
+            .map(|c| Alias::new(&c.name))
+            .collect();
         columns_alias.push(Alias::new(&column.name));
         let insert_stmt = Query::insert()
             .into_table(Alias::new(&temp_table))
@@ -77,9 +80,8 @@ pub fn build_add_column(
             .to_owned();
         let insert_query = BuiltQuery::Insert(Box::new(insert_stmt));
 
-        let drop_query = BuiltQuery::DropTable(Box::new(
-            Table::drop().table(Alias::new(table)).to_owned(),
-        ));
+        let drop_query =
+            BuiltQuery::DropTable(Box::new(Table::drop().table(Alias::new(table)).to_owned()));
         let rename_query = build_rename_table(&temp_table, table);
 
         let mut index_queries = Vec::new();

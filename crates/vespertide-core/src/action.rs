@@ -247,10 +247,7 @@ mod tests {
         },
         "RenameTable: old_table -> new_table"
     )]
-    fn test_display_basic_actions(
-        #[case] action: MigrationAction,
-        #[case] expected: &str,
-    ) {
+    fn test_display_basic_actions(#[case] action: MigrationAction, #[case] expected: &str) {
         assert_eq!(action.to_string(), expected);
     }
 
@@ -323,10 +320,7 @@ mod tests {
         },
         "AddConstraint: users.chk_age (CHECK)"
     )]
-    fn test_display_add_constraint(
-        #[case] action: MigrationAction,
-        #[case] expected: &str,
-    ) {
+    fn test_display_add_constraint(#[case] action: MigrationAction, #[case] expected: &str) {
         assert_eq!(action.to_string(), expected);
     }
 
@@ -399,10 +393,7 @@ mod tests {
         },
         "RemoveConstraint: users.chk_age (CHECK)"
     )]
-    fn test_display_remove_constraint(
-        #[case] action: MigrationAction,
-        #[case] expected: &str,
-    ) {
+    fn test_display_remove_constraint(#[case] action: MigrationAction, #[case] expected: &str) {
         assert_eq!(action.to_string(), expected);
     }
 
@@ -413,17 +404,16 @@ mod tests {
         },
         "RawSql: SELECT 1"
     )]
-    fn test_display_raw_sql_short(
-        #[case] action: MigrationAction,
-        #[case] expected: &str,
-    ) {
+    fn test_display_raw_sql_short(#[case] action: MigrationAction, #[case] expected: &str) {
         assert_eq!(action.to_string(), expected);
     }
 
     #[test]
     fn test_display_raw_sql_long() {
         let action = MigrationAction::RawSql {
-            sql: "SELECT * FROM users WHERE id = 1 AND name = 'test' AND email = 'test@example.com'".into(),
+            sql:
+                "SELECT * FROM users WHERE id = 1 AND name = 'test' AND email = 'test@example.com'"
+                    .into(),
         };
         let result = action.to_string();
         assert!(result.starts_with("RawSql: "));

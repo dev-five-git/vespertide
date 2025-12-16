@@ -81,7 +81,8 @@ pub fn load_migrations_from_dir(
         if path.is_file() {
             let ext = path.extension().and_then(|s| s.to_str());
             if ext == Some("json") || ext == Some("yaml") || ext == Some("yml") {
-                let content = fs::read_to_string(&path).context(format!("Failed to read migration file {}", path.display()))?;
+                let content = fs::read_to_string(&path)
+                    .context(format!("Failed to read migration file {}", path.display()))?;
 
                 let plan: MigrationPlan = if ext == Some("json") {
                     serde_json::from_str(&content).map_err(|e| {
@@ -299,7 +300,7 @@ actions:
 
         let file_path = migrations_dir.join("0001_test.json");
         fs::write(&file_path, r#"{"version": 1, "actions": []}"#).unwrap();
-        
+
         let result = load_migrations_from_dir(Some(temp_dir.path().to_path_buf()));
         assert!(result.is_ok());
     }
@@ -316,7 +317,7 @@ actions:
 
         let file_path = migrations_dir.join("0001_test.json");
         fs::write(&file_path, r#"{"version": 1, "actions": []}"#).unwrap();
-        
+
         let result = load_migrations_from_dir(Some(temp_dir.path().to_path_buf()));
         assert!(result.is_ok());
     }
@@ -326,19 +327,19 @@ actions:
     fn test_load_migrations_from_dir_without_project_root() {
         // Save the original value
         let original = env::var("CARGO_MANIFEST_DIR").ok();
-        
+
         // Remove CARGO_MANIFEST_DIR to test the error path
         // Note: remove_var is unsafe in multi-threaded environments,
         // but serial_test ensures tests run sequentially
         unsafe {
             env::remove_var("CARGO_MANIFEST_DIR");
         }
-        
+
         let result = load_migrations_from_dir(None);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("CARGO_MANIFEST_DIR environment variable not set"));
-        
+
         // Restore the original value if it existed
         // Note: In a test environment, we don't restore to avoid affecting other tests
         // The serial_test ensures tests run sequentially

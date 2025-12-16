@@ -43,8 +43,11 @@ pub fn build_remove_constraint(
                 let create_query = BuiltQuery::CreateTable(Box::new(create_temp_table));
 
                 // 2. Copy data (all columns)
-                let column_aliases: Vec<Alias> =
-                    table_def.columns.iter().map(|c| Alias::new(&c.name)).collect();
+                let column_aliases: Vec<Alias> = table_def
+                    .columns
+                    .iter()
+                    .map(|c| Alias::new(&c.name))
+                    .collect();
                 let mut select_query = Query::select();
                 for col_alias in &column_aliases {
                     select_query = select_query.column(col_alias.clone()).to_owned();
@@ -114,8 +117,16 @@ pub fn build_remove_constraint(
                 let mut new_constraints = table_def.constraints.clone();
                 new_constraints.retain(|c| {
                     match (c, constraint) {
-                        (TableConstraint::Unique { name: c_name, columns: c_cols },
-                         TableConstraint::Unique { name: r_name, columns: r_cols }) => {
+                        (
+                            TableConstraint::Unique {
+                                name: c_name,
+                                columns: c_cols,
+                            },
+                            TableConstraint::Unique {
+                                name: r_name,
+                                columns: r_cols,
+                            },
+                        ) => {
                             // Remove if names match, or if no name and columns match
                             if let (Some(cn), Some(rn)) = (c_name, r_name) {
                                 cn != rn
@@ -140,7 +151,11 @@ pub fn build_remove_constraint(
                 let create_query = BuiltQuery::CreateTable(Box::new(create_temp_table));
 
                 // 2. Copy data (all columns)
-                let column_aliases: Vec<Alias> = table_def.columns.iter().map(|c| Alias::new(&c.name)).collect();
+                let column_aliases: Vec<Alias> = table_def
+                    .columns
+                    .iter()
+                    .map(|c| Alias::new(&c.name))
+                    .collect();
                 let mut select_query = Query::select();
                 for col_alias in &column_aliases {
                     select_query = select_query.column(col_alias.clone()).to_owned();
@@ -226,8 +241,18 @@ pub fn build_remove_constraint(
                 let mut new_constraints = table_def.constraints.clone();
                 new_constraints.retain(|c| {
                     match (c, constraint) {
-                        (TableConstraint::ForeignKey { name: c_name, columns: c_cols, .. },
-                         TableConstraint::ForeignKey { name: r_name, columns: r_cols, .. }) => {
+                        (
+                            TableConstraint::ForeignKey {
+                                name: c_name,
+                                columns: c_cols,
+                                ..
+                            },
+                            TableConstraint::ForeignKey {
+                                name: r_name,
+                                columns: r_cols,
+                                ..
+                            },
+                        ) => {
                             // Remove if names match, or if no name and columns match
                             if let (Some(cn), Some(rn)) = (c_name, r_name) {
                                 cn != rn
@@ -252,7 +277,11 @@ pub fn build_remove_constraint(
                 let create_query = BuiltQuery::CreateTable(Box::new(create_temp_table));
 
                 // 2. Copy data (all columns)
-                let column_aliases: Vec<Alias> = table_def.columns.iter().map(|c| Alias::new(&c.name)).collect();
+                let column_aliases: Vec<Alias> = table_def
+                    .columns
+                    .iter()
+                    .map(|c| Alias::new(&c.name))
+                    .collect();
                 let mut select_query = Query::select();
                 for col_alias in &column_aliases {
                     select_query = select_query.column(col_alias.clone()).to_owned();
@@ -320,14 +349,12 @@ pub fn build_remove_constraint(
 
                 // Create new constraints without the removed check constraint
                 let mut new_constraints = table_def.constraints.clone();
-                new_constraints.retain(|c| {
-                    match (c, constraint) {
-                        (TableConstraint::Check { name: c_name, .. },
-                         TableConstraint::Check { name: r_name, .. }) => {
-                            c_name != r_name
-                        }
-                        _ => true,
-                    }
+                new_constraints.retain(|c| match (c, constraint) {
+                    (
+                        TableConstraint::Check { name: c_name, .. },
+                        TableConstraint::Check { name: r_name, .. },
+                    ) => c_name != r_name,
+                    _ => true,
                 });
 
                 // Generate temporary table name
@@ -343,7 +370,11 @@ pub fn build_remove_constraint(
                 let create_query = BuiltQuery::CreateTable(Box::new(create_temp_table));
 
                 // 2. Copy data (all columns)
-                let column_aliases: Vec<Alias> = table_def.columns.iter().map(|c| Alias::new(&c.name)).collect();
+                let column_aliases: Vec<Alias> = table_def
+                    .columns
+                    .iter()
+                    .map(|c| Alias::new(&c.name))
+                    .collect();
                 let mut select_query = Query::select();
                 for col_alias in &column_aliases {
                     select_query = select_query.column(col_alias.clone()).to_owned();
@@ -495,7 +526,7 @@ mod tests {
                 expr: "age > 0".into(),
             }
         };
-        
+
         // For SQLite, we need to provide current schema with the constraint to be removed
         let current_schema = vec![TableDef {
             name: "users".into(),
@@ -566,8 +597,9 @@ mod tests {
             constraints: vec![constraint.clone()],
             indexes: vec![],
         }];
-        
-        let result = build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+
+        let result =
+            build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
         let sql = result[0].build(backend);
         for exp in expected {
             assert!(

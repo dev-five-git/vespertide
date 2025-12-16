@@ -141,35 +141,35 @@ mod tests {
     ) {
         // For SQLite, we need to provide current schema
         let current_schema = vec![TableDef {
-                name: "users".into(),
-                columns: vec![
-                    ColumnDef {
-                        name: "id".into(),
-                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
-                        nullable: false,
-                        default: None,
-                        comment: None,
-                        primary_key: None,
-                        unique: None,
-                        index: None,
-                        foreign_key: None,
-                    },
-                    ColumnDef {
-                        name: "age".into(),
-                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
-                        nullable: true,
-                        default: None,
-                        comment: None,
-                        primary_key: None,
-                        unique: None,
-                        index: None,
-                        foreign_key: None,
-                    },
-                ],
-                constraints: vec![],
-                indexes: vec![],
-            }];
-        
+            name: "users".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "age".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![],
+            indexes: vec![],
+        }];
+
         let result = build_modify_column_type(
             &backend,
             "users",
@@ -179,14 +179,12 @@ mod tests {
         );
 
         // SQLite may return multiple queries
-        let sql = 
-            result
-                .unwrap()
-                .iter()
-                .map(|q| q.build(backend))
-                .collect::<Vec<_>>()
-                .join(";\n")
-;
+        let sql = result
+            .unwrap()
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<_>>()
+            .join(";\n");
 
         for exp in expected {
             assert!(

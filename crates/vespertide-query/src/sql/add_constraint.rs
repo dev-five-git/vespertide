@@ -42,7 +42,7 @@ pub fn build_add_constraint(
                     &table_def.columns,
                     &new_constraints,
                 );
-                
+
                 // If there are CHECK constraints, we need to modify the SQL manually (same as in ForeignKey case)
                 // Actually, build_create_table_for_backend might handle PK correctly if it's in constraints list?
                 // Yes, sea-query create_table handles table-level PK.
@@ -53,7 +53,7 @@ pub fn build_add_constraint(
                     .iter()
                     .filter(|c| matches!(c, TableConstraint::Check { .. }))
                     .collect();
-                
+
                 let create_query = if !check_constraints.is_empty() {
                     let base_sql = build_schema_statement(&create_temp_table, *backend);
                     let mut modified_sql = base_sql.clone();
@@ -69,7 +69,7 @@ pub fn build_add_constraint(
                             })
                             .filter(|s| !s.is_empty())
                             .collect();
-                        
+
                         if !check_clauses.is_empty() {
                             let check_sql = check_clauses.join(", ");
                             modified_sql.insert_str(pos, &format!(", {}", check_sql));
@@ -85,7 +85,11 @@ pub fn build_add_constraint(
                 };
 
                 // 2. Copy data
-                let column_aliases: Vec<Alias> = table_def.columns.iter().map(|c| Alias::new(&c.name)).collect();
+                let column_aliases: Vec<Alias> = table_def
+                    .columns
+                    .iter()
+                    .map(|c| Alias::new(&c.name))
+                    .collect();
                 let mut select_query = Query::select();
                 for col_alias in &column_aliases {
                     select_query = select_query.column(col_alias.clone()).to_owned();
@@ -148,14 +152,14 @@ pub fn build_add_constraint(
         }
         TableConstraint::Unique { name, columns } => {
             // SQLite does not support ALTER TABLE ... ADD CONSTRAINT UNIQUE
-                let mut idx = Index::create().table(Alias::new(table)).unique().to_owned();
-                if let Some(n) = name {
-                    idx = idx.name(n).to_owned();
-                }
-                for col in columns {
-                    idx = idx.col(Alias::new(col)).to_owned();
-                }
-                Ok(vec![BuiltQuery::CreateIndex(Box::new(idx))])
+            let mut idx = Index::create().table(Alias::new(table)).unique().to_owned();
+            if let Some(n) = name {
+                idx = idx.name(n).to_owned();
+            }
+            for col in columns {
+                idx = idx.col(Alias::new(col)).to_owned();
+            }
+            Ok(vec![BuiltQuery::CreateIndex(Box::new(idx))])
         }
         TableConstraint::ForeignKey {
             name,
@@ -190,19 +194,19 @@ pub fn build_add_constraint(
                     .iter()
                     .filter(|c| matches!(c, TableConstraint::Check { .. }))
                     .collect();
-                
+
                 let create_temp_table = build_create_table_for_backend(
                     backend,
                     &temp_table,
                     &table_def.columns,
                     &new_constraints,
                 );
-                
+
                 // If there are CHECK constraints, we need to modify the SQL
                 let create_query = if !check_constraints.is_empty() {
                     // Build the base CREATE TABLE SQL
                     let base_sql = build_schema_statement(&create_temp_table, *backend);
-                    
+
                     // Find the position to insert CHECK constraints (before the closing parenthesis)
                     // For SQLite, we need to add CHECK constraints before the closing parenthesis
                     let mut modified_sql = base_sql.clone();
@@ -218,13 +222,13 @@ pub fn build_add_constraint(
                             })
                             .filter(|s| !s.is_empty())
                             .collect();
-                        
+
                         if !check_clauses.is_empty() {
                             let check_sql = check_clauses.join(", ");
                             modified_sql.insert_str(pos, &format!(", {}", check_sql));
                         }
                     }
-                    
+
                     BuiltQuery::Raw(RawSql::per_backend(
                         modified_sql.clone(),
                         modified_sql.clone(),
@@ -235,7 +239,11 @@ pub fn build_add_constraint(
                 };
 
                 // 2. Copy data (all columns)
-                let column_aliases: Vec<Alias> = table_def.columns.iter().map(|c| Alias::new(&c.name)).collect();
+                let column_aliases: Vec<Alias> = table_def
+                    .columns
+                    .iter()
+                    .map(|c| Alias::new(&c.name))
+                    .collect();
                 let mut select_query = Query::select();
                 for col_alias in &column_aliases {
                     select_query = select_query.column(col_alias.clone()).to_owned();
@@ -324,19 +332,19 @@ pub fn build_add_constraint(
                     .iter()
                     .filter(|c| matches!(c, TableConstraint::Check { .. }))
                     .collect();
-                
+
                 let create_temp_table = build_create_table_for_backend(
                     backend,
                     &temp_table,
                     &table_def.columns,
                     &new_constraints,
                 );
-                
+
                 // If there are CHECK constraints, we need to modify the SQL
                 let create_query = if !check_constraints.is_empty() {
                     // Build the base CREATE TABLE SQL
                     let base_sql = build_schema_statement(&create_temp_table, *backend);
-                    
+
                     // Find the position to insert CHECK constraints (before the closing parenthesis)
                     // For SQLite, we need to add CHECK constraints before the closing parenthesis
                     let mut modified_sql = base_sql.clone();
@@ -352,13 +360,13 @@ pub fn build_add_constraint(
                             })
                             .filter(|s| !s.is_empty())
                             .collect();
-                        
+
                         if !check_clauses.is_empty() {
                             let check_sql = check_clauses.join(", ");
                             modified_sql.insert_str(pos, &format!(", {}", check_sql));
                         }
                     }
-                    
+
                     BuiltQuery::Raw(RawSql::per_backend(
                         modified_sql.clone(),
                         modified_sql.clone(),
@@ -369,7 +377,11 @@ pub fn build_add_constraint(
                 };
 
                 // 2. Copy data (all columns)
-                let column_aliases: Vec<Alias> = table_def.columns.iter().map(|c| Alias::new(&c.name)).collect();
+                let column_aliases: Vec<Alias> = table_def
+                    .columns
+                    .iter()
+                    .map(|c| Alias::new(&c.name))
+                    .collect();
                 let mut select_query = Query::select();
                 for col_alias in &column_aliases {
                     select_query = select_query.column(col_alias.clone()).to_owned();
@@ -434,7 +446,9 @@ mod tests {
     use crate::sql::types::DatabaseBackend;
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
-    use vespertide_core::{ColumnDef, ColumnType, ReferenceAction, SimpleColumnType, TableConstraint, TableDef};
+    use vespertide_core::{
+        ColumnDef, ColumnType, ReferenceAction, SimpleColumnType, TableConstraint, TableDef,
+    };
 
     #[rstest]
     #[case::add_constraint_primary_key_postgres(
@@ -527,65 +541,69 @@ mod tests {
                 expr: "age > 0".into(),
             }
         };
-        
+
         // For SQLite, we need to provide current schema
         let current_schema = vec![TableDef {
-                name: "users".into(),
-                columns: if title.contains("foreign_key") {
-                    vec![
-                        ColumnDef {
-                            name: "id".into(),
-                            r#type: ColumnType::Simple(SimpleColumnType::Integer),
-                            nullable: false,
-                            default: None,
-                            comment: None,
-                            primary_key: None,
-                            unique: None,
-                            index: None,
-                            foreign_key: None,
+            name: "users".into(),
+            columns: if title.contains("foreign_key") {
+                vec![
+                    ColumnDef {
+                        name: "id".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    },
+                    ColumnDef {
+                        name: "user_id".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: true,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    },
+                ]
+            } else {
+                vec![
+                    ColumnDef {
+                        name: "id".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    },
+                    ColumnDef {
+                        name: if title.contains("check") {
+                            "age".into()
+                        } else {
+                            "email".into()
                         },
-                        ColumnDef {
-                            name: "user_id".into(),
-                            r#type: ColumnType::Simple(SimpleColumnType::Integer),
-                            nullable: true,
-                            default: None,
-                            comment: None,
-                            primary_key: None,
-                            unique: None,
-                            index: None,
-                            foreign_key: None,
-                        },
-                    ]
-                } else {
-                    vec![
-                        ColumnDef {
-                            name: "id".into(),
-                            r#type: ColumnType::Simple(SimpleColumnType::Integer),
-                            nullable: false,
-                            default: None,
-                            comment: None,
-                            primary_key: None,
-                            unique: None,
-                            index: None,
-                            foreign_key: None,
-                        },
-                        ColumnDef {
-                            name: if title.contains("check") { "age".into() } else { "email".into() },
-                            r#type: ColumnType::Simple(SimpleColumnType::Text),
-                            nullable: true,
-                            default: None,
-                            comment: None,
-                            primary_key: None,
-                            unique: None,
-                            index: None,
-                            foreign_key: None,
-                        },
-                    ]
-                },
-                constraints: vec![],
-                indexes: vec![],
-            }];
-        
+                        r#type: ColumnType::Simple(SimpleColumnType::Text),
+                        nullable: true,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    },
+                ]
+            },
+            constraints: vec![],
+            indexes: vec![],
+        }];
+
         let result = build_add_constraint(&backend, "users", &constraint, &current_schema).unwrap();
         let sql = result[0].build(backend);
         for exp in expected {
