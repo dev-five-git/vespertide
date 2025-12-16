@@ -177,8 +177,11 @@ mod tests {
         });
     }
 
-    #[test]
-    fn test_create_table_with_inline_unique() {
+    #[rstest]
+    #[case::inline_unique_postgres(DatabaseBackend::Postgres)]
+    #[case::inline_unique_mysql(DatabaseBackend::MySql)]
+    #[case::inline_unique_sqlite(DatabaseBackend::Sqlite)]
+    fn test_create_table_with_inline_unique(#[case] backend: DatabaseBackend) {
         // Test inline unique constraint (line 32)
         use vespertide_core::schema::str_or_bool::StrOrBoolOrArray;
 
@@ -186,7 +189,7 @@ mod tests {
         email_col.unique = Some(StrOrBoolOrArray::Bool(true));
 
         let result = build_create_table(
-            &DatabaseBackend::Postgres,
+            &backend,
             "users",
             &[
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
@@ -195,15 +198,21 @@ mod tests {
             &[],
         )
         .unwrap();
-        let sql = result.build(DatabaseBackend::Postgres);
+        let sql = result.build(backend);
         assert!(sql.contains("UNIQUE"));
+        with_settings!({ snapshot_suffix => format!("create_table_with_inline_unique_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
     }
 
-    #[test]
-    fn test_create_table_with_table_level_unique() {
+    #[rstest]
+    #[case::table_level_unique_postgres(DatabaseBackend::Postgres)]
+    #[case::table_level_unique_mysql(DatabaseBackend::MySql)]
+    #[case::table_level_unique_sqlite(DatabaseBackend::Sqlite)]
+    fn test_create_table_with_table_level_unique(#[case] backend: DatabaseBackend) {
         // Test table-level unique constraint (lines 53-54, 56-58, 60-61)
         let result = build_create_table(
-            &DatabaseBackend::Postgres,
+            &backend,
             "users",
             &[
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
@@ -215,17 +224,23 @@ mod tests {
             }],
         )
         .unwrap();
-        let sql = result.build(DatabaseBackend::Postgres);
+        let sql = result.build(backend);
         // sea-query doesn't directly support named unique constraints in CREATE TABLE
         // but the code path should be covered
         assert!(sql.contains("CREATE TABLE"));
+        with_settings!({ snapshot_suffix => format!("create_table_with_table_level_unique_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
     }
 
-    #[test]
-    fn test_create_table_with_table_level_unique_no_name() {
+    #[rstest]
+    #[case::table_level_unique_no_name_postgres(DatabaseBackend::Postgres)]
+    #[case::table_level_unique_no_name_mysql(DatabaseBackend::MySql)]
+    #[case::table_level_unique_no_name_sqlite(DatabaseBackend::Sqlite)]
+    fn test_create_table_with_table_level_unique_no_name(#[case] backend: DatabaseBackend) {
         // Test table-level unique constraint without name (lines 53-54, 56-58, 60-61)
         let result = build_create_table(
-            &DatabaseBackend::Postgres,
+            &backend,
             "users",
             &[
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
@@ -237,7 +252,10 @@ mod tests {
             }],
         )
         .unwrap();
-        let sql = result.build(DatabaseBackend::Postgres);
+        let sql = result.build(backend);
         assert!(sql.contains("CREATE TABLE"));
+        with_settings!({ snapshot_suffix => format!("create_table_with_table_level_unique_no_name_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
     }
 }
