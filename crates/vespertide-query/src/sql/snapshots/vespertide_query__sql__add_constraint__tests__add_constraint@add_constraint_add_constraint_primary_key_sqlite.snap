@@ -1,0 +1,8 @@
+---
+source: crates/vespertide-query/src/sql/add_constraint.rs
+expression: "result.iter().map(|q| q.build(backend)).collect::<Vec<String>>().join(\"\\n\")"
+---
+CREATE TABLE "users_temp" ( "id" integer NOT NULL, "email" text, PRIMARY KEY ("id") )
+INSERT INTO "users_temp" ("id", "email") SELECT "id", "email" FROM "users"
+DROP TABLE "users"
+ALTER TABLE "users_temp" RENAME TO "users"

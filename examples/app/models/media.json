@@ -1,0 +1,52 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
+  "name": "media",
+  "columns": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "default": "gen_random_uuid()",
+      "primary_key": true
+    },
+    {
+      "name": "name",
+      "type": { "kind": "varchar", "length": 100 },
+      "nullable": false
+    },
+    {
+      "name": "description",
+      "type": "text",
+      "nullable": true
+    },
+    {
+      "name": "logo",
+      "type": "text",
+      "nullable": true
+    },
+    {
+      "name": "owner_id",
+      "type": "uuid",
+      "nullable": false,
+      "foreign_key": {
+        "ref_table": "user",
+        "ref_columns": ["id"],
+        "on_delete": "cascade"
+      },
+      "index": true
+    },
+    {
+      "name": "created_at",
+      "type": "timestamptz",
+      "nullable": false,
+      "default": "now()"
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamptz",
+      "nullable": true
+    }
+  ],
+  "constraints": [],
+  "indexes": []
+}

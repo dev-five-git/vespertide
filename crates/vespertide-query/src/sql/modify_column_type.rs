@@ -1,0 +1,409 @@
+use sea_query::{Alias, ColumnDef as SeaColumnDef, Query, Table};
+
+use vespertide_core::{ColumnType, TableDef};
+
+use super::create_table::build_create_table_for_backend;
+use super::helpers::apply_column_type;
+use super::rename_table::build_rename_table;
+use super::types::{BuiltQuery, DatabaseBackend};
+use crate::error::QueryError;
+
+pub fn build_modify_column_type(
+    backend: &DatabaseBackend,
+    table: &str,
+    column: &str,
+    new_type: &ColumnType,
+    current_schema: &[TableDef],
+) -> Result<Vec<BuiltQuery>, QueryError> {
+    // SQLite does not support direct column type modification, so use temporary table approach
+    if *backend == DatabaseBackend::Sqlite {
+        // Current schema information is required
+        let table_def = current_schema
+            .iter()
+            .find(|t| t.name == table)
+            .ok_or_else(|| QueryError::Other(format!(
+                "Table '{}' not found in current schema. SQLite requires current schema information to modify column types.",
+                table
+            )))?;
+
+        // Create new column definitions with the modified column
+        let mut new_columns = table_def.columns.clone();
+        let col_index = new_columns
+            .iter()
+            .position(|c| c.name == column)
+            .ok_or_else(|| {
+                QueryError::Other(format!(
+                    "Column '{}' not found in table '{}'",
+                    column, table
+                ))
+            })?;
+
+        new_columns[col_index].r#type = new_type.clone();
+
+        // Generate temporary table name
+        let temp_table = format!("{}_temp", table);
+
+        // 1. Create temporary table with new column types
+        let create_temp_table = build_create_table_for_backend(
+            backend,
+            &temp_table,
+            &new_columns,
+            &table_def.constraints,
+        );
+        let create_query = BuiltQuery::CreateTable(Box::new(create_temp_table));
+
+        // 2. Copy data (all columns) - Use INSERT INTO ... SELECT
+        let column_aliases: Vec<Alias> = new_columns.iter().map(|c| Alias::new(&c.name)).collect();
+
+        // Build SELECT query
+        let mut select_query = Query::select();
+        for col_alias in &column_aliases {
+            select_query = select_query.column(col_alias.clone()).to_owned();
+        }
+        select_query = select_query.from(Alias::new(table)).to_owned();
+
+        // Build INSERT query
+        let insert_stmt = Query::insert()
+            .into_table(Alias::new(&temp_table))
+            .columns(column_aliases.clone())
+            .select_from(select_query)
+            .unwrap()
+            .to_owned();
+
+        let insert_query = BuiltQuery::Insert(Box::new(insert_stmt));
+
+        // 3. Drop original table
+        let drop_table = Table::drop().table(Alias::new(table)).to_owned();
+        let drop_query = BuiltQuery::DropTable(Box::new(drop_table));
+
+        // 4. Rename temporary table to original name
+        let rename_query = build_rename_table(&temp_table, table);
+
+        // 5. Recreate indexes (if any)
+        let mut index_queries = Vec::new();
+        for index in &table_def.indexes {
+            let mut idx_stmt = sea_query::Index::create();
+            idx_stmt = idx_stmt.name(&index.name).to_owned();
+            for col_name in &index.columns {
+                idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
+            }
+            if index.unique {
+                idx_stmt = idx_stmt.unique().to_owned();
+            }
+            idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
+            index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
+        }
+
+        let mut queries = vec![create_query, insert_query, drop_query, rename_query];
+        queries.extend(index_queries);
+
+        Ok(queries)
+    } else {
+        // PostgreSQL, MySQL, etc. can use ALTER TABLE directly
+        let mut col = SeaColumnDef::new(Alias::new(column));
+        apply_column_type(&mut col, new_type);
+
+        let stmt = Table::alter()
+            .table(Alias::new(table))
+            .modify_column(col)
+            .to_owned();
+        Ok(vec![BuiltQuery::AlterTable(Box::new(stmt))])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use insta::{assert_snapshot, with_settings};
+    use rstest::rstest;
+    use vespertide_core::{ColumnDef, ColumnType, ComplexColumnType, SimpleColumnType, TableDef};
+
+    #[rstest]
+    #[case::modify_column_type_postgres(
+        "modify_column_type_postgres",
+        DatabaseBackend::Postgres,
+        &["ALTER TABLE \"users\"", "\"age\""]
+    )]
+    #[case::modify_column_type_mysql(
+        "modify_column_type_mysql",
+        DatabaseBackend::MySql,
+        &["ALTER TABLE `users` MODIFY COLUMN `age` varchar(50)"]
+    )]
+    #[case::modify_column_type_sqlite(
+        "modify_column_type_sqlite",
+        DatabaseBackend::Sqlite,
+        &[]
+    )]
+    fn test_modify_column_type(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+        #[case] expected: &[&str],
+    ) {
+        // For SQLite, we need to provide current schema
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "age".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![],
+            indexes: vec![],
+        }];
+
+        let result = build_modify_column_type(
+            &backend,
+            "users",
+            "age",
+            &ColumnType::Complex(ComplexColumnType::Varchar { length: 50 }),
+            &current_schema,
+        );
+
+        // SQLite may return multiple queries
+        let sql = result
+            .unwrap()
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<_>>()
+            .join(";\n");
+
+        for exp in expected {
+            assert!(
+                sql.contains(exp),
+                "Expected SQL to contain '{}', got: {}",
+                exp,
+                sql
+            );
+        }
+        println!("sql: {}", sql);
+
+        with_settings!({ snapshot_suffix => format!("modify_column_type_{}", title) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[test]
+    fn test_modify_column_type_sqlite_table_not_found() {
+        // Test error when table is not found in current schema (line 25)
+        let result = build_modify_column_type(
+            &DatabaseBackend::Sqlite,
+            "nonexistent_table",
+            "age",
+            &ColumnType::Simple(SimpleColumnType::BigInt),
+            &[], // Empty schema
+        );
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Table 'nonexistent_table' not found in current schema"));
+    }
+
+    #[test]
+    fn test_modify_column_type_sqlite_column_not_found() {
+        // Test error when column is not found in table (lines 35-37)
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            indexes: vec![],
+        }];
+        let result = build_modify_column_type(
+            &DatabaseBackend::Sqlite,
+            "users",
+            "nonexistent_column",
+            &ColumnType::Simple(SimpleColumnType::BigInt),
+            &current_schema,
+        );
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Column 'nonexistent_column' not found in table 'users'"));
+    }
+
+    #[rstest]
+    #[case::modify_column_type_with_index_postgres(
+        "modify_column_type_with_index_postgres",
+        DatabaseBackend::Postgres
+    )]
+    #[case::modify_column_type_with_index_mysql(
+        "modify_column_type_with_index_mysql",
+        DatabaseBackend::MySql
+    )]
+    #[case::modify_column_type_with_index_sqlite(
+        "modify_column_type_with_index_sqlite",
+        DatabaseBackend::Sqlite
+    )]
+    fn test_modify_column_type_with_index(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test modify column type with indexes (lines 85-88, 90-91, 93-94)
+        use vespertide_core::IndexDef;
+
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "age".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![],
+            indexes: vec![IndexDef {
+                name: "idx_age".into(),
+                columns: vec!["age".into()],
+                unique: false,
+            }],
+        }];
+
+        let result = build_modify_column_type(
+            &backend,
+            "users",
+            "age",
+            &ColumnType::Simple(SimpleColumnType::BigInt),
+            &current_schema,
+        )
+        .unwrap();
+
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<_>>()
+            .join(";\n");
+
+        // For SQLite, should recreate index
+        if matches!(backend, DatabaseBackend::Sqlite) {
+            assert!(sql.contains("CREATE INDEX"));
+            assert!(sql.contains("idx_age"));
+        }
+
+        with_settings!({ snapshot_suffix => format!("modify_column_type_with_index_{}", title) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::modify_column_type_with_unique_index_postgres(
+        "modify_column_type_with_unique_index_postgres",
+        DatabaseBackend::Postgres
+    )]
+    #[case::modify_column_type_with_unique_index_mysql(
+        "modify_column_type_with_unique_index_mysql",
+        DatabaseBackend::MySql
+    )]
+    #[case::modify_column_type_with_unique_index_sqlite(
+        "modify_column_type_with_unique_index_sqlite",
+        DatabaseBackend::Sqlite
+    )]
+    fn test_modify_column_type_with_unique_index(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test modify column type with unique index (lines 85-88, 90-91, 93-94)
+        use vespertide_core::IndexDef;
+
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![],
+            indexes: vec![IndexDef {
+                name: "idx_email".into(),
+                columns: vec!["email".into()],
+                unique: true,
+            }],
+        }];
+
+        let result = build_modify_column_type(
+            &backend,
+            "users",
+            "email",
+            &ColumnType::Complex(ComplexColumnType::Varchar { length: 255 }),
+            &current_schema,
+        )
+        .unwrap();
+
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<_>>()
+            .join(";\n");
+
+        // For SQLite, should recreate unique index
+        if matches!(backend, DatabaseBackend::Sqlite) {
+            assert!(sql.contains("CREATE UNIQUE INDEX"));
+            assert!(sql.contains("idx_email"));
+        }
+
+        with_settings!({ snapshot_suffix => format!("modify_column_type_with_unique_index_{}", title) }, {
+            assert_snapshot!(sql);
+        });
+    }
+}

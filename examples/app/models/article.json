@@ -1,0 +1,76 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
+  "name": "article",
+  "columns": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "default": "gen_random_uuid()",
+      "primary_key": true
+    },
+    {
+      "name": "title",
+      "type": { "kind": "varchar", "length": 499 },
+      "nullable": false
+    },
+    {
+      "name": "content",
+      "type": "text",
+      "nullable": false
+    },
+    {
+      "name": "summary",
+      "type": "text",
+      "nullable": true
+    },
+    {
+      "name": "thumbnail",
+      "type": "text",
+      "nullable": true
+    },
+    {
+      "name": "media_id",
+      "type": "uuid",
+      "nullable": false,
+      "foreign_key": {
+        "ref_table": "media",
+        "ref_columns": ["id"],
+        "on_delete": "cascade"
+      },
+      "index": true
+    },
+    {
+      "name": "status",
+      "type": { "kind": "varchar", "length": 19 },
+      "nullable": false,
+      "default": "'draft'",
+      "index": true
+    },
+    {
+      "name": "published_at",
+      "type": "timestamptz",
+      "nullable": true,
+      "index": true
+    },
+    {
+      "name": "created_at",
+      "type": "timestamptz",
+      "nullable": false,
+      "default": "now()"
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamptz",
+      "nullable": true
+    }
+  ],
+  "constraints": [
+    {
+      "type": "check",
+      "name": "chk_article_status",
+      "expr": "status IN ('draft', 'review', 'published', 'archived')"
+    }
+  ],
+  "indexes": []
+}

@@ -1,0 +1,8 @@
+---
+source: crates/vespertide-query/src/sql/mod.rs
+expression: sql
+---
+CREATE TABLE "users_temp" ( "age" bigint )
+INSERT INTO "users_temp" ("age") SELECT "age" FROM "users"
+DROP TABLE "users"
+ALTER TABLE "users_temp" RENAME TO "users"

@@ -1,15 +1,33 @@
-use vespertide_core::MigrationPlan;
+use vespertide_core::{MigrationAction, MigrationPlan, TableDef};
 
+use crate::DatabaseBackend;
 use crate::error::QueryError;
 use crate::sql::{BuiltQuery, build_action_queries};
 
-#[cfg(test)]
-use crate::sql::DatabaseBackend;
+pub struct PlanQueries {
+    pub action: MigrationAction,
+    pub postgres: Vec<BuiltQuery>,
+    pub mysql: Vec<BuiltQuery>,
+    pub sqlite: Vec<BuiltQuery>,
+}
 
-pub fn build_plan_queries(plan: &MigrationPlan) -> Result<Vec<BuiltQuery>, QueryError> {
-    let mut queries: Vec<BuiltQuery> = Vec::new();
+pub fn build_plan_queries(
+    plan: &MigrationPlan,
+    current_schema: &[TableDef],
+) -> Result<Vec<PlanQueries>, QueryError> {
+    let mut queries: Vec<PlanQueries> = Vec::new();
     for action in &plan.actions {
-        queries.extend(build_action_queries(action)?);
+        let postgres_queries =
+            build_action_queries(&DatabaseBackend::Postgres, action, current_schema)?;
+        let mysql_queries = build_action_queries(&DatabaseBackend::MySql, action, current_schema)?;
+        let sqlite_queries =
+            build_action_queries(&DatabaseBackend::Sqlite, action, current_schema)?;
+        queries.push(PlanQueries {
+            action: action.clone(),
+            postgres: postgres_queries,
+            mysql: mysql_queries,
+            sqlite: sqlite_queries,
+        });
     }
     Ok(queries)
 }
@@ -17,6 +35,7 @@ pub fn build_plan_queries(plan: &MigrationPlan) -> Result<Vec<BuiltQuery>, Query
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sql::DatabaseBackend;
     use rstest::rstest;
     use vespertide_core::{
         ColumnDef, ColumnType, MigrationAction, MigrationPlan, SimpleColumnType,
@@ -76,7 +95,7 @@ mod tests {
         2
     )]
     fn test_build_plan_queries(#[case] plan: MigrationPlan, #[case] expected_count: usize) {
-        let result = build_plan_queries(&plan).unwrap();
+        let result = build_plan_queries(&plan, &[]).unwrap();
         assert_eq!(
             result.len(),
             expected_count,
@@ -104,24 +123,44 @@ mod tests {
             ],
         };
 
-        let result = build_plan_queries(&plan).unwrap();
+        let result = build_plan_queries(&plan, &[]).unwrap();
         assert_eq!(result.len(), 2);
 
         // Test PostgreSQL output
-        let sql1 = result[0].build(DatabaseBackend::Postgres);
+        let sql1 = result[0]
+            .postgres
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Postgres))
+            .collect::<Vec<_>>()
+            .join(";\n");
         assert!(sql1.contains("CREATE TABLE"));
         assert!(sql1.contains("\"users\""));
         assert!(sql1.contains("\"id\""));
 
-        let sql2 = result[1].build(DatabaseBackend::Postgres);
+        let sql2 = result[1]
+            .postgres
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Postgres))
+            .collect::<Vec<_>>()
+            .join(";\n");
         assert!(sql2.contains("DROP TABLE"));
         assert!(sql2.contains("\"posts\""));
 
         // Test MySQL output
-        let sql1_mysql = result[0].build(DatabaseBackend::MySql);
+        let sql1_mysql = result[0]
+            .mysql
+            .iter()
+            .map(|q| q.build(DatabaseBackend::MySql))
+            .collect::<Vec<_>>()
+            .join(";\n");
         assert!(sql1_mysql.contains("`users`"));
 
-        let sql2_mysql = result[1].build(DatabaseBackend::MySql);
+        let sql2_mysql = result[1]
+            .mysql
+            .iter()
+            .map(|q| q.build(DatabaseBackend::MySql))
+            .collect::<Vec<_>>()
+            .join(";\n");
         assert!(sql2_mysql.contains("`posts`"));
     }
 }

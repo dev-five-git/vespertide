@@ -19,6 +19,7 @@ serde_yaml = "0.9"
 schemars = "1.1"
 vespertide-config = { workspace = true }
 vespertide-core = { workspace = true }
+vespertide-loader = { workspace = true }
 vespertide-planner = { workspace = true }
 vespertide-query = { workspace = true }
 vespertide-exporter = { workspace = true }

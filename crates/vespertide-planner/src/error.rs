@@ -28,4 +28,6 @@ pub enum PlannerError {
     MissingFillWith(String, String),
     #[error("table validation error: {0}")]
     TableValidation(String),
+    #[error("table '{0}' must have a primary key")]
+    MissingPrimaryKey(String),
 }

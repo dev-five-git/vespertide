@@ -1,0 +1,22 @@
+[package]
+name = "vespertide-loader"
+version = "0.1.9"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+description = "Loads migrations and models from filesystem"
+
+[dependencies]
+vespertide-core = { workspace = true }
+vespertide-config = { workspace = true }
+vespertide-planner = { workspace = true }
+anyhow = "1"
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+[dev-dependencies]
+tempfile = "3"
+rstest = "0.26"
+serial_test = "1.0"

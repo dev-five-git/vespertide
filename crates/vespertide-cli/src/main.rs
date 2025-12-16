@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 
 mod commands;
 mod utils;
@@ -8,6 +8,24 @@ use commands::{
     cmd_diff, cmd_export, cmd_init, cmd_log, cmd_new, cmd_revision, cmd_sql, cmd_status,
 };
 use vespertide_config::FileFormat;
+use vespertide_query::DatabaseBackend;
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+enum BackendArg {
+    Postgres,
+    Mysql,
+    Sqlite,
+}
+
+impl From<BackendArg> for DatabaseBackend {
+    fn from(value: BackendArg) -> Self {
+        match value {
+            BackendArg::Postgres => DatabaseBackend::Postgres,
+            BackendArg::Mysql => DatabaseBackend::MySql,
+            BackendArg::Sqlite => DatabaseBackend::Sqlite,
+        }
+    }
+}
 
 /// vespertide command-line interface.
 #[derive(Parser, Debug)]
@@ -22,9 +40,17 @@ enum Commands {
     /// Show diff between applied migrations and current models.
     Diff,
     /// Show SQL statements for the pending migration plan.
-    Sql,
+    Sql {
+        /// Database backend for SQL generation.
+        #[arg(short = 'b', long = "backend", value_enum, default_value = "postgres")]
+        backend: BackendArg,
+    },
     /// Show SQL per applied migration (chronological log).
-    Log,
+    Log {
+        /// Database backend for SQL generation.
+        #[arg(short = 'b', long = "backend", value_enum, default_value = "postgres")]
+        backend: BackendArg,
+    },
     /// Create a new model file from template.
     New {
         /// Model name (table name).
@@ -57,8 +83,8 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Some(Commands::Diff) => cmd_diff(),
-        Some(Commands::Sql) => cmd_sql(),
-        Some(Commands::Log) => cmd_log(),
+        Some(Commands::Sql { backend }) => cmd_sql(backend.into()),
+        Some(Commands::Log { backend }) => cmd_log(backend.into()),
         Some(Commands::New { name, format }) => cmd_new(name, format),
         Some(Commands::Status) => cmd_status(),
         Some(Commands::Revision { message }) => cmd_revision(message),

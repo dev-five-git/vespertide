@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql/mod.rs
+expression: sql
+---
+ALTER TABLE "old_table" RENAME TO "new_table"

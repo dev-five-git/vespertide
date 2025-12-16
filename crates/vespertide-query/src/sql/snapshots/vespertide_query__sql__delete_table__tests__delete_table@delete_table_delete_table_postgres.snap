@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql/delete_table.rs
+expression: sql
+---
+DROP TABLE "users"

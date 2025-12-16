@@ -1,5 +1,0 @@
----
-source: crates/vespertide-query/src/sql.rs
-expression: "result.iter().map(|q| q.build(backend)).collect::<Vec<String>>().join(\"\\n\")"
----
-ALTER TABLE "posts" DROP CONSTRAINT "posts_user_id_fkey"

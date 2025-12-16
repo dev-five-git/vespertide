@@ -1,0 +1,8 @@
+---
+source: crates/vespertide-query/src/sql/modify_column_type.rs
+expression: sql
+---
+CREATE TABLE "users_temp" ( "id" integer NOT NULL, "age" varchar(50) );
+INSERT INTO "users_temp" ("id", "age") SELECT "id", "age" FROM "users";
+DROP TABLE "users";
+ALTER TABLE "users_temp" RENAME TO "users"

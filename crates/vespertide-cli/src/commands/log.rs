@@ -1,11 +1,13 @@
 use anyhow::Result;
 use colored::Colorize;
+use vespertide_loader::{load_config, load_models};
 use vespertide_query::{DatabaseBackend, build_plan_queries};
 
 use crate::utils::load_migrations;
 
-pub fn cmd_log() -> Result<()> {
-    let plans = load_migrations(&crate::utils::load_config()?)?;
+pub fn cmd_log(backend: DatabaseBackend) -> Result<()> {
+    let config = load_config()?;
+    let plans = load_migrations(&config)?;
 
     if plans.is_empty() {
         println!("{}", "No migrations found.".bright_yellow());
@@ -19,7 +21,7 @@ pub fn cmd_log() -> Result<()> {
         plans.len().to_string().bright_yellow().bold()
     );
     println!();
-
+    let current_models = load_models(&config)?;
     for plan in &plans {
         println!(
             "{} {}",
@@ -42,22 +44,42 @@ pub fn cmd_log() -> Result<()> {
             plan.actions.len().to_string().bright_yellow()
         );
 
-        let queries = build_plan_queries(plan)
+        let plan_queries = build_plan_queries(plan, &current_models)
             .map_err(|e| anyhow::anyhow!("query build error for v{}: {}", plan.version, e))?;
-        println!(
-            "  {} {}",
-            "SQL statements:".bright_cyan().bold(),
-            queries.len().to_string().bright_yellow().bold()
-        );
 
-        for (i, q) in queries.iter().enumerate() {
+        for (i, pq) in plan_queries.iter().enumerate() {
             println!(
                 "    {}. {}",
                 (i + 1).to_string().bright_magenta().bold(),
-                q.build(DatabaseBackend::Postgres).trim().bright_white()
+                match backend {
+                    DatabaseBackend::Postgres => pq
+                        .postgres
+                        .iter()
+                        .map(|q| q.build(DatabaseBackend::Postgres))
+                        .collect::<Vec<_>>()
+                        .join(";\n")
+                        .trim()
+                        .bright_white(),
+                    DatabaseBackend::MySql => pq
+                        .mysql
+                        .iter()
+                        .map(|q| q.build(DatabaseBackend::MySql))
+                        .collect::<Vec<_>>()
+                        .join(";\n")
+                        .trim()
+                        .bright_white(),
+                    DatabaseBackend::Sqlite => pq
+                        .sqlite
+                        .iter()
+                        .map(|q| q.build(DatabaseBackend::Sqlite))
+                        .collect::<Vec<_>>()
+                        .join(";\n")
+                        .trim()
+                        .bright_white(),
+                }
             );
-            println!("       {} {:?}", "binds:".bright_cyan(), q.binds());
         }
+
         println!();
     }
 
@@ -113,7 +135,7 @@ mod tests {
 
     #[test]
     #[serial_test::serial]
-    fn cmd_log_with_single_migration() {
+    fn cmd_log_with_single_migration_postgres() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
@@ -121,13 +143,41 @@ mod tests {
         write_config(&cfg);
         write_migration(&cfg);
 
-        let result = cmd_log();
+        let result = cmd_log(DatabaseBackend::Postgres);
         assert!(result.is_ok());
     }
 
     #[test]
     #[serial_test::serial]
-    fn cmd_log_no_migrations() {
+    fn cmd_log_with_single_migration_mysql() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+
+        let cfg = VespertideConfig::default();
+        write_config(&cfg);
+        write_migration(&cfg);
+
+        let result = cmd_log(DatabaseBackend::MySql);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn cmd_log_with_single_migration_sqlite() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+
+        let cfg = VespertideConfig::default();
+        write_config(&cfg);
+        write_migration(&cfg);
+
+        let result = cmd_log(DatabaseBackend::Sqlite);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn cmd_log_no_migrations_postgres() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
@@ -135,7 +185,35 @@ mod tests {
         write_config(&cfg);
         fs::create_dir_all(cfg.migrations_dir()).unwrap();
 
-        let result = cmd_log();
+        let result = cmd_log(DatabaseBackend::Postgres);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn cmd_log_no_migrations_mysql() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+
+        let cfg = VespertideConfig::default();
+        write_config(&cfg);
+        fs::create_dir_all(cfg.migrations_dir()).unwrap();
+
+        let result = cmd_log(DatabaseBackend::MySql);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn cmd_log_no_migrations_sqlite() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+
+        let cfg = VespertideConfig::default();
+        write_config(&cfg);
+        fs::create_dir_all(cfg.migrations_dir()).unwrap();
+
+        let result = cmd_log(DatabaseBackend::Sqlite);
         assert!(result.is_ok());
     }
 }

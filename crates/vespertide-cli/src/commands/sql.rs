@@ -5,7 +5,7 @@ use vespertide_query::{DatabaseBackend, build_plan_queries};
 
 use crate::utils::{load_config, load_migrations, load_models};
 
-pub fn cmd_sql() -> Result<()> {
+pub fn cmd_sql(backend: DatabaseBackend) -> Result<()> {
     let config = load_config()?;
     let current_models = load_models(&config)?;
     let applied_plans = load_migrations(&config)?;
@@ -13,10 +13,14 @@ pub fn cmd_sql() -> Result<()> {
     let plan = plan_next_migration(&current_models, &applied_plans)
         .map_err(|e| anyhow::anyhow!("planning error: {}", e))?;
 
-    emit_sql(&plan)
+    emit_sql(&plan, backend, &current_models)
 }
 
-fn emit_sql(plan: &vespertide_core::MigrationPlan) -> Result<()> {
+fn emit_sql(
+    plan: &vespertide_core::MigrationPlan,
+    backend: DatabaseBackend,
+    current_schema: &[vespertide_core::TableDef],
+) -> Result<()> {
     if plan.actions.is_empty() {
         println!(
             "{} {}",
@@ -26,8 +30,18 @@ fn emit_sql(plan: &vespertide_core::MigrationPlan) -> Result<()> {
         return Ok(());
     }
 
-    let queries =
-        build_plan_queries(plan).map_err(|e| anyhow::anyhow!("query build error: {}", e))?;
+    let plan_queries = build_plan_queries(plan, current_schema)
+        .map_err(|e| anyhow::anyhow!("query build error: {}", e))?;
+
+    // Select queries for the specified backend
+    let queries: Vec<_> = plan_queries
+        .iter()
+        .flat_map(|pq| match backend {
+            DatabaseBackend::Postgres => &pq.postgres,
+            DatabaseBackend::MySql => &pq.mysql,
+            DatabaseBackend::Sqlite => &pq.sqlite,
+        })
+        .collect();
 
     println!(
         "{} {}",
@@ -56,13 +70,31 @@ fn emit_sql(plan: &vespertide_core::MigrationPlan) -> Result<()> {
     );
     println!();
 
-    for (i, q) in queries.iter().enumerate() {
+    for (i, pq) in plan_queries.iter().enumerate() {
+        let queries = match backend {
+            DatabaseBackend::Postgres => &pq.postgres,
+            DatabaseBackend::MySql => &pq.mysql,
+            DatabaseBackend::Sqlite => &pq.sqlite,
+        };
         println!(
-            "{}. {}",
-            (i + 1).to_string().bright_magenta().bold(),
-            q.build(DatabaseBackend::Postgres).trim().bright_white()
+            "{} {}",
+            "Action:".bright_cyan(),
+            pq.action.to_string().bright_white()
         );
-        println!("   {} {:?}", "binds:".bright_cyan(), q.binds());
+        for (j, q) in queries.iter().enumerate() {
+            println!(
+                "{}{}. {}",
+                (i + 1).to_string().bright_magenta().bold(),
+                if queries.len() > 1 {
+                    format!("-{}", j + 1)
+                } else {
+                    "".to_string()
+                }
+                .bright_magenta()
+                .bold(),
+                q.build(backend).trim().bright_white()
+            );
+        }
     }
 
     Ok(())
@@ -122,7 +154,10 @@ mod tests {
                 index: None,
                 foreign_key: None,
             }],
-            constraints: vec![],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
             indexes: vec![],
         };
         let path = models_dir.join(format!("{name}.json"));
@@ -131,28 +166,52 @@ mod tests {
 
     #[test]
     #[serial]
-    fn cmd_sql_emits_queries() {
+    fn cmd_sql_emits_queries_postgres() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
         let _cfg = write_config();
         write_model("users");
 
-        // No migrations yet -> plan will create table
-        let result = cmd_sql();
+        let result = cmd_sql(DatabaseBackend::Postgres);
         assert!(result.is_ok());
     }
 
     #[test]
     #[serial]
-    fn cmd_sql_no_changes() {
+    fn cmd_sql_emits_queries_mysql() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+
+        let _cfg = write_config();
+        write_model("users");
+
+        let result = cmd_sql(DatabaseBackend::MySql);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn cmd_sql_emits_queries_sqlite() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+
+        let _cfg = write_config();
+        write_model("users");
+
+        let result = cmd_sql(DatabaseBackend::Sqlite);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn cmd_sql_no_changes_postgres() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
         let cfg = write_config();
         write_model("users");
 
-        // Create initial migration to establish baseline
         let plan = MigrationPlan {
             comment: None,
             created_at: None,
@@ -180,13 +239,93 @@ mod tests {
         let path = cfg.migrations_dir().join("0001_init.json");
         fs::write(path, serde_json::to_string_pretty(&plan).unwrap()).unwrap();
 
-        let result = cmd_sql();
+        let result = cmd_sql(DatabaseBackend::Postgres);
         assert!(result.is_ok());
     }
 
     #[test]
     #[serial]
-    fn emit_sql_prints_created_at_and_comment() {
+    fn cmd_sql_no_changes_mysql() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+
+        let cfg = write_config();
+        write_model("users");
+
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::CreateTable {
+                table: "users".into(),
+                columns: vec![ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }],
+                constraints: vec![TableConstraint::PrimaryKey {
+                    auto_increment: false,
+                    columns: vec!["id".into()],
+                }],
+            }],
+        };
+        fs::create_dir_all(cfg.migrations_dir()).unwrap();
+        let path = cfg.migrations_dir().join("0001_init.json");
+        fs::write(path, serde_json::to_string_pretty(&plan).unwrap()).unwrap();
+
+        let result = cmd_sql(DatabaseBackend::MySql);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn cmd_sql_no_changes_sqlite() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+
+        let cfg = write_config();
+        write_model("users");
+
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::CreateTable {
+                table: "users".into(),
+                columns: vec![ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }],
+                constraints: vec![TableConstraint::PrimaryKey {
+                    auto_increment: false,
+                    columns: vec!["id".into()],
+                }],
+            }],
+        };
+        fs::create_dir_all(cfg.migrations_dir()).unwrap();
+        let path = cfg.migrations_dir().join("0001_init.json");
+        fs::write(path, serde_json::to_string_pretty(&plan).unwrap()).unwrap();
+
+        let result = cmd_sql(DatabaseBackend::Sqlite);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn emit_sql_prints_created_at_and_comment_postgres() {
         let plan = MigrationPlan {
             comment: Some("with comment".into()),
             created_at: Some("2024-01-02T00:00:00Z".into()),
@@ -196,7 +335,133 @@ mod tests {
             }],
         };
 
-        let result = emit_sql(&plan);
+        let result = emit_sql(&plan, DatabaseBackend::Postgres, &[]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn emit_sql_prints_created_at_and_comment_mysql() {
+        let plan = MigrationPlan {
+            comment: Some("with comment".into()),
+            created_at: Some("2024-01-02T00:00:00Z".into()),
+            version: 1,
+            actions: vec![MigrationAction::RawSql {
+                sql: "SELECT 1;".into(),
+            }],
+        };
+
+        let result = emit_sql(&plan, DatabaseBackend::MySql, &[]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn emit_sql_prints_created_at_and_comment_sqlite() {
+        let plan = MigrationPlan {
+            comment: Some("with comment".into()),
+            created_at: Some("2024-01-02T00:00:00Z".into()),
+            version: 1,
+            actions: vec![MigrationAction::RawSql {
+                sql: "SELECT 1;".into(),
+            }],
+        };
+
+        let result = emit_sql(&plan, DatabaseBackend::Sqlite, &[]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn emit_sql_multiple_queries() {
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![
+                MigrationAction::CreateTable {
+                    table: "users".into(),
+                    columns: vec![ColumnDef {
+                        name: "id".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    }],
+                    constraints: vec![],
+                },
+                MigrationAction::AddIndex {
+                    table: "users".into(),
+                    index: vespertide_core::IndexDef {
+                        name: "idx_id".into(),
+                        columns: vec!["id".into()],
+                        unique: false,
+                    },
+                },
+            ],
+        };
+
+        let result = emit_sql(&plan, DatabaseBackend::Postgres, &[]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn emit_sql_multiple_queries_per_action() {
+        // Test case where a single action generates multiple queries (e.g., SQLite constraint addition)
+        // This should trigger the queries.len() > 1 branch (line 89)
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        let _cfg = write_config();
+        write_model("users");
+
+        // Create a migration that adds a NOT NULL column in SQLite, which generates multiple queries
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "users".into(),
+                column: ColumnDef {
+                    name: "nickname".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                fill_with: Some("default".into()),
+            }],
+        };
+
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
+            indexes: vec![],
+        }];
+
+        let result = emit_sql(&plan, DatabaseBackend::Sqlite, &current_schema);
         assert!(result.is_ok());
     }
 }

@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql/rename_table.rs
+expression: sql
+---
+ALTER TABLE "users" RENAME TO "accounts"

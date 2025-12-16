@@ -746,6 +746,26 @@ mod tests {
     }
 
     #[test]
+    fn normalize_table_without_primary_key() {
+        // Test normalize with a table that has no primary key columns
+        // This should cover lines 67-69, 72-73, and 93 (pk_columns.is_empty() branch)
+        let table = TableDef {
+            name: "users".into(),
+            columns: vec![
+                col("name", ColumnType::Simple(SimpleColumnType::Text)),
+                col("email", ColumnType::Simple(SimpleColumnType::Text)),
+            ],
+            constraints: vec![],
+            indexes: vec![],
+        };
+
+        let normalized = table.normalize().unwrap();
+        // Should not add any primary key constraint
+        assert_eq!(normalized.constraints.len(), 0);
+        assert_eq!(normalized.indexes.len(), 0);
+    }
+
+    #[test]
     fn normalize_multiple_indexes_from_same_array() {
         // Multiple columns with same array of index names should create multiple composite indexes
         let mut updated_at_col = col(
