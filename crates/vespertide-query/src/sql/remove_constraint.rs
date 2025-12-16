@@ -122,6 +122,11 @@ mod tests {
         DatabaseBackend::MySql,
         &["DROP INDEX `uq_email`"]
     )]
+    #[case::remove_constraint_unique_named_sqlite(
+        "remove_constraint_unique_named_sqlite",
+        DatabaseBackend::Sqlite,
+        &["DROP INDEX `uq_email`"]
+    )]
     #[case::remove_constraint_foreign_key_named_postgres(
         "remove_constraint_foreign_key_named_postgres",
         DatabaseBackend::Postgres,
@@ -132,6 +137,11 @@ mod tests {
         DatabaseBackend::MySql,
         &["DROP FOREIGN KEY `fk_user`"]
     )]
+    #[case::remove_constraint_foreign_key_named_sqlite(
+        "remove_constraint_foreign_key_named_sqlite",
+        DatabaseBackend::Sqlite,
+        &["DROP CONSTRAINT \"fk_user\""]
+    )]
     #[case::remove_constraint_check_named_postgres(
         "remove_constraint_check_named_postgres",
         DatabaseBackend::Postgres,
@@ -141,6 +151,11 @@ mod tests {
         "remove_constraint_check_named_mysql",
         DatabaseBackend::MySql,
         &["DROP CHECK `chk_age`"]
+    )]
+    #[case::remove_constraint_check_named_sqlite(
+        "remove_constraint_check_named_sqlite",
+        DatabaseBackend::Sqlite,
+        &["DROP CONSTRAINT \"chk_age\""]
     )]
     fn test_remove_constraint(
         #[case] title: &str,

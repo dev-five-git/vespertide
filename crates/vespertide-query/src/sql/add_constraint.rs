@@ -133,6 +133,11 @@ mod tests {
         DatabaseBackend::MySql,
         &["FOREIGN KEY (`user_id`)", "REFERENCES `users` (`id`)", "ON DELETE CASCADE", "ON UPDATE RESTRICT"]
     )]
+    #[case::add_constraint_foreign_key_sqlite(
+        "add_constraint_foreign_key_sqlite",
+        DatabaseBackend::Sqlite,
+        &["FOREIGN KEY (\"user_id\")", "REFERENCES \"users\" (\"id\")", "ON DELETE CASCADE", "ON UPDATE RESTRICT"]
+    )]
     #[case::add_constraint_check_named_postgres(
         "add_constraint_check_named_postgres",
         DatabaseBackend::Postgres,
@@ -142,6 +147,11 @@ mod tests {
         "add_constraint_check_named_mysql",
         DatabaseBackend::MySql,
         &["ADD CONSTRAINT `chk_age` CHECK (age > 0)"]
+    )]
+    #[case::add_constraint_check_named_sqlite(
+        "add_constraint_check_named_sqlite",
+        DatabaseBackend::Sqlite,
+        &["ADD CONSTRAINT \"chk_age\" CHECK (age > 0)"]
     )]
     fn test_add_constraint(
         #[case] title: &str,

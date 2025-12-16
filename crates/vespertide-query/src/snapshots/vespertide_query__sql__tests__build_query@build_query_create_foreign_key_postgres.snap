@@ -1,5 +1,0 @@
----
-source: crates/vespertide-query/src/sql.rs
-expression: sql
----
-ALTER TABLE "a" ADD CONSTRAINT "fk" FOREIGN KEY ("c") REFERENCES "b" ("id")

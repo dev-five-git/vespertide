@@ -138,7 +138,7 @@ mod tests {
     #[case::create_table_postgres(
         "create_table_postgres",
         DatabaseBackend::Postgres,
-        &["CREATE TABLE \"users\" ( \"id\" integer, \"name\" text )"]
+        &["CREATE TABLE \"users\" ( \"id\" integer )"]
     )]
     #[case::create_table_mysql(
         "create_table_mysql",

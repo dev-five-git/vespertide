@@ -1,5 +1,0 @@
----
-source: crates/vespertide-query/src/sql.rs
-expression: "result.iter().map(|q| q.build(backend)).collect::<Vec<String>>().join(\"\\n\")"
----
-ALTER TABLE `posts` ADD CONSTRAINT `fk_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
