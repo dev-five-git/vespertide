@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql/add_column.rs
+expression: "result.iter().map(|q| q.build(backend)).collect::<Vec<String>>().join(\"\\n\")"
+---
+ALTER TABLE "users" ADD COLUMN "nickname" text

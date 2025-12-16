@@ -116,7 +116,7 @@ mod tests {
     use super::*;
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
-    use vespertide_core::{ColumnType, ComplexColumnType};
+    use vespertide_core::{ColumnDef, ColumnType, ComplexColumnType, SimpleColumnType, TableDef};
 
     #[rstest]
     #[case::modify_column_type_postgres(
@@ -139,34 +139,54 @@ mod tests {
         #[case] backend: DatabaseBackend,
         #[case] expected: &[&str],
     ) {
+        // For SQLite, we need to provide current schema
+        let current_schema = vec![TableDef {
+                name: "users".into(),
+                columns: vec![
+                    ColumnDef {
+                        name: "id".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    },
+                    ColumnDef {
+                        name: "age".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: true,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    },
+                ],
+                constraints: vec![],
+                indexes: vec![],
+            }];
+        
         let result = build_modify_column_type(
             &backend,
             "users",
             "age",
             &ColumnType::Complex(ComplexColumnType::Varchar { length: 50 }),
-            &[],
+            &current_schema,
         );
 
         // SQLite may return multiple queries
-        let sql = if result.is_ok() {
+        let sql = 
             result
                 .unwrap()
                 .iter()
                 .map(|q| q.build(backend))
                 .collect::<Vec<_>>()
                 .join(";\n")
-        } else {
-            // SQLite may error if schema information is missing
-            if backend == DatabaseBackend::Sqlite {
-                return; // Skip SQLite test as it requires schema information
-            }
-            result
-                .unwrap()
-                .iter()
-                .map(|q| q.build(backend))
-                .collect::<Vec<_>>()
-                .join(";\n")
-        };
+;
 
         for exp in expected {
             assert!(
@@ -176,6 +196,7 @@ mod tests {
                 sql
             );
         }
+        println!("sql: {}", sql);
 
         with_settings!({ snapshot_suffix => format!("modify_column_type_{}", title) }, {
             assert_snapshot!(sql);

@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql/add_index.rs
+expression: sql
+---
+CREATE UNIQUE INDEX "idx_email" ON "users" ("email")

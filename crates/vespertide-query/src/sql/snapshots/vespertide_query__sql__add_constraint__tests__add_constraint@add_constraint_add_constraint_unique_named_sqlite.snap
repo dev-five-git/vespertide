@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql/add_constraint.rs
+expression: "result.iter().map(|q| q.build(backend)).collect::<Vec<String>>().join(\"\\n\")"
+---
+CREATE UNIQUE INDEX "uq_email" ON "users" ("email")

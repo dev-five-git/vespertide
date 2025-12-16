@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql/remove_index.rs
+expression: sql
+---
+DROP INDEX "idx_email"

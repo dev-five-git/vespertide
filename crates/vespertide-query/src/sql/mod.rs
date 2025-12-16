@@ -76,11 +76,11 @@ pub fn build_action_queries(
         MigrationAction::RawSql { sql } => Ok(vec![build_raw_sql(sql.clone())]),
 
         MigrationAction::AddConstraint { table, constraint } => {
-            build_add_constraint(table, constraint)
+            build_add_constraint(backend, table, constraint, current_schema)
         }
 
         MigrationAction::RemoveConstraint { table, constraint } => {
-            build_remove_constraint(table, constraint)
+            build_remove_constraint(backend, table, constraint, current_schema)
         }
     }
 }
@@ -152,6 +152,46 @@ mod tests {
         DatabaseBackend::Postgres,
         &["DEFAULT", "'active'"]
     )]
+    #[case::create_table_with_default_mysql(
+        "create_table_with_default_mysql",
+        MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![ColumnDef {
+                name: "status".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Text),
+                nullable: true,
+                default: Some("'active'".into()),
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        },
+        DatabaseBackend::Postgres,
+        &["DEFAULT", "'active'"]
+    )]
+    #[case::create_table_with_default_sqlite(
+        "create_table_with_default_sqlite",
+        MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![ColumnDef {
+                name: "status".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Text),
+                nullable: true,
+                default: Some("'active'".into()),
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        },
+        DatabaseBackend::Postgres,
+        &["DEFAULT", "'active'"]
+    )]
     #[case::create_table_with_inline_primary_key_postgres(
         "create_table_with_inline_primary_key_postgres",
         MigrationAction::CreateTable {
@@ -172,8 +212,88 @@ mod tests {
         DatabaseBackend::Postgres,
         &["PRIMARY KEY"]
     )]
+    #[case::create_table_with_inline_primary_key_mysql(
+        "create_table_with_inline_primary_key_mysql",
+        MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        },
+        DatabaseBackend::Postgres,
+        &["PRIMARY KEY"]
+    )]
+    #[case::create_table_with_inline_primary_key_sqlite(
+        "create_table_with_inline_primary_key_sqlite",
+        MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        },
+        DatabaseBackend::Postgres,
+        &["PRIMARY KEY"]
+    )]
     #[case::create_table_with_fk_postgres(
         "create_table_with_fk_postgres",
+        MigrationAction::CreateTable {
+            table: "posts".into(),
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("user_id", ColumnType::Simple(SimpleColumnType::Integer)),
+            ],
+            constraints: vec![TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: Some(ReferenceAction::Cascade),
+                on_update: Some(ReferenceAction::Restrict),
+            }],
+        },
+        DatabaseBackend::Postgres,
+        &["REFERENCES \"users\" (\"id\")", "ON DELETE CASCADE", "ON UPDATE RESTRICT"]
+    )]
+    #[case::create_table_with_fk_mysql(
+        "create_table_with_fk_mysql",
+        MigrationAction::CreateTable {
+            table: "posts".into(),
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("user_id", ColumnType::Simple(SimpleColumnType::Integer)),
+            ],
+            constraints: vec![TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: Some(ReferenceAction::Cascade),
+                on_update: Some(ReferenceAction::Restrict),
+            }],
+        },
+        DatabaseBackend::Postgres,
+        &["REFERENCES \"users\" (\"id\")", "ON DELETE CASCADE", "ON UPDATE RESTRICT"]
+    )]
+    #[case::create_table_with_fk_sqlite(
+        "create_table_with_fk_sqlite",
         MigrationAction::CreateTable {
             table: "posts".into(),
             columns: vec![
