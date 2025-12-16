@@ -17,24 +17,134 @@ pub fn build_add_constraint(
 ) -> Result<Vec<BuiltQuery>, QueryError> {
     match constraint {
         TableConstraint::PrimaryKey { columns, .. } => {
-            // sea_query lacks ALTER TABLE ADD PRIMARY KEY; emit backend SQL
-            let pg_cols = columns
-                .iter()
-                .map(|c| format!("\"{}\"", c))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let mysql_cols = columns
-                .iter()
-                .map(|c| format!("`{}`", c))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let pg_sql = format!("ALTER TABLE \"{}\" ADD PRIMARY KEY ({})", table, pg_cols);
-            let mysql_sql = format!("ALTER TABLE `{}` ADD PRIMARY KEY ({})", table, mysql_cols);
-            Ok(vec![BuiltQuery::Raw(RawSql::per_backend(
-                pg_sql.clone(),
-                mysql_sql,
-                pg_sql,
-            ))])
+            if *backend == DatabaseBackend::Sqlite {
+                // SQLite does not support ALTER TABLE ... ADD PRIMARY KEY
+                // Use temporary table approach
+                let table_def = current_schema
+                    .iter()
+                    .find(|t| t.name == table)
+                    .ok_or_else(|| QueryError::Other(format!(
+                        "Table '{}' not found in current schema. SQLite requires current schema information to add constraints.",
+                        table
+                    )))?;
+
+                // Create new constraints with the added primary key constraint
+                let mut new_constraints = table_def.constraints.clone();
+                new_constraints.push(constraint.clone());
+
+                // Generate temporary table name
+                let temp_table = format!("{}_temp", table);
+
+                // 1. Create temporary table with new constraints
+                let create_temp_table = build_create_table_for_backend(
+                    backend,
+                    &temp_table,
+                    &table_def.columns,
+                    &new_constraints,
+                );
+                
+                // If there are CHECK constraints, we need to modify the SQL manually (same as in ForeignKey case)
+                // Actually, build_create_table_for_backend might handle PK correctly if it's in constraints list?
+                // Yes, sea-query create_table handles table-level PK.
+                // But for CHECK constraints in SQLite, sea-query needs raw SQL modification or it ignores them?
+                // Inspecting existing code for ForeignKey suggests CHECK needs special handling.
+                // Let's copy the CHECK handling logic just in case the table ALREADY has check constraints.
+                let check_constraints: Vec<&TableConstraint> = new_constraints
+                    .iter()
+                    .filter(|c| matches!(c, TableConstraint::Check { .. }))
+                    .collect();
+                
+                let create_query = if !check_constraints.is_empty() {
+                    let base_sql = build_schema_statement(&create_temp_table, *backend);
+                    let mut modified_sql = base_sql.clone();
+                    if let Some(pos) = modified_sql.rfind(')') {
+                        let check_clauses: Vec<String> = check_constraints
+                            .iter()
+                            .map(|c| {
+                                if let TableConstraint::Check { name, expr } = c {
+                                    format!("CONSTRAINT \"{}\" CHECK ({})", name, expr)
+                                } else {
+                                    String::new()
+                                }
+                            })
+                            .filter(|s| !s.is_empty())
+                            .collect();
+                        
+                        if !check_clauses.is_empty() {
+                            let check_sql = check_clauses.join(", ");
+                            modified_sql.insert_str(pos, &format!(", {}", check_sql));
+                        }
+                    }
+                    BuiltQuery::Raw(RawSql::per_backend(
+                        modified_sql.clone(),
+                        modified_sql.clone(),
+                        modified_sql,
+                    ))
+                } else {
+                    BuiltQuery::CreateTable(Box::new(create_temp_table))
+                };
+
+                // 2. Copy data
+                let column_aliases: Vec<Alias> = table_def.columns.iter().map(|c| Alias::new(&c.name)).collect();
+                let mut select_query = Query::select();
+                for col_alias in &column_aliases {
+                    select_query = select_query.column(col_alias.clone()).to_owned();
+                }
+                select_query = select_query.from(Alias::new(table)).to_owned();
+
+                let insert_stmt = Query::insert()
+                    .into_table(Alias::new(&temp_table))
+                    .columns(column_aliases.clone())
+                    .select_from(select_query)
+                    .unwrap()
+                    .to_owned();
+                let insert_query = BuiltQuery::Insert(Box::new(insert_stmt));
+
+                // 3. Drop original table
+                let drop_table = Table::drop().table(Alias::new(table)).to_owned();
+                let drop_query = BuiltQuery::DropTable(Box::new(drop_table));
+
+                // 4. Rename temporary table
+                let rename_query = build_rename_table(&temp_table, table);
+
+                // 5. Recreate indexes
+                let mut index_queries = Vec::new();
+                for index in &table_def.indexes {
+                    let mut idx_stmt = sea_query::Index::create();
+                    idx_stmt = idx_stmt.name(&index.name).to_owned();
+                    for col_name in &index.columns {
+                        idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
+                    }
+                    if index.unique {
+                        idx_stmt = idx_stmt.unique().to_owned();
+                    }
+                    idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
+                    index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
+                }
+
+                let mut queries = vec![create_query, insert_query, drop_query, rename_query];
+                queries.extend(index_queries);
+                Ok(queries)
+            } else {
+                // sea_query lacks ALTER TABLE ADD PRIMARY KEY; emit backend SQL
+                let pg_cols = columns
+                    .iter()
+                    .map(|c| format!("\"{}\"", c))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let mysql_cols = columns
+                    .iter()
+                    .map(|c| format!("`{}`", c))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let pg_sql = format!("ALTER TABLE \"{}\" ADD PRIMARY KEY ({})", table, pg_cols);
+                let mysql_sql = format!("ALTER TABLE `{}` ADD PRIMARY KEY ({})", table, mysql_cols);
+                Ok(vec![BuiltQuery::Raw(RawSql::per_backend(
+                    pg_sql.clone(),
+                    mysql_sql,
+                    pg_sql,
+                ))])
+            }
         }
         TableConstraint::Unique { name, columns } => {
             // SQLite does not support ALTER TABLE ... ADD CONSTRAINT UNIQUE
@@ -340,7 +450,7 @@ mod tests {
     #[case::add_constraint_primary_key_sqlite(
         "add_constraint_primary_key_sqlite",
         DatabaseBackend::Sqlite,
-        &["ALTER TABLE \"users\" ADD PRIMARY KEY (\"id\")"]
+        &["CREATE TABLE \"users_temp\""]
     )]
     #[case::add_constraint_unique_named_postgres(
         "add_constraint_unique_named_postgres",
