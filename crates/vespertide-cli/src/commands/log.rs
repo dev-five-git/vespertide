@@ -135,7 +135,7 @@ mod tests {
 
     #[test]
     #[serial_test::serial]
-    fn cmd_log_with_single_migration() {
+    fn cmd_log_with_single_migration_postgres() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
@@ -149,7 +149,35 @@ mod tests {
 
     #[test]
     #[serial_test::serial]
-    fn cmd_log_no_migrations() {
+    fn cmd_log_with_single_migration_mysql() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+
+        let cfg = VespertideConfig::default();
+        write_config(&cfg);
+        write_migration(&cfg);
+
+        let result = cmd_log(DatabaseBackend::MySql);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn cmd_log_with_single_migration_sqlite() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+
+        let cfg = VespertideConfig::default();
+        write_config(&cfg);
+        write_migration(&cfg);
+
+        let result = cmd_log(DatabaseBackend::Sqlite);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn cmd_log_no_migrations_postgres() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
@@ -158,6 +186,34 @@ mod tests {
         fs::create_dir_all(cfg.migrations_dir()).unwrap();
 
         let result = cmd_log(DatabaseBackend::Postgres);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn cmd_log_no_migrations_mysql() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+
+        let cfg = VespertideConfig::default();
+        write_config(&cfg);
+        fs::create_dir_all(cfg.migrations_dir()).unwrap();
+
+        let result = cmd_log(DatabaseBackend::MySql);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn cmd_log_no_migrations_sqlite() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+
+        let cfg = VespertideConfig::default();
+        write_config(&cfg);
+        fs::create_dir_all(cfg.migrations_dir()).unwrap();
+
+        let result = cmd_log(DatabaseBackend::Sqlite);
         assert!(result.is_ok());
     }
 }

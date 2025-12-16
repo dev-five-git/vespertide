@@ -40,9 +40,37 @@ fn test_main_with_sql_command() {
 }
 
 #[test]
+fn test_main_with_sql_command_mysql() {
+    let mut cmd = vespertide();
+    cmd.args(["sql", "--backend", "mysql"]);
+    let _ = cmd.assert();
+}
+
+#[test]
+fn test_main_with_sql_command_sqlite() {
+    let mut cmd = vespertide();
+    cmd.args(["sql", "--backend", "sqlite"]);
+    let _ = cmd.assert();
+}
+
+#[test]
 fn test_main_with_log_command() {
     let mut cmd = vespertide();
     cmd.arg("log");
+    let _ = cmd.assert();
+}
+
+#[test]
+fn test_main_with_log_command_mysql() {
+    let mut cmd = vespertide();
+    cmd.args(["log", "--backend", "mysql"]);
+    let _ = cmd.assert();
+}
+
+#[test]
+fn test_main_with_log_command_sqlite() {
+    let mut cmd = vespertide();
+    cmd.args(["log", "--backend", "sqlite"]);
     let _ = cmd.assert();
 }
 
