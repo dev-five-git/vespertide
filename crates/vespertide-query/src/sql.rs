@@ -1,8 +1,5 @@
 use sea_query::{
-    Alias, ColumnDef as SeaColumnDef, ForeignKey, ForeignKeyAction, ForeignKeyCreateStatement,
-    ForeignKeyDropStatement, Index, IndexCreateStatement, IndexDropStatement, MysqlQueryBuilder,
-    PostgresQueryBuilder, SimpleExpr, SqliteQueryBuilder, Table, TableAlterStatement,
-    TableCreateStatement, TableDropStatement, TableRenameStatement,
+    Alias, ColumnDef as SeaColumnDef, ForeignKey, ForeignKeyAction, ForeignKeyCreateStatement, ForeignKeyDropStatement, Index, IndexCreateStatement, IndexDropStatement, MysqlQueryBuilder, PostgresQueryBuilder, SchemaStatement, SchemaStatementBuilder, SimpleExpr, SqliteQueryBuilder, Table, TableAlterStatement, TableCreateStatement, TableDropStatement, TableRenameStatement
 };
 use vespertide_core::{
     ColumnDef, ColumnType, ComplexColumnType, MigrationAction, ReferenceAction, SimpleColumnType,
@@ -22,18 +19,7 @@ pub enum DatabaseBackend {
 /// Represents a built query that can be converted to SQL for any database backend
 #[derive(Debug, Clone)]
 pub enum BuiltQuery {
-    /// Backend-specific create table statements (for tables with backend-specific defaults)
-    CreateTablePerBackend {
-        postgres: Box<TableCreateStatement>,
-        mysql: Box<TableCreateStatement>,
-        sqlite: Box<TableCreateStatement>,
-    },
-    /// Backend-specific alter table statements
-    AlterTablePerBackend {
-        postgres: Box<TableAlterStatement>,
-        mysql: Box<TableAlterStatement>,
-        sqlite: Box<TableAlterStatement>,
-    },
+    CreateTable(Box<TableCreateStatement>),
     DropTable(Box<TableDropStatement>),
     AlterTable(Box<TableAlterStatement>),
     CreateIndex(Box<IndexCreateStatement>),
@@ -41,7 +27,6 @@ pub enum BuiltQuery {
     RenameTable(Box<TableRenameStatement>),
     CreateForeignKey(Box<ForeignKeyCreateStatement>),
     DropForeignKey(Box<ForeignKeyDropStatement>),
-    /// Raw SQL with backend-specific variants
     Raw(RawSql),
 }
 
@@ -73,74 +58,36 @@ impl RawSql {
     }
 }
 
+/// Helper function to convert a schema statement to SQL for a specific backend
+fn build_schema_statement<T: SchemaStatementBuilder>(
+    stmt: &T,
+    backend: DatabaseBackend,
+) -> String {
+    match backend {
+        DatabaseBackend::Postgres => stmt.to_string(PostgresQueryBuilder),
+        DatabaseBackend::MySql => stmt.to_string(MysqlQueryBuilder),
+        DatabaseBackend::Sqlite => stmt.to_string(SqliteQueryBuilder),
+    }
+}
+
 impl BuiltQuery {
     /// Build SQL string for the specified database backend
     pub fn build(&self, backend: DatabaseBackend) -> String {
         match self {
-            BuiltQuery::CreateTablePerBackend {
-                postgres,
-                mysql,
-                sqlite,
-            } => match backend {
-                DatabaseBackend::Postgres => postgres.to_string(PostgresQueryBuilder),
-                DatabaseBackend::MySql => mysql.to_string(MysqlQueryBuilder),
-                DatabaseBackend::Sqlite => sqlite.to_string(SqliteQueryBuilder),
-            },
-            BuiltQuery::AlterTablePerBackend {
-                postgres,
-                mysql,
-                sqlite,
-            } => match backend {
-                DatabaseBackend::Postgres => postgres.to_string(PostgresQueryBuilder),
-                DatabaseBackend::MySql => mysql.to_string(MysqlQueryBuilder),
-                DatabaseBackend::Sqlite => sqlite.to_string(SqliteQueryBuilder),
-            },
-            BuiltQuery::DropTable(stmt) => match backend {
-                DatabaseBackend::Postgres => stmt.to_string(PostgresQueryBuilder),
-                DatabaseBackend::MySql => stmt.to_string(MysqlQueryBuilder),
-                DatabaseBackend::Sqlite => stmt.to_string(SqliteQueryBuilder),
-            },
-            BuiltQuery::AlterTable(stmt) => match backend {
-                DatabaseBackend::Postgres => stmt.to_string(PostgresQueryBuilder),
-                DatabaseBackend::MySql => stmt.to_string(MysqlQueryBuilder),
-                DatabaseBackend::Sqlite => stmt.to_string(SqliteQueryBuilder),
-            },
-            BuiltQuery::CreateIndex(stmt) => match backend {
-                DatabaseBackend::Postgres => stmt.to_string(PostgresQueryBuilder),
-                DatabaseBackend::MySql => stmt.to_string(MysqlQueryBuilder),
-                DatabaseBackend::Sqlite => stmt.to_string(SqliteQueryBuilder),
-            },
-            BuiltQuery::DropIndex(stmt) => match backend {
-                DatabaseBackend::Postgres => stmt.to_string(PostgresQueryBuilder),
-                DatabaseBackend::MySql => stmt.to_string(MysqlQueryBuilder),
-                DatabaseBackend::Sqlite => stmt.to_string(SqliteQueryBuilder),
-            },
-            BuiltQuery::RenameTable(stmt) => match backend {
-                DatabaseBackend::Postgres => stmt.to_string(PostgresQueryBuilder),
-                DatabaseBackend::MySql => stmt.to_string(MysqlQueryBuilder),
-                DatabaseBackend::Sqlite => stmt.to_string(SqliteQueryBuilder),
-            },
-            BuiltQuery::CreateForeignKey(stmt) => match backend {
-                DatabaseBackend::Postgres => stmt.to_string(PostgresQueryBuilder),
-                DatabaseBackend::MySql => stmt.to_string(MysqlQueryBuilder),
-                DatabaseBackend::Sqlite => stmt.to_string(SqliteQueryBuilder),
-            },
-            BuiltQuery::DropForeignKey(stmt) => match backend {
-                DatabaseBackend::Postgres => stmt.to_string(PostgresQueryBuilder),
-                DatabaseBackend::MySql => stmt.to_string(MysqlQueryBuilder),
-                DatabaseBackend::Sqlite => stmt.to_string(SqliteQueryBuilder),
-            },
+            BuiltQuery::CreateTable(stmt) => build_schema_statement(stmt.as_ref(), backend),
+            BuiltQuery::DropTable(stmt) => build_schema_statement(stmt.as_ref(), backend),
+            BuiltQuery::AlterTable(stmt) => build_schema_statement(stmt.as_ref(), backend),
+            BuiltQuery::CreateIndex(stmt) => build_schema_statement(stmt.as_ref(), backend),
+            BuiltQuery::DropIndex(stmt) => build_schema_statement(stmt.as_ref(), backend),
+            BuiltQuery::RenameTable(stmt) => build_schema_statement(stmt.as_ref(), backend),
+            BuiltQuery::CreateForeignKey(stmt) => build_schema_statement(stmt.as_ref(), backend),
+            BuiltQuery::DropForeignKey(stmt) => build_schema_statement(stmt.as_ref(), backend),
             BuiltQuery::Raw(raw) => match backend {
                 DatabaseBackend::Postgres => raw.postgres.clone(),
                 DatabaseBackend::MySql => raw.mysql.clone(),
                 DatabaseBackend::Sqlite => raw.sqlite.clone(),
             },
         }
-    }
-
-    /// Backward compatibility: binds are now empty (DDL doesn't use bind parameters)
-    pub fn binds(&self) -> Vec<String> {
-        Vec::new()
     }
 }
 
@@ -249,7 +196,7 @@ fn reference_action_sql(action: &ReferenceAction) -> &'static str {
 }
 
 /// Convert a default value string to the appropriate backend-specific expression
-fn convert_default_for_backend(default: &str, backend: DatabaseBackend) -> String {
+fn convert_default_for_backend(default: &str, backend: &DatabaseBackend) -> String {
     match default {
         "gen_random_uuid()" => match backend {
             DatabaseBackend::Postgres => "gen_random_uuid()".to_string(),
@@ -266,7 +213,7 @@ fn convert_default_for_backend(default: &str, backend: DatabaseBackend) -> Strin
 }
 
 /// Build sea_query ColumnDef from vespertide ColumnDef for a specific backend
-fn build_sea_column_def(backend: DatabaseBackend, column: &ColumnDef) -> SeaColumnDef {
+fn build_sea_column_def(backend: &DatabaseBackend, column: &ColumnDef) -> SeaColumnDef {
     let mut col = SeaColumnDef::new(Alias::new(&column.name));
     apply_column_type(&mut col, &column.r#type);
 
@@ -282,13 +229,13 @@ fn build_sea_column_def(backend: DatabaseBackend, column: &ColumnDef) -> SeaColu
     col
 }
 
-pub fn build_action_queries(action: &MigrationAction) -> Result<Vec<BuiltQuery>, QueryError> {
+pub fn build_action_queries(backend: &DatabaseBackend, action: &MigrationAction) -> Result<Vec<BuiltQuery>, QueryError> {
     match action {
         MigrationAction::CreateTable {
             table,
             columns,
             constraints,
-        } => Ok(vec![build_create_table(table, columns, constraints)?]),
+        } => Ok(vec![build_create_table(backend, table, columns, constraints)?]),
 
         MigrationAction::DeleteTable { table } => {
             let stmt = Table::drop().table(Alias::new(table)).to_owned();
@@ -299,7 +246,7 @@ pub fn build_action_queries(action: &MigrationAction) -> Result<Vec<BuiltQuery>,
             table,
             column,
             fill_with,
-        } => build_add_column(table, column, fill_with.as_deref()),
+        } => build_add_column(backend, table, column, fill_with.as_deref()),
 
         MigrationAction::RenameColumn { table, from, to } => {
             let stmt = Table::alter()
@@ -374,7 +321,7 @@ pub fn build_action_queries(action: &MigrationAction) -> Result<Vec<BuiltQuery>,
 }
 
 fn build_create_table_for_backend(
-    backend: DatabaseBackend,
+    backend: &DatabaseBackend,
     table: &str,
     columns: &[ColumnDef],
     constraints: &[TableConstraint],
@@ -470,34 +417,18 @@ fn build_create_table_for_backend(
 }
 
 fn build_create_table(
+    backend: &DatabaseBackend,
     table: &str,
     columns: &[ColumnDef],
     constraints: &[TableConstraint],
 ) -> Result<BuiltQuery, QueryError> {
-    Ok(BuiltQuery::CreateTablePerBackend {
-        postgres: Box::new(build_create_table_for_backend(
-            DatabaseBackend::Postgres,
-            table,
-            columns,
-            constraints,
-        )),
-        mysql: Box::new(build_create_table_for_backend(
-            DatabaseBackend::MySql,
-            table,
-            columns,
-            constraints,
-        )),
-        sqlite: Box::new(build_create_table_for_backend(
-            DatabaseBackend::Sqlite,
-            table,
-            columns,
-            constraints,
-        )),
-    })
+    Ok(BuiltQuery::CreateTable(
+        Box::new(build_create_table_for_backend(backend, table, columns, constraints)),
+    ))
 }
 
 fn build_add_column_alter_for_backend(
-    backend: DatabaseBackend,
+    backend: &DatabaseBackend,
     table: &str,
     column: &ColumnDef,
 ) -> TableAlterStatement {
@@ -509,6 +440,7 @@ fn build_add_column_alter_for_backend(
 }
 
 fn build_add_column(
+    backend: &DatabaseBackend,
     table: &str,
     column: &ColumnDef,
     fill_with: Option<&str>,
@@ -523,23 +455,9 @@ fn build_add_column(
         let mut temp_col = column.clone();
         temp_col.nullable = true;
 
-        stmts.push(BuiltQuery::AlterTablePerBackend {
-            postgres: Box::new(build_add_column_alter_for_backend(
-                DatabaseBackend::Postgres,
-                table,
-                &temp_col,
-            )),
-            mysql: Box::new(build_add_column_alter_for_backend(
-                DatabaseBackend::MySql,
-                table,
-                &temp_col,
-            )),
-            sqlite: Box::new(build_add_column_alter_for_backend(
-                DatabaseBackend::Sqlite,
-                table,
-                &temp_col,
-            )),
-        });
+        stmts.push(BuiltQuery::AlterTable(
+            Box::new(build_add_column_alter_for_backend(backend, &table, &temp_col)),
+        ));
 
         // Backfill with provided value
         if let Some(fill) = fill_with {
@@ -571,23 +489,9 @@ fn build_add_column(
             pg_sql, mysql_sql, sqlite_sql,
         )));
     } else {
-        stmts.push(BuiltQuery::AlterTablePerBackend {
-            postgres: Box::new(build_add_column_alter_for_backend(
-                DatabaseBackend::Postgres,
-                table,
-                column,
-            )),
-            mysql: Box::new(build_add_column_alter_for_backend(
-                DatabaseBackend::MySql,
-                table,
-                column,
-            )),
-            sqlite: Box::new(build_add_column_alter_for_backend(
-                DatabaseBackend::Sqlite,
-                table,
-                column,
-            )),
-        });
+        stmts.push(BuiltQuery::AlterTable(
+            Box::new(build_add_column_alter_for_backend(backend, table, column)),
+        ));
     }
 
     Ok(stmts)
@@ -951,7 +855,7 @@ mod tests {
             columns: vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             constraints: vec![],
         };
-        let result = build_action_queries(&action).unwrap();
+        let result = build_action_queries(&DatabaseBackend::Postgres, &action).unwrap();
 
         // PostgreSQL uses double quotes
         let pg_sql = result[0].build(DatabaseBackend::Postgres);
@@ -2161,7 +2065,7 @@ mod tests {
         #[case] backend: DatabaseBackend,
         #[case] expected: &[&str],
     ) {
-        let result = build_action_queries(&action).unwrap();
+        let result = build_action_queries(&backend, &action).unwrap();
         let sql = result[0].build(backend);
         for exp in expected {
             assert!(
@@ -2187,31 +2091,25 @@ mod tests {
     #[rstest]
     #[case::create_table_query_postgres(
         "create_table_query_postgres",
-        BuiltQuery::CreateTablePerBackend {
-            postgres: Box::new(create_table_stmt()),
-            mysql: Box::new(create_table_stmt()),
-            sqlite: Box::new(create_table_stmt()),
-        },
+        BuiltQuery::CreateTable(
+            Box::new(create_table_stmt()),
+        ),
         DatabaseBackend::Postgres,
         &["CREATE TABLE \"t\""]
     )]
     #[case::create_table_query_mysql(
         "create_table_query_mysql",
-        BuiltQuery::CreateTablePerBackend {
-            postgres: Box::new(create_table_stmt()),
-            mysql: Box::new(create_table_stmt()),
-            sqlite: Box::new(create_table_stmt()),
-        },
+        BuiltQuery::CreateTable(
+            Box::new(create_table_stmt()),
+        ),
         DatabaseBackend::MySql,
         &["CREATE TABLE `t`"]
     )]
     #[case::create_table_query_sqlite(
         "create_table_query_sqlite",
-        BuiltQuery::CreateTablePerBackend {
-            postgres: Box::new(create_table_stmt()),
-            mysql: Box::new(create_table_stmt()),
-            sqlite: Box::new(create_table_stmt()),
-        },
+        BuiltQuery::CreateTable(
+            Box::new(create_table_stmt()),
+        ),
         DatabaseBackend::Sqlite,
         &["CREATE TABLE \"t\""]
     )]

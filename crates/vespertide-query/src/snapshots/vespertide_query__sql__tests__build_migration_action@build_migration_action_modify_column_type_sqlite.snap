@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql.rs
+expression: "result.iter().map(|q| q.build(backend)).collect::<Vec<String>>().join(\"\\n\")"
+---
+-- SQLite requires table recreation to modify column type, but current schema is not available

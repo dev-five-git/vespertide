@@ -89,9 +89,10 @@ pub fn vespertide_migration(input: TokenStream) -> TokenStream {
         let sql_statements: Vec<_> = queries
             .iter()
             .map(|q| {
-                let pg_sql = q.build(DatabaseBackend::Postgres);
-                let mysql_sql = q.build(DatabaseBackend::MySql);
-                let sqlite_sql = q.build(DatabaseBackend::Sqlite);
+                let pg_sql = q.postgres.iter().map(|q| q.build(DatabaseBackend::Postgres)).collect::<Vec<_>>().join(";\n");
+                let mysql_sql = q.mysql.iter().map(|q| q.build(DatabaseBackend::MySql)).collect::<Vec<_>>().join(";\n");
+                let sqlite_sql = q.sqlite.iter().map(|q| q.build(DatabaseBackend::Sqlite)).collect::<Vec<_>>().join(";\n");
+
                 quote! {
                     match backend {
                         sea_orm::DatabaseBackend::Postgres => #pg_sql,

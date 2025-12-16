@@ -4,7 +4,7 @@ use vespertide_query::{DatabaseBackend, build_plan_queries};
 
 use crate::utils::load_migrations;
 
-pub fn cmd_log() -> Result<()> {
+pub fn cmd_log(backend: DatabaseBackend) -> Result<()> {
     let plans = load_migrations(&crate::utils::load_config()?)?;
 
     if plans.is_empty() {
@@ -42,22 +42,21 @@ pub fn cmd_log() -> Result<()> {
             plan.actions.len().to_string().bright_yellow()
         );
 
-        let queries = build_plan_queries(plan)
+        let plan_queries = build_plan_queries(plan)
             .map_err(|e| anyhow::anyhow!("query build error for v{}: {}", plan.version, e))?;
-        println!(
-            "  {} {}",
-            "SQL statements:".bright_cyan().bold(),
-            queries.len().to_string().bright_yellow().bold()
-        );
 
-        for (i, q) in queries.iter().enumerate() {
+        for (i, pq) in plan_queries.iter().enumerate() {
             println!(
                 "    {}. {}",
                 (i + 1).to_string().bright_magenta().bold(),
-                q.build(DatabaseBackend::Postgres).trim().bright_white()
+                match backend {
+                    DatabaseBackend::Postgres => pq.postgres.iter().map(|q| q.build(DatabaseBackend::Postgres)).collect::<Vec<_>>().join(";\n").trim().bright_white(),
+                    DatabaseBackend::MySql => pq.mysql.iter().map(|q| q.build(DatabaseBackend::MySql)).collect::<Vec<_>>().join(";\n").trim().bright_white(),
+                    DatabaseBackend::Sqlite => pq.sqlite.iter().map(|q| q.build(DatabaseBackend::Sqlite)).collect::<Vec<_>>().join(";\n").trim().bright_white(),
+                }
             );
-            println!("       {} {:?}", "binds:".bright_cyan(), q.binds());
         }
+
         println!();
     }
 
@@ -121,7 +120,7 @@ mod tests {
         write_config(&cfg);
         write_migration(&cfg);
 
-        let result = cmd_log();
+        let result = cmd_log(DatabaseBackend::Postgres);
         assert!(result.is_ok());
     }
 
@@ -135,7 +134,7 @@ mod tests {
         write_config(&cfg);
         fs::create_dir_all(cfg.migrations_dir()).unwrap();
 
-        let result = cmd_log();
+        let result = cmd_log(DatabaseBackend::Postgres);
         assert!(result.is_ok());
     }
 }

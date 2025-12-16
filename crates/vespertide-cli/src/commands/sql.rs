@@ -5,7 +5,7 @@ use vespertide_query::{DatabaseBackend, build_plan_queries};
 
 use crate::utils::{load_config, load_migrations, load_models};
 
-pub fn cmd_sql() -> Result<()> {
+pub fn cmd_sql(backend: DatabaseBackend) -> Result<()> {
     let config = load_config()?;
     let current_models = load_models(&config)?;
     let applied_plans = load_migrations(&config)?;
@@ -13,10 +13,10 @@ pub fn cmd_sql() -> Result<()> {
     let plan = plan_next_migration(&current_models, &applied_plans)
         .map_err(|e| anyhow::anyhow!("planning error: {}", e))?;
 
-    emit_sql(&plan)
+    emit_sql(&plan, backend)
 }
 
-fn emit_sql(plan: &vespertide_core::MigrationPlan) -> Result<()> {
+fn emit_sql(plan: &vespertide_core::MigrationPlan, backend: DatabaseBackend) -> Result<()> {
     if plan.actions.is_empty() {
         println!(
             "{} {}",
@@ -26,8 +26,18 @@ fn emit_sql(plan: &vespertide_core::MigrationPlan) -> Result<()> {
         return Ok(());
     }
 
-    let queries =
+    let plan_queries =
         build_plan_queries(plan).map_err(|e| anyhow::anyhow!("query build error: {}", e))?;
+
+    // Select queries for the specified backend
+    let queries: Vec<_> = plan_queries
+        .iter()
+        .flat_map(|pq| match backend {
+            DatabaseBackend::Postgres => &pq.postgres,
+            DatabaseBackend::MySql => &pq.mysql,
+            DatabaseBackend::Sqlite => &pq.sqlite,
+        })
+        .collect();
 
     println!(
         "{} {}",
@@ -60,9 +70,8 @@ fn emit_sql(plan: &vespertide_core::MigrationPlan) -> Result<()> {
         println!(
             "{}. {}",
             (i + 1).to_string().bright_magenta().bold(),
-            q.build(DatabaseBackend::Postgres).trim().bright_white()
+            q.build(backend).trim().bright_white()
         );
-        println!("   {} {:?}", "binds:".bright_cyan(), q.binds());
     }
 
     Ok(())
@@ -139,7 +148,7 @@ mod tests {
         write_model("users");
 
         // No migrations yet -> plan will create table
-        let result = cmd_sql();
+        let result = cmd_sql(DatabaseBackend::Postgres);
         assert!(result.is_ok());
     }
 
@@ -180,7 +189,7 @@ mod tests {
         let path = cfg.migrations_dir().join("0001_init.json");
         fs::write(path, serde_json::to_string_pretty(&plan).unwrap()).unwrap();
 
-        let result = cmd_sql();
+        let result = cmd_sql(DatabaseBackend::Postgres);
         assert!(result.is_ok());
     }
 
@@ -196,7 +205,7 @@ mod tests {
             }],
         };
 
-        let result = emit_sql(&plan);
+        let result = emit_sql(&plan, DatabaseBackend::Postgres);
         assert!(result.is_ok());
     }
 }
