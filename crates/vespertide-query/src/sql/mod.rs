@@ -51,7 +51,7 @@ pub fn build_action_queries(
             table,
             column,
             fill_with,
-        } => build_add_column(backend, table, column, fill_with.as_deref()),
+        } => build_add_column(backend, table, column, fill_with.as_deref(), current_schema),
 
         MigrationAction::RenameColumn { table, from, to } => {
             Ok(vec![build_rename_column(table, from, to)])
