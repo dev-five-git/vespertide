@@ -44,6 +44,20 @@ fn validate_table(
 ) -> Result<(), PlannerError> {
     let table_columns: HashSet<_> = table.columns.iter().map(|c| c.name.as_str()).collect();
 
+    // Check that the table has a primary key
+    // Primary key can be defined either:
+    // 1. As a table-level constraint (TableConstraint::PrimaryKey)
+    // 2. As an inline column definition (column.primary_key = Some(...))
+    let has_table_pk = table
+        .constraints
+        .iter()
+        .any(|c| matches!(c, TableConstraint::PrimaryKey { .. }));
+    let has_inline_pk = table.columns.iter().any(|c| c.primary_key.is_some());
+
+    if !has_table_pk && !has_inline_pk {
+        return Err(PlannerError::MissingPrimaryKey(table.name.clone()));
+    }
+
     // Validate constraints
     for constraint in &table.constraints {
         validate_constraint(constraint, &table.name, &table_columns, table_map)?;
@@ -277,6 +291,17 @@ mod tests {
         matches!(err, PlannerError::EmptyConstraintColumns(_, _))
     }
 
+    fn is_missing_pk(err: &PlannerError) -> bool {
+        matches!(err, PlannerError::MissingPrimaryKey(_))
+    }
+
+    fn pk(columns: Vec<&str>) -> TableConstraint {
+        TableConstraint::PrimaryKey {
+            auto_increment: false,
+            columns: columns.into_iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
     #[rstest]
     #[case::valid_schema(
         vec![table(
@@ -298,7 +323,7 @@ mod tests {
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![TableConstraint::ForeignKey {
+            vec![pk(vec!["id"]), TableConstraint::ForeignKey {
                 name: None,
                 columns: vec!["id".into()],
                 ref_table: "nonexistent".into(),
@@ -312,11 +337,11 @@ mod tests {
     )]
     #[case::fk_missing_column(
         vec![
-            table("posts", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![], vec![]),
+            table("posts", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![pk(vec!["id"])], vec![]),
             table(
                 "users",
                 vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-                vec![TableConstraint::ForeignKey {
+                vec![pk(vec!["id"]), TableConstraint::ForeignKey {
                     name: None,
                     columns: vec!["id".into()],
                     ref_table: "posts".into(),
@@ -331,11 +356,11 @@ mod tests {
     )]
     #[case::fk_local_missing_column(
         vec![
-            table("posts", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![], vec![]),
+            table("posts", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![pk(vec!["id"])], vec![]),
             table(
                 "users",
                 vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-                vec![TableConstraint::ForeignKey {
+                vec![pk(vec!["id"]), TableConstraint::ForeignKey {
                     name: None,
                     columns: vec!["missing".into()],
                     ref_table: "posts".into(),
@@ -353,13 +378,13 @@ mod tests {
             table(
                 "posts",
                 vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-                vec![TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] }],
+                vec![pk(vec!["id"])],
                 vec![],
             ),
             table(
                 "users",
                 vec![col("id", ColumnType::Simple(SimpleColumnType::Integer)), col("post_id", ColumnType::Simple(SimpleColumnType::Integer))],
-                vec![TableConstraint::ForeignKey {
+                vec![pk(vec!["id"]), TableConstraint::ForeignKey {
                     name: None,
                     columns: vec!["post_id".into()],
                     ref_table: "posts".into(),
@@ -376,7 +401,7 @@ mod tests {
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![],
+            vec![pk(vec!["id"])],
             vec![IndexDef {
                 name: "idx_name".into(),
                 columns: vec!["nonexistent".into()],
@@ -398,7 +423,7 @@ mod tests {
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![TableConstraint::Unique {
+            vec![pk(vec!["id"]), TableConstraint::Unique {
                 name: Some("u".into()),
                 columns: vec![],
             }],
@@ -410,7 +435,7 @@ mod tests {
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![TableConstraint::Unique {
+            vec![pk(vec!["id"]), TableConstraint::Unique {
                 name: None,
                 columns: vec!["missing".into()],
             }],
@@ -432,13 +457,13 @@ mod tests {
             table(
                 "posts",
                 vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-                vec![],
+                vec![pk(vec!["id"])],
                 vec![],
             ),
             table(
                 "users",
                 vec![col("id", ColumnType::Simple(SimpleColumnType::Integer)), col("post_id", ColumnType::Simple(SimpleColumnType::Integer))],
-                vec![TableConstraint::ForeignKey {
+                vec![pk(vec!["id"]), TableConstraint::ForeignKey {
                     name: None,
                     columns: vec!["id".into(), "post_id".into()],
                     ref_table: "posts".into(),
@@ -455,7 +480,7 @@ mod tests {
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![TableConstraint::ForeignKey {
+            vec![pk(vec!["id"]), TableConstraint::ForeignKey {
                 name: None,
                 columns: vec![],
                 ref_table: "posts".into(),
@@ -472,13 +497,13 @@ mod tests {
             table(
                 "posts",
                 vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-                vec![],
+                vec![pk(vec!["id"])],
                 vec![],
             ),
             table(
                 "users",
                 vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-                vec![TableConstraint::ForeignKey {
+                vec![pk(vec!["id"]), TableConstraint::ForeignKey {
                     name: None,
                     columns: vec!["id".into()],
                     ref_table: "posts".into(),
@@ -495,7 +520,7 @@ mod tests {
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![],
+            vec![pk(vec!["id"])],
             vec![IndexDef {
                 name: "idx".into(),
                 columns: vec![],
@@ -508,7 +533,7 @@ mod tests {
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer)), col("name", ColumnType::Simple(SimpleColumnType::Text))],
-            vec![],
+            vec![pk(vec!["id"])],
             vec![IndexDef {
                 name: "idx_name".into(),
                 columns: vec!["name".into()],
@@ -521,13 +546,22 @@ mod tests {
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![TableConstraint::Check {
+            vec![pk(vec!["id"]), TableConstraint::Check {
                 name: "ck".into(),
                 expr: "id > 0".into(),
             }],
             vec![],
         )],
         None
+    )]
+    #[case::missing_primary_key(
+        vec![table(
+            "users",
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+            vec![],
+            vec![],
+        )],
+        Some(is_missing_pk as fn(&PlannerError) -> bool)
     )]
     fn validate_schema_cases(
         #[case] schema: Vec<TableDef>,

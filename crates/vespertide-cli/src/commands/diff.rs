@@ -184,7 +184,7 @@ mod tests {
     use std::path::PathBuf;
     use tempfile::tempdir;
     use vespertide_config::VespertideConfig;
-    use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType, TableDef};
+    use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType, TableConstraint, TableDef};
 
     struct CwdGuard {
         original: PathBuf,
@@ -226,7 +226,10 @@ mod tests {
                 index: None,
                 foreign_key: None,
             }],
-            constraints: vec![],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
             indexes: vec![],
         };
         let path = models_dir.join(format!("{name}.json"));

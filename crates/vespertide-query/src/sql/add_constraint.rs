@@ -619,4 +619,475 @@ mod tests {
             assert_snapshot!(result.iter().map(|q| q.build(backend)).collect::<Vec<String>>().join("\n"));
         });
     }
+
+    #[test]
+    fn test_add_constraint_primary_key_sqlite_table_not_found() {
+        let constraint = TableConstraint::PrimaryKey {
+            columns: vec!["id".into()],
+            auto_increment: false,
+        };
+        let current_schema = vec![]; // Empty schema - table not found
+        let result = build_add_constraint(
+            &DatabaseBackend::Sqlite,
+            "users",
+            &constraint,
+            &current_schema,
+        );
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Table 'users' not found in current schema"));
+    }
+
+    #[test]
+    fn test_add_constraint_primary_key_sqlite_with_check_constraints() {
+        let constraint = TableConstraint::PrimaryKey {
+            columns: vec!["id".into()],
+            auto_increment: false,
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![TableConstraint::Check {
+                name: "chk_id".into(),
+                expr: "id > 0".into(),
+            }],
+            indexes: vec![],
+        }];
+        let result = build_add_constraint(
+            &DatabaseBackend::Sqlite,
+            "users",
+            &constraint,
+            &current_schema,
+        );
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Sqlite))
+            .collect::<Vec<String>>()
+            .join("\n");
+        // Should include CHECK constraint in CREATE TABLE
+        assert!(sql.contains("CONSTRAINT \"chk_id\" CHECK"));
+    }
+
+    #[test]
+    fn test_add_constraint_primary_key_sqlite_with_indexes() {
+        use vespertide_core::IndexDef;
+
+        let constraint = TableConstraint::PrimaryKey {
+            columns: vec!["id".into()],
+            auto_increment: false,
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            indexes: vec![IndexDef {
+                name: "idx_id".into(),
+                columns: vec!["id".into()],
+                unique: false,
+            }],
+        }];
+        let result = build_add_constraint(
+            &DatabaseBackend::Sqlite,
+            "users",
+            &constraint,
+            &current_schema,
+        );
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Sqlite))
+            .collect::<Vec<String>>()
+            .join("\n");
+        // Should recreate index
+        assert!(sql.contains("CREATE INDEX"));
+        assert!(sql.contains("idx_id"));
+    }
+
+    #[test]
+    fn test_add_constraint_primary_key_sqlite_with_unique_index() {
+        use vespertide_core::IndexDef;
+
+        let constraint = TableConstraint::PrimaryKey {
+            columns: vec!["id".into()],
+            auto_increment: false,
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            indexes: vec![IndexDef {
+                name: "idx_email".into(),
+                columns: vec!["email".into()],
+                unique: true,
+            }],
+        }];
+        let result = build_add_constraint(
+            &DatabaseBackend::Sqlite,
+            "users",
+            &constraint,
+            &current_schema,
+        );
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Sqlite))
+            .collect::<Vec<String>>()
+            .join("\n");
+        // Should recreate unique index
+        assert!(sql.contains("CREATE UNIQUE INDEX"));
+        assert!(sql.contains("idx_email"));
+    }
+
+    #[test]
+    fn test_add_constraint_foreign_key_sqlite_table_not_found() {
+        let constraint = TableConstraint::ForeignKey {
+            name: Some("fk_user".into()),
+            columns: vec!["user_id".into()],
+            ref_table: "users".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: None,
+        };
+        let current_schema = vec![]; // Empty schema - table not found
+        let result = build_add_constraint(
+            &DatabaseBackend::Sqlite,
+            "posts",
+            &constraint,
+            &current_schema,
+        );
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Table 'posts' not found in current schema"));
+    }
+
+    #[test]
+    fn test_add_constraint_foreign_key_sqlite_with_check_constraints() {
+        let constraint = TableConstraint::ForeignKey {
+            name: Some("fk_user".into()),
+            columns: vec!["user_id".into()],
+            ref_table: "users".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: None,
+        };
+        let current_schema = vec![TableDef {
+            name: "posts".into(),
+            columns: vec![ColumnDef {
+                name: "user_id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![TableConstraint::Check {
+                name: "chk_user_id".into(),
+                expr: "user_id > 0".into(),
+            }],
+            indexes: vec![],
+        }];
+        let result = build_add_constraint(
+            &DatabaseBackend::Sqlite,
+            "posts",
+            &constraint,
+            &current_schema,
+        );
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Sqlite))
+            .collect::<Vec<String>>()
+            .join("\n");
+        // Should include CHECK constraint in CREATE TABLE
+        assert!(sql.contains("CONSTRAINT \"chk_user_id\" CHECK"));
+    }
+
+    #[test]
+    fn test_add_constraint_foreign_key_sqlite_with_indexes() {
+        use vespertide_core::IndexDef;
+
+        let constraint = TableConstraint::ForeignKey {
+            name: Some("fk_user".into()),
+            columns: vec!["user_id".into()],
+            ref_table: "users".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: None,
+        };
+        let current_schema = vec![TableDef {
+            name: "posts".into(),
+            columns: vec![ColumnDef {
+                name: "user_id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            indexes: vec![IndexDef {
+                name: "idx_user_id".into(),
+                columns: vec!["user_id".into()],
+                unique: false,
+            }],
+        }];
+        let result = build_add_constraint(
+            &DatabaseBackend::Sqlite,
+            "posts",
+            &constraint,
+            &current_schema,
+        );
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Sqlite))
+            .collect::<Vec<String>>()
+            .join("\n");
+        // Should recreate index
+        assert!(sql.contains("CREATE INDEX"));
+        assert!(sql.contains("idx_user_id"));
+    }
+
+    #[test]
+    fn test_add_constraint_foreign_key_sqlite_with_unique_index() {
+        use vespertide_core::IndexDef;
+
+        let constraint = TableConstraint::ForeignKey {
+            name: Some("fk_user".into()),
+            columns: vec!["user_id".into()],
+            ref_table: "users".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: None,
+        };
+        let current_schema = vec![TableDef {
+            name: "posts".into(),
+            columns: vec![ColumnDef {
+                name: "user_id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            indexes: vec![IndexDef {
+                name: "idx_user_id".into(),
+                columns: vec!["user_id".into()],
+                unique: true,
+            }],
+        }];
+        let result = build_add_constraint(
+            &DatabaseBackend::Sqlite,
+            "posts",
+            &constraint,
+            &current_schema,
+        );
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Sqlite))
+            .collect::<Vec<String>>()
+            .join("\n");
+        // Should recreate unique index
+        assert!(sql.contains("CREATE UNIQUE INDEX"));
+        assert!(sql.contains("idx_user_id"));
+    }
+
+    #[test]
+    fn test_add_constraint_check_sqlite_table_not_found() {
+        let constraint = TableConstraint::Check {
+            name: "chk_age".into(),
+            expr: "age > 0".into(),
+        };
+        let current_schema = vec![]; // Empty schema - table not found
+        let result = build_add_constraint(
+            &DatabaseBackend::Sqlite,
+            "users",
+            &constraint,
+            &current_schema,
+        );
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Table 'users' not found in current schema"));
+    }
+
+    #[test]
+    fn test_add_constraint_check_sqlite_without_existing_check() {
+        // Test when there are no existing CHECK constraints (line 376)
+        let constraint = TableConstraint::Check {
+            name: "chk_age".into(),
+            expr: "age > 0".into(),
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "age".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![], // No existing CHECK constraints
+            indexes: vec![],
+        }];
+        let result = build_add_constraint(
+            &DatabaseBackend::Sqlite,
+            "users",
+            &constraint,
+            &current_schema,
+        );
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Sqlite))
+            .collect::<Vec<String>>()
+            .join("\n");
+        // Should create table with CHECK constraint
+        assert!(sql.contains("CREATE TABLE"));
+        assert!(sql.contains("CONSTRAINT \"chk_age\" CHECK"));
+    }
+
+    #[test]
+    fn test_add_constraint_check_sqlite_with_indexes() {
+        use vespertide_core::IndexDef;
+
+        let constraint = TableConstraint::Check {
+            name: "chk_age".into(),
+            expr: "age > 0".into(),
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "age".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            indexes: vec![IndexDef {
+                name: "idx_age".into(),
+                columns: vec!["age".into()],
+                unique: false,
+            }],
+        }];
+        let result = build_add_constraint(
+            &DatabaseBackend::Sqlite,
+            "users",
+            &constraint,
+            &current_schema,
+        );
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Sqlite))
+            .collect::<Vec<String>>()
+            .join("\n");
+        // Should recreate index
+        assert!(sql.contains("CREATE INDEX"));
+        assert!(sql.contains("idx_age"));
+    }
+
+    #[test]
+    fn test_add_constraint_check_sqlite_with_unique_index() {
+        use vespertide_core::IndexDef;
+
+        let constraint = TableConstraint::Check {
+            name: "chk_age".into(),
+            expr: "age > 0".into(),
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "age".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            indexes: vec![IndexDef {
+                name: "idx_age".into(),
+                columns: vec!["age".into()],
+                unique: true,
+            }],
+        }];
+        let result = build_add_constraint(
+            &DatabaseBackend::Sqlite,
+            "users",
+            &constraint,
+            &current_schema,
+        );
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Sqlite))
+            .collect::<Vec<String>>()
+            .join("\n");
+        // Should recreate unique index
+        assert!(sql.contains("CREATE UNIQUE INDEX"));
+        assert!(sql.contains("idx_age"));
+    }
 }

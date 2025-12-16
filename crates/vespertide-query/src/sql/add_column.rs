@@ -324,7 +324,11 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries.iter().map(|q| q.build(DatabaseBackend::Sqlite)).collect::<Vec<String>>().join("\n");
+        let sql = queries
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Sqlite))
+            .collect::<Vec<String>>()
+            .join("\n");
         // Should use default value (18) for fill
         assert!(sql.contains("18"));
     }
@@ -367,7 +371,11 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries.iter().map(|q| q.build(DatabaseBackend::Sqlite)).collect::<Vec<String>>().join("\n");
+        let sql = queries
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Sqlite))
+            .collect::<Vec<String>>()
+            .join("\n");
         // Should use NULL for fill
         assert!(sql.contains("NULL"));
     }
@@ -375,7 +383,7 @@ mod tests {
     #[test]
     fn test_add_column_sqlite_with_indexes() {
         use vespertide_core::IndexDef;
-        
+
         let column = ColumnDef {
             name: "nickname".into(),
             r#type: ColumnType::Simple(SimpleColumnType::Text),
@@ -401,13 +409,11 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![],
-            indexes: vec![
-                IndexDef {
-                    name: "idx_id".into(),
-                    columns: vec!["id".into()],
-                    unique: false,
-                },
-            ],
+            indexes: vec![IndexDef {
+                name: "idx_id".into(),
+                columns: vec!["id".into()],
+                unique: false,
+            }],
         }];
         let result = build_add_column(
             &DatabaseBackend::Sqlite,
@@ -418,7 +424,11 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries.iter().map(|q| q.build(DatabaseBackend::Sqlite)).collect::<Vec<String>>().join("\n");
+        let sql = queries
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Sqlite))
+            .collect::<Vec<String>>()
+            .join("\n");
         // Should recreate index
         assert!(sql.contains("CREATE INDEX"));
         assert!(sql.contains("idx_id"));
@@ -427,7 +437,7 @@ mod tests {
     #[test]
     fn test_add_column_sqlite_with_unique_index() {
         use vespertide_core::IndexDef;
-        
+
         let column = ColumnDef {
             name: "nickname".into(),
             r#type: ColumnType::Simple(SimpleColumnType::Text),
@@ -453,13 +463,11 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![],
-            indexes: vec![
-                IndexDef {
-                    name: "idx_email".into(),
-                    columns: vec!["email".into()],
-                    unique: true,
-                },
-            ],
+            indexes: vec![IndexDef {
+                name: "idx_email".into(),
+                columns: vec!["email".into()],
+                unique: true,
+            }],
         }];
         let result = build_add_column(
             &DatabaseBackend::Sqlite,
@@ -470,7 +478,11 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries.iter().map(|q| q.build(DatabaseBackend::Sqlite)).collect::<Vec<String>>().join("\n");
+        let sql = queries
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Sqlite))
+            .collect::<Vec<String>>()
+            .join("\n");
         // Should recreate unique index
         assert!(sql.contains("CREATE UNIQUE INDEX"));
         assert!(sql.contains("idx_email"));

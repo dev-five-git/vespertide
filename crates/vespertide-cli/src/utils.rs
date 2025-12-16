@@ -109,7 +109,7 @@ mod tests {
     use tempfile::tempdir;
     use vespertide_config::VespertideConfig;
     use vespertide_core::{
-        ColumnDef, ColumnType, MigrationPlan, SimpleColumnType, TableDef,
+        ColumnDef, ColumnType, MigrationPlan, SimpleColumnType, TableConstraint, TableDef,
         schema::foreign_key::ForeignKeySyntax,
     };
 
@@ -167,7 +167,10 @@ mod tests {
                 index: None,
                 foreign_key: None,
             }],
-            constraints: vec![],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
             indexes: vec![],
         };
         fs::write("models/users.yaml", serde_yaml::to_string(&table).unwrap()).unwrap();
@@ -200,7 +203,10 @@ mod tests {
                 index: None,
                 foreign_key: None,
             }],
-            constraints: vec![],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
             indexes: vec![],
         };
         let content = serde_json::to_string_pretty(&table).unwrap();

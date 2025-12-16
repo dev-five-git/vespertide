@@ -171,7 +171,8 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
     use vespertide_core::{
-        ColumnDef, ColumnType, SimpleColumnType, schema::foreign_key::ForeignKeySyntax,
+        ColumnDef, ColumnType, SimpleColumnType, TableConstraint,
+        schema::foreign_key::ForeignKeySyntax,
     };
 
     struct CwdGuard {
@@ -231,7 +232,10 @@ mod tests {
                 index: None,
                 foreign_key: None,
             }],
-            constraints: vec![],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
             indexes: vec![],
         };
         fs::write("models/users.yaml", serde_yaml::to_string(&table).unwrap()).unwrap();
@@ -264,7 +268,10 @@ mod tests {
                 index: None,
                 foreign_key: None,
             }],
-            constraints: vec![],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
             indexes: vec![],
         };
         let content = serde_json::to_string_pretty(&table).unwrap();

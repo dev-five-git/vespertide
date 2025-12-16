@@ -154,7 +154,10 @@ mod tests {
                 index: None,
                 foreign_key: None,
             }],
-            constraints: vec![],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
             indexes: vec![],
         };
         let path = models_dir.join(format!("{name}.json"));
@@ -403,6 +406,62 @@ mod tests {
         };
 
         let result = emit_sql(&plan, DatabaseBackend::Postgres, &[]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn emit_sql_multiple_queries_per_action() {
+        // Test case where a single action generates multiple queries (e.g., SQLite constraint addition)
+        // This should trigger the queries.len() > 1 branch (line 89)
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        let _cfg = write_config();
+        write_model("users");
+
+        // Create a migration that adds a NOT NULL column in SQLite, which generates multiple queries
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "users".into(),
+                column: ColumnDef {
+                    name: "nickname".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                fill_with: Some("default".into()),
+            }],
+        };
+
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
+            indexes: vec![],
+        }];
+
+        let result = emit_sql(&plan, DatabaseBackend::Sqlite, &current_schema);
         assert!(result.is_ok());
     }
 }
