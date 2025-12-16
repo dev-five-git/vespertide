@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql/remove_constraint.rs
+expression: sql
+---
+ALTER TABLE `users` DROP INDEX `uq_email`

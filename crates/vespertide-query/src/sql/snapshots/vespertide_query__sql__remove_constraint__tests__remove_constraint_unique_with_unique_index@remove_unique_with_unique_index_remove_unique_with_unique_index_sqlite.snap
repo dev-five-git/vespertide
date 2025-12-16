@@ -1,0 +1,9 @@
+---
+source: crates/vespertide-query/src/sql/remove_constraint.rs
+expression: sql
+---
+CREATE TABLE "users_temp" ( "id" integer NOT NULL, "email" text )
+INSERT INTO "users_temp" ("id", "email") SELECT "id", "email" FROM "users"
+DROP TABLE "users"
+ALTER TABLE "users_temp" RENAME TO "users"
+CREATE UNIQUE INDEX "idx_name" ON "users" ("name")

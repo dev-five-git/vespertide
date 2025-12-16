@@ -614,4 +614,1043 @@ mod tests {
             assert_snapshot!(result.iter().map(|q| q.build(backend)).collect::<Vec<String>>().join("\n"));
         });
     }
+
+    #[test]
+    fn test_remove_constraint_primary_key_sqlite_table_not_found() {
+        // Test error when table is not found (line 25)
+        let constraint = TableConstraint::PrimaryKey {
+            columns: vec!["id".into()],
+            auto_increment: false,
+        };
+        let result = build_remove_constraint(
+            &DatabaseBackend::Sqlite,
+            "nonexistent_table",
+            &constraint,
+            &[], // Empty schema
+        );
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Table 'nonexistent_table' not found in current schema"));
+    }
+
+    #[rstest]
+    #[case::remove_primary_key_with_index_postgres(
+        "remove_primary_key_with_index_postgres",
+        DatabaseBackend::Postgres
+    )]
+    #[case::remove_primary_key_with_index_mysql(
+        "remove_primary_key_with_index_mysql",
+        DatabaseBackend::MySql
+    )]
+    #[case::remove_primary_key_with_index_sqlite(
+        "remove_primary_key_with_index_sqlite",
+        DatabaseBackend::Sqlite
+    )]
+    fn test_remove_constraint_primary_key_with_index(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test PrimaryKey removal with indexes (lines 75-78, 83-84)
+        use vespertide_core::IndexDef;
+
+        let constraint = TableConstraint::PrimaryKey {
+            columns: vec!["id".into()],
+            auto_increment: false,
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![constraint.clone()],
+            indexes: vec![IndexDef {
+                name: "idx_id".into(),
+                columns: vec!["id".into()],
+                unique: false,
+            }],
+        }];
+
+        let result = build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        if matches!(backend, DatabaseBackend::Sqlite) {
+            assert!(sql.contains("CREATE INDEX"));
+            assert!(sql.contains("idx_id"));
+        }
+
+        with_settings!({ snapshot_suffix => format!("remove_primary_key_with_index_{}", title) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::remove_primary_key_with_unique_index_postgres(
+        "remove_primary_key_with_unique_index_postgres",
+        DatabaseBackend::Postgres
+    )]
+    #[case::remove_primary_key_with_unique_index_mysql(
+        "remove_primary_key_with_unique_index_mysql",
+        DatabaseBackend::MySql
+    )]
+    #[case::remove_primary_key_with_unique_index_sqlite(
+        "remove_primary_key_with_unique_index_sqlite",
+        DatabaseBackend::Sqlite
+    )]
+    fn test_remove_constraint_primary_key_with_unique_index(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test PrimaryKey removal with unique index (lines 75-78, 80-81, 83-84)
+        use vespertide_core::IndexDef;
+
+        let constraint = TableConstraint::PrimaryKey {
+            columns: vec!["id".into()],
+            auto_increment: false,
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![constraint.clone()],
+            indexes: vec![IndexDef {
+                name: "idx_email".into(),
+                columns: vec!["email".into()],
+                unique: true,
+            }],
+        }];
+
+        let result = build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        if matches!(backend, DatabaseBackend::Sqlite) {
+            assert!(sql.contains("CREATE UNIQUE INDEX"));
+            assert!(sql.contains("idx_email"));
+        }
+
+        with_settings!({ snapshot_suffix => format!("remove_primary_key_with_unique_index_{}", title) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[test]
+    fn test_remove_constraint_unique_sqlite_table_not_found() {
+        // Test error when table is not found (line 112)
+        let constraint = TableConstraint::Unique {
+            name: Some("uq_email".into()),
+            columns: vec!["email".into()],
+        };
+        let result = build_remove_constraint(
+            &DatabaseBackend::Sqlite,
+            "nonexistent_table",
+            &constraint,
+            &[], // Empty schema
+        );
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Table 'nonexistent_table' not found in current schema"));
+    }
+
+    #[rstest]
+    #[case::remove_unique_without_name_postgres(
+        "remove_unique_without_name_postgres",
+        DatabaseBackend::Postgres
+    )]
+    #[case::remove_unique_without_name_mysql(
+        "remove_unique_without_name_mysql",
+        DatabaseBackend::MySql
+    )]
+    #[case::remove_unique_without_name_sqlite(
+        "remove_unique_without_name_sqlite",
+        DatabaseBackend::Sqlite
+    )]
+    fn test_remove_constraint_unique_without_name(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test Unique removal without name (lines 134, 137, 210)
+        let constraint = TableConstraint::Unique {
+            name: None,
+            columns: vec!["email".into()],
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![constraint.clone()],
+            indexes: vec![],
+        }];
+
+        let result = build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        // Should generate default constraint name
+        if !matches!(backend, DatabaseBackend::Sqlite) {
+            assert!(sql.contains("users_email_key") || sql.contains("email"));
+        }
+
+        with_settings!({ snapshot_suffix => format!("remove_unique_without_name_{}", title) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::remove_unique_with_index_postgres(
+        "remove_unique_with_index_postgres",
+        DatabaseBackend::Postgres
+    )]
+    #[case::remove_unique_with_index_mysql(
+        "remove_unique_with_index_mysql",
+        DatabaseBackend::MySql
+    )]
+    #[case::remove_unique_with_index_sqlite(
+        "remove_unique_with_index_sqlite",
+        DatabaseBackend::Sqlite
+    )]
+    fn test_remove_constraint_unique_with_index(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test Unique removal with indexes (lines 185-188, 193-194)
+        use vespertide_core::IndexDef;
+
+        let constraint = TableConstraint::Unique {
+            name: Some("uq_email".into()),
+            columns: vec!["email".into()],
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![constraint.clone()],
+            indexes: vec![IndexDef {
+                name: "idx_id".into(),
+                columns: vec!["id".into()],
+                unique: false,
+            }],
+        }];
+
+        let result = build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        if matches!(backend, DatabaseBackend::Sqlite) {
+            assert!(sql.contains("CREATE INDEX"));
+            assert!(sql.contains("idx_id"));
+        }
+
+        with_settings!({ snapshot_suffix => format!("remove_unique_with_index_{}", title) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::remove_unique_with_unique_index_postgres(
+        "remove_unique_with_unique_index_postgres",
+        DatabaseBackend::Postgres
+    )]
+    #[case::remove_unique_with_unique_index_mysql(
+        "remove_unique_with_unique_index_mysql",
+        DatabaseBackend::MySql
+    )]
+    #[case::remove_unique_with_unique_index_sqlite(
+        "remove_unique_with_unique_index_sqlite",
+        DatabaseBackend::Sqlite
+    )]
+    fn test_remove_constraint_unique_with_unique_index(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test Unique removal with unique index (lines 185-188, 190-191, 193-194)
+        use vespertide_core::IndexDef;
+
+        let constraint = TableConstraint::Unique {
+            name: Some("uq_email".into()),
+            columns: vec!["email".into()],
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![constraint.clone()],
+            indexes: vec![IndexDef {
+                name: "idx_name".into(),
+                columns: vec!["name".into()],
+                unique: true,
+            }],
+        }];
+
+        let result = build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        if matches!(backend, DatabaseBackend::Sqlite) {
+            assert!(sql.contains("CREATE UNIQUE INDEX"));
+            assert!(sql.contains("idx_name"));
+        }
+
+        with_settings!({ snapshot_suffix => format!("remove_unique_with_unique_index_{}", title) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[test]
+    fn test_remove_constraint_foreign_key_sqlite_table_not_found() {
+        // Test error when table is not found (line 236)
+        let constraint = TableConstraint::ForeignKey {
+            name: Some("fk_user".into()),
+            columns: vec!["user_id".into()],
+            ref_table: "users".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: None,
+        };
+        let result = build_remove_constraint(
+            &DatabaseBackend::Sqlite,
+            "nonexistent_table",
+            &constraint,
+            &[], // Empty schema
+        );
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Table 'nonexistent_table' not found in current schema"));
+    }
+
+    #[rstest]
+    #[case::remove_foreign_key_without_name_postgres(
+        "remove_foreign_key_without_name_postgres",
+        DatabaseBackend::Postgres
+    )]
+    #[case::remove_foreign_key_without_name_mysql(
+        "remove_foreign_key_without_name_mysql",
+        DatabaseBackend::MySql
+    )]
+    #[case::remove_foreign_key_without_name_sqlite(
+        "remove_foreign_key_without_name_sqlite",
+        DatabaseBackend::Sqlite
+    )]
+    fn test_remove_constraint_foreign_key_without_name(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test ForeignKey removal without name (lines 260, 263, 329)
+        let constraint = TableConstraint::ForeignKey {
+            name: None,
+            columns: vec!["user_id".into()],
+            ref_table: "users".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: None,
+        };
+        let current_schema = vec![TableDef {
+            name: "posts".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![constraint.clone()],
+            indexes: vec![],
+        }];
+
+        let result = build_remove_constraint(&backend, "posts", &constraint, &current_schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        // Should generate default constraint name
+        if !matches!(backend, DatabaseBackend::Sqlite) {
+            assert!(sql.contains("posts_user_id_fkey") || sql.contains("user_id"));
+        }
+
+        with_settings!({ snapshot_suffix => format!("remove_foreign_key_without_name_{}", title) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::remove_foreign_key_with_index_postgres(
+        "remove_foreign_key_with_index_postgres",
+        DatabaseBackend::Postgres
+    )]
+    #[case::remove_foreign_key_with_index_mysql(
+        "remove_foreign_key_with_index_mysql",
+        DatabaseBackend::MySql
+    )]
+    #[case::remove_foreign_key_with_index_sqlite(
+        "remove_foreign_key_with_index_sqlite",
+        DatabaseBackend::Sqlite
+    )]
+    fn test_remove_constraint_foreign_key_with_index(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test ForeignKey removal with indexes (lines 309-312, 317-318)
+        use vespertide_core::IndexDef;
+
+        let constraint = TableConstraint::ForeignKey {
+            name: Some("fk_user".into()),
+            columns: vec!["user_id".into()],
+            ref_table: "users".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: None,
+        };
+        let current_schema = vec![TableDef {
+            name: "posts".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![constraint.clone()],
+            indexes: vec![IndexDef {
+                name: "idx_user_id".into(),
+                columns: vec!["user_id".into()],
+                unique: false,
+            }],
+        }];
+
+        let result = build_remove_constraint(&backend, "posts", &constraint, &current_schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        if matches!(backend, DatabaseBackend::Sqlite) {
+            assert!(sql.contains("CREATE INDEX"));
+            assert!(sql.contains("idx_user_id"));
+        }
+
+        with_settings!({ snapshot_suffix => format!("remove_foreign_key_with_index_{}", title) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::remove_foreign_key_with_unique_index_postgres(
+        "remove_foreign_key_with_unique_index_postgres",
+        DatabaseBackend::Postgres
+    )]
+    #[case::remove_foreign_key_with_unique_index_mysql(
+        "remove_foreign_key_with_unique_index_mysql",
+        DatabaseBackend::MySql
+    )]
+    #[case::remove_foreign_key_with_unique_index_sqlite(
+        "remove_foreign_key_with_unique_index_sqlite",
+        DatabaseBackend::Sqlite
+    )]
+    fn test_remove_constraint_foreign_key_with_unique_index(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test ForeignKey removal with unique index (lines 309-312, 314-315, 317-318)
+        use vespertide_core::IndexDef;
+
+        let constraint = TableConstraint::ForeignKey {
+            name: Some("fk_user".into()),
+            columns: vec!["user_id".into()],
+            ref_table: "users".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: None,
+        };
+        let current_schema = vec![TableDef {
+            name: "posts".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![constraint.clone()],
+            indexes: vec![IndexDef {
+                name: "idx_user_id".into(),
+                columns: vec!["user_id".into()],
+                unique: true,
+            }],
+        }];
+
+        let result = build_remove_constraint(&backend, "posts", &constraint, &current_schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        if matches!(backend, DatabaseBackend::Sqlite) {
+            assert!(sql.contains("CREATE UNIQUE INDEX"));
+            assert!(sql.contains("idx_user_id"));
+        }
+
+        with_settings!({ snapshot_suffix => format!("remove_foreign_key_with_unique_index_{}", title) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[test]
+    fn test_remove_constraint_check_sqlite_table_not_found() {
+        // Test error when table is not found (line 346)
+        let constraint = TableConstraint::Check {
+            name: "chk_age".into(),
+            expr: "age > 0".into(),
+        };
+        let result = build_remove_constraint(
+            &DatabaseBackend::Sqlite,
+            "nonexistent_table",
+            &constraint,
+            &[], // Empty schema
+        );
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Table 'nonexistent_table' not found in current schema"));
+    }
+
+    #[rstest]
+    #[case::remove_check_with_index_postgres(
+        "remove_check_with_index_postgres",
+        DatabaseBackend::Postgres
+    )]
+    #[case::remove_check_with_index_mysql(
+        "remove_check_with_index_mysql",
+        DatabaseBackend::MySql
+    )]
+    #[case::remove_check_with_index_sqlite(
+        "remove_check_with_index_sqlite",
+        DatabaseBackend::Sqlite
+    )]
+    fn test_remove_constraint_check_with_index(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test Check removal with indexes (lines 402-405, 410-411)
+        use vespertide_core::IndexDef;
+
+        let constraint = TableConstraint::Check {
+            name: "chk_age".into(),
+            expr: "age > 0".into(),
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "age".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![constraint.clone()],
+            indexes: vec![IndexDef {
+                name: "idx_age".into(),
+                columns: vec!["age".into()],
+                unique: false,
+            }],
+        }];
+
+        let result = build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        if matches!(backend, DatabaseBackend::Sqlite) {
+            assert!(sql.contains("CREATE INDEX"));
+            assert!(sql.contains("idx_age"));
+        }
+
+        with_settings!({ snapshot_suffix => format!("remove_check_with_index_{}", title) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::remove_check_with_unique_index_postgres(
+        "remove_check_with_unique_index_postgres",
+        DatabaseBackend::Postgres
+    )]
+    #[case::remove_check_with_unique_index_mysql(
+        "remove_check_with_unique_index_mysql",
+        DatabaseBackend::MySql
+    )]
+    #[case::remove_check_with_unique_index_sqlite(
+        "remove_check_with_unique_index_sqlite",
+        DatabaseBackend::Sqlite
+    )]
+    fn test_remove_constraint_check_with_unique_index(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test Check removal with unique index (lines 402-405, 407-408, 410-411)
+        use vespertide_core::IndexDef;
+
+        let constraint = TableConstraint::Check {
+            name: "chk_age".into(),
+            expr: "age > 0".into(),
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "age".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![constraint.clone()],
+            indexes: vec![IndexDef {
+                name: "idx_age".into(),
+                columns: vec!["age".into()],
+                unique: true,
+            }],
+        }];
+
+        let result = build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        if matches!(backend, DatabaseBackend::Sqlite) {
+            assert!(sql.contains("CREATE UNIQUE INDEX"));
+            assert!(sql.contains("idx_age"));
+        }
+
+        with_settings!({ snapshot_suffix => format!("remove_check_with_unique_index_{}", title) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::remove_unique_with_other_constraints_postgres(
+        "remove_unique_with_other_constraints_postgres",
+        DatabaseBackend::Postgres
+    )]
+    #[case::remove_unique_with_other_constraints_mysql(
+        "remove_unique_with_other_constraints_mysql",
+        DatabaseBackend::MySql
+    )]
+    #[case::remove_unique_with_other_constraints_sqlite(
+        "remove_unique_with_other_constraints_sqlite",
+        DatabaseBackend::Sqlite
+    )]
+    fn test_remove_constraint_unique_with_other_constraints(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test Unique removal with other constraint types (line 137)
+        let constraint = TableConstraint::Unique {
+            name: Some("uq_email".into()),
+            columns: vec!["email".into()],
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![
+                TableConstraint::PrimaryKey {
+                    columns: vec!["id".into()],
+                    auto_increment: false,
+                },
+                constraint.clone(),
+                TableConstraint::Check {
+                    name: "chk_email".into(),
+                    expr: "email IS NOT NULL".into(),
+                },
+            ],
+            indexes: vec![],
+        }];
+
+        let result = build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        // Should still work with other constraint types present
+        assert!(sql.contains("DROP") || sql.contains("CREATE TABLE"));
+
+        with_settings!({ snapshot_suffix => format!("remove_unique_with_other_constraints_{}", title) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::remove_foreign_key_with_other_constraints_postgres(
+        "remove_foreign_key_with_other_constraints_postgres",
+        DatabaseBackend::Postgres
+    )]
+    #[case::remove_foreign_key_with_other_constraints_mysql(
+        "remove_foreign_key_with_other_constraints_mysql",
+        DatabaseBackend::MySql
+    )]
+    #[case::remove_foreign_key_with_other_constraints_sqlite(
+        "remove_foreign_key_with_other_constraints_sqlite",
+        DatabaseBackend::Sqlite
+    )]
+    fn test_remove_constraint_foreign_key_with_other_constraints(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test ForeignKey removal with other constraint types (line 263)
+        let constraint = TableConstraint::ForeignKey {
+            name: Some("fk_user".into()),
+            columns: vec!["user_id".into()],
+            ref_table: "users".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: None,
+        };
+        let current_schema = vec![TableDef {
+            name: "posts".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![
+                TableConstraint::PrimaryKey {
+                    columns: vec!["id".into()],
+                    auto_increment: false,
+                },
+                constraint.clone(),
+                TableConstraint::Unique {
+                    name: Some("uq_user_id".into()),
+                    columns: vec!["user_id".into()],
+                },
+                TableConstraint::Check {
+                    name: "chk_user_id".into(),
+                    expr: "user_id > 0".into(),
+                },
+            ],
+            indexes: vec![],
+        }];
+
+        let result = build_remove_constraint(&backend, "posts", &constraint, &current_schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        // Should still work with other constraint types present
+        assert!(sql.contains("DROP") || sql.contains("CREATE TABLE"));
+
+        with_settings!({ snapshot_suffix => format!("remove_foreign_key_with_other_constraints_{}", title) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::remove_check_with_other_constraints_postgres(
+        "remove_check_with_other_constraints_postgres",
+        DatabaseBackend::Postgres
+    )]
+    #[case::remove_check_with_other_constraints_mysql(
+        "remove_check_with_other_constraints_mysql",
+        DatabaseBackend::MySql
+    )]
+    #[case::remove_check_with_other_constraints_sqlite(
+        "remove_check_with_other_constraints_sqlite",
+        DatabaseBackend::Sqlite
+    )]
+    fn test_remove_constraint_check_with_other_constraints(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test Check removal with other constraint types (line 357)
+        let constraint = TableConstraint::Check {
+            name: "chk_age".into(),
+            expr: "age > 0".into(),
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "age".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![
+                TableConstraint::PrimaryKey {
+                    columns: vec!["id".into()],
+                    auto_increment: false,
+                },
+                TableConstraint::Unique {
+                    name: Some("uq_age".into()),
+                    columns: vec!["age".into()],
+                },
+                constraint.clone(),
+            ],
+            indexes: vec![],
+        }];
+
+        let result = build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        // Should still work with other constraint types present
+        assert!(sql.contains("DROP") || sql.contains("CREATE TABLE"));
+
+        with_settings!({ snapshot_suffix => format!("remove_check_with_other_constraints_{}", title) }, {
+            assert_snapshot!(sql);
+        });
+    }
 }
