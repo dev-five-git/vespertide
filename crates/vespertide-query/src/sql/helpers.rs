@@ -260,4 +260,58 @@ mod tests {
     ) {
         assert_eq!(reference_action_sql(&action), expected);
     }
+
+    #[rstest]
+    #[case::gen_random_uuid_postgres(
+        "gen_random_uuid()",
+        DatabaseBackend::Postgres,
+        "gen_random_uuid()"
+    )]
+    #[case::gen_random_uuid_mysql("gen_random_uuid()", DatabaseBackend::MySql, "(UUID())")]
+    #[case::gen_random_uuid_sqlite(
+        "gen_random_uuid()",
+        DatabaseBackend::Sqlite,
+        "(lower(hex(randomblob(16))))"
+    )]
+    #[case::current_timestamp_postgres(
+        "current_timestamp()",
+        DatabaseBackend::Postgres,
+        "CURRENT_TIMESTAMP"
+    )]
+    #[case::current_timestamp_mysql(
+        "current_timestamp()",
+        DatabaseBackend::MySql,
+        "CURRENT_TIMESTAMP"
+    )]
+    #[case::current_timestamp_sqlite(
+        "current_timestamp()",
+        DatabaseBackend::Sqlite,
+        "CURRENT_TIMESTAMP"
+    )]
+    #[case::now_postgres("now()", DatabaseBackend::Postgres, "CURRENT_TIMESTAMP")]
+    #[case::now_mysql("now()", DatabaseBackend::MySql, "CURRENT_TIMESTAMP")]
+    #[case::now_sqlite("now()", DatabaseBackend::Sqlite, "CURRENT_TIMESTAMP")]
+    #[case::current_timestamp_upper_postgres(
+        "CURRENT_TIMESTAMP",
+        DatabaseBackend::Postgres,
+        "CURRENT_TIMESTAMP"
+    )]
+    #[case::current_timestamp_upper_mysql(
+        "CURRENT_TIMESTAMP",
+        DatabaseBackend::MySql,
+        "CURRENT_TIMESTAMP"
+    )]
+    #[case::current_timestamp_upper_sqlite(
+        "CURRENT_TIMESTAMP",
+        DatabaseBackend::Sqlite,
+        "CURRENT_TIMESTAMP"
+    )]
+    fn test_convert_default_for_backend(
+        #[case] default: &str,
+        #[case] backend: DatabaseBackend,
+        #[case] expected: &str,
+    ) {
+        let result = convert_default_for_backend(default, &backend);
+        assert_eq!(result, expected);
+    }
 }

@@ -1000,6 +1000,94 @@ mod tests {
     }
 
     #[test]
+    fn test_add_constraint_primary_key_sqlite_without_existing_check() {
+        // Test PrimaryKey addition when there are no existing CHECK constraints (line 84)
+        // This should hit the else branch: BuiltQuery::CreateTable(Box::new(create_temp_table))
+        let constraint = TableConstraint::PrimaryKey {
+            columns: vec!["id".into()],
+            auto_increment: false,
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![], // No existing CHECK constraints
+            indexes: vec![],
+        }];
+        let result = build_add_constraint(
+            &DatabaseBackend::Sqlite,
+            "users",
+            &constraint,
+            &current_schema,
+        );
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Sqlite))
+            .collect::<Vec<String>>()
+            .join("\n");
+        // Should create table without CHECK constraints (using BuiltQuery::CreateTable)
+        assert!(sql.contains("CREATE TABLE"));
+        assert!(sql.contains("PRIMARY KEY"));
+    }
+
+    #[test]
+    fn test_add_constraint_foreign_key_sqlite_without_existing_check() {
+        // Test ForeignKey addition when there are no existing CHECK constraints (line 238)
+        // This should hit the else branch: BuiltQuery::CreateTable(Box::new(create_temp_table))
+        let constraint = TableConstraint::ForeignKey {
+            name: Some("fk_user".into()),
+            columns: vec!["user_id".into()],
+            ref_table: "users".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: None,
+        };
+        let current_schema = vec![TableDef {
+            name: "posts".into(),
+            columns: vec![ColumnDef {
+                name: "user_id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![], // No existing CHECK constraints
+            indexes: vec![],
+        }];
+        let result = build_add_constraint(
+            &DatabaseBackend::Sqlite,
+            "posts",
+            &constraint,
+            &current_schema,
+        );
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Sqlite))
+            .collect::<Vec<String>>()
+            .join("\n");
+        // Should create table without CHECK constraints (using BuiltQuery::CreateTable)
+        assert!(sql.contains("CREATE TABLE"));
+        assert!(sql.contains("FOREIGN KEY"));
+    }
+
+    #[test]
     fn test_add_constraint_check_sqlite_with_indexes() {
         use vespertide_core::IndexDef;
 
