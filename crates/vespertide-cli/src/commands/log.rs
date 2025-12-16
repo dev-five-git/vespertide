@@ -52,9 +52,30 @@ pub fn cmd_log(backend: DatabaseBackend) -> Result<()> {
                 "    {}. {}",
                 (i + 1).to_string().bright_magenta().bold(),
                 match backend {
-                    DatabaseBackend::Postgres => pq.postgres.iter().map(|q| q.build(DatabaseBackend::Postgres)).collect::<Vec<_>>().join(";\n").trim().bright_white(),
-                    DatabaseBackend::MySql => pq.mysql.iter().map(|q| q.build(DatabaseBackend::MySql)).collect::<Vec<_>>().join(";\n").trim().bright_white(),
-                    DatabaseBackend::Sqlite => pq.sqlite.iter().map(|q| q.build(DatabaseBackend::Sqlite)).collect::<Vec<_>>().join(";\n").trim().bright_white(),
+                    DatabaseBackend::Postgres => pq
+                        .postgres
+                        .iter()
+                        .map(|q| q.build(DatabaseBackend::Postgres))
+                        .collect::<Vec<_>>()
+                        .join(";\n")
+                        .trim()
+                        .bright_white(),
+                    DatabaseBackend::MySql => pq
+                        .mysql
+                        .iter()
+                        .map(|q| q.build(DatabaseBackend::MySql))
+                        .collect::<Vec<_>>()
+                        .join(";\n")
+                        .trim()
+                        .bright_white(),
+                    DatabaseBackend::Sqlite => pq
+                        .sqlite
+                        .iter()
+                        .map(|q| q.build(DatabaseBackend::Sqlite))
+                        .collect::<Vec<_>>()
+                        .join(";\n")
+                        .trim()
+                        .bright_white(),
                 }
             );
         }

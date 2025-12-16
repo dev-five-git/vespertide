@@ -7,9 +7,9 @@ pub fn build_raw_sql(sql: String) -> BuiltQuery {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sql::types::DatabaseBackend;
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
-    use crate::sql::types::DatabaseBackend;
 
     #[rstest]
     #[case::raw_sql_action_postgres(
@@ -27,7 +27,11 @@ mod tests {
         DatabaseBackend::Sqlite,
         &["SELECT 1"]
     )]
-    fn test_raw_sql(#[case] title: &str, #[case] backend: DatabaseBackend, #[case] expected: &[&str]) {
+    fn test_raw_sql(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+        #[case] expected: &[&str],
+    ) {
         let result = build_raw_sql("SELECT 1".into());
         let sql = result.build(backend);
         for exp in expected {

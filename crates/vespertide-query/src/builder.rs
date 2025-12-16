@@ -17,9 +17,11 @@ pub fn build_plan_queries(
 ) -> Result<Vec<PlanQueries>, QueryError> {
     let mut queries: Vec<PlanQueries> = Vec::new();
     for action in &plan.actions {
-        let postgres_queries = build_action_queries(&DatabaseBackend::Postgres, action, current_schema)?;
+        let postgres_queries =
+            build_action_queries(&DatabaseBackend::Postgres, action, current_schema)?;
         let mysql_queries = build_action_queries(&DatabaseBackend::MySql, action, current_schema)?;
-        let sqlite_queries = build_action_queries(&DatabaseBackend::Sqlite, action, current_schema)?;
+        let sqlite_queries =
+            build_action_queries(&DatabaseBackend::Sqlite, action, current_schema)?;
         queries.push(PlanQueries {
             action: action.clone(),
             postgres: postgres_queries,
@@ -125,20 +127,40 @@ mod tests {
         assert_eq!(result.len(), 2);
 
         // Test PostgreSQL output
-        let sql1 = result[0].postgres.iter().map(|q| q.build(DatabaseBackend::Postgres)).collect::<Vec<_>>().join(";\n");
+        let sql1 = result[0]
+            .postgres
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Postgres))
+            .collect::<Vec<_>>()
+            .join(";\n");
         assert!(sql1.contains("CREATE TABLE"));
         assert!(sql1.contains("\"users\""));
         assert!(sql1.contains("\"id\""));
 
-        let sql2 = result[1].postgres.iter().map(|q| q.build(DatabaseBackend::Postgres)).collect::<Vec<_>>().join(";\n");
+        let sql2 = result[1]
+            .postgres
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Postgres))
+            .collect::<Vec<_>>()
+            .join(";\n");
         assert!(sql2.contains("DROP TABLE"));
         assert!(sql2.contains("\"posts\""));
 
         // Test MySQL output
-        let sql1_mysql = result[0].mysql.iter().map(|q| q.build(DatabaseBackend::MySql)).collect::<Vec<_>>().join(";\n");
+        let sql1_mysql = result[0]
+            .mysql
+            .iter()
+            .map(|q| q.build(DatabaseBackend::MySql))
+            .collect::<Vec<_>>()
+            .join(";\n");
         assert!(sql1_mysql.contains("`users`"));
 
-        let sql2_mysql = result[1].mysql.iter().map(|q| q.build(DatabaseBackend::MySql)).collect::<Vec<_>>().join(";\n");
+        let sql2_mysql = result[1]
+            .mysql
+            .iter()
+            .map(|q| q.build(DatabaseBackend::MySql))
+            .collect::<Vec<_>>()
+            .join(";\n");
         assert!(sql2_mysql.contains("`posts`"));
     }
 }

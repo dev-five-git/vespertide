@@ -30,7 +30,11 @@ mod tests {
         DatabaseBackend::Sqlite,
         &["\"idx_email\""]
     )]
-    fn test_remove_index(#[case] title: &str, #[case] backend: DatabaseBackend, #[case] expected: &[&str]) {
+    fn test_remove_index(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+        #[case] expected: &[&str],
+    ) {
         let result = build_remove_index("idx_email");
         let sql = result.build(backend);
         for exp in expected {

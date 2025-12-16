@@ -2,9 +2,9 @@ use sea_query::{Alias, ForeignKey, Index, Table, TableCreateStatement};
 
 use vespertide_core::{ColumnDef, TableConstraint};
 
-use crate::error::QueryError;
-use super::types::{BuiltQuery, DatabaseBackend};
 use super::helpers::{build_sea_column_def, to_sea_fk_action};
+use super::types::{BuiltQuery, DatabaseBackend};
+use crate::error::QueryError;
 
 pub(crate) fn build_create_table_for_backend(
     backend: &DatabaseBackend,
@@ -108,9 +108,9 @@ pub fn build_create_table(
     columns: &[ColumnDef],
     constraints: &[TableConstraint],
 ) -> Result<BuiltQuery, QueryError> {
-    Ok(BuiltQuery::CreateTable(
-        Box::new(build_create_table_for_backend(backend, table, columns, constraints)),
-    ))
+    Ok(BuiltQuery::CreateTable(Box::new(
+        build_create_table_for_backend(backend, table, columns, constraints),
+    )))
 }
 
 #[cfg(test)]
@@ -118,9 +118,7 @@ mod tests {
     use super::*;
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
-    use vespertide_core::{
-        ColumnType, SimpleColumnType,
-    };
+    use vespertide_core::{ColumnType, SimpleColumnType};
 
     fn col(name: &str, ty: ColumnType) -> ColumnDef {
         ColumnDef {
@@ -152,7 +150,11 @@ mod tests {
         DatabaseBackend::Sqlite,
         &["CREATE TABLE \"users\" ( \"id\" integer )"]
     )]
-    fn test_create_table(#[case] title: &str, #[case] backend: DatabaseBackend, #[case] expected: &[&str]) {
+    fn test_create_table(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+        #[case] expected: &[&str],
+    ) {
         let result = build_create_table(
             &backend,
             "users",

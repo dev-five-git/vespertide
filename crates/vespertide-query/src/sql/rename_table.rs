@@ -32,7 +32,11 @@ mod tests {
         DatabaseBackend::Sqlite,
         &["ALTER TABLE \"users\" RENAME TO \"accounts\""]
     )]
-    fn test_rename_table(#[case] title: &str, #[case] backend: DatabaseBackend, #[case] expected: &[&str]) {
+    fn test_rename_table(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+        #[case] expected: &[&str],
+    ) {
         let result = build_rename_table("users", "accounts");
         let sql = result.build(backend);
         for exp in expected {

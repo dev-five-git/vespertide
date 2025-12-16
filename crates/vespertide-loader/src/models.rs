@@ -115,7 +115,10 @@ pub fn load_models_from_dir(
 }
 
 /// Internal recursive function for loading models (used by both runtime and compile-time).
-fn load_models_recursive_internal(dir: &Path, tables: &mut Vec<TableDef>) -> Result<(), Box<dyn std::error::Error>> {
+fn load_models_recursive_internal(
+    dir: &Path,
+    tables: &mut Vec<TableDef>,
+) -> Result<(), Box<dyn std::error::Error>> {
     use std::fs;
 
     let entries = fs::read_dir(dir)
@@ -138,11 +141,13 @@ fn load_models_recursive_internal(dir: &Path, tables: &mut Vec<TableDef>) -> Res
                     .map_err(|e| format!("Failed to read model file {}: {}", path.display(), e))?;
 
                 let table: TableDef = if ext == Some("json") {
-                    serde_json::from_str(&content)
-                        .map_err(|e| format!("Failed to parse JSON model {}: {}", path.display(), e))?
+                    serde_json::from_str(&content).map_err(|e| {
+                        format!("Failed to parse JSON model {}: {}", path.display(), e)
+                    })?
                 } else {
-                    serde_yaml::from_str(&content)
-                        .map_err(|e| format!("Failed to parse YAML model {}: {}", path.display(), e))?
+                    serde_yaml::from_str(&content).map_err(|e| {
+                        format!("Failed to parse YAML model {}: {}", path.display(), e)
+                    })?
                 };
 
                 tables.push(table);

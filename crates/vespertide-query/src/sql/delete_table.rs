@@ -30,7 +30,11 @@ mod tests {
         DatabaseBackend::Sqlite,
         &["DROP TABLE \"users\""]
     )]
-    fn test_delete_table(#[case] title: &str, #[case] backend: DatabaseBackend, #[case] expected: &[&str]) {
+    fn test_delete_table(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+        #[case] expected: &[&str],
+    ) {
         let result = build_delete_table("users");
         let sql = result.build(backend);
         for exp in expected {

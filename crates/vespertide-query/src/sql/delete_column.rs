@@ -33,7 +33,11 @@ mod tests {
         DatabaseBackend::Sqlite,
         &["ALTER TABLE \"users\" DROP COLUMN \"email\""]
     )]
-    fn test_delete_column(#[case] title: &str, #[case] backend: DatabaseBackend, #[case] expected: &[&str]) {
+    fn test_delete_column(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+        #[case] expected: &[&str],
+    ) {
         let result = build_delete_column("users", "email");
         let sql = result.build(backend);
         for exp in expected {

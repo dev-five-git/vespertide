@@ -60,7 +60,11 @@ mod tests {
         DatabaseBackend::Sqlite,
         &["CREATE UNIQUE INDEX \"idx_email\" ON \"users\" (\"email\")"]
     )]
-    fn test_add_index(#[case] title: &str, #[case] backend: DatabaseBackend, #[case] expected: &[&str]) {
+    fn test_add_index(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+        #[case] expected: &[&str],
+    ) {
         let index = IndexDef {
             name: "idx_email".into(),
             columns: vec!["email".into()],

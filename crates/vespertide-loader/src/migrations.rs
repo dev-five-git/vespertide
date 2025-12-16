@@ -81,15 +81,18 @@ pub fn load_migrations_from_dir(
         if path.is_file() {
             let ext = path.extension().and_then(|s| s.to_str());
             if ext == Some("json") || ext == Some("yaml") || ext == Some("yml") {
-                let content = fs::read_to_string(&path)
-                    .map_err(|e| format!("Failed to read migration file {}: {}", path.display(), e))?;
+                let content = fs::read_to_string(&path).map_err(|e| {
+                    format!("Failed to read migration file {}: {}", path.display(), e)
+                })?;
 
                 let plan: MigrationPlan = if ext == Some("json") {
-                    serde_json::from_str(&content)
-                        .map_err(|e| format!("Failed to parse JSON migration {}: {}", path.display(), e))?
+                    serde_json::from_str(&content).map_err(|e| {
+                        format!("Failed to parse JSON migration {}: {}", path.display(), e)
+                    })?
                 } else {
-                    serde_yaml::from_str(&content)
-                        .map_err(|e| format!("Failed to parse YAML migration {}: {}", path.display(), e))?
+                    serde_yaml::from_str(&content).map_err(|e| {
+                        format!("Failed to parse YAML migration {}: {}", path.display(), e)
+                    })?
                 };
 
                 plans.push(plan);

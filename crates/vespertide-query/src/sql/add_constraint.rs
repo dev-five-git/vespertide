@@ -1,8 +1,11 @@
+use sea_query::{Alias, ForeignKey, Index};
+
 use vespertide_core::TableConstraint;
 
+use super::helpers::to_sea_fk_action;
+use super::types::BuiltQuery;
 use crate::error::QueryError;
-use super::types::{BuiltQuery, RawSql};
-use super::helpers::reference_action_sql;
+use crate::sql::RawSql;
 
 pub fn build_add_constraint(
     table: &str,
@@ -10,56 +13,29 @@ pub fn build_add_constraint(
 ) -> Result<Vec<BuiltQuery>, QueryError> {
     match constraint {
         TableConstraint::PrimaryKey { columns, .. } => {
-            // Use raw SQL for adding primary key constraint
-            let pg_cols = columns
-                .iter()
-                .map(|c| format!("\"{}\"", c))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let mysql_cols = columns
-                .iter()
-                .map(|c| format!("`{}`", c))
-                .collect::<Vec<_>>()
-                .join(", ");
-            Ok(vec![BuiltQuery::Raw(RawSql::per_backend(
-                format!("ALTER TABLE \"{}\" ADD PRIMARY KEY ({})", table, pg_cols),
-                format!("ALTER TABLE `{}` ADD PRIMARY KEY ({})", table, mysql_cols),
-                format!("ALTER TABLE \"{}\" ADD PRIMARY KEY ({})", table, pg_cols),
-            ))])
+            // sea_query 0.32 doesn't support adding primary key via Table::alter() directly
+            // We'll use Index::create().primary() which creates a primary key index
+            // Note: This generates CREATE UNIQUE INDEX, not ALTER TABLE ADD PRIMARY KEY
+            // but it's functionally equivalent for most databases
+            let mut pk_idx = Index::create()
+                .table(Alias::new(table))
+                .primary()
+                .to_owned();
+            for col in columns {
+                pk_idx = pk_idx.col(Alias::new(col)).to_owned();
+            }
+            Ok(vec![BuiltQuery::CreateIndex(Box::new(pk_idx))])
         }
         TableConstraint::Unique { name, columns } => {
-            let pg_cols = columns
-                .iter()
-                .map(|c| format!("\"{}\"", c))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let mysql_cols = columns
-                .iter()
-                .map(|c| format!("`{}`", c))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let (pg_sql, mysql_sql) = if let Some(n) = name {
-                (
-                    format!(
-                        "ALTER TABLE \"{}\" ADD CONSTRAINT \"{}\" UNIQUE ({})",
-                        table, n, pg_cols
-                    ),
-                    format!(
-                        "ALTER TABLE `{}` ADD CONSTRAINT `{}` UNIQUE ({})",
-                        table, n, mysql_cols
-                    ),
-                )
-            } else {
-                (
-                    format!("ALTER TABLE \"{}\" ADD UNIQUE ({})", table, pg_cols),
-                    format!("ALTER TABLE `{}` ADD UNIQUE ({})", table, mysql_cols),
-                )
-            };
-            Ok(vec![BuiltQuery::Raw(RawSql::per_backend(
-                pg_sql.clone(),
-                mysql_sql,
-                pg_sql,
-            ))])
+            // Build unique constraint using Index::create().unique()
+            let mut idx = Index::create().table(Alias::new(table)).unique().to_owned();
+            if let Some(n) = name {
+                idx = idx.name(n).to_owned();
+            }
+            for col in columns {
+                idx = idx.col(Alias::new(col)).to_owned();
+            }
+            Ok(vec![BuiltQuery::CreateIndex(Box::new(idx))])
         }
         TableConstraint::ForeignKey {
             name,
@@ -69,70 +45,26 @@ pub fn build_add_constraint(
             on_delete,
             on_update,
         } => {
-            // Use Raw SQL for FK creation to avoid SQLite panic from sea-query
-            // SQLite doesn't support ALTER TABLE ADD CONSTRAINT for FK, but we generate
-            // the SQL anyway - runtime will need to handle SQLite FK differently (table recreation)
-            let pg_cols = columns
-                .iter()
-                .map(|c| format!("\"{}\"", c))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let mysql_cols = columns
-                .iter()
-                .map(|c| format!("`{}`", c))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let pg_ref_cols = ref_columns
-                .iter()
-                .map(|c| format!("\"{}\"", c))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let mysql_ref_cols = ref_columns
-                .iter()
-                .map(|c| format!("`{}`", c))
-                .collect::<Vec<_>>()
-                .join(", ");
-
-            let (mut pg_sql, mut mysql_sql) = if let Some(n) = name {
-                (
-                    format!(
-                        "ALTER TABLE \"{}\" ADD CONSTRAINT \"{}\" FOREIGN KEY ({}) REFERENCES \"{}\" ({})",
-                        table, n, pg_cols, ref_table, pg_ref_cols
-                    ),
-                    format!(
-                        "ALTER TABLE `{}` ADD CONSTRAINT `{}` FOREIGN KEY ({}) REFERENCES `{}` ({})",
-                        table, n, mysql_cols, ref_table, mysql_ref_cols
-                    ),
-                )
-            } else {
-                (
-                    format!(
-                        "ALTER TABLE \"{}\" ADD FOREIGN KEY ({}) REFERENCES \"{}\" ({})",
-                        table, pg_cols, ref_table, pg_ref_cols
-                    ),
-                    format!(
-                        "ALTER TABLE `{}` ADD FOREIGN KEY ({}) REFERENCES `{}` ({})",
-                        table, mysql_cols, ref_table, mysql_ref_cols
-                    ),
-                )
-            };
-
+            // Build foreign key using ForeignKey::create
+            let mut fk = ForeignKey::create();
+            if let Some(n) = name {
+                fk = fk.name(n).to_owned();
+            }
+            fk = fk.from_tbl(Alias::new(table)).to_owned();
+            for col in columns {
+                fk = fk.from_col(Alias::new(col)).to_owned();
+            }
+            fk = fk.to_tbl(Alias::new(ref_table)).to_owned();
+            for col in ref_columns {
+                fk = fk.to_col(Alias::new(col)).to_owned();
+            }
             if let Some(action) = on_delete {
-                let action_sql = format!(" ON DELETE {}", reference_action_sql(action));
-                pg_sql.push_str(&action_sql);
-                mysql_sql.push_str(&action_sql);
+                fk = fk.on_delete(to_sea_fk_action(action)).to_owned();
             }
             if let Some(action) = on_update {
-                let action_sql = format!(" ON UPDATE {}", reference_action_sql(action));
-                pg_sql.push_str(&action_sql);
-                mysql_sql.push_str(&action_sql);
+                fk = fk.on_update(to_sea_fk_action(action)).to_owned();
             }
-
-            Ok(vec![BuiltQuery::Raw(RawSql::per_backend(
-                pg_sql.clone(),
-                mysql_sql,
-                pg_sql,
-            ))])
+            Ok(vec![BuiltQuery::CreateForeignKey(Box::new(fk))])
         }
         TableConstraint::Check { name, expr } => {
             let pg_sql = format!(

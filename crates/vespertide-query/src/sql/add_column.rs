@@ -1,10 +1,10 @@
-use sea_query::{Alias, Table, TableAlterStatement};
+use sea_query::{Alias, Expr, Query, Table, TableAlterStatement};
 
 use vespertide_core::ColumnDef;
 
-use crate::error::QueryError;
-use super::types::{BuiltQuery, DatabaseBackend, RawSql};
 use super::helpers::build_sea_column_def;
+use super::types::{BuiltQuery, DatabaseBackend};
+use crate::error::QueryError;
 
 fn build_add_column_alter_for_backend(
     backend: &DatabaseBackend,
@@ -34,43 +34,32 @@ pub fn build_add_column(
         let mut temp_col = column.clone();
         temp_col.nullable = true;
 
-        stmts.push(BuiltQuery::AlterTable(
-            Box::new(build_add_column_alter_for_backend(backend, table, &temp_col)),
-        ));
+        stmts.push(BuiltQuery::AlterTable(Box::new(
+            build_add_column_alter_for_backend(backend, table, &temp_col),
+        )));
 
         // Backfill with provided value
         if let Some(fill) = fill_with {
-            // PostgreSQL and SQLite use double quotes, MySQL uses backticks
-            let pg_sql = format!("UPDATE \"{}\" SET \"{}\" = {}", table, column.name, fill);
-            let mysql_sql = format!("UPDATE `{}` SET `{}` = {}", table, column.name, fill);
-            stmts.push(BuiltQuery::Raw(RawSql::per_backend(
-                pg_sql.clone(),
-                mysql_sql,
-                pg_sql,
-            )));
+            // Build UPDATE query using sea_query
+            let update_stmt = Query::update()
+                .table(Alias::new(table))
+                .value(Alias::new(&column.name), Expr::cust(fill))
+                .to_owned();
+            stmts.push(BuiltQuery::Update(Box::new(update_stmt)));
         }
 
-        // Set NOT NULL - different syntax per backend
-        let pg_sql = format!(
-            "ALTER TABLE \"{}\" ALTER COLUMN \"{}\" SET NOT NULL",
-            table, column.name
-        );
-        let mysql_sql = format!(
-            "ALTER TABLE `{}` MODIFY COLUMN `{}` NOT NULL",
-            table, column.name
-        );
-        // SQLite doesn't support ALTER COLUMN, would need table recreation
-        let sqlite_sql = format!(
-            "-- SQLite: ALTER TABLE \"{}\" requires table recreation to set NOT NULL on \"{}\"",
-            table, column.name
-        );
-        stmts.push(BuiltQuery::Raw(RawSql::per_backend(
-            pg_sql, mysql_sql, sqlite_sql,
-        )));
+        // Set NOT NULL using ALTER TABLE with modify_column
+        // For SQLite, this will need table recreation, but we generate the SQL anyway
+        let not_null_col = build_sea_column_def(backend, column);
+        let alter_not_null = Table::alter()
+            .table(Alias::new(table))
+            .modify_column(not_null_col)
+            .to_owned();
+        stmts.push(BuiltQuery::AlterTable(Box::new(alter_not_null)));
     } else {
-        stmts.push(BuiltQuery::AlterTable(
-            Box::new(build_add_column_alter_for_backend(backend, table, column)),
-        ));
+        stmts.push(BuiltQuery::AlterTable(Box::new(
+            build_add_column_alter_for_backend(backend, table, column),
+        )));
     }
 
     Ok(stmts)
@@ -120,7 +109,12 @@ mod tests {
         #[case] expected: &[&str],
     ) {
         let column = ColumnDef {
-            name: if title.contains("age") { "age" } else { "nickname" }.into(),
+            name: if title.contains("age") {
+                "age"
+            } else {
+                "nickname"
+            }
+            .into(),
             r#type: if title.contains("age") {
                 ColumnType::Simple(SimpleColumnType::Integer)
             } else {
@@ -134,7 +128,11 @@ mod tests {
             index: None,
             foreign_key: None,
         };
-        let fill_with = if title.contains("backfill") { Some("0") } else { None };
+        let fill_with = if title.contains("backfill") {
+            Some("0")
+        } else {
+            None
+        };
         let result = build_add_column(&backend, "users", &column, fill_with).unwrap();
         let sql = result[0].build(backend);
         for exp in expected {

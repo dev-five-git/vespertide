@@ -18,6 +18,7 @@ pub enum BuiltQuery {
     CreateForeignKey(Box<sea_query::ForeignKeyCreateStatement>),
     DropForeignKey(Box<sea_query::ForeignKeyDropStatement>),
     Insert(Box<sea_query::InsertStatement>),
+    Update(Box<sea_query::UpdateStatement>),
     Raw(RawSql),
 }
 
@@ -53,15 +54,36 @@ impl BuiltQuery {
     /// Build SQL string for the specified database backend
     pub fn build(&self, backend: DatabaseBackend) -> String {
         match self {
-            BuiltQuery::CreateTable(stmt) => crate::sql::helpers::build_schema_statement(stmt.as_ref(), backend),
-            BuiltQuery::DropTable(stmt) => crate::sql::helpers::build_schema_statement(stmt.as_ref(), backend),
-            BuiltQuery::AlterTable(stmt) => crate::sql::helpers::build_schema_statement(stmt.as_ref(), backend),
-            BuiltQuery::CreateIndex(stmt) => crate::sql::helpers::build_schema_statement(stmt.as_ref(), backend),
-            BuiltQuery::DropIndex(stmt) => crate::sql::helpers::build_schema_statement(stmt.as_ref(), backend),
-            BuiltQuery::RenameTable(stmt) => crate::sql::helpers::build_schema_statement(stmt.as_ref(), backend),
-            BuiltQuery::CreateForeignKey(stmt) => crate::sql::helpers::build_schema_statement(stmt.as_ref(), backend),
-            BuiltQuery::DropForeignKey(stmt) => crate::sql::helpers::build_schema_statement(stmt.as_ref(), backend),
-            BuiltQuery::Insert(stmt) => crate::sql::helpers::build_query_statement(stmt.as_ref(), backend),
+            BuiltQuery::CreateTable(stmt) => {
+                crate::sql::helpers::build_schema_statement(stmt.as_ref(), backend)
+            }
+            BuiltQuery::DropTable(stmt) => {
+                crate::sql::helpers::build_schema_statement(stmt.as_ref(), backend)
+            }
+            BuiltQuery::AlterTable(stmt) => {
+                crate::sql::helpers::build_schema_statement(stmt.as_ref(), backend)
+            }
+            BuiltQuery::CreateIndex(stmt) => {
+                crate::sql::helpers::build_schema_statement(stmt.as_ref(), backend)
+            }
+            BuiltQuery::DropIndex(stmt) => {
+                crate::sql::helpers::build_schema_statement(stmt.as_ref(), backend)
+            }
+            BuiltQuery::RenameTable(stmt) => {
+                crate::sql::helpers::build_schema_statement(stmt.as_ref(), backend)
+            }
+            BuiltQuery::CreateForeignKey(stmt) => {
+                crate::sql::helpers::build_schema_statement(stmt.as_ref(), backend)
+            }
+            BuiltQuery::DropForeignKey(stmt) => {
+                crate::sql::helpers::build_schema_statement(stmt.as_ref(), backend)
+            }
+            BuiltQuery::Insert(stmt) => {
+                crate::sql::helpers::build_query_statement(stmt.as_ref(), backend)
+            }
+            BuiltQuery::Update(stmt) => {
+                crate::sql::helpers::build_query_statement(stmt.as_ref(), backend)
+            }
             BuiltQuery::Raw(raw) => match backend {
                 DatabaseBackend::Postgres => raw.postgres.clone(),
                 DatabaseBackend::MySql => raw.mysql.clone(),
