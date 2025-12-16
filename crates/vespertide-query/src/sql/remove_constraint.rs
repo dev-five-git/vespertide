@@ -635,19 +635,15 @@ mod tests {
 
     #[rstest]
     #[case::remove_primary_key_with_index_postgres(
-        "remove_primary_key_with_index_postgres",
         DatabaseBackend::Postgres
     )]
     #[case::remove_primary_key_with_index_mysql(
-        "remove_primary_key_with_index_mysql",
         DatabaseBackend::MySql
     )]
     #[case::remove_primary_key_with_index_sqlite(
-        "remove_primary_key_with_index_sqlite",
         DatabaseBackend::Sqlite
     )]
     fn test_remove_constraint_primary_key_with_index(
-        #[case] title: &str,
         #[case] backend: DatabaseBackend,
     ) {
         // Test PrimaryKey removal with indexes (lines 75-78, 83-84)
@@ -690,26 +686,22 @@ mod tests {
             assert!(sql.contains("idx_id"));
         }
 
-        with_settings!({ snapshot_suffix => format!("remove_primary_key_with_index_{}", title) }, {
+        with_settings!({ snapshot_suffix => format!("remove_primary_key_with_index_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }
 
     #[rstest]
     #[case::remove_primary_key_with_unique_index_postgres(
-        "remove_primary_key_with_unique_index_postgres",
         DatabaseBackend::Postgres
     )]
     #[case::remove_primary_key_with_unique_index_mysql(
-        "remove_primary_key_with_unique_index_mysql",
         DatabaseBackend::MySql
     )]
     #[case::remove_primary_key_with_unique_index_sqlite(
-        "remove_primary_key_with_unique_index_sqlite",
         DatabaseBackend::Sqlite
     )]
     fn test_remove_constraint_primary_key_with_unique_index(
-        #[case] title: &str,
         #[case] backend: DatabaseBackend,
     ) {
         // Test PrimaryKey removal with unique index (lines 75-78, 80-81, 83-84)
@@ -752,7 +744,7 @@ mod tests {
             assert!(sql.contains("idx_email"));
         }
 
-        with_settings!({ snapshot_suffix => format!("remove_primary_key_with_unique_index_{}", title) }, {
+        with_settings!({ snapshot_suffix => format!("remove_primary_key_with_unique_index_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }
@@ -777,19 +769,15 @@ mod tests {
 
     #[rstest]
     #[case::remove_unique_without_name_postgres(
-        "remove_unique_without_name_postgres",
         DatabaseBackend::Postgres
     )]
     #[case::remove_unique_without_name_mysql(
-        "remove_unique_without_name_mysql",
         DatabaseBackend::MySql
     )]
     #[case::remove_unique_without_name_sqlite(
-        "remove_unique_without_name_sqlite",
         DatabaseBackend::Sqlite
     )]
     fn test_remove_constraint_unique_without_name(
-        #[case] title: &str,
         #[case] backend: DatabaseBackend,
     ) {
         // Test Unique removal without name (lines 134, 137, 210)
@@ -839,26 +827,22 @@ mod tests {
             assert!(sql.contains("users_email_key") || sql.contains("email"));
         }
 
-        with_settings!({ snapshot_suffix => format!("remove_unique_without_name_{}", title) }, {
+        with_settings!({ snapshot_suffix => format!("remove_unique_without_name_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }
 
     #[rstest]
     #[case::remove_unique_with_index_postgres(
-        "remove_unique_with_index_postgres",
         DatabaseBackend::Postgres
     )]
     #[case::remove_unique_with_index_mysql(
-        "remove_unique_with_index_mysql",
         DatabaseBackend::MySql
     )]
     #[case::remove_unique_with_index_sqlite(
-        "remove_unique_with_index_sqlite",
         DatabaseBackend::Sqlite
     )]
     fn test_remove_constraint_unique_with_index(
-        #[case] title: &str,
         #[case] backend: DatabaseBackend,
     ) {
         // Test Unique removal with indexes (lines 185-188, 193-194)
@@ -914,26 +898,22 @@ mod tests {
             assert!(sql.contains("idx_id"));
         }
 
-        with_settings!({ snapshot_suffix => format!("remove_unique_with_index_{}", title) }, {
+        with_settings!({ snapshot_suffix => format!("remove_unique_with_index_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }
 
     #[rstest]
     #[case::remove_unique_with_unique_index_postgres(
-        "remove_unique_with_unique_index_postgres",
         DatabaseBackend::Postgres
     )]
     #[case::remove_unique_with_unique_index_mysql(
-        "remove_unique_with_unique_index_mysql",
         DatabaseBackend::MySql
     )]
     #[case::remove_unique_with_unique_index_sqlite(
-        "remove_unique_with_unique_index_sqlite",
         DatabaseBackend::Sqlite
     )]
     fn test_remove_constraint_unique_with_unique_index(
-        #[case] title: &str,
         #[case] backend: DatabaseBackend,
     ) {
         // Test Unique removal with unique index (lines 185-188, 190-191, 193-194)
@@ -989,7 +969,7 @@ mod tests {
             assert!(sql.contains("idx_name"));
         }
 
-        with_settings!({ snapshot_suffix => format!("remove_unique_with_unique_index_{}", title) }, {
+        with_settings!({ snapshot_suffix => format!("remove_unique_with_unique_index_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }
@@ -1018,19 +998,15 @@ mod tests {
 
     #[rstest]
     #[case::remove_foreign_key_without_name_postgres(
-        "remove_foreign_key_without_name_postgres",
         DatabaseBackend::Postgres
     )]
     #[case::remove_foreign_key_without_name_mysql(
-        "remove_foreign_key_without_name_mysql",
         DatabaseBackend::MySql
     )]
     #[case::remove_foreign_key_without_name_sqlite(
-        "remove_foreign_key_without_name_sqlite",
         DatabaseBackend::Sqlite
     )]
     fn test_remove_constraint_foreign_key_without_name(
-        #[case] title: &str,
         #[case] backend: DatabaseBackend,
     ) {
         // Test ForeignKey removal without name (lines 260, 263, 329)
@@ -1084,26 +1060,22 @@ mod tests {
             assert!(sql.contains("posts_user_id_fkey") || sql.contains("user_id"));
         }
 
-        with_settings!({ snapshot_suffix => format!("remove_foreign_key_without_name_{}", title) }, {
+        with_settings!({ snapshot_suffix => format!("remove_foreign_key_without_name_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }
 
     #[rstest]
     #[case::remove_foreign_key_with_index_postgres(
-        "remove_foreign_key_with_index_postgres",
         DatabaseBackend::Postgres
     )]
     #[case::remove_foreign_key_with_index_mysql(
-        "remove_foreign_key_with_index_mysql",
         DatabaseBackend::MySql
     )]
     #[case::remove_foreign_key_with_index_sqlite(
-        "remove_foreign_key_with_index_sqlite",
         DatabaseBackend::Sqlite
     )]
     fn test_remove_constraint_foreign_key_with_index(
-        #[case] title: &str,
         #[case] backend: DatabaseBackend,
     ) {
         // Test ForeignKey removal with indexes (lines 309-312, 317-318)
@@ -1163,26 +1135,22 @@ mod tests {
             assert!(sql.contains("idx_user_id"));
         }
 
-        with_settings!({ snapshot_suffix => format!("remove_foreign_key_with_index_{}", title) }, {
+        with_settings!({ snapshot_suffix => format!("remove_foreign_key_with_index_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }
 
     #[rstest]
     #[case::remove_foreign_key_with_unique_index_postgres(
-        "remove_foreign_key_with_unique_index_postgres",
         DatabaseBackend::Postgres
     )]
     #[case::remove_foreign_key_with_unique_index_mysql(
-        "remove_foreign_key_with_unique_index_mysql",
         DatabaseBackend::MySql
     )]
     #[case::remove_foreign_key_with_unique_index_sqlite(
-        "remove_foreign_key_with_unique_index_sqlite",
         DatabaseBackend::Sqlite
     )]
     fn test_remove_constraint_foreign_key_with_unique_index(
-        #[case] title: &str,
         #[case] backend: DatabaseBackend,
     ) {
         // Test ForeignKey removal with unique index (lines 309-312, 314-315, 317-318)
@@ -1242,7 +1210,7 @@ mod tests {
             assert!(sql.contains("idx_user_id"));
         }
 
-        with_settings!({ snapshot_suffix => format!("remove_foreign_key_with_unique_index_{}", title) }, {
+        with_settings!({ snapshot_suffix => format!("remove_foreign_key_with_unique_index_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }
@@ -1267,19 +1235,15 @@ mod tests {
 
     #[rstest]
     #[case::remove_check_with_index_postgres(
-        "remove_check_with_index_postgres",
         DatabaseBackend::Postgres
     )]
     #[case::remove_check_with_index_mysql(
-        "remove_check_with_index_mysql",
         DatabaseBackend::MySql
     )]
     #[case::remove_check_with_index_sqlite(
-        "remove_check_with_index_sqlite",
         DatabaseBackend::Sqlite
     )]
     fn test_remove_constraint_check_with_index(
-        #[case] title: &str,
         #[case] backend: DatabaseBackend,
     ) {
         // Test Check removal with indexes (lines 402-405, 410-411)
@@ -1335,26 +1299,22 @@ mod tests {
             assert!(sql.contains("idx_age"));
         }
 
-        with_settings!({ snapshot_suffix => format!("remove_check_with_index_{}", title) }, {
+        with_settings!({ snapshot_suffix => format!("remove_check_with_index_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }
 
     #[rstest]
     #[case::remove_check_with_unique_index_postgres(
-        "remove_check_with_unique_index_postgres",
         DatabaseBackend::Postgres
     )]
     #[case::remove_check_with_unique_index_mysql(
-        "remove_check_with_unique_index_mysql",
         DatabaseBackend::MySql
     )]
     #[case::remove_check_with_unique_index_sqlite(
-        "remove_check_with_unique_index_sqlite",
         DatabaseBackend::Sqlite
     )]
     fn test_remove_constraint_check_with_unique_index(
-        #[case] title: &str,
         #[case] backend: DatabaseBackend,
     ) {
         // Test Check removal with unique index (lines 402-405, 407-408, 410-411)
@@ -1410,26 +1370,22 @@ mod tests {
             assert!(sql.contains("idx_age"));
         }
 
-        with_settings!({ snapshot_suffix => format!("remove_check_with_unique_index_{}", title) }, {
+        with_settings!({ snapshot_suffix => format!("remove_check_with_unique_index_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }
 
     #[rstest]
     #[case::remove_unique_with_other_constraints_postgres(
-        "remove_unique_with_other_constraints_postgres",
         DatabaseBackend::Postgres
     )]
     #[case::remove_unique_with_other_constraints_mysql(
-        "remove_unique_with_other_constraints_mysql",
         DatabaseBackend::MySql
     )]
     #[case::remove_unique_with_other_constraints_sqlite(
-        "remove_unique_with_other_constraints_sqlite",
         DatabaseBackend::Sqlite
     )]
     fn test_remove_constraint_unique_with_other_constraints(
-        #[case] title: &str,
         #[case] backend: DatabaseBackend,
     ) {
         // Test Unique removal with other constraint types (line 137)
@@ -1487,26 +1443,22 @@ mod tests {
         // Should still work with other constraint types present
         assert!(sql.contains("DROP") || sql.contains("CREATE TABLE"));
 
-        with_settings!({ snapshot_suffix => format!("remove_unique_with_other_constraints_{}", title) }, {
+        with_settings!({ snapshot_suffix => format!("remove_unique_with_other_constraints_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }
 
     #[rstest]
     #[case::remove_foreign_key_with_other_constraints_postgres(
-        "remove_foreign_key_with_other_constraints_postgres",
         DatabaseBackend::Postgres
     )]
     #[case::remove_foreign_key_with_other_constraints_mysql(
-        "remove_foreign_key_with_other_constraints_mysql",
         DatabaseBackend::MySql
     )]
     #[case::remove_foreign_key_with_other_constraints_sqlite(
-        "remove_foreign_key_with_other_constraints_sqlite",
         DatabaseBackend::Sqlite
     )]
     fn test_remove_constraint_foreign_key_with_other_constraints(
-        #[case] title: &str,
         #[case] backend: DatabaseBackend,
     ) {
         // Test ForeignKey removal with other constraint types (line 263)
@@ -1572,26 +1524,22 @@ mod tests {
         // Should still work with other constraint types present
         assert!(sql.contains("DROP") || sql.contains("CREATE TABLE"));
 
-        with_settings!({ snapshot_suffix => format!("remove_foreign_key_with_other_constraints_{}", title) }, {
+        with_settings!({ snapshot_suffix => format!("remove_foreign_key_with_other_constraints_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }
 
     #[rstest]
     #[case::remove_check_with_other_constraints_postgres(
-        "remove_check_with_other_constraints_postgres",
         DatabaseBackend::Postgres
     )]
     #[case::remove_check_with_other_constraints_mysql(
-        "remove_check_with_other_constraints_mysql",
         DatabaseBackend::MySql
     )]
     #[case::remove_check_with_other_constraints_sqlite(
-        "remove_check_with_other_constraints_sqlite",
         DatabaseBackend::Sqlite
     )]
     fn test_remove_constraint_check_with_other_constraints(
-        #[case] title: &str,
         #[case] backend: DatabaseBackend,
     ) {
         // Test Check removal with other constraint types (line 357)
@@ -1649,7 +1597,7 @@ mod tests {
         // Should still work with other constraint types present
         assert!(sql.contains("DROP") || sql.contains("CREATE TABLE"));
 
-        with_settings!({ snapshot_suffix => format!("remove_check_with_other_constraints_{}", title) }, {
+        with_settings!({ snapshot_suffix => format!("remove_check_with_other_constraints_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }
