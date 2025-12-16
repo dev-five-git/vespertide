@@ -328,4 +328,363 @@ mod tests {
             assert_snapshot!(result.iter().map(|q| q.build(backend)).collect::<Vec<String>>().join("\n"));
         });
     }
+
+    #[rstest]
+    #[case::rename_column_postgres(DatabaseBackend::Postgres)]
+    #[case::rename_column_mysql(DatabaseBackend::MySql)]
+    #[case::rename_column_sqlite(DatabaseBackend::Sqlite)]
+    fn test_build_action_queries_rename_column(
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test MigrationAction::RenameColumn (lines 51-52)
+        let action = MigrationAction::RenameColumn {
+            table: "users".into(),
+            from: "old_name".into(),
+            to: "new_name".into(),
+        };
+        let result = build_action_queries(&backend, &action, &[]).unwrap();
+        assert_eq!(result.len(), 1);
+        let sql = result[0].build(backend);
+        assert!(sql.contains("RENAME"));
+        assert!(sql.contains("old_name"));
+        assert!(sql.contains("new_name"));
+
+        with_settings!({ snapshot_suffix => format!("rename_column_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::delete_column_postgres(DatabaseBackend::Postgres)]
+    #[case::delete_column_mysql(DatabaseBackend::MySql)]
+    #[case::delete_column_sqlite(DatabaseBackend::Sqlite)]
+    fn test_build_action_queries_delete_column(
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test MigrationAction::DeleteColumn (lines 55-56)
+        let action = MigrationAction::DeleteColumn {
+            table: "users".into(),
+            column: "email".into(),
+        };
+        let result = build_action_queries(&backend, &action, &[]).unwrap();
+        assert_eq!(result.len(), 1);
+        let sql = result[0].build(backend);
+        assert!(sql.contains("DROP COLUMN"));
+        assert!(sql.contains("email"));
+
+        with_settings!({ snapshot_suffix => format!("delete_column_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::modify_column_type_postgres(DatabaseBackend::Postgres)]
+    #[case::modify_column_type_mysql(DatabaseBackend::MySql)]
+    #[case::modify_column_type_sqlite(DatabaseBackend::Sqlite)]
+    fn test_build_action_queries_modify_column_type(
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test MigrationAction::ModifyColumnType (lines 60-63)
+        let action = MigrationAction::ModifyColumnType {
+            table: "users".into(),
+            column: "age".into(),
+            new_type: ColumnType::Simple(SimpleColumnType::BigInt),
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "age".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            indexes: vec![],
+        }];
+        let result = build_action_queries(&backend, &action, &current_schema).unwrap();
+        assert!(!result.is_empty());
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+        assert!(sql.contains("ALTER TABLE"));
+
+        with_settings!({ snapshot_suffix => format!("modify_column_type_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::remove_index_postgres(DatabaseBackend::Postgres)]
+    #[case::remove_index_mysql(DatabaseBackend::MySql)]
+    #[case::remove_index_sqlite(DatabaseBackend::Sqlite)]
+    fn test_build_action_queries_remove_index(
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test MigrationAction::RemoveIndex (line 67)
+        let action = MigrationAction::RemoveIndex {
+            table: "users".into(),
+            name: "idx_email".into(),
+        };
+        let result = build_action_queries(&backend, &action, &[]).unwrap();
+        assert_eq!(result.len(), 1);
+        let sql = result[0].build(backend);
+        assert!(sql.contains("DROP INDEX"));
+        assert!(sql.contains("idx_email"));
+
+        with_settings!({ snapshot_suffix => format!("remove_index_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::rename_table_postgres(DatabaseBackend::Postgres)]
+    #[case::rename_table_mysql(DatabaseBackend::MySql)]
+    #[case::rename_table_sqlite(DatabaseBackend::Sqlite)]
+    fn test_build_action_queries_rename_table(
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test MigrationAction::RenameTable (line 69)
+        let action = MigrationAction::RenameTable {
+            from: "old_table".into(),
+            to: "new_table".into(),
+        };
+        let result = build_action_queries(&backend, &action, &[]).unwrap();
+        assert_eq!(result.len(), 1);
+        let sql = result[0].build(backend);
+        assert!(sql.contains("RENAME"));
+        assert!(sql.contains("old_table"));
+        assert!(sql.contains("new_table"));
+
+        with_settings!({ snapshot_suffix => format!("rename_table_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::add_constraint_postgres(DatabaseBackend::Postgres)]
+    #[case::add_constraint_mysql(DatabaseBackend::MySql)]
+    #[case::add_constraint_sqlite(DatabaseBackend::Sqlite)]
+    fn test_build_action_queries_add_constraint(
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test MigrationAction::AddConstraint (lines 73-74)
+        let action = MigrationAction::AddConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Unique {
+                name: Some("uq_email".into()),
+                columns: vec!["email".into()],
+            },
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![],
+            indexes: vec![],
+        }];
+        let result = build_action_queries(&backend, &action, &current_schema).unwrap();
+        assert!(!result.is_empty());
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+        assert!(sql.contains("UNIQUE") || sql.contains("uq_email"));
+
+        with_settings!({ snapshot_suffix => format!("add_constraint_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::remove_constraint_postgres(DatabaseBackend::Postgres)]
+    #[case::remove_constraint_mysql(DatabaseBackend::MySql)]
+    #[case::remove_constraint_sqlite(DatabaseBackend::Sqlite)]
+    fn test_build_action_queries_remove_constraint(
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test MigrationAction::RemoveConstraint (lines 77-78)
+        let action = MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Unique {
+                name: Some("uq_email".into()),
+                columns: vec!["email".into()],
+            },
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![TableConstraint::Unique {
+                name: Some("uq_email".into()),
+                columns: vec!["email".into()],
+            }],
+            indexes: vec![],
+        }];
+        let result = build_action_queries(&backend, &action, &current_schema).unwrap();
+        assert!(!result.is_empty());
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+        assert!(sql.contains("DROP") || sql.contains("CONSTRAINT"));
+
+        with_settings!({ snapshot_suffix => format!("remove_constraint_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::add_column_postgres(DatabaseBackend::Postgres)]
+    #[case::add_column_mysql(DatabaseBackend::MySql)]
+    #[case::add_column_sqlite(DatabaseBackend::Sqlite)]
+    fn test_build_action_queries_add_column(
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test MigrationAction::AddColumn (lines 46-49)
+        let action = MigrationAction::AddColumn {
+            table: "users".into(),
+            column: ColumnDef {
+                name: "email".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Text),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            },
+            fill_with: None,
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            indexes: vec![],
+        }];
+        let result = build_action_queries(&backend, &action, &current_schema).unwrap();
+        assert!(!result.is_empty());
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+        assert!(sql.contains("ALTER TABLE"));
+        assert!(sql.contains("ADD COLUMN") || sql.contains("ADD"));
+
+        with_settings!({ snapshot_suffix => format!("add_column_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::add_index_postgres(DatabaseBackend::Postgres)]
+    #[case::add_index_mysql(DatabaseBackend::MySql)]
+    #[case::add_index_sqlite(DatabaseBackend::Sqlite)]
+    fn test_build_action_queries_add_index(
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test MigrationAction::AddIndex (line 65)
+        let action = MigrationAction::AddIndex {
+            table: "users".into(),
+            index: vespertide_core::IndexDef {
+                name: "idx_email".into(),
+                columns: vec!["email".into()],
+                unique: false,
+            },
+        };
+        let result = build_action_queries(&backend, &action, &[]).unwrap();
+        assert_eq!(result.len(), 1);
+        let sql = result[0].build(backend);
+        assert!(sql.contains("CREATE INDEX"));
+        assert!(sql.contains("idx_email"));
+
+        with_settings!({ snapshot_suffix => format!("add_index_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::raw_sql_postgres(DatabaseBackend::Postgres)]
+    #[case::raw_sql_mysql(DatabaseBackend::MySql)]
+    #[case::raw_sql_sqlite(DatabaseBackend::Sqlite)]
+    fn test_build_action_queries_raw_sql(
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test MigrationAction::RawSql (line 71)
+        let action = MigrationAction::RawSql {
+            sql: "SELECT 1;".into(),
+        };
+        let result = build_action_queries(&backend, &action, &[]).unwrap();
+        assert_eq!(result.len(), 1);
+        let sql = result[0].build(backend);
+        assert_eq!(sql, "SELECT 1;");
+
+        with_settings!({ snapshot_suffix => format!("raw_sql_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
 }
