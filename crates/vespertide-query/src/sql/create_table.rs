@@ -1,8 +1,8 @@
 use sea_query::{Alias, ForeignKey, Index, Table, TableCreateStatement};
 
-use vespertide_core::{ColumnDef, TableConstraint};
+use vespertide_core::{ColumnDef, ColumnType, ComplexColumnType, TableConstraint};
 
-use super::helpers::{build_sea_column_def, to_sea_fk_action};
+use super::helpers::{build_create_enum_type_sql, build_sea_column_def, to_sea_fk_action};
 use super::types::{BuiltQuery, DatabaseBackend};
 use crate::error::QueryError;
 
@@ -114,6 +114,18 @@ pub fn build_create_table(
     constraints: &[TableConstraint],
 ) -> Result<Vec<BuiltQuery>, QueryError> {
     let mut queries = Vec::new();
+
+    // Create enum types first (PostgreSQL only)
+    // Collect unique enum types to avoid duplicates
+    let mut created_enums = std::collections::HashSet::new();
+    for column in columns {
+        if let ColumnType::Complex(ComplexColumnType::Enum { name, .. }) = &column.r#type
+            && created_enums.insert(name.clone())
+            && let Some(create_type_sql) = build_create_enum_type_sql(&column.r#type)
+        {
+            queries.push(BuiltQuery::Raw(create_type_sql));
+        }
+    }
 
     // Separate unique constraints for Postgres and SQLite (they need separate CREATE INDEX statements)
     // For MySQL, unique constraints are added directly in CREATE TABLE via build_create_table_for_backend
@@ -350,6 +362,58 @@ mod tests {
             }
         }
         with_settings!({ snapshot_suffix => format!("create_table_with_table_level_unique_no_name_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::postgres(DatabaseBackend::Postgres)]
+    #[case::mysql(DatabaseBackend::MySql)]
+    #[case::sqlite(DatabaseBackend::Sqlite)]
+    fn test_create_table_with_enum_column(#[case] backend: DatabaseBackend) {
+        // Test creating a table with an enum column (should create enum type first for PostgreSQL)
+        let columns = vec![
+            ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            },
+            ColumnDef {
+                name: "status".into(),
+                r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                    name: "user_status".into(),
+                    values: vec!["active".into(), "inactive".into(), "pending".into()],
+                }),
+                nullable: false,
+                default: Some("'active'".into()),
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            },
+        ];
+        let constraints = vec![TableConstraint::PrimaryKey {
+            auto_increment: false,
+            columns: vec!["id".into()],
+        }];
+
+        let result = build_create_table(&backend, "users", &columns, &constraints);
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join(";\n");
+
+        with_settings!({ snapshot_suffix => format!("create_table_with_enum_column_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }

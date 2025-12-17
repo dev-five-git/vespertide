@@ -1363,6 +1363,43 @@ mod tests {
     }
 
     #[test]
+    fn normalize_duplicate_inline_index_on_same_column() {
+        // This test triggers the DuplicateIndexColumn error (lines 251-253)
+        // by having the same column appear twice in the same named index group
+        use crate::schema::str_or_bool::StrOrBoolOrArray;
+
+        // Create a column that references the same index name twice (via Array)
+        let mut email_col = col("email", ColumnType::Simple(SimpleColumnType::Text));
+        email_col.index = Some(StrOrBoolOrArray::Array(vec![
+            "idx_email".into(),
+            "idx_email".into(), // Duplicate reference
+        ]));
+
+        let table = TableDef {
+            name: "users".into(),
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                email_col,
+            ],
+            constraints: vec![],
+            indexes: vec![],
+        };
+
+        let result = table.normalize();
+        assert!(result.is_err());
+        if let Err(TableValidationError::DuplicateIndexColumn {
+            index_name,
+            column_name,
+        }) = result
+        {
+            assert_eq!(index_name, "idx_email");
+            assert_eq!(column_name, "email");
+        } else {
+            panic!("Expected DuplicateIndexColumn error, got: {:?}", result);
+        }
+    }
+
+    #[test]
     fn test_invalid_foreign_key_format_error_display() {
         let error = TableValidationError::InvalidForeignKeyFormat {
             column_name: "user_id".into(),

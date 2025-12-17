@@ -111,6 +111,12 @@ pub fn apply_column_type(col: &mut SeaColumnDef, ty: &ColumnType) {
             ComplexColumnType::Custom { custom_type } => {
                 col.custom(Alias::new(custom_type));
             }
+            ComplexColumnType::Enum { name, values } => {
+                col.enumeration(
+                    Alias::new(name),
+                    values.iter().map(Alias::new).collect::<Vec<Alias>>(),
+                );
+            }
         },
     }
 }
@@ -171,6 +177,66 @@ pub fn build_sea_column_def(backend: &DatabaseBackend, column: &ColumnDef) -> Se
     col
 }
 
+/// Generate CREATE TYPE SQL for an enum type (PostgreSQL only)
+/// Returns None for non-PostgreSQL backends or non-enum types
+pub fn build_create_enum_type_sql(column_type: &ColumnType) -> Option<super::types::RawSql> {
+    if let ColumnType::Complex(ComplexColumnType::Enum { name, values }) = column_type {
+        let values_sql = values
+            .iter()
+            .map(|v| format!("'{}'", v.replace('\'', "''")))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        // PostgreSQL: CREATE TYPE name AS ENUM (...)
+        let pg_sql = format!("CREATE TYPE \"{}\" AS ENUM ({})", name, values_sql);
+
+        // MySQL: ENUMs are inline, no CREATE TYPE needed
+        // SQLite: Uses TEXT, no CREATE TYPE needed
+        Some(super::types::RawSql::per_backend(
+            pg_sql,
+            String::new(),
+            String::new(),
+        ))
+    } else {
+        None
+    }
+}
+
+/// Generate DROP TYPE SQL for an enum type (PostgreSQL only)
+/// Returns None for non-PostgreSQL backends or non-enum types
+pub fn build_drop_enum_type_sql(column_type: &ColumnType) -> Option<super::types::RawSql> {
+    if let ColumnType::Complex(ComplexColumnType::Enum { name, .. }) = column_type {
+        // PostgreSQL: DROP TYPE IF EXISTS name
+        let pg_sql = format!("DROP TYPE IF EXISTS \"{}\"", name);
+
+        // MySQL/SQLite: No action needed
+        Some(super::types::RawSql::per_backend(
+            pg_sql,
+            String::new(),
+            String::new(),
+        ))
+    } else {
+        None
+    }
+}
+
+/// Check if a column type is an enum
+pub fn is_enum_type(column_type: &ColumnType) -> bool {
+    matches!(
+        column_type,
+        ColumnType::Complex(ComplexColumnType::Enum { .. })
+    )
+}
+
+/// Extract enum name from column type if it's an enum
+pub fn get_enum_name(column_type: &ColumnType) -> Option<&str> {
+    if let ColumnType::Complex(ComplexColumnType::Enum { name, .. }) = column_type {
+        Some(name.as_str())
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,6 +289,7 @@ mod tests {
     #[case(ComplexColumnType::Numeric { precision: 8, scale: 3 })]
     #[case(ComplexColumnType::Char { length: 3 })]
     #[case(ComplexColumnType::Custom { custom_type: "GEOGRAPHY".into() })]
+    #[case(ComplexColumnType::Enum { name: "status".into(), values: vec!["active".into(), "inactive".into()] })]
     fn test_all_complex_types_cover_branches(#[case] ty: ComplexColumnType) {
         let mut col = SeaColumnDef::new(Alias::new("t"));
         apply_column_type(&mut col, &ColumnType::Complex(ty));
@@ -313,5 +380,35 @@ mod tests {
     ) {
         let result = convert_default_for_backend(default, &backend);
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_is_enum_type_true() {
+        let enum_type = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        });
+        assert!(is_enum_type(&enum_type));
+    }
+
+    #[test]
+    fn test_is_enum_type_false() {
+        let text_type = ColumnType::Simple(SimpleColumnType::Text);
+        assert!(!is_enum_type(&text_type));
+    }
+
+    #[test]
+    fn test_get_enum_name_some() {
+        let enum_type = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "user_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        });
+        assert_eq!(get_enum_name(&enum_type), Some("user_status"));
+    }
+
+    #[test]
+    fn test_get_enum_name_none() {
+        let text_type = ColumnType::Simple(SimpleColumnType::Text);
+        assert_eq!(get_enum_name(&text_type), None);
     }
 }

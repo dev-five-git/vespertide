@@ -634,18 +634,10 @@ mod tests {
     }
 
     #[rstest]
-    #[case::remove_primary_key_with_index_postgres(
-        DatabaseBackend::Postgres
-    )]
-    #[case::remove_primary_key_with_index_mysql(
-        DatabaseBackend::MySql
-    )]
-    #[case::remove_primary_key_with_index_sqlite(
-        DatabaseBackend::Sqlite
-    )]
-    fn test_remove_constraint_primary_key_with_index(
-        #[case] backend: DatabaseBackend,
-    ) {
+    #[case::remove_primary_key_with_index_postgres(DatabaseBackend::Postgres)]
+    #[case::remove_primary_key_with_index_mysql(DatabaseBackend::MySql)]
+    #[case::remove_primary_key_with_index_sqlite(DatabaseBackend::Sqlite)]
+    fn test_remove_constraint_primary_key_with_index(#[case] backend: DatabaseBackend) {
         // Test PrimaryKey removal with indexes (lines 75-78, 83-84)
         use vespertide_core::IndexDef;
 
@@ -674,7 +666,8 @@ mod tests {
             }],
         }];
 
-        let result = build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+        let result =
+            build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -692,18 +685,10 @@ mod tests {
     }
 
     #[rstest]
-    #[case::remove_primary_key_with_unique_index_postgres(
-        DatabaseBackend::Postgres
-    )]
-    #[case::remove_primary_key_with_unique_index_mysql(
-        DatabaseBackend::MySql
-    )]
-    #[case::remove_primary_key_with_unique_index_sqlite(
-        DatabaseBackend::Sqlite
-    )]
-    fn test_remove_constraint_primary_key_with_unique_index(
-        #[case] backend: DatabaseBackend,
-    ) {
+    #[case::remove_primary_key_with_unique_index_postgres(DatabaseBackend::Postgres)]
+    #[case::remove_primary_key_with_unique_index_mysql(DatabaseBackend::MySql)]
+    #[case::remove_primary_key_with_unique_index_sqlite(DatabaseBackend::Sqlite)]
+    fn test_remove_constraint_primary_key_with_unique_index(#[case] backend: DatabaseBackend) {
         // Test PrimaryKey removal with unique index (lines 75-78, 80-81, 83-84)
         use vespertide_core::IndexDef;
 
@@ -732,7 +717,8 @@ mod tests {
             }],
         }];
 
-        let result = build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+        let result =
+            build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -768,18 +754,10 @@ mod tests {
     }
 
     #[rstest]
-    #[case::remove_unique_without_name_postgres(
-        DatabaseBackend::Postgres
-    )]
-    #[case::remove_unique_without_name_mysql(
-        DatabaseBackend::MySql
-    )]
-    #[case::remove_unique_without_name_sqlite(
-        DatabaseBackend::Sqlite
-    )]
-    fn test_remove_constraint_unique_without_name(
-        #[case] backend: DatabaseBackend,
-    ) {
+    #[case::remove_unique_without_name_postgres(DatabaseBackend::Postgres)]
+    #[case::remove_unique_without_name_mysql(DatabaseBackend::MySql)]
+    #[case::remove_unique_without_name_sqlite(DatabaseBackend::Sqlite)]
+    fn test_remove_constraint_unique_without_name(#[case] backend: DatabaseBackend) {
         // Test Unique removal without name (lines 134, 137, 210)
         let constraint = TableConstraint::Unique {
             name: None,
@@ -815,7 +793,8 @@ mod tests {
             indexes: vec![],
         }];
 
-        let result = build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+        let result =
+            build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -833,18 +812,10 @@ mod tests {
     }
 
     #[rstest]
-    #[case::remove_unique_with_index_postgres(
-        DatabaseBackend::Postgres
-    )]
-    #[case::remove_unique_with_index_mysql(
-        DatabaseBackend::MySql
-    )]
-    #[case::remove_unique_with_index_sqlite(
-        DatabaseBackend::Sqlite
-    )]
-    fn test_remove_constraint_unique_with_index(
-        #[case] backend: DatabaseBackend,
-    ) {
+    #[case::remove_unique_with_index_postgres(DatabaseBackend::Postgres)]
+    #[case::remove_unique_with_index_mysql(DatabaseBackend::MySql)]
+    #[case::remove_unique_with_index_sqlite(DatabaseBackend::Sqlite)]
+    fn test_remove_constraint_unique_with_index(#[case] backend: DatabaseBackend) {
         // Test Unique removal with indexes (lines 185-188, 193-194)
         use vespertide_core::IndexDef;
 
@@ -886,7 +857,8 @@ mod tests {
             }],
         }];
 
-        let result = build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+        let result =
+            build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -904,18 +876,10 @@ mod tests {
     }
 
     #[rstest]
-    #[case::remove_unique_with_unique_index_postgres(
-        DatabaseBackend::Postgres
-    )]
-    #[case::remove_unique_with_unique_index_mysql(
-        DatabaseBackend::MySql
-    )]
-    #[case::remove_unique_with_unique_index_sqlite(
-        DatabaseBackend::Sqlite
-    )]
-    fn test_remove_constraint_unique_with_unique_index(
-        #[case] backend: DatabaseBackend,
-    ) {
+    #[case::remove_unique_with_unique_index_postgres(DatabaseBackend::Postgres)]
+    #[case::remove_unique_with_unique_index_mysql(DatabaseBackend::MySql)]
+    #[case::remove_unique_with_unique_index_sqlite(DatabaseBackend::Sqlite)]
+    fn test_remove_constraint_unique_with_unique_index(#[case] backend: DatabaseBackend) {
         // Test Unique removal with unique index (lines 185-188, 190-191, 193-194)
         use vespertide_core::IndexDef;
 
@@ -957,7 +921,8 @@ mod tests {
             }],
         }];
 
-        let result = build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+        let result =
+            build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -997,18 +962,10 @@ mod tests {
     }
 
     #[rstest]
-    #[case::remove_foreign_key_without_name_postgres(
-        DatabaseBackend::Postgres
-    )]
-    #[case::remove_foreign_key_without_name_mysql(
-        DatabaseBackend::MySql
-    )]
-    #[case::remove_foreign_key_without_name_sqlite(
-        DatabaseBackend::Sqlite
-    )]
-    fn test_remove_constraint_foreign_key_without_name(
-        #[case] backend: DatabaseBackend,
-    ) {
+    #[case::remove_foreign_key_without_name_postgres(DatabaseBackend::Postgres)]
+    #[case::remove_foreign_key_without_name_mysql(DatabaseBackend::MySql)]
+    #[case::remove_foreign_key_without_name_sqlite(DatabaseBackend::Sqlite)]
+    fn test_remove_constraint_foreign_key_without_name(#[case] backend: DatabaseBackend) {
         // Test ForeignKey removal without name (lines 260, 263, 329)
         let constraint = TableConstraint::ForeignKey {
             name: None,
@@ -1048,7 +1005,8 @@ mod tests {
             indexes: vec![],
         }];
 
-        let result = build_remove_constraint(&backend, "posts", &constraint, &current_schema).unwrap();
+        let result =
+            build_remove_constraint(&backend, "posts", &constraint, &current_schema).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -1066,18 +1024,10 @@ mod tests {
     }
 
     #[rstest]
-    #[case::remove_foreign_key_with_index_postgres(
-        DatabaseBackend::Postgres
-    )]
-    #[case::remove_foreign_key_with_index_mysql(
-        DatabaseBackend::MySql
-    )]
-    #[case::remove_foreign_key_with_index_sqlite(
-        DatabaseBackend::Sqlite
-    )]
-    fn test_remove_constraint_foreign_key_with_index(
-        #[case] backend: DatabaseBackend,
-    ) {
+    #[case::remove_foreign_key_with_index_postgres(DatabaseBackend::Postgres)]
+    #[case::remove_foreign_key_with_index_mysql(DatabaseBackend::MySql)]
+    #[case::remove_foreign_key_with_index_sqlite(DatabaseBackend::Sqlite)]
+    fn test_remove_constraint_foreign_key_with_index(#[case] backend: DatabaseBackend) {
         // Test ForeignKey removal with indexes (lines 309-312, 317-318)
         use vespertide_core::IndexDef;
 
@@ -1123,7 +1073,8 @@ mod tests {
             }],
         }];
 
-        let result = build_remove_constraint(&backend, "posts", &constraint, &current_schema).unwrap();
+        let result =
+            build_remove_constraint(&backend, "posts", &constraint, &current_schema).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -1141,18 +1092,10 @@ mod tests {
     }
 
     #[rstest]
-    #[case::remove_foreign_key_with_unique_index_postgres(
-        DatabaseBackend::Postgres
-    )]
-    #[case::remove_foreign_key_with_unique_index_mysql(
-        DatabaseBackend::MySql
-    )]
-    #[case::remove_foreign_key_with_unique_index_sqlite(
-        DatabaseBackend::Sqlite
-    )]
-    fn test_remove_constraint_foreign_key_with_unique_index(
-        #[case] backend: DatabaseBackend,
-    ) {
+    #[case::remove_foreign_key_with_unique_index_postgres(DatabaseBackend::Postgres)]
+    #[case::remove_foreign_key_with_unique_index_mysql(DatabaseBackend::MySql)]
+    #[case::remove_foreign_key_with_unique_index_sqlite(DatabaseBackend::Sqlite)]
+    fn test_remove_constraint_foreign_key_with_unique_index(#[case] backend: DatabaseBackend) {
         // Test ForeignKey removal with unique index (lines 309-312, 314-315, 317-318)
         use vespertide_core::IndexDef;
 
@@ -1198,7 +1141,8 @@ mod tests {
             }],
         }];
 
-        let result = build_remove_constraint(&backend, "posts", &constraint, &current_schema).unwrap();
+        let result =
+            build_remove_constraint(&backend, "posts", &constraint, &current_schema).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -1234,18 +1178,10 @@ mod tests {
     }
 
     #[rstest]
-    #[case::remove_check_with_index_postgres(
-        DatabaseBackend::Postgres
-    )]
-    #[case::remove_check_with_index_mysql(
-        DatabaseBackend::MySql
-    )]
-    #[case::remove_check_with_index_sqlite(
-        DatabaseBackend::Sqlite
-    )]
-    fn test_remove_constraint_check_with_index(
-        #[case] backend: DatabaseBackend,
-    ) {
+    #[case::remove_check_with_index_postgres(DatabaseBackend::Postgres)]
+    #[case::remove_check_with_index_mysql(DatabaseBackend::MySql)]
+    #[case::remove_check_with_index_sqlite(DatabaseBackend::Sqlite)]
+    fn test_remove_constraint_check_with_index(#[case] backend: DatabaseBackend) {
         // Test Check removal with indexes (lines 402-405, 410-411)
         use vespertide_core::IndexDef;
 
@@ -1287,7 +1223,8 @@ mod tests {
             }],
         }];
 
-        let result = build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+        let result =
+            build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -1305,18 +1242,10 @@ mod tests {
     }
 
     #[rstest]
-    #[case::remove_check_with_unique_index_postgres(
-        DatabaseBackend::Postgres
-    )]
-    #[case::remove_check_with_unique_index_mysql(
-        DatabaseBackend::MySql
-    )]
-    #[case::remove_check_with_unique_index_sqlite(
-        DatabaseBackend::Sqlite
-    )]
-    fn test_remove_constraint_check_with_unique_index(
-        #[case] backend: DatabaseBackend,
-    ) {
+    #[case::remove_check_with_unique_index_postgres(DatabaseBackend::Postgres)]
+    #[case::remove_check_with_unique_index_mysql(DatabaseBackend::MySql)]
+    #[case::remove_check_with_unique_index_sqlite(DatabaseBackend::Sqlite)]
+    fn test_remove_constraint_check_with_unique_index(#[case] backend: DatabaseBackend) {
         // Test Check removal with unique index (lines 402-405, 407-408, 410-411)
         use vespertide_core::IndexDef;
 
@@ -1358,7 +1287,8 @@ mod tests {
             }],
         }];
 
-        let result = build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+        let result =
+            build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -1376,18 +1306,10 @@ mod tests {
     }
 
     #[rstest]
-    #[case::remove_unique_with_other_constraints_postgres(
-        DatabaseBackend::Postgres
-    )]
-    #[case::remove_unique_with_other_constraints_mysql(
-        DatabaseBackend::MySql
-    )]
-    #[case::remove_unique_with_other_constraints_sqlite(
-        DatabaseBackend::Sqlite
-    )]
-    fn test_remove_constraint_unique_with_other_constraints(
-        #[case] backend: DatabaseBackend,
-    ) {
+    #[case::remove_unique_with_other_constraints_postgres(DatabaseBackend::Postgres)]
+    #[case::remove_unique_with_other_constraints_mysql(DatabaseBackend::MySql)]
+    #[case::remove_unique_with_other_constraints_sqlite(DatabaseBackend::Sqlite)]
+    fn test_remove_constraint_unique_with_other_constraints(#[case] backend: DatabaseBackend) {
         // Test Unique removal with other constraint types (line 137)
         let constraint = TableConstraint::Unique {
             name: Some("uq_email".into()),
@@ -1433,7 +1355,8 @@ mod tests {
             indexes: vec![],
         }];
 
-        let result = build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+        let result =
+            build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -1449,18 +1372,10 @@ mod tests {
     }
 
     #[rstest]
-    #[case::remove_foreign_key_with_other_constraints_postgres(
-        DatabaseBackend::Postgres
-    )]
-    #[case::remove_foreign_key_with_other_constraints_mysql(
-        DatabaseBackend::MySql
-    )]
-    #[case::remove_foreign_key_with_other_constraints_sqlite(
-        DatabaseBackend::Sqlite
-    )]
-    fn test_remove_constraint_foreign_key_with_other_constraints(
-        #[case] backend: DatabaseBackend,
-    ) {
+    #[case::remove_foreign_key_with_other_constraints_postgres(DatabaseBackend::Postgres)]
+    #[case::remove_foreign_key_with_other_constraints_mysql(DatabaseBackend::MySql)]
+    #[case::remove_foreign_key_with_other_constraints_sqlite(DatabaseBackend::Sqlite)]
+    fn test_remove_constraint_foreign_key_with_other_constraints(#[case] backend: DatabaseBackend) {
         // Test ForeignKey removal with other constraint types (line 263)
         let constraint = TableConstraint::ForeignKey {
             name: Some("fk_user".into()),
@@ -1514,7 +1429,8 @@ mod tests {
             indexes: vec![],
         }];
 
-        let result = build_remove_constraint(&backend, "posts", &constraint, &current_schema).unwrap();
+        let result =
+            build_remove_constraint(&backend, "posts", &constraint, &current_schema).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -1530,18 +1446,10 @@ mod tests {
     }
 
     #[rstest]
-    #[case::remove_check_with_other_constraints_postgres(
-        DatabaseBackend::Postgres
-    )]
-    #[case::remove_check_with_other_constraints_mysql(
-        DatabaseBackend::MySql
-    )]
-    #[case::remove_check_with_other_constraints_sqlite(
-        DatabaseBackend::Sqlite
-    )]
-    fn test_remove_constraint_check_with_other_constraints(
-        #[case] backend: DatabaseBackend,
-    ) {
+    #[case::remove_check_with_other_constraints_postgres(DatabaseBackend::Postgres)]
+    #[case::remove_check_with_other_constraints_mysql(DatabaseBackend::MySql)]
+    #[case::remove_check_with_other_constraints_sqlite(DatabaseBackend::Sqlite)]
+    fn test_remove_constraint_check_with_other_constraints(#[case] backend: DatabaseBackend) {
         // Test Check removal with other constraint types (line 357)
         let constraint = TableConstraint::Check {
             name: "chk_age".into(),
@@ -1587,7 +1495,8 @@ mod tests {
             indexes: vec![],
         }];
 
-        let result = build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+        let result =
+            build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))

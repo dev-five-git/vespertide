@@ -1,0 +1,39 @@
+---
+source: crates/vespertide-exporter/src/seaorm/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum)]
+#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "product_category")]
+pub enum ProductCategory {
+    #[sea_orm(string_value = "electronics")]
+    Electronics,
+    #[sea_orm(string_value = "clothing")]
+    Clothing,
+    #[sea_orm(string_value = "food")]
+    Food,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum)]
+#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "availability_status")]
+pub enum AvailabilityStatus {
+    #[sea_orm(string_value = "in_stock")]
+    InStock,
+    #[sea_orm(string_value = "out_of_stock")]
+    OutOfStock,
+    #[sea_orm(string_value = "pre_order")]
+    PreOrder,
+}
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "products")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub category: ProductCategory,
+    pub availability: AvailabilityStatus,
+}
+
+impl ActiveModelBehavior for ActiveModel {}

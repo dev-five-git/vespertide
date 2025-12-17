@@ -5,6 +5,7 @@ use quote::quote;
 use syn::parse::{Parse, ParseStream};
 use syn::{Expr, Ident, Token, parse_macro_input};
 use vespertide_loader::{load_migrations_at_compile_time, load_models_at_compile_time};
+use vespertide_planner::apply_action;
 use vespertide_query::{DatabaseBackend, build_plan_queries};
 
 struct MacroInput {
@@ -64,7 +65,7 @@ pub fn vespertide_migration(input: TokenStream) -> TokenStream {
             .into();
         }
     };
-    let models = match load_models_at_compile_time() {
+    let _models = match load_models_at_compile_time() {
         Ok(models) => models,
         Err(e) => {
             return syn::Error::new(
@@ -76,11 +77,16 @@ pub fn vespertide_migration(input: TokenStream) -> TokenStream {
         }
     };
 
-    // Build SQL for each migration
+    // Build SQL for each migration using incremental baseline schema
+    // This is the same approach as cmd_log: start with empty schema and apply each migration
+    let mut baseline_schema = Vec::new();
     let mut migration_blocks = Vec::new();
+
     for migration in &migrations {
         let version = migration.version;
-        let queries = match build_plan_queries(migration, &models) {
+
+        // Use the current baseline schema (from all previous migrations)
+        let queries = match build_plan_queries(migration, &baseline_schema) {
             Ok(queries) => queries,
             Err(e) => {
                 return syn::Error::new(
@@ -95,39 +101,28 @@ pub fn vespertide_migration(input: TokenStream) -> TokenStream {
             }
         };
 
-        // Pre-generate SQL for all backends at compile time
-        let sql_statements: Vec<_> = queries
-            .iter()
-            .map(|q| {
-                let pg_sql = q
-                    .postgres
-                    .iter()
-                    .map(|q| q.build(DatabaseBackend::Postgres))
-                    .collect::<Vec<_>>()
-                    .join(";\n");
-                let mysql_sql = q
-                    .mysql
-                    .iter()
-                    .map(|q| q.build(DatabaseBackend::MySql))
-                    .collect::<Vec<_>>()
-                    .join(";\n");
-                let sqlite_sql = q
-                    .sqlite
-                    .iter()
-                    .map(|q| q.build(DatabaseBackend::Sqlite))
-                    .collect::<Vec<_>>()
-                    .join(";\n");
+        // Update baseline schema incrementally by applying each action
+        for action in &migration.actions {
+            let _ = apply_action(&mut baseline_schema, action);
+        }
 
-                quote! {
-                    match backend {
-                        sea_orm::DatabaseBackend::Postgres => #pg_sql,
-                        sea_orm::DatabaseBackend::MySql => #mysql_sql,
-                        sea_orm::DatabaseBackend::Sqlite => #sqlite_sql,
-                        _ => #pg_sql, // Fallback to PostgreSQL syntax for unknown backends
-                    }
-                }
-            })
-            .collect();
+        // Pre-generate SQL for all backends at compile time
+        // Each query may produce multiple SQL statements, so we flatten them
+        let mut pg_sqls = Vec::new();
+        let mut mysql_sqls = Vec::new();
+        let mut sqlite_sqls = Vec::new();
+
+        for q in &queries {
+            for stmt in &q.postgres {
+                pg_sqls.push(stmt.build(DatabaseBackend::Postgres));
+            }
+            for stmt in &q.mysql {
+                mysql_sqls.push(stmt.build(DatabaseBackend::MySql));
+            }
+            for stmt in &q.sqlite {
+                sqlite_sqls.push(stmt.build(DatabaseBackend::Sqlite));
+            }
+        }
 
         // Generate version guard and SQL execution block
         let block = quote! {
@@ -137,16 +132,23 @@ pub fn vespertide_migration(input: TokenStream) -> TokenStream {
                     ::vespertide::MigrationError::DatabaseError(format!("Failed to begin transaction: {}", e))
                 })?;
 
+                // Select SQL statements based on backend
+                let sqls: &[&str] = match backend {
+                    sea_orm::DatabaseBackend::Postgres => &[#(#pg_sqls),*],
+                    sea_orm::DatabaseBackend::MySql => &[#(#mysql_sqls),*],
+                    sea_orm::DatabaseBackend::Sqlite => &[#(#sqlite_sqls),*],
+                    _ => &[#(#pg_sqls),*], // Fallback to PostgreSQL syntax for unknown backends
+                };
+
                 // Execute SQL statements
-                #(
-                    {
-                        let sql: &str = #sql_statements;
-                        let stmt = sea_orm::Statement::from_string(backend, sql);
+                for sql in sqls {
+                    if !sql.is_empty() {
+                        let stmt = sea_orm::Statement::from_string(backend, *sql);
                         txn.execute_raw(stmt).await.map_err(|e| {
                             ::vespertide::MigrationError::DatabaseError(format!("Failed to execute SQL '{}': {}", sql, e))
                         })?;
                     }
-                )*
+                }
 
                 // Insert version record for this migration
                 let q = if matches!(backend, sea_orm::DatabaseBackend::MySql) { '`' } else { '"' };

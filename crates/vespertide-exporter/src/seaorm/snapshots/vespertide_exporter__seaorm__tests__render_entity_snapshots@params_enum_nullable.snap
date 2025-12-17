@@ -1,0 +1,29 @@
+---
+source: crates/vespertide-exporter/src/seaorm/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum)]
+#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "task_priority")]
+pub enum TaskPriority {
+    #[sea_orm(string_value = "low")]
+    Low,
+    #[sea_orm(string_value = "medium")]
+    Medium,
+    #[sea_orm(string_value = "high")]
+    High,
+    #[sea_orm(string_value = "critical")]
+    Critical,
+}
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "tasks")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub priority: Option<TaskPriority>,
+}
+
+impl ActiveModelBehavior for ActiveModel {}

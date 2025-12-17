@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/create_table.rs
+expression: sql
+---
+;
+CREATE TABLE "users" ( "id" integer NOT NULL, "status" enum_text NOT NULL DEFAULT 'active', PRIMARY KEY ("id") )

@@ -16,6 +16,7 @@ vespertide-core = { workspace = true }
 vespertide-config = { workspace = true }
 vespertide-loader = { workspace = true }
 vespertide-query = { workspace = true }
+vespertide-planner = { workspace = true }
 thiserror = "2"
 syn = { version = "2.0", features = ["full"] }
 quote = "1.0"

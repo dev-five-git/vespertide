@@ -1,9 +1,9 @@
 use sea_query::{Alias, ColumnDef as SeaColumnDef, Query, Table};
 
-use vespertide_core::{ColumnType, TableDef};
+use vespertide_core::{ColumnType, ComplexColumnType, TableDef};
 
 use super::create_table::build_create_table_for_backend;
-use super::helpers::apply_column_type;
+use super::helpers::{apply_column_type, build_create_enum_type_sql};
 use super::rename_table::build_rename_table;
 use super::types::{BuiltQuery, DatabaseBackend};
 use crate::error::QueryError;
@@ -100,14 +100,139 @@ pub fn build_modify_column_type(
         Ok(queries)
     } else {
         // PostgreSQL, MySQL, etc. can use ALTER TABLE directly
-        let mut col = SeaColumnDef::new(Alias::new(column));
-        apply_column_type(&mut col, new_type);
+        let mut queries = Vec::new();
 
-        let stmt = Table::alter()
-            .table(Alias::new(table))
-            .modify_column(col)
-            .to_owned();
-        Ok(vec![BuiltQuery::AlterTable(Box::new(stmt))])
+        // Get the old column type to check if we need special enum handling
+        let old_type = current_schema
+            .iter()
+            .find(|t| t.name == table)
+            .and_then(|t| t.columns.iter().find(|c| c.name == column))
+            .map(|c| &c.r#type);
+
+        // Check if this is an enum-to-enum migration that needs special handling (PostgreSQL only)
+        let needs_enum_migration = if *backend == DatabaseBackend::Postgres {
+            matches!(
+                (old_type, new_type),
+                (
+                    Some(ColumnType::Complex(ComplexColumnType::Enum { name: old_name, values: old_values })),
+                    ColumnType::Complex(ComplexColumnType::Enum { name: new_name, values: new_values })
+                ) if old_name == new_name && old_values != new_values
+            )
+        } else {
+            false
+        };
+
+        if needs_enum_migration {
+            // Use the safe temp type + USING + RENAME approach for enum value changes
+            if let (
+                Some(ColumnType::Complex(ComplexColumnType::Enum {
+                    name: enum_name, ..
+                })),
+                ColumnType::Complex(ComplexColumnType::Enum {
+                    values: new_values, ..
+                }),
+            ) = (old_type, new_type)
+            {
+                let temp_type_name = format!("{}_new", enum_name);
+
+                // 1. CREATE TYPE {enum}_new AS ENUM (new values)
+                let create_temp_values = new_values
+                    .iter()
+                    .map(|v| format!("'{}'", v.replace('\'', "''")))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
+                    format!(
+                        "CREATE TYPE \"{}\" AS ENUM ({})",
+                        temp_type_name, create_temp_values
+                    ),
+                    String::new(),
+                    String::new(),
+                )));
+
+                // 2. ALTER TABLE ... ALTER COLUMN ... TYPE {enum}_new USING {column}::text::{enum}_new
+                queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
+                    format!(
+                        "ALTER TABLE \"{}\" ALTER COLUMN \"{}\" TYPE \"{}\" USING \"{}\"::text::\"{}\"",
+                        table, column, temp_type_name, column, temp_type_name
+                    ),
+                    String::new(),
+                    String::new(),
+                )));
+
+                // 3. DROP TYPE {enum}
+                queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
+                    format!("DROP TYPE \"{}\"", enum_name),
+                    String::new(),
+                    String::new(),
+                )));
+
+                // 4. ALTER TYPE {enum}_new RENAME TO {enum}
+                queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
+                    format!(
+                        "ALTER TYPE \"{}\" RENAME TO \"{}\"",
+                        temp_type_name, enum_name
+                    ),
+                    String::new(),
+                    String::new(),
+                )));
+            }
+        } else {
+            // Standard column type modification
+
+            // If new type is an enum and different from old, create the type first (PostgreSQL only)
+            if let ColumnType::Complex(ComplexColumnType::Enum { name: new_name, .. }) = new_type {
+                // Determine if we need to create a new enum type
+                // - If old type was a different enum, we need to create the new one
+                // - If old type was not an enum, we need to create the enum type
+                let should_create = if let Some(ColumnType::Complex(ComplexColumnType::Enum {
+                    name: old_name,
+                    ..
+                })) = old_type
+                {
+                    old_name != new_name
+                } else {
+                    // Either old_type is None or it wasn't an enum - need to create enum type
+                    true
+                };
+
+                if should_create && let Some(create_type_sql) = build_create_enum_type_sql(new_type)
+                {
+                    queries.push(BuiltQuery::Raw(create_type_sql));
+                }
+            }
+
+            let mut col = SeaColumnDef::new(Alias::new(column));
+            apply_column_type(&mut col, new_type);
+
+            let stmt = Table::alter()
+                .table(Alias::new(table))
+                .modify_column(col)
+                .to_owned();
+            queries.push(BuiltQuery::AlterTable(Box::new(stmt)));
+
+            // If old type was an enum and new type is different, drop the old enum type
+            if let Some(ColumnType::Complex(ComplexColumnType::Enum { name: old_name, .. })) =
+                old_type
+            {
+                let should_drop = match new_type {
+                    ColumnType::Complex(ComplexColumnType::Enum { name: new_name, .. }) => {
+                        old_name != new_name
+                    }
+                    _ => true, // New type is not an enum
+                };
+
+                if should_drop {
+                    queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
+                        format!("DROP TYPE IF EXISTS \"{}\"", old_name),
+                        String::new(),
+                        String::new(),
+                    )));
+                }
+            }
+        }
+
+        Ok(queries)
     }
 }
 
@@ -202,23 +327,25 @@ mod tests {
     }
 
     #[test]
-    fn test_modify_column_type_sqlite_table_not_found() {
-        // Test error when table is not found in current schema (line 25)
+    fn test_modify_column_type_table_not_found() {
         let result = build_modify_column_type(
             &DatabaseBackend::Sqlite,
             "nonexistent_table",
             "age",
             &ColumnType::Simple(SimpleColumnType::BigInt),
-            &[], // Empty schema
+            &[],
         );
         assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("Table 'nonexistent_table' not found in current schema"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Table 'nonexistent_table' not found")
+        );
     }
 
     #[test]
-    fn test_modify_column_type_sqlite_column_not_found() {
-        // Test error when column is not found in table (lines 35-37)
+    fn test_modify_column_type_column_not_found() {
         let current_schema = vec![TableDef {
             name: "users".into(),
             columns: vec![ColumnDef {
@@ -243,8 +370,12 @@ mod tests {
             &current_schema,
         );
         assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("Column 'nonexistent_column' not found in table 'users'"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Column 'nonexistent_column' not found")
+        );
     }
 
     #[rstest]
@@ -260,10 +391,7 @@ mod tests {
         "modify_column_type_with_index_sqlite",
         DatabaseBackend::Sqlite
     )]
-    fn test_modify_column_type_with_index(
-        #[case] title: &str,
-        #[case] backend: DatabaseBackend,
-    ) {
+    fn test_modify_column_type_with_index(#[case] title: &str, #[case] backend: DatabaseBackend) {
         // Test modify column type with indexes (lines 85-88, 90-91, 93-94)
         use vespertide_core::IndexDef;
 
@@ -405,5 +533,237 @@ mod tests {
         with_settings!({ snapshot_suffix => format!("modify_column_type_with_unique_index_{}", title) }, {
             assert_snapshot!(sql);
         });
+    }
+
+    #[rstest]
+    #[case::enum_values_changed_postgres(
+        "enum_values_changed_postgres",
+        DatabaseBackend::Postgres,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        }),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into(), "pending".into()],
+        })
+    )]
+    #[case::enum_values_changed_mysql(
+        "enum_values_changed_mysql",
+        DatabaseBackend::MySql,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        }),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into(), "pending".into()],
+        })
+    )]
+    #[case::enum_values_changed_sqlite(
+        "enum_values_changed_sqlite",
+        DatabaseBackend::Sqlite,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        }),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into(), "pending".into()],
+        })
+    )]
+    #[case::enum_same_values_postgres(
+        "enum_same_values_postgres",
+        DatabaseBackend::Postgres,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        }),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        })
+    )]
+    #[case::enum_same_values_mysql(
+        "enum_same_values_mysql",
+        DatabaseBackend::MySql,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        }),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        })
+    )]
+    #[case::enum_same_values_sqlite(
+        "enum_same_values_sqlite",
+        DatabaseBackend::Sqlite,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        }),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        })
+    )]
+    #[case::enum_name_changed_postgres(
+        "enum_name_changed_postgres",
+        DatabaseBackend::Postgres,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "old_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        }),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "new_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        })
+    )]
+    #[case::enum_name_changed_mysql(
+        "enum_name_changed_mysql",
+        DatabaseBackend::MySql,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "old_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        }),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "new_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        })
+    )]
+    #[case::enum_name_changed_sqlite(
+        "enum_name_changed_sqlite",
+        DatabaseBackend::Sqlite,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "old_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        }),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "new_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        })
+    )]
+    #[case::text_to_enum_postgres(
+        "text_to_enum_postgres",
+        DatabaseBackend::Postgres,
+        ColumnType::Simple(SimpleColumnType::Text),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "user_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        })
+    )]
+    #[case::text_to_enum_mysql(
+        "text_to_enum_mysql",
+        DatabaseBackend::MySql,
+        ColumnType::Simple(SimpleColumnType::Text),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "user_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        })
+    )]
+    #[case::text_to_enum_sqlite(
+        "text_to_enum_sqlite",
+        DatabaseBackend::Sqlite,
+        ColumnType::Simple(SimpleColumnType::Text),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "user_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        })
+    )]
+    #[case::enum_to_text_postgres(
+        "enum_to_text_postgres",
+        DatabaseBackend::Postgres,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "user_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        }),
+        ColumnType::Simple(SimpleColumnType::Text)
+    )]
+    #[case::enum_to_text_mysql(
+        "enum_to_text_mysql",
+        DatabaseBackend::MySql,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "user_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        }),
+        ColumnType::Simple(SimpleColumnType::Text)
+    )]
+    #[case::enum_to_text_sqlite(
+        "enum_to_text_sqlite",
+        DatabaseBackend::Sqlite,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "user_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        }),
+        ColumnType::Simple(SimpleColumnType::Text)
+    )]
+    fn test_modify_enum_types(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+        #[case] old_type: ColumnType,
+        #[case] new_type: ColumnType,
+    ) {
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "status".into(),
+                r#type: old_type,
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            indexes: vec![],
+        }];
+
+        let result =
+            build_modify_column_type(&backend, "users", "status", &new_type, &current_schema)
+                .unwrap();
+
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<_>>()
+            .join(";\n");
+
+        with_settings!({ snapshot_suffix => format!("modify_enum_types_{}", title) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[test]
+    fn test_modify_column_type_to_enum_with_empty_schema() {
+        // Test the None branch in line 195-200
+        // When current_schema is empty, old_type will be None
+        use vespertide_core::ComplexColumnType;
+
+        let result = build_modify_column_type(
+            &DatabaseBackend::Postgres,
+            "users",
+            "status",
+            &ColumnType::Complex(ComplexColumnType::Enum {
+                name: "status_type".into(),
+                values: vec!["active".into(), "inactive".into()],
+            }),
+            &[], // Empty schema - old_type will be None
+        );
+
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Postgres))
+            .collect::<Vec<String>>()
+            .join(";\n");
+
+        // Should create the enum type since old_type is None
+        assert!(sql.contains("CREATE TYPE"));
+        assert!(sql.contains("status_type"));
+        assert!(sql.contains("ALTER TABLE"));
     }
 }

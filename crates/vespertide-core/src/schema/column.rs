@@ -28,42 +28,6 @@ pub enum ColumnType {
 }
 
 impl ColumnType {
-    /// Convert column type to SQL type string
-    pub fn to_sql(&self) -> String {
-        match self {
-            ColumnType::Simple(ty) => match ty {
-                SimpleColumnType::SmallInt => "SMALLINT".into(),
-                SimpleColumnType::Integer => "INTEGER".into(),
-                SimpleColumnType::BigInt => "BIGINT".into(),
-                SimpleColumnType::Real => "REAL".into(),
-                SimpleColumnType::DoublePrecision => "DOUBLE PRECISION".into(),
-                SimpleColumnType::Text => "TEXT".into(),
-                SimpleColumnType::Boolean => "BOOLEAN".into(),
-                SimpleColumnType::Date => "DATE".into(),
-                SimpleColumnType::Time => "TIME".into(),
-                SimpleColumnType::Timestamp => "TIMESTAMP".into(),
-                SimpleColumnType::Timestamptz => "TIMESTAMPTZ".into(),
-                SimpleColumnType::Interval => "INTERVAL".into(),
-                SimpleColumnType::Bytea => "BYTEA".into(),
-                SimpleColumnType::Uuid => "UUID".into(),
-                SimpleColumnType::Json => "JSON".into(),
-                SimpleColumnType::Jsonb => "JSONB".into(),
-                SimpleColumnType::Inet => "INET".into(),
-                SimpleColumnType::Cidr => "CIDR".into(),
-                SimpleColumnType::Macaddr => "MACADDR".into(),
-                SimpleColumnType::Xml => "XML".into(),
-            },
-            ColumnType::Complex(ty) => match ty {
-                ComplexColumnType::Varchar { length } => format!("VARCHAR({})", length),
-                ComplexColumnType::Numeric { precision, scale } => {
-                    format!("NUMERIC({}, {})", precision, scale)
-                }
-                ComplexColumnType::Char { length } => format!("CHAR({})", length),
-                ComplexColumnType::Custom { custom_type } => custom_type.clone(),
-            },
-        }
-    }
-
     /// Convert column type to Rust type string (for SeaORM entity generation)
     pub fn to_rust_type(&self, nullable: bool) -> String {
         let base = match self {
@@ -92,6 +56,7 @@ impl ColumnType {
                 ComplexColumnType::Numeric { .. } => "Decimal".to_string(),
                 ComplexColumnType::Char { .. } => "String".to_string(),
                 ComplexColumnType::Custom { .. } => "String".to_string(), // Default for custom types
+                ComplexColumnType::Enum { .. } => "String".to_string(),
             },
         };
 
@@ -151,60 +116,13 @@ pub enum ComplexColumnType {
     Numeric { precision: u32, scale: u32 },
     Char { length: u32 },
     Custom { custom_type: String },
+    Enum { name: String, values: Vec<String> },
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use rstest::rstest;
-
-    #[rstest]
-    #[case(SimpleColumnType::SmallInt, "SMALLINT")]
-    #[case(SimpleColumnType::Integer, "INTEGER")]
-    #[case(SimpleColumnType::BigInt, "BIGINT")]
-    #[case(SimpleColumnType::Real, "REAL")]
-    #[case(SimpleColumnType::DoublePrecision, "DOUBLE PRECISION")]
-    #[case(SimpleColumnType::Text, "TEXT")]
-    #[case(SimpleColumnType::Boolean, "BOOLEAN")]
-    #[case(SimpleColumnType::Date, "DATE")]
-    #[case(SimpleColumnType::Time, "TIME")]
-    #[case(SimpleColumnType::Timestamp, "TIMESTAMP")]
-    #[case(SimpleColumnType::Timestamptz, "TIMESTAMPTZ")]
-    #[case(SimpleColumnType::Interval, "INTERVAL")]
-    #[case(SimpleColumnType::Bytea, "BYTEA")]
-    #[case(SimpleColumnType::Uuid, "UUID")]
-    #[case(SimpleColumnType::Json, "JSON")]
-    #[case(SimpleColumnType::Jsonb, "JSONB")]
-    #[case(SimpleColumnType::Inet, "INET")]
-    #[case(SimpleColumnType::Cidr, "CIDR")]
-    #[case(SimpleColumnType::Macaddr, "MACADDR")]
-    #[case(SimpleColumnType::Xml, "XML")]
-    fn test_simple_column_type_to_sql(
-        #[case] column_type: SimpleColumnType,
-        #[case] expected: &str,
-    ) {
-        assert_eq!(ColumnType::Simple(column_type).to_sql(), expected);
-    }
-
-    #[rstest]
-    #[case(ComplexColumnType::Varchar { length: 255 }, "VARCHAR(255)")]
-    #[case(ComplexColumnType::Varchar { length: 50 }, "VARCHAR(50)")]
-    #[case(ComplexColumnType::Varchar { length: 1 }, "VARCHAR(1)")]
-    #[case(ComplexColumnType::Numeric { precision: 10, scale: 2 }, "NUMERIC(10, 2)")]
-    #[case(ComplexColumnType::Numeric { precision: 5, scale: 0 }, "NUMERIC(5, 0)")]
-    #[case(ComplexColumnType::Numeric { precision: 18, scale: 4 }, "NUMERIC(18, 4)")]
-    #[case(ComplexColumnType::Char { length: 10 }, "CHAR(10)")]
-    #[case(ComplexColumnType::Char { length: 1 }, "CHAR(1)")]
-    #[case(ComplexColumnType::Char { length: 255 }, "CHAR(255)")]
-    #[case(ComplexColumnType::Custom { custom_type: "MONEY".into() }, "MONEY")]
-    #[case(ComplexColumnType::Custom { custom_type: "JSONB".into() }, "JSONB")]
-    #[case(ComplexColumnType::Custom { custom_type: "CUSTOM_TYPE".into() }, "CUSTOM_TYPE")]
-    fn test_complex_column_type_to_sql(
-        #[case] column_type: ComplexColumnType,
-        #[case] expected: &str,
-    ) {
-        assert_eq!(ColumnType::Complex(column_type).to_sql(), expected);
-    }
 
     #[rstest]
     #[case(SimpleColumnType::SmallInt, "i16")]
@@ -274,6 +192,7 @@ mod tests {
     #[case(ComplexColumnType::Char { length: 1 }, false, "String")]
     #[case(ComplexColumnType::Custom { custom_type: "MONEY".into() }, false, "String")]
     #[case(ComplexColumnType::Custom { custom_type: "JSONB".into() }, false, "String")]
+    #[case(ComplexColumnType::Enum { name: "status".into(), values: vec!["active".into(), "inactive".into()] }, false, "String")]
     fn test_complex_column_type_to_rust_type_not_nullable(
         #[case] column_type: ComplexColumnType,
         #[case] nullable: bool,
@@ -294,6 +213,7 @@ mod tests {
     #[case(ComplexColumnType::Char { length: 1 }, "Option<String>")]
     #[case(ComplexColumnType::Custom { custom_type: "MONEY".into() }, "Option<String>")]
     #[case(ComplexColumnType::Custom { custom_type: "JSONB".into() }, "Option<String>")]
+    #[case(ComplexColumnType::Enum { name: "status".into(), values: vec!["active".into(), "inactive".into()] }, "Option<String>")]
     fn test_complex_column_type_to_rust_type_nullable(
         #[case] column_type: ComplexColumnType,
         #[case] expected: &str,

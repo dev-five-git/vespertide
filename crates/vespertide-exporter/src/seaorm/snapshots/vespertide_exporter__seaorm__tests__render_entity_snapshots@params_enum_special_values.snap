@@ -1,0 +1,29 @@
+---
+source: crates/vespertide-exporter/src/seaorm/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum)]
+#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "event_severity")]
+pub enum EventSeverity {
+    #[sea_orm(string_value = "info-level")]
+    InfoLevel,
+    #[sea_orm(string_value = "warning_level")]
+    WarningLevel,
+    #[sea_orm(string_value = "ERROR_LEVEL")]
+    ERRORLEVEL,
+    #[sea_orm(string_value = "1critical")]
+    N1critical,
+}
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "events")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub severity: EventSeverity,
+}
+
+impl ActiveModelBehavior for ActiveModel {}

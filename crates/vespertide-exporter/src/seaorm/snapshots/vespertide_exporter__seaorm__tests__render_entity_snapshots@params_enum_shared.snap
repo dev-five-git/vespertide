@@ -1,0 +1,28 @@
+---
+source: crates/vespertide-exporter/src/seaorm/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum)]
+#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "doc_status")]
+pub enum DocStatus {
+    #[sea_orm(string_value = "draft")]
+    Draft,
+    #[sea_orm(string_value = "published")]
+    Published,
+    #[sea_orm(string_value = "archived")]
+    Archived,
+}
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "documents")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub status: DocStatus,
+    pub review_status: Option<DocStatus>,
+}
+
+impl ActiveModelBehavior for ActiveModel {}

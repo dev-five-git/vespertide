@@ -18,78 +18,27 @@
           "comment": null,
           "default": null,
           "foreign_key": null,
-          "index": null,
-          "name": "title",
+          "index": true,
+          "name": "email",
           "nullable": false,
           "primary_key": null,
           "type": {
             "kind": "varchar",
-            "length": 500
+            "length": 255
           },
-          "unique": null
+          "unique": true
         },
         {
           "comment": null,
           "default": null,
           "foreign_key": null,
           "index": null,
-          "name": "content",
-          "nullable": false,
-          "primary_key": null,
-          "type": "text",
-          "unique": null
-        },
-        {
-          "comment": null,
-          "default": null,
-          "foreign_key": null,
-          "index": null,
-          "name": "summary",
-          "nullable": true,
-          "primary_key": null,
-          "type": "text",
-          "unique": null
-        },
-        {
-          "comment": null,
-          "default": null,
-          "foreign_key": null,
-          "index": null,
-          "name": "thumbnail",
-          "nullable": true,
-          "primary_key": null,
-          "type": "text",
-          "unique": null
-        },
-        {
-          "comment": null,
-          "default": null,
-          "foreign_key": {
-            "on_delete": "cascade",
-            "on_update": null,
-            "ref_columns": [
-              "id"
-            ],
-            "ref_table": "media"
-          },
-          "index": true,
-          "name": "media_id",
-          "nullable": false,
-          "primary_key": null,
-          "type": "uuid",
-          "unique": null
-        },
-        {
-          "comment": null,
-          "default": "'draft'",
-          "foreign_key": null,
-          "index": true,
-          "name": "status",
+          "name": "password",
           "nullable": false,
           "primary_key": null,
           "type": {
             "kind": "varchar",
-            "length": 20
+            "length": 255
           },
           "unique": null
         },
@@ -97,11 +46,25 @@
           "comment": null,
           "default": null,
           "foreign_key": null,
-          "index": true,
-          "name": "published_at",
+          "index": null,
+          "name": "name",
+          "nullable": false,
+          "primary_key": null,
+          "type": {
+            "kind": "varchar",
+            "length": 100
+          },
+          "unique": null
+        },
+        {
+          "comment": null,
+          "default": null,
+          "foreign_key": null,
+          "index": null,
+          "name": "profile_image",
           "nullable": true,
           "primary_key": null,
-          "type": "timestamptz",
+          "type": "text",
           "unique": null
         },
         {
@@ -129,11 +92,6 @@
       ],
       "constraints": [
         {
-          "expr": "status IN ('draft', 'review', 'published', 'archived')",
-          "name": "chk_article_status",
-          "type": "check"
-        },
-        {
           "auto_increment": false,
           "columns": [
             "id"
@@ -142,188 +100,24 @@
         },
         {
           "columns": [
-            "media_id"
+            "email"
           ],
           "name": null,
-          "on_delete": "cascade",
-          "on_update": null,
-          "ref_columns": [
-            "id"
-          ],
-          "ref_table": "media",
-          "type": "foreign_key"
+          "type": "unique"
         }
       ],
-      "table": "article",
+      "table": "user",
       "type": "create_table"
     },
     {
       "index": {
         "columns": [
-          "media_id"
+          "email"
         ],
-        "name": "idx_article_media_id",
+        "name": "idx_user_email",
         "unique": false
       },
-      "table": "article",
-      "type": "add_index"
-    },
-    {
-      "index": {
-        "columns": [
-          "status"
-        ],
-        "name": "idx_article_status",
-        "unique": false
-      },
-      "table": "article",
-      "type": "add_index"
-    },
-    {
-      "index": {
-        "columns": [
-          "published_at"
-        ],
-        "name": "idx_article_published_at",
-        "unique": false
-      },
-      "table": "article",
-      "type": "add_index"
-    },
-    {
-      "columns": [
-        {
-          "comment": null,
-          "default": null,
-          "foreign_key": {
-            "on_delete": "cascade",
-            "on_update": null,
-            "ref_columns": [
-              "id"
-            ],
-            "ref_table": "article"
-          },
-          "index": true,
-          "name": "article_id",
-          "nullable": false,
-          "primary_key": true,
-          "type": "uuid",
-          "unique": null
-        },
-        {
-          "comment": null,
-          "default": null,
-          "foreign_key": {
-            "on_delete": "cascade",
-            "on_update": null,
-            "ref_columns": [
-              "id"
-            ],
-            "ref_table": "user"
-          },
-          "index": true,
-          "name": "user_id",
-          "nullable": false,
-          "primary_key": true,
-          "type": "uuid",
-          "unique": null
-        },
-        {
-          "comment": null,
-          "default": "1",
-          "foreign_key": null,
-          "index": null,
-          "name": "author_order",
-          "nullable": false,
-          "primary_key": null,
-          "type": "integer",
-          "unique": null
-        },
-        {
-          "comment": null,
-          "default": "'contributor'",
-          "foreign_key": null,
-          "index": null,
-          "name": "role",
-          "nullable": false,
-          "primary_key": null,
-          "type": {
-            "kind": "varchar",
-            "length": 20
-          },
-          "unique": null
-        },
-        {
-          "comment": null,
-          "default": "now()",
-          "foreign_key": null,
-          "index": null,
-          "name": "created_at",
-          "nullable": false,
-          "primary_key": null,
-          "type": "timestamptz",
-          "unique": null
-        }
-      ],
-      "constraints": [
-        {
-          "auto_increment": false,
-          "columns": [
-            "article_id",
-            "user_id"
-          ],
-          "type": "primary_key"
-        },
-        {
-          "columns": [
-            "article_id"
-          ],
-          "name": null,
-          "on_delete": "cascade",
-          "on_update": null,
-          "ref_columns": [
-            "id"
-          ],
-          "ref_table": "article",
-          "type": "foreign_key"
-        },
-        {
-          "columns": [
-            "user_id"
-          ],
-          "name": null,
-          "on_delete": "cascade",
-          "on_update": null,
-          "ref_columns": [
-            "id"
-          ],
-          "ref_table": "user",
-          "type": "foreign_key"
-        }
-      ],
-      "table": "article_user",
-      "type": "create_table"
-    },
-    {
-      "index": {
-        "columns": [
-          "article_id"
-        ],
-        "name": "idx_article_user_article_id",
-        "unique": false
-      },
-      "table": "article_user",
-      "type": "add_index"
-    },
-    {
-      "index": {
-        "columns": [
-          "user_id"
-        ],
-        "name": "idx_article_user_user_id",
-        "unique": false
-      },
-      "table": "article_user",
+      "table": "user",
       "type": "add_index"
     },
     {
@@ -469,27 +263,13 @@
           "comment": null,
           "default": null,
           "foreign_key": null,
-          "index": true,
-          "name": "email",
-          "nullable": false,
-          "primary_key": null,
-          "type": {
-            "kind": "varchar",
-            "length": 255
-          },
-          "unique": true
-        },
-        {
-          "comment": null,
-          "default": null,
-          "foreign_key": null,
           "index": null,
-          "name": "password",
+          "name": "title",
           "nullable": false,
           "primary_key": null,
           "type": {
             "kind": "varchar",
-            "length": 255
+            "length": 499
           },
           "unique": null
         },
@@ -498,13 +278,10 @@
           "default": null,
           "foreign_key": null,
           "index": null,
-          "name": "name",
+          "name": "content",
           "nullable": false,
           "primary_key": null,
-          "type": {
-            "kind": "varchar",
-            "length": 100
-          },
+          "type": "text",
           "unique": null
         },
         {
@@ -512,10 +289,64 @@
           "default": null,
           "foreign_key": null,
           "index": null,
-          "name": "profile_image",
+          "name": "summary",
           "nullable": true,
           "primary_key": null,
           "type": "text",
+          "unique": null
+        },
+        {
+          "comment": null,
+          "default": null,
+          "foreign_key": null,
+          "index": null,
+          "name": "thumbnail",
+          "nullable": true,
+          "primary_key": null,
+          "type": "text",
+          "unique": null
+        },
+        {
+          "comment": null,
+          "default": null,
+          "foreign_key": {
+            "on_delete": "cascade",
+            "on_update": null,
+            "ref_columns": [
+              "id"
+            ],
+            "ref_table": "media"
+          },
+          "index": true,
+          "name": "media_id",
+          "nullable": false,
+          "primary_key": null,
+          "type": "uuid",
+          "unique": null
+        },
+        {
+          "comment": null,
+          "default": "'draft'",
+          "foreign_key": null,
+          "index": true,
+          "name": "status",
+          "nullable": false,
+          "primary_key": null,
+          "type": {
+            "kind": "varchar",
+            "length": 19
+          },
+          "unique": null
+        },
+        {
+          "comment": null,
+          "default": null,
+          "foreign_key": null,
+          "index": true,
+          "name": "published_at",
+          "nullable": true,
+          "primary_key": null,
+          "type": "timestamptz",
           "unique": null
         },
         {
@@ -543,6 +374,11 @@
       ],
       "constraints": [
         {
+          "expr": "status IN ('draft', 'review', 'published', 'archived')",
+          "name": "chk_article_status",
+          "type": "check"
+        },
+        {
           "auto_increment": false,
           "columns": [
             "id"
@@ -551,24 +387,52 @@
         },
         {
           "columns": [
-            "email"
+            "media_id"
           ],
           "name": null,
-          "type": "unique"
+          "on_delete": "cascade",
+          "on_update": null,
+          "ref_columns": [
+            "id"
+          ],
+          "ref_table": "media",
+          "type": "foreign_key"
         }
       ],
-      "table": "user",
+      "table": "article",
       "type": "create_table"
     },
     {
       "index": {
         "columns": [
-          "email"
+          "media_id"
         ],
-        "name": "idx_user_email",
+        "name": "idx_article_media_id",
         "unique": false
       },
-      "table": "user",
+      "table": "article",
+      "type": "add_index"
+    },
+    {
+      "index": {
+        "columns": [
+          "status"
+        ],
+        "name": "idx_article_status",
+        "unique": false
+      },
+      "table": "article",
+      "type": "add_index"
+    },
+    {
+      "index": {
+        "columns": [
+          "published_at"
+        ],
+        "name": "idx_article_published_at",
+        "unique": false
+      },
+      "table": "article",
       "type": "add_index"
     },
     {
@@ -706,9 +570,145 @@
       },
       "table": "user_media_role",
       "type": "add_index"
+    },
+    {
+      "columns": [
+        {
+          "comment": null,
+          "default": null,
+          "foreign_key": {
+            "on_delete": "cascade",
+            "on_update": null,
+            "ref_columns": [
+              "id"
+            ],
+            "ref_table": "article"
+          },
+          "index": true,
+          "name": "article_id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "uuid",
+          "unique": null
+        },
+        {
+          "comment": null,
+          "default": null,
+          "foreign_key": {
+            "on_delete": "cascade",
+            "on_update": null,
+            "ref_columns": [
+              "id"
+            ],
+            "ref_table": "user"
+          },
+          "index": true,
+          "name": "user_id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "uuid",
+          "unique": null
+        },
+        {
+          "comment": null,
+          "default": "1",
+          "foreign_key": null,
+          "index": null,
+          "name": "author_order",
+          "nullable": false,
+          "primary_key": null,
+          "type": "integer",
+          "unique": null
+        },
+        {
+          "comment": null,
+          "default": "'contributor'",
+          "foreign_key": null,
+          "index": null,
+          "name": "role",
+          "nullable": false,
+          "primary_key": null,
+          "type": {
+            "kind": "varchar",
+            "length": 20
+          },
+          "unique": null
+        },
+        {
+          "comment": null,
+          "default": "now()",
+          "foreign_key": null,
+          "index": null,
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": null,
+          "type": "timestamptz",
+          "unique": null
+        }
+      ],
+      "constraints": [
+        {
+          "auto_increment": false,
+          "columns": [
+            "article_id",
+            "user_id"
+          ],
+          "type": "primary_key"
+        },
+        {
+          "columns": [
+            "article_id"
+          ],
+          "name": null,
+          "on_delete": "cascade",
+          "on_update": null,
+          "ref_columns": [
+            "id"
+          ],
+          "ref_table": "article",
+          "type": "foreign_key"
+        },
+        {
+          "columns": [
+            "user_id"
+          ],
+          "name": null,
+          "on_delete": "cascade",
+          "on_update": null,
+          "ref_columns": [
+            "id"
+          ],
+          "ref_table": "user",
+          "type": "foreign_key"
+        }
+      ],
+      "table": "article_user",
+      "type": "create_table"
+    },
+    {
+      "index": {
+        "columns": [
+          "article_id"
+        ],
+        "name": "idx_article_user_article_id",
+        "unique": false
+      },
+      "table": "article_user",
+      "type": "add_index"
+    },
+    {
+      "index": {
+        "columns": [
+          "user_id"
+        ],
+        "name": "idx_article_user_user_id",
+        "unique": false
+      },
+      "table": "article_user",
+      "type": "add_index"
     }
   ],
   "comment": "init",
-  "created_at": "2025-12-15T14:08:11Z",
+  "created_at": "2025-12-17T05:37:33Z",
   "version": 1
 }
