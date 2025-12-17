@@ -125,9 +125,14 @@ pub fn build_modify_column_type(
         if needs_enum_migration {
             // Use the safe temp type + USING + RENAME approach for enum value changes
             if let (
-                Some(ColumnType::Complex(ComplexColumnType::Enum { name: enum_name, .. })),
-                ColumnType::Complex(ComplexColumnType::Enum { values: new_values, .. })
-            ) = (old_type, new_type) {
+                Some(ColumnType::Complex(ComplexColumnType::Enum {
+                    name: enum_name, ..
+                })),
+                ColumnType::Complex(ComplexColumnType::Enum {
+                    values: new_values, ..
+                }),
+            ) = (old_type, new_type)
+            {
                 let temp_type_name = format!("{}_new", enum_name);
 
                 // 1. CREATE TYPE {enum}_new AS ENUM (new values)
@@ -137,7 +142,10 @@ pub fn build_modify_column_type(
                     .collect::<Vec<_>>()
                     .join(", ");
                 queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
-                    format!("CREATE TYPE \"{}\" AS ENUM ({})", temp_type_name, create_temp_values),
+                    format!(
+                        "CREATE TYPE \"{}\" AS ENUM ({})",
+                        temp_type_name, create_temp_values
+                    ),
                     String::new(),
                     String::new(),
                 )));
@@ -161,7 +169,10 @@ pub fn build_modify_column_type(
 
                 // 4. ALTER TYPE {enum}_new RENAME TO {enum}
                 queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
-                    format!("ALTER TYPE \"{}\" RENAME TO \"{}\"", temp_type_name, enum_name),
+                    format!(
+                        "ALTER TYPE \"{}\" RENAME TO \"{}\"",
+                        temp_type_name, enum_name
+                    ),
                     String::new(),
                     String::new(),
                 )));
@@ -172,15 +183,14 @@ pub fn build_modify_column_type(
             // If new type is an enum and different from old, create the type first (PostgreSQL only)
             if let ColumnType::Complex(ComplexColumnType::Enum { name: new_name, .. }) = new_type {
                 let should_create = match old_type {
-                    Some(ColumnType::Complex(ComplexColumnType::Enum { name: old_name, .. })) => {
-                        old_name != new_name
-                    }
+                    Some(ColumnType::Complex(ComplexColumnType::Enum {
+                        name: old_name, ..
+                    })) => old_name != new_name,
                     Some(_) => true, // Old type wasn't an enum
-                    None => true, // No old type
+                    None => true,    // No old type
                 };
 
-                if should_create
-                    && let Some(create_type_sql) = build_create_enum_type_sql(new_type)
+                if should_create && let Some(create_type_sql) = build_create_enum_type_sql(new_type)
                 {
                     queries.push(BuiltQuery::Raw(create_type_sql));
                 }
@@ -196,7 +206,9 @@ pub fn build_modify_column_type(
             queries.push(BuiltQuery::AlterTable(Box::new(stmt)));
 
             // If old type was an enum and new type is different, drop the old enum type
-            if let Some(ColumnType::Complex(ComplexColumnType::Enum { name: old_name, .. })) = old_type {
+            if let Some(ColumnType::Complex(ComplexColumnType::Enum { name: old_name, .. })) =
+                old_type
+            {
                 let should_drop = match new_type {
                     ColumnType::Complex(ComplexColumnType::Enum { name: new_name, .. }) => {
                         old_name != new_name
@@ -558,7 +570,9 @@ mod tests {
 
         // Should use the safe temp type approach:
         // 1. CREATE TYPE status_new AS ENUM (...)
-        assert!(sql.contains("CREATE TYPE \"status_new\" AS ENUM ('active', 'inactive', 'pending')"));
+        assert!(
+            sql.contains("CREATE TYPE \"status_new\" AS ENUM ('active', 'inactive', 'pending')")
+        );
         // 2. ALTER TABLE ... USING column::text::status_new
         assert!(sql.contains("ALTER TABLE \"users\" ALTER COLUMN \"status\" TYPE \"status_new\" USING \"status\"::text::\"status_new\""));
         // 3. DROP TYPE status

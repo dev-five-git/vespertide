@@ -24,7 +24,8 @@ pub fn build_plan_queries(
         // Build queries with the current state of the schema
         let postgres_queries =
             build_action_queries(&DatabaseBackend::Postgres, action, &evolving_schema)?;
-        let mysql_queries = build_action_queries(&DatabaseBackend::MySql, action, &evolving_schema)?;
+        let mysql_queries =
+            build_action_queries(&DatabaseBackend::MySql, action, &evolving_schema)?;
         let sqlite_queries =
             build_action_queries(&DatabaseBackend::Sqlite, action, &evolving_schema)?;
         queries.push(PlanQueries {

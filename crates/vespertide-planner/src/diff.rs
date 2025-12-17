@@ -57,7 +57,8 @@ fn topological_sort_tables<'a>(tables: &[&'a TableDef]) -> Result<Vec<&'a TableD
     }
 
     let mut result: Vec<&TableDef> = Vec::new();
-    let table_map: HashMap<&str, &TableDef> = tables.iter().map(|t| (t.name.as_str(), *t)).collect();
+    let table_map: HashMap<&str, &TableDef> =
+        tables.iter().map(|t| (t.name.as_str(), *t)).collect();
 
     while let Some(table_name) = queue.pop_front() {
         if let Some(&table) = table_map.get(table_name) {
@@ -147,7 +148,10 @@ fn sort_delete_tables(actions: &mut [MigrationAction], all_tables: &HashMap<&str
     // in_degree[A] = number of tables A depends on
     let mut in_degree: HashMap<&str, usize> = HashMap::new();
     for &table_name in &delete_table_names {
-        in_degree.insert(table_name, dependencies.get(table_name).map_or(0, |d| d.len()));
+        in_degree.insert(
+            table_name,
+            dependencies.get(table_name).map_or(0, |d| d.len()),
+        );
     }
 
     // Start with tables that have no dependencies (can be deleted last in creation order)
@@ -179,10 +183,8 @@ fn sort_delete_tables(actions: &mut [MigrationAction], all_tables: &HashMap<&str
     sorted_tables.reverse();
 
     // Reorder the DeleteTable actions according to sorted order
-    let mut delete_actions: Vec<MigrationAction> = delete_indices
-        .iter()
-        .map(|&i| actions[i].clone())
-        .collect();
+    let mut delete_actions: Vec<MigrationAction> =
+        delete_indices.iter().map(|&i| actions[i].clone()).collect();
 
     delete_actions.sort_by(|a, b| {
         let a_name = if let MigrationAction::DeleteTable { table } = a {

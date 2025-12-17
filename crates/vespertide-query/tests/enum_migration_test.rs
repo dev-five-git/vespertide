@@ -1,9 +1,9 @@
-use vespertide_core::{
-    ColumnDef, ColumnType, ComplexColumnType, MigrationAction, MigrationPlan,
-    SimpleColumnType, TableDef,
-};
 use vespertide_core::schema::primary_key::PrimaryKeySyntax;
-use vespertide_query::{build_plan_queries, DatabaseBackend};
+use vespertide_core::{
+    ColumnDef, ColumnType, ComplexColumnType, MigrationAction, MigrationPlan, SimpleColumnType,
+    TableDef,
+};
+use vespertide_query::{DatabaseBackend, build_plan_queries};
 
 #[test]
 fn test_enum_value_change_generates_correct_sql() {

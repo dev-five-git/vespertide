@@ -6,7 +6,11 @@ use super::helpers::build_drop_enum_type_sql;
 use super::types::BuiltQuery;
 
 /// Build SQL to delete a column, optionally with DROP TYPE for enum columns (PostgreSQL)
-pub fn build_delete_column(table: &str, column: &str, column_type: Option<&ColumnType>) -> Vec<BuiltQuery> {
+pub fn build_delete_column(
+    table: &str,
+    column: &str,
+    column_type: Option<&ColumnType>,
+) -> Vec<BuiltQuery> {
     let mut stmts = Vec::new();
 
     // Drop the column first
