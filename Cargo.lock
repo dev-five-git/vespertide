@@ -3044,6 +3044,7 @@ dependencies = [
  "sea-query 0.32.7",
  "thiserror",
  "vespertide-core",
+ "vespertide-planner",
 ]
 
 [[package]]
