@@ -3067,6 +3067,7 @@ dependencies = [
  "vespertide-config",
  "vespertide-core",
  "vespertide-loader",
+ "vespertide-planner",
  "vespertide-query",
 ]
 
