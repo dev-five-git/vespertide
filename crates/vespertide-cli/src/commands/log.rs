@@ -1,6 +1,7 @@
 use anyhow::Result;
 use colored::Colorize;
-use vespertide_loader::{load_config, load_models};
+use vespertide_loader::load_config;
+use vespertide_planner::apply_action;
 use vespertide_query::{DatabaseBackend, build_plan_queries};
 
 use crate::utils::load_migrations;
@@ -21,7 +22,10 @@ pub fn cmd_log(backend: DatabaseBackend) -> Result<()> {
         plans.len().to_string().bright_yellow().bold()
     );
     println!();
-    let current_models = load_models(&config)?;
+
+    // Build baseline schema incrementally as we iterate through migrations
+    let mut baseline_schema = Vec::new();
+
     for plan in &plans {
         println!(
             "{} {}",
@@ -44,8 +48,14 @@ pub fn cmd_log(backend: DatabaseBackend) -> Result<()> {
             plan.actions.len().to_string().bright_yellow()
         );
 
-        let plan_queries = build_plan_queries(plan, &current_models)
+        // Use the current baseline schema (from all previous migrations)
+        let plan_queries = build_plan_queries(plan, &baseline_schema)
             .map_err(|e| anyhow::anyhow!("query build error for v{}: {}", plan.version, e))?;
+
+        // Update baseline schema incrementally by applying each action
+        for action in &plan.actions {
+            let _ = apply_action(&mut baseline_schema, action);
+        }
 
         for (i, pq) in plan_queries.iter().enumerate() {
             println!(

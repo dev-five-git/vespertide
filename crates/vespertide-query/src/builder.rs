@@ -1,4 +1,5 @@
 use vespertide_core::{MigrationAction, MigrationPlan, TableDef};
+use vespertide_planner::apply_action;
 
 use crate::DatabaseBackend;
 use crate::error::QueryError;
@@ -16,18 +17,28 @@ pub fn build_plan_queries(
     current_schema: &[TableDef],
 ) -> Result<Vec<PlanQueries>, QueryError> {
     let mut queries: Vec<PlanQueries> = Vec::new();
+    // Clone the schema so we can mutate it as we apply actions
+    let mut evolving_schema = current_schema.to_vec();
+
     for action in &plan.actions {
+        // Build queries with the current state of the schema
         let postgres_queries =
-            build_action_queries(&DatabaseBackend::Postgres, action, current_schema)?;
-        let mysql_queries = build_action_queries(&DatabaseBackend::MySql, action, current_schema)?;
+            build_action_queries(&DatabaseBackend::Postgres, action, &evolving_schema)?;
+        let mysql_queries = build_action_queries(&DatabaseBackend::MySql, action, &evolving_schema)?;
         let sqlite_queries =
-            build_action_queries(&DatabaseBackend::Sqlite, action, current_schema)?;
+            build_action_queries(&DatabaseBackend::Sqlite, action, &evolving_schema)?;
         queries.push(PlanQueries {
             action: action.clone(),
             postgres: postgres_queries,
             mysql: mysql_queries,
             sqlite: sqlite_queries,
         });
+
+        // Apply the action to update the schema for the next iteration
+        // Note: We ignore errors here because some actions (like DeleteTable) may reference
+        // tables that don't exist in the provided current_schema. This is OK for SQL generation
+        // purposes - we still generate the correct SQL, and the schema evolution is best-effort.
+        let _ = apply_action(&mut evolving_schema, action);
     }
     Ok(queries)
 }

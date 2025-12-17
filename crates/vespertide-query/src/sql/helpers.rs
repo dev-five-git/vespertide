@@ -177,6 +177,66 @@ pub fn build_sea_column_def(backend: &DatabaseBackend, column: &ColumnDef) -> Se
     col
 }
 
+/// Generate CREATE TYPE SQL for an enum type (PostgreSQL only)
+/// Returns None for non-PostgreSQL backends or non-enum types
+pub fn build_create_enum_type_sql(column_type: &ColumnType) -> Option<super::types::RawSql> {
+    if let ColumnType::Complex(ComplexColumnType::Enum { name, values }) = column_type {
+        let values_sql = values
+            .iter()
+            .map(|v| format!("'{}'", v.replace('\'', "''")))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        // PostgreSQL: CREATE TYPE name AS ENUM (...)
+        let pg_sql = format!("CREATE TYPE \"{}\" AS ENUM ({})", name, values_sql);
+
+        // MySQL: ENUMs are inline, no CREATE TYPE needed
+        // SQLite: Uses TEXT, no CREATE TYPE needed
+        Some(super::types::RawSql::per_backend(
+            pg_sql,
+            String::new(),
+            String::new(),
+        ))
+    } else {
+        None
+    }
+}
+
+/// Generate DROP TYPE SQL for an enum type (PostgreSQL only)
+/// Returns None for non-PostgreSQL backends or non-enum types
+pub fn build_drop_enum_type_sql(column_type: &ColumnType) -> Option<super::types::RawSql> {
+    if let ColumnType::Complex(ComplexColumnType::Enum { name, .. }) = column_type {
+        // PostgreSQL: DROP TYPE IF EXISTS name
+        let pg_sql = format!("DROP TYPE IF EXISTS \"{}\"", name);
+
+        // MySQL/SQLite: No action needed
+        Some(super::types::RawSql::per_backend(
+            pg_sql,
+            String::new(),
+            String::new(),
+        ))
+    } else {
+        None
+    }
+}
+
+/// Check if a column type is an enum
+pub fn is_enum_type(column_type: &ColumnType) -> bool {
+    matches!(
+        column_type,
+        ColumnType::Complex(ComplexColumnType::Enum { .. })
+    )
+}
+
+/// Extract enum name from column type if it's an enum
+pub fn get_enum_name(column_type: &ColumnType) -> Option<&str> {
+    if let ColumnType::Complex(ComplexColumnType::Enum { name, .. }) = column_type {
+        Some(name.as_str())
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

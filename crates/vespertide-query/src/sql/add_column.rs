@@ -3,7 +3,7 @@ use sea_query::{Alias, Expr, Query, Table, TableAlterStatement};
 use vespertide_core::{ColumnDef, TableDef};
 
 use super::create_table::build_create_table_for_backend;
-use super::helpers::build_sea_column_def;
+use super::helpers::{build_create_enum_type_sql, build_sea_column_def};
 use super::rename_table::build_rename_table;
 use super::types::{BuiltQuery, DatabaseBackend};
 use crate::error::QueryError;
@@ -104,6 +104,11 @@ pub fn build_add_column(
     }
 
     let mut stmts: Vec<BuiltQuery> = Vec::new();
+
+    // If column type is an enum, create the type first (PostgreSQL only)
+    if let Some(create_type_sql) = build_create_enum_type_sql(&column.r#type) {
+        stmts.push(BuiltQuery::Raw(create_type_sql));
+    }
 
     // If adding NOT NULL without default, we need special handling
     let needs_backfill = !column.nullable && column.default.is_none() && fill_with.is_some();

@@ -1,8 +1,8 @@
 use sea_query::{Alias, ForeignKey, Index, Table, TableCreateStatement};
 
-use vespertide_core::{ColumnDef, TableConstraint};
+use vespertide_core::{ColumnDef, ColumnType, ComplexColumnType, TableConstraint};
 
-use super::helpers::{build_sea_column_def, to_sea_fk_action};
+use super::helpers::{build_create_enum_type_sql, build_sea_column_def, to_sea_fk_action};
 use super::types::{BuiltQuery, DatabaseBackend};
 use crate::error::QueryError;
 
@@ -114,6 +114,18 @@ pub fn build_create_table(
     constraints: &[TableConstraint],
 ) -> Result<Vec<BuiltQuery>, QueryError> {
     let mut queries = Vec::new();
+
+    // Create enum types first (PostgreSQL only)
+    // Collect unique enum types to avoid duplicates
+    let mut created_enums = std::collections::HashSet::new();
+    for column in columns {
+        if let ColumnType::Complex(ComplexColumnType::Enum { name, .. }) = &column.r#type
+            && created_enums.insert(name.clone())
+            && let Some(create_type_sql) = build_create_enum_type_sql(&column.r#type)
+        {
+            queries.push(BuiltQuery::Raw(create_type_sql));
+        }
+    }
 
     // Separate unique constraints for Postgres and SQLite (they need separate CREATE INDEX statements)
     // For MySQL, unique constraints are added directly in CREATE TABLE via build_create_table_for_backend

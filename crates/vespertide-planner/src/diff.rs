@@ -164,12 +164,12 @@ fn sort_delete_tables(actions: &mut [MigrationAction], all_tables: &HashMap<&str
 
         // For each table that has this one as a dependency, decrement its in-degree
         for (&dependent, deps) in &dependencies {
-            if deps.contains(&table_name) {
-                if let Some(degree) = in_degree.get_mut(dependent) {
-                    *degree -= 1;
-                    if *degree == 0 {
-                        queue.push_back(dependent);
-                    }
+            if deps.contains(&table_name)
+                && let Some(degree) = in_degree.get_mut(dependent)
+            {
+                *degree -= 1;
+                if *degree == 0 {
+                    queue.push_back(dependent);
                 }
             }
         }

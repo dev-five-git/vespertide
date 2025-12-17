@@ -11,7 +11,18 @@ pub fn plan_next_migration(
     applied_plans: &[MigrationPlan],
 ) -> Result<MigrationPlan, PlannerError> {
     let baseline = schema_from_plans(applied_plans)?;
-    let mut plan = diff_schemas(&baseline, current)?;
+    plan_next_migration_with_baseline(current, applied_plans, &baseline)
+}
+
+/// Build the next migration plan given the current schema, existing plans, and
+/// a pre-computed baseline schema. This is more efficient when the baseline
+/// schema is already available, avoiding redundant calls to `schema_from_plans`.
+pub fn plan_next_migration_with_baseline(
+    current: &[TableDef],
+    applied_plans: &[MigrationPlan],
+    baseline: &[TableDef],
+) -> Result<MigrationPlan, PlannerError> {
+    let mut plan = diff_schemas(baseline, current)?;
 
     let next_version = applied_plans
         .iter()

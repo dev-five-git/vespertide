@@ -1,9 +1,9 @@
 use sea_query::{Alias, ColumnDef as SeaColumnDef, Query, Table};
 
-use vespertide_core::{ColumnType, TableDef};
+use vespertide_core::{ColumnType, ComplexColumnType, TableDef};
 
 use super::create_table::build_create_table_for_backend;
-use super::helpers::apply_column_type;
+use super::helpers::{apply_column_type, build_create_enum_type_sql};
 use super::rename_table::build_rename_table;
 use super::types::{BuiltQuery, DatabaseBackend};
 use crate::error::QueryError;
@@ -100,14 +100,121 @@ pub fn build_modify_column_type(
         Ok(queries)
     } else {
         // PostgreSQL, MySQL, etc. can use ALTER TABLE directly
-        let mut col = SeaColumnDef::new(Alias::new(column));
-        apply_column_type(&mut col, new_type);
+        let mut queries = Vec::new();
 
-        let stmt = Table::alter()
-            .table(Alias::new(table))
-            .modify_column(col)
-            .to_owned();
-        Ok(vec![BuiltQuery::AlterTable(Box::new(stmt))])
+        // Get the old column type to check if we need special enum handling
+        let old_type = current_schema
+            .iter()
+            .find(|t| t.name == table)
+            .and_then(|t| t.columns.iter().find(|c| c.name == column))
+            .map(|c| &c.r#type);
+
+        // Check if this is an enum-to-enum migration that needs special handling (PostgreSQL only)
+        let needs_enum_migration = if *backend == DatabaseBackend::Postgres {
+            matches!(
+                (old_type, new_type),
+                (
+                    Some(ColumnType::Complex(ComplexColumnType::Enum { name: old_name, values: old_values })),
+                    ColumnType::Complex(ComplexColumnType::Enum { name: new_name, values: new_values })
+                ) if old_name == new_name && old_values != new_values
+            )
+        } else {
+            false
+        };
+
+        if needs_enum_migration {
+            // Use the safe temp type + USING + RENAME approach for enum value changes
+            if let (
+                Some(ColumnType::Complex(ComplexColumnType::Enum { name: enum_name, .. })),
+                ColumnType::Complex(ComplexColumnType::Enum { values: new_values, .. })
+            ) = (old_type, new_type) {
+                let temp_type_name = format!("{}_new", enum_name);
+
+                // 1. CREATE TYPE {enum}_new AS ENUM (new values)
+                let create_temp_values = new_values
+                    .iter()
+                    .map(|v| format!("'{}'", v.replace('\'', "''")))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
+                    format!("CREATE TYPE \"{}\" AS ENUM ({})", temp_type_name, create_temp_values),
+                    String::new(),
+                    String::new(),
+                )));
+
+                // 2. ALTER TABLE ... ALTER COLUMN ... TYPE {enum}_new USING {column}::text::{enum}_new
+                queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
+                    format!(
+                        "ALTER TABLE \"{}\" ALTER COLUMN \"{}\" TYPE \"{}\" USING \"{}\"::text::\"{}\"",
+                        table, column, temp_type_name, column, temp_type_name
+                    ),
+                    String::new(),
+                    String::new(),
+                )));
+
+                // 3. DROP TYPE {enum}
+                queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
+                    format!("DROP TYPE \"{}\"", enum_name),
+                    String::new(),
+                    String::new(),
+                )));
+
+                // 4. ALTER TYPE {enum}_new RENAME TO {enum}
+                queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
+                    format!("ALTER TYPE \"{}\" RENAME TO \"{}\"", temp_type_name, enum_name),
+                    String::new(),
+                    String::new(),
+                )));
+            }
+        } else {
+            // Standard column type modification
+
+            // If new type is an enum and different from old, create the type first (PostgreSQL only)
+            if let ColumnType::Complex(ComplexColumnType::Enum { name: new_name, .. }) = new_type {
+                let should_create = match old_type {
+                    Some(ColumnType::Complex(ComplexColumnType::Enum { name: old_name, .. })) => {
+                        old_name != new_name
+                    }
+                    Some(_) => true, // Old type wasn't an enum
+                    None => true, // No old type
+                };
+
+                if should_create
+                    && let Some(create_type_sql) = build_create_enum_type_sql(new_type)
+                {
+                    queries.push(BuiltQuery::Raw(create_type_sql));
+                }
+            }
+
+            let mut col = SeaColumnDef::new(Alias::new(column));
+            apply_column_type(&mut col, new_type);
+
+            let stmt = Table::alter()
+                .table(Alias::new(table))
+                .modify_column(col)
+                .to_owned();
+            queries.push(BuiltQuery::AlterTable(Box::new(stmt)));
+
+            // If old type was an enum and new type is different, drop the old enum type
+            if let Some(ColumnType::Complex(ComplexColumnType::Enum { name: old_name, .. })) = old_type {
+                let should_drop = match new_type {
+                    ColumnType::Complex(ComplexColumnType::Enum { name: new_name, .. }) => {
+                        old_name != new_name
+                    }
+                    _ => true, // New type is not an enum
+                };
+
+                if should_drop {
+                    queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
+                        format!("DROP TYPE IF EXISTS \"{}\"", old_name),
+                        String::new(),
+                        String::new(),
+                    )));
+                }
+            }
+        }
+
+        Ok(queries)
     }
 }
 
@@ -402,5 +509,167 @@ mod tests {
         with_settings!({ snapshot_suffix => format!("modify_column_type_with_unique_index_{}", title) }, {
             assert_snapshot!(sql);
         });
+    }
+
+    #[test]
+    fn test_modify_enum_values_postgres() {
+        // Test that changing enum values uses the temp type + USING + RENAME approach
+        let old_enum = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        });
+
+        let new_enum = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into(), "pending".into()],
+        });
+
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "status".into(),
+                r#type: old_enum,
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            indexes: vec![],
+        }];
+
+        let result = build_modify_column_type(
+            &DatabaseBackend::Postgres,
+            "users",
+            "status",
+            &new_enum,
+            &current_schema,
+        )
+        .unwrap();
+
+        let sql = result
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Postgres))
+            .collect::<Vec<_>>()
+            .join(";\n");
+
+        // Should use the safe temp type approach:
+        // 1. CREATE TYPE status_new AS ENUM (...)
+        assert!(sql.contains("CREATE TYPE \"status_new\" AS ENUM ('active', 'inactive', 'pending')"));
+        // 2. ALTER TABLE ... USING column::text::status_new
+        assert!(sql.contains("ALTER TABLE \"users\" ALTER COLUMN \"status\" TYPE \"status_new\" USING \"status\"::text::\"status_new\""));
+        // 3. DROP TYPE status
+        assert!(sql.contains("DROP TYPE \"status\""));
+        // 4. ALTER TYPE status_new RENAME TO status
+        assert!(sql.contains("ALTER TYPE \"status_new\" RENAME TO \"status\""));
+    }
+
+    #[test]
+    fn test_modify_enum_same_values_postgres() {
+        // Test that keeping same enum values doesn't trigger DROP TYPE
+        let old_enum = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        });
+
+        let new_enum = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        });
+
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "status".into(),
+                r#type: old_enum,
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            indexes: vec![],
+        }];
+
+        let result = build_modify_column_type(
+            &DatabaseBackend::Postgres,
+            "users",
+            "status",
+            &new_enum,
+            &current_schema,
+        )
+        .unwrap();
+
+        let sql = result
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Postgres))
+            .collect::<Vec<_>>()
+            .join(";\n");
+
+        // Should NOT have CREATE TYPE (enum already exists)
+        assert!(!sql.contains("CREATE TYPE"));
+        // Should have ALTER TABLE
+        assert!(sql.contains("ALTER TABLE"));
+        // Should NOT have DROP TYPE (values haven't changed)
+        assert!(!sql.contains("DROP TYPE"));
+    }
+
+    #[test]
+    fn test_modify_enum_name_postgres() {
+        // Test that changing enum name triggers DROP TYPE for old and CREATE TYPE for new
+        let old_enum = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "old_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        });
+
+        let new_enum = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "new_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        });
+
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "status".into(),
+                r#type: old_enum,
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            indexes: vec![],
+        }];
+
+        let result = build_modify_column_type(
+            &DatabaseBackend::Postgres,
+            "users",
+            "status",
+            &new_enum,
+            &current_schema,
+        )
+        .unwrap();
+
+        let sql = result
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Postgres))
+            .collect::<Vec<_>>()
+            .join(";\n");
+
+        // Should have CREATE TYPE with new name
+        assert!(sql.contains("CREATE TYPE \"new_status\""));
+        // Should have ALTER TABLE
+        assert!(sql.contains("ALTER TABLE"));
+        // Should have DROP TYPE for old name
+        assert!(sql.contains("DROP TYPE IF EXISTS \"old_status\""));
     }
 }

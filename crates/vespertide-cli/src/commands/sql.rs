@@ -1,6 +1,6 @@
 use anyhow::Result;
 use colored::Colorize;
-use vespertide_planner::plan_next_migration;
+use vespertide_planner::{plan_next_migration_with_baseline, schema_from_plans};
 use vespertide_query::{DatabaseBackend, build_plan_queries};
 
 use crate::utils::{load_config, load_migrations, load_models};
@@ -10,10 +10,15 @@ pub fn cmd_sql(backend: DatabaseBackend) -> Result<()> {
     let current_models = load_models(&config)?;
     let applied_plans = load_migrations(&config)?;
 
-    let plan = plan_next_migration(&current_models, &applied_plans)
+    // Reconstruct the baseline schema from applied migrations
+    let baseline_schema = schema_from_plans(&applied_plans)
+        .map_err(|e| anyhow::anyhow!("failed to reconstruct schema: {}", e))?;
+
+    // Plan next migration using the pre-computed baseline
+    let plan = plan_next_migration_with_baseline(&current_models, &applied_plans, &baseline_schema)
         .map_err(|e| anyhow::anyhow!("planning error: {}", e))?;
 
-    emit_sql(&plan, backend, &current_models)
+    emit_sql(&plan, backend, &baseline_schema)
 }
 
 fn emit_sql(

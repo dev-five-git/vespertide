@@ -25,7 +25,7 @@
       "type": "add_column"
     }
   ],
-  "comment": "enum",
-  "created_at": "2025-12-17T06:21:26Z",
+  "comment": "Add enum",
+  "created_at": "2025-12-17T07:03:38Z",
   "version": 2
 }

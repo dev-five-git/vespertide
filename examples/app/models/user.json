@@ -44,7 +44,7 @@
     },
     {
       "name": "status",
-      "type": { "kind": "enum", "name": "status", "values": ["active", "inactive"] },
+      "type": { "kind": "enum", "name": "status", "values": ["active", "inactive", "pending"] },
       "nullable": true
     }
   ],
