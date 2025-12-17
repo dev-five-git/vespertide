@@ -1,6 +1,6 @@
 [package]
 name = "vespertide-macro"
-version = "0.1.9"
+version = "0.1.10"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -15,7 +15,6 @@ proc-macro = true
 vespertide-core = { workspace = true }
 vespertide-config = { workspace = true }
 vespertide-loader = { workspace = true }
-vespertide-planner = { workspace = true }
 vespertide-query = { workspace = true }
 thiserror = "2"
 syn = { version = "2.0", features = ["full"] }
