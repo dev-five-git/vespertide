@@ -260,10 +260,7 @@ mod tests {
         "modify_column_type_with_index_sqlite",
         DatabaseBackend::Sqlite
     )]
-    fn test_modify_column_type_with_index(
-        #[case] title: &str,
-        #[case] backend: DatabaseBackend,
-    ) {
+    fn test_modify_column_type_with_index(#[case] title: &str, #[case] backend: DatabaseBackend) {
         // Test modify column type with indexes (lines 85-88, 90-91, 93-94)
         use vespertide_core::IndexDef;
 

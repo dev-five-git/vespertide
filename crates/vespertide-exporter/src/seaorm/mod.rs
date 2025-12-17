@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 
 use crate::orm::OrmExporter;
-use vespertide_core::{ColumnDef, IndexDef, TableConstraint, TableDef};
+use vespertide_core::{
+    ColumnDef, ColumnType, ComplexColumnType, IndexDef, TableConstraint, TableDef,
+};
 
 pub struct SeaOrmExporter;
 
@@ -24,6 +26,19 @@ pub fn render_entity(table: &TableDef) -> String {
     let mut lines: Vec<String> = Vec::new();
     lines.push("use sea_orm::entity::prelude::*;".into());
     lines.push(String::new());
+
+    // Generate Enum definitions first
+    let mut processed_enums = HashSet::new();
+    for column in &table.columns {
+        if let ColumnType::Complex(ComplexColumnType::Enum { name, values }) = &column.r#type {
+            // Avoid duplicate enum definitions if multiple columns use the same enum
+            if !processed_enums.contains(name) {
+                render_enum(&mut lines, name, values);
+                processed_enums.insert(name.clone());
+            }
+        }
+    }
+
     lines.push("#[sea_orm::model]".into());
     lines.push("#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]".into());
     lines.push(format!("#[sea_orm(table_name = \"{}\")]", table.name));
@@ -64,7 +79,19 @@ fn render_column(
     }
 
     let field_name = sanitize_field_name(&column.name);
-    let ty = column.r#type.to_rust_type(column.nullable);
+
+    let ty = match &column.r#type {
+        ColumnType::Complex(ComplexColumnType::Enum { name, .. }) => {
+            let enum_type = to_pascal_case(name);
+            if column.nullable {
+                format!("Option<{}>", enum_type)
+            } else {
+                enum_type
+            }
+        }
+        _ => column.r#type.to_rust_type(column.nullable),
+    };
+
     lines.push(format!("    pub {}: {},", field_name, ty));
 }
 
@@ -174,6 +201,64 @@ fn unique_name(base: &str, used: &mut HashSet<String>) -> String {
     }
     used.insert(name.clone());
     name
+}
+
+fn render_enum(lines: &mut Vec<String>, name: &str, values: &[String]) {
+    let enum_name = to_pascal_case(name);
+
+    lines.push("#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum)]".into());
+    lines.push(format!(
+        "#[sea_orm(rs_type = \"String\", db_type = \"Enum\", enum_name = \"{}\")]",
+        name
+    ));
+    lines.push(format!("pub enum {} {{", enum_name));
+
+    for value in values {
+        let variant_name = enum_variant_name(value);
+        lines.push(format!("    #[sea_orm(string_value = \"{}\")]", value));
+        lines.push(format!("    {},", variant_name));
+    }
+    lines.push("}".into());
+    lines.push(String::new());
+}
+
+/// Convert a string to a valid Rust enum variant name (PascalCase).
+/// Handles edge cases like numeric prefixes, special characters, and reserved words.
+fn enum_variant_name(s: &str) -> String {
+    let pascal = to_pascal_case(s);
+
+    // Handle empty string
+    if pascal.is_empty() {
+        return "Value".to_string();
+    }
+
+    // Handle numeric prefix: prefix with underscore or 'N'
+    if pascal
+        .chars()
+        .next()
+        .map(|c| c.is_ascii_digit())
+        .unwrap_or(false)
+    {
+        return format!("N{}", pascal);
+    }
+
+    pascal
+}
+
+fn to_pascal_case(s: &str) -> String {
+    let mut result = String::new();
+    let mut capitalize = true;
+    for c in s.chars() {
+        if c == '_' || c == '-' {
+            capitalize = true;
+        } else if capitalize {
+            result.push(c.to_ascii_uppercase());
+            capitalize = false;
+        } else {
+            result.push(c);
+        }
+    }
+    result
 }
 
 #[cfg(test)]
@@ -388,6 +473,99 @@ mod helper_tests {
         assert_eq!(unique_name("other", &mut used), "other");
         assert_eq!(unique_name("other", &mut used), "other_1");
     }
+
+    #[test]
+    fn test_to_pascal_case() {
+        // Basic snake_case conversion
+        assert_eq!(to_pascal_case("hello_world"), "HelloWorld");
+        assert_eq!(to_pascal_case("order_status"), "OrderStatus");
+
+        // Kebab-case conversion
+        assert_eq!(to_pascal_case("hello-world"), "HelloWorld");
+        assert_eq!(to_pascal_case("info-level"), "InfoLevel");
+
+        // Already PascalCase
+        assert_eq!(to_pascal_case("HelloWorld"), "HelloWorld");
+
+        // Single word
+        assert_eq!(to_pascal_case("hello"), "Hello");
+        assert_eq!(to_pascal_case("pending"), "Pending");
+
+        // Mixed delimiters
+        assert_eq!(to_pascal_case("hello_world-test"), "HelloWorldTest");
+
+        // Uppercase input
+        assert_eq!(to_pascal_case("HELLO_WORLD"), "HELLOWORLD");
+        assert_eq!(to_pascal_case("ERROR_LEVEL"), "ERRORLEVEL");
+
+        // With numbers
+        assert_eq!(to_pascal_case("level_1"), "Level1");
+        assert_eq!(to_pascal_case("1_critical"), "1Critical");
+
+        // Empty string
+        assert_eq!(to_pascal_case(""), "");
+    }
+
+    #[test]
+    fn test_enum_variant_name() {
+        // Normal cases
+        assert_eq!(enum_variant_name("pending"), "Pending");
+        assert_eq!(enum_variant_name("in_stock"), "InStock");
+        assert_eq!(enum_variant_name("info-level"), "InfoLevel");
+
+        // Numeric prefix - should add 'N' prefix
+        // Note: to_pascal_case("1critical") returns "1critical" (starts with digit, so no uppercase)
+        // then enum_variant_name adds 'N' prefix
+        assert_eq!(enum_variant_name("1critical"), "N1critical");
+        assert_eq!(enum_variant_name("123abc"), "N123abc");
+        // With underscore separator, the part after underscore gets capitalized
+        assert_eq!(enum_variant_name("1_critical"), "N1Critical");
+
+        // Empty string - should return default
+        assert_eq!(enum_variant_name(""), "Value");
+    }
+
+    #[test]
+    fn test_render_enum() {
+        let mut lines = Vec::new();
+        render_enum(
+            &mut lines,
+            "order_status",
+            &["pending".into(), "shipped".into()],
+        );
+
+        assert!(lines.iter().any(|l| l.contains("pub enum OrderStatus")));
+        assert!(lines.iter().any(|l| l.contains("Pending")));
+        assert!(lines.iter().any(|l| l.contains("Shipped")));
+        assert!(lines.iter().any(|l| l.contains("DeriveActiveEnum")));
+        assert!(lines.iter().any(|l| l.contains("EnumIter")));
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("enum_name = \"order_status\""))
+        );
+    }
+
+    #[test]
+    fn test_render_enum_with_numeric_prefix_value() {
+        let mut lines = Vec::new();
+        render_enum(
+            &mut lines,
+            "priority",
+            &["1_high".into(), "2_medium".into(), "3_low".into()],
+        );
+
+        // Numeric prefixed values should be prefixed with 'N'
+        assert!(lines.iter().any(|l| l.contains("N1High")));
+        assert!(lines.iter().any(|l| l.contains("N2Medium")));
+        assert!(lines.iter().any(|l| l.contains("N3Low")));
+        // But the string_value should remain original
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("string_value = \"1_high\""))
+        );
+    }
 }
 
 #[cfg(test)]
@@ -555,6 +733,144 @@ mod tests {
         // Normalize to convert inline constraints to table-level
         table = table.normalize().unwrap();
         table
+    })]
+    #[case("enum_type", TableDef {
+        name: "orders".into(),
+        columns: vec![
+            ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: Some(PrimaryKeySyntax::Bool(true)), unique: None, index: None, foreign_key: None },
+            ColumnDef {
+                name: "status".into(),
+                r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                    name: "order_status".into(),
+                    values: vec!["pending".into(), "shipped".into(), "delivered".into()]
+                }),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            },
+        ],
+        constraints: vec![],
+        indexes: vec![],
+    })]
+    #[case("enum_nullable", TableDef {
+        name: "tasks".into(),
+        columns: vec![
+            ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: Some(PrimaryKeySyntax::Bool(true)), unique: None, index: None, foreign_key: None },
+            ColumnDef {
+                name: "priority".into(),
+                r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                    name: "task_priority".into(),
+                    values: vec!["low".into(), "medium".into(), "high".into(), "critical".into()]
+                }),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            },
+        ],
+        constraints: vec![],
+        indexes: vec![],
+    })]
+    #[case("enum_multiple_columns", TableDef {
+        name: "products".into(),
+        columns: vec![
+            ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: Some(PrimaryKeySyntax::Bool(true)), unique: None, index: None, foreign_key: None },
+            ColumnDef {
+                name: "category".into(),
+                r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                    name: "product_category".into(),
+                    values: vec!["electronics".into(), "clothing".into(), "food".into()]
+                }),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            },
+            ColumnDef {
+                name: "availability".into(),
+                r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                    name: "availability_status".into(),
+                    values: vec!["in_stock".into(), "out_of_stock".into(), "pre_order".into()]
+                }),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            },
+        ],
+        constraints: vec![],
+        indexes: vec![],
+    })]
+    #[case("enum_shared", TableDef {
+        name: "documents".into(),
+        columns: vec![
+            ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: Some(PrimaryKeySyntax::Bool(true)), unique: None, index: None, foreign_key: None },
+            ColumnDef {
+                name: "status".into(),
+                r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                    name: "doc_status".into(),
+                    values: vec!["draft".into(), "published".into(), "archived".into()]
+                }),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            },
+            ColumnDef {
+                name: "review_status".into(),
+                r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                    name: "doc_status".into(),
+                    values: vec!["draft".into(), "published".into(), "archived".into()]
+                }),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            },
+        ],
+        constraints: vec![],
+        indexes: vec![],
+    })]
+    #[case("enum_special_values", TableDef {
+        name: "events".into(),
+        columns: vec![
+            ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: Some(PrimaryKeySyntax::Bool(true)), unique: None, index: None, foreign_key: None },
+            ColumnDef {
+                name: "severity".into(),
+                r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                    name: "event_severity".into(),
+                    values: vec!["info-level".into(), "warning_level".into(), "ERROR_LEVEL".into(), "1critical".into()]
+                }),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            },
+        ],
+        constraints: vec![],
+        indexes: vec![],
     })]
     fn render_entity_snapshots(#[case] name: &str, #[case] table: TableDef) {
         let rendered = render_entity(&table);

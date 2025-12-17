@@ -333,9 +333,7 @@ mod tests {
     #[case::rename_column_postgres(DatabaseBackend::Postgres)]
     #[case::rename_column_mysql(DatabaseBackend::MySql)]
     #[case::rename_column_sqlite(DatabaseBackend::Sqlite)]
-    fn test_build_action_queries_rename_column(
-        #[case] backend: DatabaseBackend,
-    ) {
+    fn test_build_action_queries_rename_column(#[case] backend: DatabaseBackend) {
         // Test MigrationAction::RenameColumn (lines 51-52)
         let action = MigrationAction::RenameColumn {
             table: "users".into(),
@@ -358,9 +356,7 @@ mod tests {
     #[case::delete_column_postgres(DatabaseBackend::Postgres)]
     #[case::delete_column_mysql(DatabaseBackend::MySql)]
     #[case::delete_column_sqlite(DatabaseBackend::Sqlite)]
-    fn test_build_action_queries_delete_column(
-        #[case] backend: DatabaseBackend,
-    ) {
+    fn test_build_action_queries_delete_column(#[case] backend: DatabaseBackend) {
         // Test MigrationAction::DeleteColumn (lines 55-56)
         let action = MigrationAction::DeleteColumn {
             table: "users".into(),
@@ -381,9 +377,7 @@ mod tests {
     #[case::modify_column_type_postgres(DatabaseBackend::Postgres)]
     #[case::modify_column_type_mysql(DatabaseBackend::MySql)]
     #[case::modify_column_type_sqlite(DatabaseBackend::Sqlite)]
-    fn test_build_action_queries_modify_column_type(
-        #[case] backend: DatabaseBackend,
-    ) {
+    fn test_build_action_queries_modify_column_type(#[case] backend: DatabaseBackend) {
         // Test MigrationAction::ModifyColumnType (lines 60-63)
         let action = MigrationAction::ModifyColumnType {
             table: "users".into(),
@@ -424,9 +418,7 @@ mod tests {
     #[case::remove_index_postgres(DatabaseBackend::Postgres)]
     #[case::remove_index_mysql(DatabaseBackend::MySql)]
     #[case::remove_index_sqlite(DatabaseBackend::Sqlite)]
-    fn test_build_action_queries_remove_index(
-        #[case] backend: DatabaseBackend,
-    ) {
+    fn test_build_action_queries_remove_index(#[case] backend: DatabaseBackend) {
         // Test MigrationAction::RemoveIndex (line 67)
         let action = MigrationAction::RemoveIndex {
             table: "users".into(),
@@ -447,9 +439,7 @@ mod tests {
     #[case::rename_table_postgres(DatabaseBackend::Postgres)]
     #[case::rename_table_mysql(DatabaseBackend::MySql)]
     #[case::rename_table_sqlite(DatabaseBackend::Sqlite)]
-    fn test_build_action_queries_rename_table(
-        #[case] backend: DatabaseBackend,
-    ) {
+    fn test_build_action_queries_rename_table(#[case] backend: DatabaseBackend) {
         // Test MigrationAction::RenameTable (line 69)
         let action = MigrationAction::RenameTable {
             from: "old_table".into(),
@@ -471,9 +461,7 @@ mod tests {
     #[case::add_constraint_postgres(DatabaseBackend::Postgres)]
     #[case::add_constraint_mysql(DatabaseBackend::MySql)]
     #[case::add_constraint_sqlite(DatabaseBackend::Sqlite)]
-    fn test_build_action_queries_add_constraint(
-        #[case] backend: DatabaseBackend,
-    ) {
+    fn test_build_action_queries_add_constraint(#[case] backend: DatabaseBackend) {
         // Test MigrationAction::AddConstraint (lines 73-74)
         let action = MigrationAction::AddConstraint {
             table: "users".into(),
@@ -529,9 +517,7 @@ mod tests {
     #[case::remove_constraint_postgres(DatabaseBackend::Postgres)]
     #[case::remove_constraint_mysql(DatabaseBackend::MySql)]
     #[case::remove_constraint_sqlite(DatabaseBackend::Sqlite)]
-    fn test_build_action_queries_remove_constraint(
-        #[case] backend: DatabaseBackend,
-    ) {
+    fn test_build_action_queries_remove_constraint(#[case] backend: DatabaseBackend) {
         // Test MigrationAction::RemoveConstraint (lines 77-78)
         let action = MigrationAction::RemoveConstraint {
             table: "users".into(),
@@ -590,9 +576,7 @@ mod tests {
     #[case::add_column_postgres(DatabaseBackend::Postgres)]
     #[case::add_column_mysql(DatabaseBackend::MySql)]
     #[case::add_column_sqlite(DatabaseBackend::Sqlite)]
-    fn test_build_action_queries_add_column(
-        #[case] backend: DatabaseBackend,
-    ) {
+    fn test_build_action_queries_add_column(#[case] backend: DatabaseBackend) {
         // Test MigrationAction::AddColumn (lines 46-49)
         let action = MigrationAction::AddColumn {
             table: "users".into(),
@@ -644,9 +628,7 @@ mod tests {
     #[case::add_index_postgres(DatabaseBackend::Postgres)]
     #[case::add_index_mysql(DatabaseBackend::MySql)]
     #[case::add_index_sqlite(DatabaseBackend::Sqlite)]
-    fn test_build_action_queries_add_index(
-        #[case] backend: DatabaseBackend,
-    ) {
+    fn test_build_action_queries_add_index(#[case] backend: DatabaseBackend) {
         // Test MigrationAction::AddIndex (line 65)
         let action = MigrationAction::AddIndex {
             table: "users".into(),
@@ -671,9 +653,7 @@ mod tests {
     #[case::raw_sql_postgres(DatabaseBackend::Postgres)]
     #[case::raw_sql_mysql(DatabaseBackend::MySql)]
     #[case::raw_sql_sqlite(DatabaseBackend::Sqlite)]
-    fn test_build_action_queries_raw_sql(
-        #[case] backend: DatabaseBackend,
-    ) {
+    fn test_build_action_queries_raw_sql(#[case] backend: DatabaseBackend) {
         // Test MigrationAction::RawSql (line 71)
         let action = MigrationAction::RawSql {
             sql: "SELECT 1;".into(),

@@ -111,6 +111,12 @@ pub fn apply_column_type(col: &mut SeaColumnDef, ty: &ColumnType) {
             ComplexColumnType::Custom { custom_type } => {
                 col.custom(Alias::new(custom_type));
             }
+            ComplexColumnType::Enum { name, values } => {
+                col.enumeration(
+                    Alias::new(name),
+                    values.iter().map(Alias::new).collect::<Vec<Alias>>(),
+                );
+            }
         },
     }
 }
@@ -223,6 +229,7 @@ mod tests {
     #[case(ComplexColumnType::Numeric { precision: 8, scale: 3 })]
     #[case(ComplexColumnType::Char { length: 3 })]
     #[case(ComplexColumnType::Custom { custom_type: "GEOGRAPHY".into() })]
+    #[case(ComplexColumnType::Enum { name: "status".into(), values: vec!["active".into(), "inactive".into()] })]
     fn test_all_complex_types_cover_branches(#[case] ty: ComplexColumnType) {
         let mut col = SeaColumnDef::new(Alias::new("t"));
         apply_column_type(&mut col, &ColumnType::Complex(ty));
