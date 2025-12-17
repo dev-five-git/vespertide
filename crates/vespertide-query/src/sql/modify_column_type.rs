@@ -182,12 +182,21 @@ pub fn build_modify_column_type(
 
             // If new type is an enum and different from old, create the type first (PostgreSQL only)
             if let ColumnType::Complex(ComplexColumnType::Enum { name: new_name, .. }) = new_type {
-                let should_create = match old_type {
-                    Some(ColumnType::Complex(ComplexColumnType::Enum {
-                        name: old_name, ..
-                    })) => old_name != new_name,
-                    Some(_) => true, // Old type wasn't an enum
-                    None => true,    // No old type
+                // Determine if we need to create a new enum type
+                // - If old type was a different enum, we need to create the new one
+                // - If old type was not an enum, we need to create the enum type
+                let should_create = if let Some(old_col_type) = old_type {
+                    match old_col_type {
+                        ColumnType::Complex(ComplexColumnType::Enum { name: old_name, .. }) => {
+                            old_name != new_name
+                        }
+                        _ => true, // Old type wasn't an enum, need to create enum type
+                    }
+                } else {
+                    // old_type is None - this means the column wasn't found in current schema
+                    // This should not happen as we're modifying an existing column
+                    // But we'll create the type to be safe
+                    true
                 };
 
                 if should_create && let Some(create_type_sql) = build_create_enum_type_sql(new_type)
@@ -729,5 +738,36 @@ mod tests {
         with_settings!({ snapshot_suffix => format!("modify_enum_types_{}", title) }, {
             assert_snapshot!(sql);
         });
+    }
+
+    #[test]
+    fn test_modify_column_type_to_enum_with_empty_schema() {
+        // Test the None branch in line 195-200
+        // When current_schema is empty, old_type will be None
+        use vespertide_core::ComplexColumnType;
+
+        let result = build_modify_column_type(
+            &DatabaseBackend::Postgres,
+            "users",
+            "status",
+            &ColumnType::Complex(ComplexColumnType::Enum {
+                name: "status_type".into(),
+                values: vec!["active".into(), "inactive".into()],
+            }),
+            &[], // Empty schema - old_type will be None
+        );
+
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Postgres))
+            .collect::<Vec<String>>()
+            .join(";\n");
+
+        // Should create the enum type since old_type is None
+        assert!(sql.contains("CREATE TYPE"));
+        assert!(sql.contains("status_type"));
+        assert!(sql.contains("ALTER TABLE"));
     }
 }
