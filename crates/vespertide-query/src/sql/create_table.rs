@@ -365,4 +365,57 @@ mod tests {
             assert_snapshot!(sql);
         });
     }
+
+    #[rstest]
+    #[case::postgres(DatabaseBackend::Postgres)]
+    #[case::mysql(DatabaseBackend::MySql)]
+    #[case::sqlite(DatabaseBackend::Sqlite)]
+    fn test_create_table_with_enum_column(#[case] backend: DatabaseBackend) {
+        // Test creating a table with an enum column (should create enum type first for PostgreSQL)
+        let columns = vec![
+            ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            },
+            ColumnDef {
+                name: "status".into(),
+                r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                    name: "user_status".into(),
+                    values: vec!["active".into(), "inactive".into(), "pending".into()],
+                }),
+                nullable: false,
+                default: Some("'active'".into()),
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            },
+        ];
+        let constraints = vec![TableConstraint::PrimaryKey {
+            auto_increment: false,
+            columns: vec!["id".into()],
+        }];
+
+        let result =
+            build_create_table(&backend, "users", &columns, &constraints);
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join(";\n");
+
+        with_settings!({ snapshot_suffix => format!("create_table_with_enum_column_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
 }

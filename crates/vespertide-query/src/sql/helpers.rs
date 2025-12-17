@@ -381,4 +381,34 @@ mod tests {
         let result = convert_default_for_backend(default, &backend);
         assert_eq!(result, expected);
     }
+
+    #[test]
+    fn test_is_enum_type_true() {
+        let enum_type = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        });
+        assert!(is_enum_type(&enum_type));
+    }
+
+    #[test]
+    fn test_is_enum_type_false() {
+        let text_type = ColumnType::Simple(SimpleColumnType::Text);
+        assert!(!is_enum_type(&text_type));
+    }
+
+    #[test]
+    fn test_get_enum_name_some() {
+        let enum_type = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "user_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        });
+        assert_eq!(get_enum_name(&enum_type), Some("user_status"));
+    }
+
+    #[test]
+    fn test_get_enum_name_none() {
+        let text_type = ColumnType::Simple(SimpleColumnType::Text);
+        assert_eq!(get_enum_name(&text_type), None);
+    }
 }

@@ -492,4 +492,63 @@ mod tests {
         assert!(sql.contains("CREATE UNIQUE INDEX"));
         assert!(sql.contains("idx_email"));
     }
+
+    #[rstest]
+    #[case::add_column_with_enum_type_postgres(DatabaseBackend::Postgres)]
+    #[case::add_column_with_enum_type_mysql(DatabaseBackend::MySql)]
+    #[case::add_column_with_enum_type_sqlite(DatabaseBackend::Sqlite)]
+    fn test_add_column_with_enum_type(#[case] backend: DatabaseBackend) {
+        use vespertide_core::ComplexColumnType;
+        use insta::{assert_snapshot, with_settings};
+
+        // Test that adding an enum column creates the enum type first (PostgreSQL only)
+        let column = ColumnDef {
+            name: "status".into(),
+            r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                name: "status_type".into(),
+                values: vec!["active".into(), "inactive".into()],
+            }),
+            nullable: true,
+            default: None,
+            comment: None,
+            primary_key: None,
+            unique: None,
+            index: None,
+            foreign_key: None,
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            indexes: vec![],
+        }];
+        let result = build_add_column(
+            &backend,
+            "users",
+            &column,
+            None,
+            &current_schema,
+        );
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join(";\n");
+
+        with_settings!({ snapshot_suffix => format!("add_column_with_enum_type_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
 }

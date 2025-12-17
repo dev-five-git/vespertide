@@ -321,23 +321,23 @@ mod tests {
     }
 
     #[test]
-    fn test_modify_column_type_sqlite_table_not_found() {
-        // Test error when table is not found in current schema (line 25)
+    fn test_modify_column_type_table_not_found() {
         let result = build_modify_column_type(
             &DatabaseBackend::Sqlite,
             "nonexistent_table",
             "age",
             &ColumnType::Simple(SimpleColumnType::BigInt),
-            &[], // Empty schema
+            &[],
         );
         assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("Table 'nonexistent_table' not found in current schema"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Table 'nonexistent_table' not found"));
     }
 
     #[test]
-    fn test_modify_column_type_sqlite_column_not_found() {
-        // Test error when column is not found in table (lines 35-37)
+    fn test_modify_column_type_column_not_found() {
         let current_schema = vec![TableDef {
             name: "users".into(),
             columns: vec![ColumnDef {
@@ -362,8 +362,10 @@ mod tests {
             &current_schema,
         );
         assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("Column 'nonexistent_column' not found in table 'users'"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Column 'nonexistent_column' not found"));
     }
 
     #[rstest]
@@ -523,135 +525,180 @@ mod tests {
         });
     }
 
-    #[test]
-    fn test_modify_enum_values_postgres() {
-        // Test that changing enum values uses the temp type + USING + RENAME approach
-        let old_enum = ColumnType::Complex(ComplexColumnType::Enum {
+    #[rstest]
+    #[case::enum_values_changed_postgres(
+        "enum_values_changed_postgres",
+        DatabaseBackend::Postgres,
+        ColumnType::Complex(ComplexColumnType::Enum {
             name: "status".into(),
             values: vec!["active".into(), "inactive".into()],
-        });
-
-        let new_enum = ColumnType::Complex(ComplexColumnType::Enum {
+        }),
+        ColumnType::Complex(ComplexColumnType::Enum {
             name: "status".into(),
             values: vec!["active".into(), "inactive".into(), "pending".into()],
-        });
-
-        let current_schema = vec![TableDef {
-            name: "users".into(),
-            columns: vec![ColumnDef {
-                name: "status".into(),
-                r#type: old_enum,
-                nullable: true,
-                default: None,
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
-            }],
-            constraints: vec![],
-            indexes: vec![],
-        }];
-
-        let result = build_modify_column_type(
-            &DatabaseBackend::Postgres,
-            "users",
-            "status",
-            &new_enum,
-            &current_schema,
-        )
-        .unwrap();
-
-        let sql = result
-            .iter()
-            .map(|q| q.build(DatabaseBackend::Postgres))
-            .collect::<Vec<_>>()
-            .join(";\n");
-
-        // Should use the safe temp type approach:
-        // 1. CREATE TYPE status_new AS ENUM (...)
-        assert!(
-            sql.contains("CREATE TYPE \"status_new\" AS ENUM ('active', 'inactive', 'pending')")
-        );
-        // 2. ALTER TABLE ... USING column::text::status_new
-        assert!(sql.contains("ALTER TABLE \"users\" ALTER COLUMN \"status\" TYPE \"status_new\" USING \"status\"::text::\"status_new\""));
-        // 3. DROP TYPE status
-        assert!(sql.contains("DROP TYPE \"status\""));
-        // 4. ALTER TYPE status_new RENAME TO status
-        assert!(sql.contains("ALTER TYPE \"status_new\" RENAME TO \"status\""));
-    }
-
-    #[test]
-    fn test_modify_enum_same_values_postgres() {
-        // Test that keeping same enum values doesn't trigger DROP TYPE
-        let old_enum = ColumnType::Complex(ComplexColumnType::Enum {
+        })
+    )]
+    #[case::enum_values_changed_mysql(
+        "enum_values_changed_mysql",
+        DatabaseBackend::MySql,
+        ColumnType::Complex(ComplexColumnType::Enum {
             name: "status".into(),
             values: vec!["active".into(), "inactive".into()],
-        });
-
-        let new_enum = ColumnType::Complex(ComplexColumnType::Enum {
+        }),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into(), "pending".into()],
+        })
+    )]
+    #[case::enum_values_changed_sqlite(
+        "enum_values_changed_sqlite",
+        DatabaseBackend::Sqlite,
+        ColumnType::Complex(ComplexColumnType::Enum {
             name: "status".into(),
             values: vec!["active".into(), "inactive".into()],
-        });
-
-        let current_schema = vec![TableDef {
-            name: "users".into(),
-            columns: vec![ColumnDef {
-                name: "status".into(),
-                r#type: old_enum,
-                nullable: true,
-                default: None,
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
-            }],
-            constraints: vec![],
-            indexes: vec![],
-        }];
-
-        let result = build_modify_column_type(
-            &DatabaseBackend::Postgres,
-            "users",
-            "status",
-            &new_enum,
-            &current_schema,
-        )
-        .unwrap();
-
-        let sql = result
-            .iter()
-            .map(|q| q.build(DatabaseBackend::Postgres))
-            .collect::<Vec<_>>()
-            .join(";\n");
-
-        // Should NOT have CREATE TYPE (enum already exists)
-        assert!(!sql.contains("CREATE TYPE"));
-        // Should have ALTER TABLE
-        assert!(sql.contains("ALTER TABLE"));
-        // Should NOT have DROP TYPE (values haven't changed)
-        assert!(!sql.contains("DROP TYPE"));
-    }
-
-    #[test]
-    fn test_modify_enum_name_postgres() {
-        // Test that changing enum name triggers DROP TYPE for old and CREATE TYPE for new
-        let old_enum = ColumnType::Complex(ComplexColumnType::Enum {
+        }),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into(), "pending".into()],
+        })
+    )]
+    #[case::enum_same_values_postgres(
+        "enum_same_values_postgres",
+        DatabaseBackend::Postgres,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        }),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        })
+    )]
+    #[case::enum_same_values_mysql(
+        "enum_same_values_mysql",
+        DatabaseBackend::MySql,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        }),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        })
+    )]
+    #[case::enum_same_values_sqlite(
+        "enum_same_values_sqlite",
+        DatabaseBackend::Sqlite,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        }),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        })
+    )]
+    #[case::enum_name_changed_postgres(
+        "enum_name_changed_postgres",
+        DatabaseBackend::Postgres,
+        ColumnType::Complex(ComplexColumnType::Enum {
             name: "old_status".into(),
             values: vec!["active".into(), "inactive".into()],
-        });
-
-        let new_enum = ColumnType::Complex(ComplexColumnType::Enum {
+        }),
+        ColumnType::Complex(ComplexColumnType::Enum {
             name: "new_status".into(),
             values: vec!["active".into(), "inactive".into()],
-        });
-
+        })
+    )]
+    #[case::enum_name_changed_mysql(
+        "enum_name_changed_mysql",
+        DatabaseBackend::MySql,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "old_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        }),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "new_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        })
+    )]
+    #[case::enum_name_changed_sqlite(
+        "enum_name_changed_sqlite",
+        DatabaseBackend::Sqlite,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "old_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        }),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "new_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        })
+    )]
+    #[case::text_to_enum_postgres(
+        "text_to_enum_postgres",
+        DatabaseBackend::Postgres,
+        ColumnType::Simple(SimpleColumnType::Text),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "user_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        })
+    )]
+    #[case::text_to_enum_mysql(
+        "text_to_enum_mysql",
+        DatabaseBackend::MySql,
+        ColumnType::Simple(SimpleColumnType::Text),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "user_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        })
+    )]
+    #[case::text_to_enum_sqlite(
+        "text_to_enum_sqlite",
+        DatabaseBackend::Sqlite,
+        ColumnType::Simple(SimpleColumnType::Text),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "user_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        })
+    )]
+    #[case::enum_to_text_postgres(
+        "enum_to_text_postgres",
+        DatabaseBackend::Postgres,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "user_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        }),
+        ColumnType::Simple(SimpleColumnType::Text)
+    )]
+    #[case::enum_to_text_mysql(
+        "enum_to_text_mysql",
+        DatabaseBackend::MySql,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "user_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        }),
+        ColumnType::Simple(SimpleColumnType::Text)
+    )]
+    #[case::enum_to_text_sqlite(
+        "enum_to_text_sqlite",
+        DatabaseBackend::Sqlite,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "user_status".into(),
+            values: vec!["active".into(), "inactive".into()],
+        }),
+        ColumnType::Simple(SimpleColumnType::Text)
+    )]
+    fn test_modify_enum_types(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+        #[case] old_type: ColumnType,
+        #[case] new_type: ColumnType,
+    ) {
         let current_schema = vec![TableDef {
             name: "users".into(),
             columns: vec![ColumnDef {
                 name: "status".into(),
-                r#type: old_enum,
+                r#type: old_type,
                 nullable: true,
                 default: None,
                 comment: None,
@@ -665,25 +712,22 @@ mod tests {
         }];
 
         let result = build_modify_column_type(
-            &DatabaseBackend::Postgres,
+            &backend,
             "users",
             "status",
-            &new_enum,
+            &new_type,
             &current_schema,
         )
         .unwrap();
 
         let sql = result
             .iter()
-            .map(|q| q.build(DatabaseBackend::Postgres))
+            .map(|q| q.build(backend))
             .collect::<Vec<_>>()
             .join(";\n");
 
-        // Should have CREATE TYPE with new name
-        assert!(sql.contains("CREATE TYPE \"new_status\""));
-        // Should have ALTER TABLE
-        assert!(sql.contains("ALTER TABLE"));
-        // Should have DROP TYPE for old name
-        assert!(sql.contains("DROP TYPE IF EXISTS \"old_status\""));
+        with_settings!({ snapshot_suffix => format!("modify_enum_types_{}", title) }, {
+            assert_snapshot!(sql);
+        });
     }
 }

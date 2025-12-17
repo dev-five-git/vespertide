@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/modify_column_type.rs
+expression: sql
+---
+CREATE TYPE "user_status" AS ENUM ('active', 'inactive');
+ALTER TABLE "users" ALTER COLUMN "status" TYPE user_status

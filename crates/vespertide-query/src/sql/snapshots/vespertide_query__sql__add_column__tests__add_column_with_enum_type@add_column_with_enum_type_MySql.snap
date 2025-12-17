@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/add_column.rs
+expression: sql
+---
+;
+ALTER TABLE `users` ADD COLUMN `status` ENUM('active', 'inactive')
