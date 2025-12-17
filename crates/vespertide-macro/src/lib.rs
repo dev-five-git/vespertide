@@ -96,36 +96,43 @@ pub fn vespertide_migration(input: TokenStream) -> TokenStream {
         };
 
         // Pre-generate SQL for all backends at compile time
+        // Each query may produce multiple SQL statements, so we flatten them
         let sql_statements: Vec<_> = queries
             .iter()
-            .map(|q| {
-                let pg_sql = q
+            .flat_map(|q| {
+                // Collect all individual SQL statements from each backend
+                let pg_sqls: Vec<_> = q
                     .postgres
                     .iter()
-                    .map(|q| q.build(DatabaseBackend::Postgres))
-                    .collect::<Vec<_>>()
-                    .join(";\n");
-                let mysql_sql = q
+                    .map(|stmt| stmt.build(DatabaseBackend::Postgres))
+                    .collect();
+                let mysql_sqls: Vec<_> = q
                     .mysql
                     .iter()
-                    .map(|q| q.build(DatabaseBackend::MySql))
-                    .collect::<Vec<_>>()
-                    .join(";\n");
-                let sqlite_sql = q
+                    .map(|stmt| stmt.build(DatabaseBackend::MySql))
+                    .collect();
+                let sqlite_sqls: Vec<_> = q
                     .sqlite
                     .iter()
-                    .map(|q| q.build(DatabaseBackend::Sqlite))
-                    .collect::<Vec<_>>()
-                    .join(";\n");
+                    .map(|stmt| stmt.build(DatabaseBackend::Sqlite))
+                    .collect();
 
-                quote! {
-                    match backend {
-                        sea_orm::DatabaseBackend::Postgres => #pg_sql,
-                        sea_orm::DatabaseBackend::MySql => #mysql_sql,
-                        sea_orm::DatabaseBackend::Sqlite => #sqlite_sql,
-                        _ => #pg_sql, // Fallback to PostgreSQL syntax for unknown backends
+                // Generate a separate execution block for each SQL statement
+                let max_len = pg_sqls.len().max(mysql_sqls.len()).max(sqlite_sqls.len());
+                (0..max_len).map(move |i| {
+                    let pg_sql = pg_sqls.get(i).cloned().unwrap_or_default();
+                    let mysql_sql = mysql_sqls.get(i).cloned().unwrap_or_default();
+                    let sqlite_sql = sqlite_sqls.get(i).cloned().unwrap_or_default();
+
+                    quote! {
+                        match backend {
+                            sea_orm::DatabaseBackend::Postgres => #pg_sql,
+                            sea_orm::DatabaseBackend::MySql => #mysql_sql,
+                            sea_orm::DatabaseBackend::Sqlite => #sqlite_sql,
+                            _ => #pg_sql, // Fallback to PostgreSQL syntax for unknown backends
+                        }
                     }
-                }
+                }).collect::<Vec<_>>()
             })
             .collect();
 

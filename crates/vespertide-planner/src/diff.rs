@@ -94,7 +94,7 @@ fn topological_sort_tables<'a>(tables: &[&'a TableDef]) -> Result<Vec<&'a TableD
 }
 
 /// Sort DeleteTable actions so that tables with FK references are deleted first.
-/// This is the reverse of creation order.
+/// This is the reverse of creation order - use topological sort then reverse.
 fn sort_delete_tables(actions: &mut [MigrationAction], all_tables: &HashMap<&str, &TableDef>) {
     // Collect DeleteTable actions and their indices
     let delete_indices: Vec<usize> = actions
@@ -114,7 +114,7 @@ fn sort_delete_tables(actions: &mut [MigrationAction], all_tables: &HashMap<&str
     }
 
     // Extract table names being deleted
-    let delete_tables: Vec<&str> = delete_indices
+    let delete_table_names: HashSet<&str> = delete_indices
         .iter()
         .filter_map(|&i| {
             if let MigrationAction::DeleteTable { table } = &actions[i] {
@@ -126,13 +126,14 @@ fn sort_delete_tables(actions: &mut [MigrationAction], all_tables: &HashMap<&str
         .collect();
 
     // Build dependency graph for tables being deleted
+    // dependencies[A] = [B] means A has FK referencing B
     let mut dependencies: HashMap<&str, Vec<&str>> = HashMap::new();
-    for &table_name in &delete_tables {
+    for &table_name in &delete_table_names {
         let mut deps = Vec::new();
         if let Some(table_def) = all_tables.get(table_name) {
             for constraint in &table_def.constraints {
                 if let TableConstraint::ForeignKey { ref_table, .. } = constraint
-                    && delete_tables.contains(&ref_table.as_str())
+                    && delete_table_names.contains(ref_table.as_str())
                     && ref_table != table_name
                 {
                     deps.push(ref_table.as_str());
@@ -142,29 +143,47 @@ fn sort_delete_tables(actions: &mut [MigrationAction], all_tables: &HashMap<&str
         dependencies.insert(table_name, deps);
     }
 
-    // Sort: tables that depend on others should be deleted first
-    // (reverse topological order)
-    let mut sorted_tables = delete_tables.clone();
-    sorted_tables.sort_by(|a, b| {
-        let a_depends_on_b = dependencies.get(a).is_some_and(|deps| deps.contains(b));
-        let b_depends_on_a = dependencies.get(b).is_some_and(|deps| deps.contains(a));
+    // Use Kahn's algorithm for topological sort
+    // in_degree[A] = number of tables A depends on
+    let mut in_degree: HashMap<&str, usize> = HashMap::new();
+    for &table_name in &delete_table_names {
+        in_degree.insert(table_name, dependencies.get(table_name).map_or(0, |d| d.len()));
+    }
 
-        if a_depends_on_b {
-            std::cmp::Ordering::Less // a depends on b, so delete a first
-        } else if b_depends_on_a {
-            std::cmp::Ordering::Greater // b depends on a, so delete b first
-        } else {
-            std::cmp::Ordering::Equal
+    // Start with tables that have no dependencies (can be deleted last in creation order)
+    let mut queue: VecDeque<&str> = VecDeque::new();
+    for &table_name in &delete_table_names {
+        if in_degree.get(table_name) == Some(&0) {
+            queue.push_back(table_name);
         }
-    });
+    }
 
-    // Reorder the DeleteTable actions in place
+    let mut sorted_tables: Vec<&str> = Vec::new();
+    while let Some(table_name) = queue.pop_front() {
+        sorted_tables.push(table_name);
+
+        // For each table that has this one as a dependency, decrement its in-degree
+        for (&dependent, deps) in &dependencies {
+            if deps.contains(&table_name) {
+                if let Some(degree) = in_degree.get_mut(dependent) {
+                    *degree -= 1;
+                    if *degree == 0 {
+                        queue.push_back(dependent);
+                    }
+                }
+            }
+        }
+    }
+
+    // Reverse to get deletion order (tables with dependencies should be deleted first)
+    sorted_tables.reverse();
+
+    // Reorder the DeleteTable actions according to sorted order
     let mut delete_actions: Vec<MigrationAction> = delete_indices
         .iter()
         .map(|&i| actions[i].clone())
         .collect();
 
-    // Sort delete_actions according to sorted_tables order
     delete_actions.sort_by(|a, b| {
         let a_name = if let MigrationAction::DeleteTable { table } = a {
             table.as_str()
