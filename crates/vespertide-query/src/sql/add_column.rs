@@ -498,8 +498,8 @@ mod tests {
     #[case::add_column_with_enum_type_mysql(DatabaseBackend::MySql)]
     #[case::add_column_with_enum_type_sqlite(DatabaseBackend::Sqlite)]
     fn test_add_column_with_enum_type(#[case] backend: DatabaseBackend) {
-        use vespertide_core::ComplexColumnType;
         use insta::{assert_snapshot, with_settings};
+        use vespertide_core::ComplexColumnType;
 
         // Test that adding an enum column creates the enum type first (PostgreSQL only)
         let column = ColumnDef {
@@ -532,13 +532,7 @@ mod tests {
             constraints: vec![],
             indexes: vec![],
         }];
-        let result = build_add_column(
-            &backend,
-            "users",
-            &column,
-            None,
-            &current_schema,
-        );
+        let result = build_add_column(&backend, "users", &column, None, &current_schema);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries

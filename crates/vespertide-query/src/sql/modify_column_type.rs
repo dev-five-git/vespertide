@@ -185,17 +185,14 @@ pub fn build_modify_column_type(
                 // Determine if we need to create a new enum type
                 // - If old type was a different enum, we need to create the new one
                 // - If old type was not an enum, we need to create the enum type
-                let should_create = if let Some(old_col_type) = old_type {
-                    match old_col_type {
-                        ColumnType::Complex(ComplexColumnType::Enum { name: old_name, .. }) => {
-                            old_name != new_name
-                        }
-                        _ => true, // Old type wasn't an enum, need to create enum type
-                    }
+                let should_create = if let Some(ColumnType::Complex(ComplexColumnType::Enum {
+                    name: old_name,
+                    ..
+                })) = old_type
+                {
+                    old_name != new_name
                 } else {
-                    // old_type is None - this means the column wasn't found in current schema
-                    // This should not happen as we're modifying an existing column
-                    // But we'll create the type to be safe
+                    // Either old_type is None or it wasn't an enum - need to create enum type
                     true
                 };
 
@@ -339,10 +336,12 @@ mod tests {
             &[],
         );
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Table 'nonexistent_table' not found"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Table 'nonexistent_table' not found")
+        );
     }
 
     #[test]
@@ -371,10 +370,12 @@ mod tests {
             &current_schema,
         );
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Column 'nonexistent_column' not found"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Column 'nonexistent_column' not found")
+        );
     }
 
     #[rstest]
@@ -720,14 +721,9 @@ mod tests {
             indexes: vec![],
         }];
 
-        let result = build_modify_column_type(
-            &backend,
-            "users",
-            "status",
-            &new_type,
-            &current_schema,
-        )
-        .unwrap();
+        let result =
+            build_modify_column_type(&backend, "users", "status", &new_type, &current_schema)
+                .unwrap();
 
         let sql = result
             .iter()

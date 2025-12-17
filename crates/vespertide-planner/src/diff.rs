@@ -1304,8 +1304,18 @@ mod tests {
             use crate::diff::diff_schemas;
 
             let from_schema = vec![
-                table("users", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![], vec![]),
-                table("posts", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![], vec![]),
+                table(
+                    "users",
+                    vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+                    vec![],
+                    vec![],
+                ),
+                table(
+                    "posts",
+                    vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+                    vec![],
+                    vec![],
+                ),
             ];
 
             let to_schema = vec![
@@ -1324,8 +1334,16 @@ mod tests {
             let plan = diff_schemas(&from_schema, &to_schema).unwrap();
 
             // Should have: AddColumn (for users.name) and DeleteTable (for posts)
-            assert!(plan.actions.iter().any(|a| matches!(a, MigrationAction::AddColumn { .. })));
-            assert!(plan.actions.iter().any(|a| matches!(a, MigrationAction::DeleteTable { .. })));
+            assert!(
+                plan.actions
+                    .iter()
+                    .any(|a| matches!(a, MigrationAction::AddColumn { .. }))
+            );
+            assert!(
+                plan.actions
+                    .iter()
+                    .any(|a| matches!(a, MigrationAction::DeleteTable { .. }))
+            );
 
             // The else branches in sort_delete_actions should handle AddColumn gracefully
             // (returning empty string for table name, which sorts it to position 0)

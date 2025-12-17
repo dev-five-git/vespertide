@@ -404,8 +404,7 @@ mod tests {
             columns: vec!["id".into()],
         }];
 
-        let result =
-            build_create_table(&backend, "users", &columns, &constraints);
+        let result = build_create_table(&backend, "users", &columns, &constraints);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
