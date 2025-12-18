@@ -153,10 +153,14 @@ pub fn build_add_constraint(
         }
         TableConstraint::Unique { name, columns } => {
             // SQLite does not support ALTER TABLE ... ADD CONSTRAINT UNIQUE
-            let mut idx = Index::create().table(Alias::new(table)).unique().to_owned();
-            if let Some(n) = name {
-                idx = idx.name(n).to_owned();
-            }
+            // Always generate a proper name: uq_{table}_{key} or uq_{table}_{columns}
+            let index_name =
+                super::helpers::build_unique_constraint_name(table, columns, name.as_deref());
+            let mut idx = Index::create()
+                .table(Alias::new(table))
+                .name(&index_name)
+                .unique()
+                .to_owned();
             for col in columns {
                 idx = idx.col(Alias::new(col)).to_owned();
             }
@@ -394,17 +398,17 @@ mod tests {
     #[case::add_constraint_unique_named_postgres(
         "add_constraint_unique_named_postgres",
         DatabaseBackend::Postgres,
-        &["CREATE UNIQUE INDEX \"uq_email\" ON \"users\" (\"email\")"]
+        &["CREATE UNIQUE INDEX \"uq_users__uq_email\" ON \"users\" (\"email\")"]
     )]
     #[case::add_constraint_unique_named_mysql(
         "add_constraint_unique_named_mysql",
         DatabaseBackend::MySql,
-        &["CREATE UNIQUE INDEX `uq_email` ON `users` (`email`)"]
+        &["CREATE UNIQUE INDEX `uq_users__uq_email` ON `users` (`email`)"]
     )]
     #[case::add_constraint_unique_named_sqlite(
         "add_constraint_unique_named_sqlite",
         DatabaseBackend::Sqlite,
-        &["CREATE UNIQUE INDEX \"uq_email\" ON \"users\" (\"email\")"]
+        &["CREATE UNIQUE INDEX \"uq_users__uq_email\" ON \"users\" (\"email\")"]
     )]
     #[case::add_constraint_foreign_key_postgres(
         "add_constraint_foreign_key_postgres",

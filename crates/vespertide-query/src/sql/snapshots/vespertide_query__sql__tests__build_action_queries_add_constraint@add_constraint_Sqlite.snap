@@ -2,4 +2,4 @@
 source: crates/vespertide-query/src/sql/mod.rs
 expression: sql
 ---
-CREATE UNIQUE INDEX "uq_email" ON "users" ("email")
+CREATE UNIQUE INDEX "uq_users__uq_email" ON "users" ("email")

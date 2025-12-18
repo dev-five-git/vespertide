@@ -179,6 +179,57 @@ pub fn apply_action(
                 .find(|t| t.name == *table)
                 .ok_or_else(|| PlannerError::TableNotFound(table.clone()))?;
             tbl.constraints.retain(|c| c != constraint);
+
+            // Also clear inline column fields that correspond to the removed constraint
+            // This ensures normalize() won't re-add the constraint from inline fields
+            match constraint {
+                TableConstraint::Unique { name, columns } => {
+                    // For unnamed single-column unique constraints, clear the column's inline unique
+                    if name.is_none()
+                        && columns.len() == 1
+                        && let Some(col) = tbl.columns.iter_mut().find(|c| c.name == columns[0])
+                    {
+                        col.unique = None;
+                    }
+                    // For named constraints, clear inline unique references to this constraint name
+                    if let Some(constraint_name) = name {
+                        for col in &mut tbl.columns {
+                            if let Some(vespertide_core::StrOrBoolOrArray::Array(names)) =
+                                &mut col.unique
+                            {
+                                names.retain(|n| n != constraint_name);
+                                if names.is_empty() {
+                                    col.unique = None;
+                                }
+                            } else if let Some(vespertide_core::StrOrBoolOrArray::Str(n)) =
+                                &col.unique
+                                && n == constraint_name
+                            {
+                                col.unique = None;
+                            }
+                        }
+                    }
+                }
+                TableConstraint::PrimaryKey { columns, .. } => {
+                    // Clear inline primary_key for columns in this constraint
+                    for col_name in columns {
+                        if let Some(col) = tbl.columns.iter_mut().find(|c| &c.name == col_name) {
+                            col.primary_key = None;
+                        }
+                    }
+                }
+                TableConstraint::ForeignKey { columns, .. } => {
+                    // Clear inline foreign_key for columns in this constraint
+                    for col_name in columns {
+                        if let Some(col) = tbl.columns.iter_mut().find(|c| &c.name == col_name) {
+                            col.foreign_key = None;
+                        }
+                    }
+                }
+                TableConstraint::Check { .. } => {
+                    // Check constraints don't have inline representation
+                }
+            }
             Ok(())
         }
     }

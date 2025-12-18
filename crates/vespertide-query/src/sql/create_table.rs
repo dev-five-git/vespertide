@@ -59,10 +59,13 @@ pub(crate) fn build_create_table_for_backend(
                 // For MySQL, we can add unique index directly in CREATE TABLE
                 // For Postgres and SQLite, we'll handle it separately in build_create_table
                 if matches!(backend, DatabaseBackend::MySql) {
-                    let mut idx = Index::create().unique().to_owned();
-                    if let Some(n) = name {
-                        idx = idx.name(n).to_owned();
-                    }
+                    // Always generate a proper name: uq_{table}_{key} or uq_{table}_{columns}
+                    let index_name = super::helpers::build_unique_constraint_name(
+                        table,
+                        unique_cols,
+                        name.as_deref(),
+                    );
+                    let mut idx = Index::create().name(&index_name).unique().to_owned();
                     for col in unique_cols {
                         idx = idx.col(Alias::new(col)).to_owned();
                     }
@@ -79,10 +82,10 @@ pub(crate) fn build_create_table_for_backend(
                 on_delete,
                 on_update,
             } => {
-                let mut fk = ForeignKey::create();
-                if let Some(n) = name {
-                    fk = fk.name(n).to_owned();
-                }
+                // Always generate a proper name: fk_{table}_{key} or fk_{table}_{columns}
+                let fk_name =
+                    super::helpers::build_foreign_key_name(table, fk_cols, name.as_deref());
+                let mut fk = ForeignKey::create().name(&fk_name).to_owned();
                 fk = fk.from_tbl(Alias::new(table)).to_owned();
                 for col in fk_cols {
                     fk = fk.from_col(Alias::new(col)).to_owned();
@@ -180,10 +183,17 @@ pub fn build_create_table(
                 columns: unique_cols,
             } = constraint
             {
-                let mut idx = Index::create().table(Alias::new(table)).unique().to_owned();
-                if let Some(n) = name {
-                    idx = idx.name(n).to_owned();
-                }
+                // Always generate a proper name: uq_{table}_{key} or uq_{table}_{columns}
+                let index_name = super::helpers::build_unique_constraint_name(
+                    table,
+                    unique_cols,
+                    name.as_deref(),
+                );
+                let mut idx = Index::create()
+                    .table(Alias::new(table))
+                    .name(&index_name)
+                    .unique()
+                    .to_owned();
                 for col in unique_cols {
                     idx = idx.col(Alias::new(col)).to_owned();
                 }

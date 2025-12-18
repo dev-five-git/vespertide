@@ -2,4 +2,4 @@
 source: crates/vespertide-query/src/sql/create_table.rs
 expression: sql
 ---
-CREATE TABLE `users` ( `id` int, `email` text, UNIQUE KEY `uq_email` (`email`) )
+CREATE TABLE `users` ( `id` int, `email` text, UNIQUE KEY `uq_users__uq_email` (`email`) )

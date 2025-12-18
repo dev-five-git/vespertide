@@ -160,4 +160,76 @@ mod tests {
         let users = schema.iter().find(|t| t.name == "users").unwrap();
         assert_eq!(users, &expected_users);
     }
+
+    /// Test that RemoveConstraint works when table was created with both
+    /// inline unique column AND table-level unique constraint for the same column
+    #[test]
+    fn remove_constraint_with_inline_and_table_level_unique() {
+        use vespertide_core::StrOrBoolOrArray;
+
+        // Simulate migration 0001: CreateTable with both inline unique and table-level constraint
+        let create_plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::CreateTable {
+                table: "users".into(),
+                columns: vec![ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: Some(StrOrBoolOrArray::Bool(true)), // inline unique
+                    index: None,
+                    foreign_key: None,
+                }],
+                constraints: vec![TableConstraint::Unique {
+                    name: None,
+                    columns: vec!["email".into()],
+                }], // table-level unique (duplicate!)
+            }],
+        };
+
+        // Migration 0002: RemoveConstraint
+        let remove_plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![MigrationAction::RemoveConstraint {
+                table: "users".into(),
+                constraint: TableConstraint::Unique {
+                    name: None,
+                    columns: vec!["email".into()],
+                },
+            }],
+        };
+
+        let schema = schema_from_plans(&[create_plan, remove_plan]).unwrap();
+        let users = schema.iter().find(|t| t.name == "users").unwrap();
+
+        println!("Constraints after apply: {:?}", users.constraints);
+        println!("Column unique field: {:?}", users.columns[0].unique);
+
+        // After apply_action:
+        // - constraints is empty (RemoveConstraint removed the table-level one)
+        // - but column still has unique: Some(Bool(true))!
+
+        // Now simulate what diff_schemas does - it normalizes the baseline
+        let normalized = users.clone().normalize().unwrap();
+        println!("Constraints after normalize: {:?}", normalized.constraints);
+
+        // After normalize:
+        // - inline unique (column.unique = true) is converted to table-level constraint
+        // - So we'd still have one unique constraint!
+
+        // This is the bug: diff_schemas normalizes both baseline and target,
+        // but the baseline still has inline unique that gets re-added.
+        assert!(
+            normalized.constraints.is_empty(),
+            "Expected no constraints after normalize, but got: {:?}",
+            normalized.constraints
+        );
+    }
 }
