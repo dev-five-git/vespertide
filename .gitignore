@@ -1,3 +1,4 @@
 /target
 local.db
 settings.local.json
+coverage

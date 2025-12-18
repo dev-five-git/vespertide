@@ -256,6 +256,19 @@ fn primary_key_columns(table: &TableDef) -> HashSet<String> {
     keys
 }
 
+/// Extract FK info from a constraint as a tuple.
+fn as_fk(constraint: &TableConstraint) -> Option<(&[String], &str, &[String])> {
+    match constraint {
+        TableConstraint::ForeignKey {
+            columns,
+            ref_table,
+            ref_columns,
+            ..
+        } => Some((columns.as_slice(), ref_table.as_str(), ref_columns.as_slice())),
+        _ => None,
+    }
+}
+
 /// Resolve FK chain to find the ultimate target table.
 /// If the referenced column is itself a FK, follow the chain.
 fn resolve_fk_target<'a>(
@@ -275,20 +288,13 @@ fn resolve_fk_target<'a>(
         return (ref_table, ref_columns.to_vec());
     };
 
-    // Check if the referenced column has a FK constraint
+    // Check if the referenced column has a FK constraint and follow the chain
     for constraint in &target_table.constraints {
-        if let TableConstraint::ForeignKey {
-            columns,
-            ref_table: next_ref_table,
-            ref_columns: next_ref_columns,
-            ..
-        } = constraint
-        {
-            // If the FK is on the column we're referencing
-            if columns.len() == 1 && columns[0] == *ref_col {
-                // Recursively resolve the FK chain
-                return resolve_fk_target(next_ref_table, next_ref_columns, schema);
-            }
+        let fk_match = as_fk(constraint).filter(|(cols, _, _)| {
+            cols.len() == 1 && cols[0] == *ref_col
+        });
+        if let Some((_, next_table, next_cols)) = fk_match {
+            return resolve_fk_target(next_table, next_cols, schema);
         }
     }
 
@@ -615,14 +621,14 @@ fn to_pascal_case(s: &str) -> String {
     let mut result = String::new();
     let mut capitalize = true;
     for c in s.chars() {
-        if c == '_' || c == '-' {
+        let is_separator = c == '_' || c == '-';
+        if is_separator {
             capitalize = true;
-        } else if capitalize {
-            result.push(c.to_ascii_uppercase());
-            capitalize = false;
-        } else {
-            result.push(c);
+            continue;
         }
+        let ch = if capitalize { c.to_ascii_uppercase() } else { c };
+        capitalize = false;
+        result.push(ch);
     }
     result
 }
@@ -1219,6 +1225,101 @@ mod helper_tests {
     }
 
     #[test]
+    fn test_resolve_fk_target_deep_chain() {
+        use vespertide_core::{ColumnType, SimpleColumnType};
+
+        // 3-level chain: level_c.b_id -> level_b.a_id -> level_a.id
+        // level_a (root)
+        let level_a = TableDef {
+            name: "level_a".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
+            indexes: vec![],
+        };
+
+        // level_b with FK to level_a
+        let level_b = TableDef {
+            name: "level_b".into(),
+            columns: vec![ColumnDef {
+                name: "a_id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![
+                TableConstraint::PrimaryKey {
+                    auto_increment: false,
+                    columns: vec!["a_id".into()],
+                },
+                TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["a_id".into()],
+                    ref_table: "level_a".into(),
+                    ref_columns: vec!["id".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+            ],
+            indexes: vec![],
+        };
+
+        // level_c with FK to level_b
+        let level_c = TableDef {
+            name: "level_c".into(),
+            columns: vec![ColumnDef {
+                name: "b_id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![
+                TableConstraint::PrimaryKey {
+                    auto_increment: false,
+                    columns: vec!["b_id".into()],
+                },
+                TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["b_id".into()],
+                    ref_table: "level_b".into(),
+                    ref_columns: vec!["a_id".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+            ],
+            indexes: vec![],
+        };
+
+        let schema = vec![level_a, level_b, level_c];
+        // Resolving level_b.a_id should follow chain to level_a.id
+        let (table, columns) = resolve_fk_target("level_b", &["a_id".into()], &schema);
+        assert_eq!(table, "level_a");
+        assert_eq!(columns, vec!["id"]);
+    }
+
+    #[test]
     fn test_reverse_relations_has_many() {
         use vespertide_core::{ColumnType, SimpleColumnType};
 
@@ -1464,6 +1565,7 @@ mod helper_tests {
         // has_one should NOT have from/to attributes
         assert!(!rendered.contains("has_one, from"));
     }
+
 }
 
 #[cfg(test)]
@@ -1816,5 +1918,300 @@ mod tests {
         with_settings!({ snapshot_suffix => format!("params_{}", name) }, {
             assert_snapshot!(rendered);
         });
+    }
+
+    // Helper to create a simple table with PK
+    fn col(name: &str, ty: ColumnType) -> ColumnDef {
+        ColumnDef {
+            name: name.into(),
+            r#type: ty,
+            nullable: false,
+            default: None,
+            comment: None,
+            primary_key: None,
+            unique: None,
+            index: None,
+            foreign_key: None,
+        }
+    }
+
+    fn table_with_pk(name: &str, columns: Vec<ColumnDef>, pk_cols: Vec<&str>) -> TableDef {
+        TableDef {
+            name: name.into(),
+            columns,
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: pk_cols.into_iter().map(String::from).collect(),
+            }],
+            indexes: vec![],
+        }
+    }
+
+    fn table_with_pk_and_fk(
+        name: &str,
+        columns: Vec<ColumnDef>,
+        pk_cols: Vec<&str>,
+        fks: Vec<(Vec<&str>, &str, Vec<&str>)>,
+    ) -> TableDef {
+        let mut constraints = vec![TableConstraint::PrimaryKey {
+            auto_increment: false,
+            columns: pk_cols.into_iter().map(String::from).collect(),
+        }];
+        for (cols, ref_table, ref_cols) in fks {
+            constraints.push(TableConstraint::ForeignKey {
+                name: None,
+                columns: cols.into_iter().map(String::from).collect(),
+                ref_table: ref_table.into(),
+                ref_columns: ref_cols.into_iter().map(String::from).collect(),
+                on_delete: None,
+                on_update: None,
+            });
+        }
+        TableDef {
+            name: name.into(),
+            columns,
+            constraints,
+            indexes: vec![],
+        }
+    }
+
+    #[rstest]
+    #[case("many_to_many_article")]
+    #[case("many_to_many_user")]
+    #[case("many_to_many_missing_target")]
+    #[case("composite_fk_parent")]
+    #[case("not_junction_single_pk")]
+    #[case("not_junction_fk_not_in_pk_other")]
+    #[case("not_junction_fk_not_in_pk_another")]
+    fn render_entity_with_schema_snapshots(#[case] name: &str) {
+        use vespertide_core::SimpleColumnType::*;
+
+        let (table, schema) = match name {
+            "many_to_many_article" => {
+                let article = table_with_pk(
+                    "article",
+                    vec![col("id", ColumnType::Simple(BigInt))],
+                    vec!["id"],
+                );
+                let user = table_with_pk(
+                    "user",
+                    vec![col("id", ColumnType::Simple(Uuid))],
+                    vec!["id"],
+                );
+                let article_user = table_with_pk_and_fk(
+                    "article_user",
+                    vec![
+                        col("article_id", ColumnType::Simple(BigInt)),
+                        col("user_id", ColumnType::Simple(Uuid)),
+                    ],
+                    vec!["article_id", "user_id"],
+                    vec![
+                        (vec!["article_id"], "article", vec!["id"]),
+                        (vec!["user_id"], "user", vec!["id"]),
+                    ],
+                );
+                (article.clone(), vec![article, user, article_user])
+            }
+            "many_to_many_user" => {
+                let article = table_with_pk(
+                    "article",
+                    vec![col("id", ColumnType::Simple(BigInt))],
+                    vec!["id"],
+                );
+                let user = table_with_pk(
+                    "user",
+                    vec![col("id", ColumnType::Simple(Uuid))],
+                    vec!["id"],
+                );
+                let article_user = table_with_pk_and_fk(
+                    "article_user",
+                    vec![
+                        col("article_id", ColumnType::Simple(BigInt)),
+                        col("user_id", ColumnType::Simple(Uuid)),
+                    ],
+                    vec!["article_id", "user_id"],
+                    vec![
+                        (vec!["article_id"], "article", vec!["id"]),
+                        (vec!["user_id"], "user", vec!["id"]),
+                    ],
+                );
+                (user.clone(), vec![article, user, article_user])
+            }
+            "many_to_many_missing_target" => {
+                let article = table_with_pk(
+                    "article",
+                    vec![col("id", ColumnType::Simple(BigInt))],
+                    vec!["id"],
+                );
+                let article_user = table_with_pk_and_fk(
+                    "article_user",
+                    vec![
+                        col("article_id", ColumnType::Simple(BigInt)),
+                        col("user_id", ColumnType::Simple(Uuid)),
+                    ],
+                    vec!["article_id", "user_id"],
+                    vec![
+                        (vec!["article_id"], "article", vec!["id"]),
+                        (vec!["user_id"], "user", vec!["id"]), // user not in schema
+                    ],
+                );
+                (article.clone(), vec![article, article_user])
+            }
+            "composite_fk_parent" => {
+                let parent = table_with_pk(
+                    "parent",
+                    vec![
+                        col("id1", ColumnType::Simple(Integer)),
+                        col("id2", ColumnType::Simple(Integer)),
+                    ],
+                    vec!["id1", "id2"],
+                );
+                let child_one = table_with_pk_and_fk(
+                    "child_one",
+                    vec![
+                        col("parent_id1", ColumnType::Simple(Integer)),
+                        col("parent_id2", ColumnType::Simple(Integer)),
+                    ],
+                    vec!["parent_id1", "parent_id2"],
+                    vec![(vec!["parent_id1", "parent_id2"], "parent", vec!["id1", "id2"])],
+                );
+                let child_many = table_with_pk_and_fk(
+                    "child_many",
+                    vec![
+                        col("id", ColumnType::Simple(Integer)),
+                        col("parent_id1", ColumnType::Simple(Integer)),
+                        col("parent_id2", ColumnType::Simple(Integer)),
+                    ],
+                    vec!["id"],
+                    vec![(vec!["parent_id1", "parent_id2"], "parent", vec!["id1", "id2"])],
+                );
+                (parent.clone(), vec![parent, child_one, child_many])
+            }
+            "not_junction_single_pk" => {
+                let other = table_with_pk(
+                    "other",
+                    vec![col("id", ColumnType::Simple(Integer))],
+                    vec!["id"],
+                );
+                let regular = table_with_pk_and_fk(
+                    "regular",
+                    vec![
+                        col("id", ColumnType::Simple(Integer)),
+                        col("other_id", ColumnType::Simple(Integer)),
+                    ],
+                    vec!["id"], // single column PK
+                    vec![(vec!["other_id"], "other", vec!["id"])],
+                );
+                (other.clone(), vec![other, regular])
+            }
+            "not_junction_fk_not_in_pk_other" => {
+                let other = table_with_pk(
+                    "other",
+                    vec![col("id", ColumnType::Simple(Integer))],
+                    vec!["id"],
+                );
+                let another = table_with_pk(
+                    "another",
+                    vec![col("id", ColumnType::Simple(Integer))],
+                    vec!["id"],
+                );
+                let not_junction = table_with_pk_and_fk(
+                    "not_junction",
+                    vec![
+                        col("id", ColumnType::Simple(Integer)),
+                        col("other_id", ColumnType::Simple(Integer)),
+                        col("another_id", ColumnType::Simple(Integer)),
+                    ],
+                    vec!["id", "other_id"], // another_id not in PK
+                    vec![
+                        (vec!["other_id"], "other", vec!["id"]),
+                        (vec!["another_id"], "another", vec!["id"]),
+                    ],
+                );
+                (other.clone(), vec![other, another, not_junction])
+            }
+            "not_junction_fk_not_in_pk_another" => {
+                let other = table_with_pk(
+                    "other",
+                    vec![col("id", ColumnType::Simple(Integer))],
+                    vec!["id"],
+                );
+                let another = table_with_pk(
+                    "another",
+                    vec![col("id", ColumnType::Simple(Integer))],
+                    vec!["id"],
+                );
+                let not_junction = table_with_pk_and_fk(
+                    "not_junction",
+                    vec![
+                        col("id", ColumnType::Simple(Integer)),
+                        col("other_id", ColumnType::Simple(Integer)),
+                        col("another_id", ColumnType::Simple(Integer)),
+                    ],
+                    vec!["id", "other_id"], // another_id not in PK
+                    vec![
+                        (vec!["other_id"], "other", vec!["id"]),
+                        (vec!["another_id"], "another", vec!["id"]),
+                    ],
+                );
+                (another.clone(), vec![other, another, not_junction])
+            }
+            _ => panic!("Unknown test case: {}", name),
+        };
+
+        let rendered = render_entity_with_schema(&table, &schema);
+        with_settings!({ snapshot_suffix => format!("schema_{}", name) }, {
+            assert_snapshot!(rendered);
+        });
+    }
+
+    #[test]
+    fn test_to_pascal_case_normal_chars() {
+        assert_eq!(to_pascal_case("abc"), "Abc");
+        assert_eq!(to_pascal_case("a_b_c"), "ABC");
+    }
+
+    #[test]
+    fn test_numeric_default_value() {
+        use vespertide_core::ComplexColumnType;
+        let table = TableDef {
+            name: "products".into(),
+            columns: vec![ColumnDef {
+                name: "price".into(),
+                r#type: ColumnType::Complex(ComplexColumnType::Numeric {
+                    precision: 10,
+                    scale: 2,
+                }),
+                nullable: false,
+                default: Some("0.00".into()),
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            indexes: vec![],
+        };
+        let rendered = render_entity(&table);
+        assert!(rendered.contains("default_value = 0.00"));
+    }
+
+    #[test]
+    fn test_orm_exporter_trait() {
+        use crate::orm::OrmExporter;
+        let table = table_with_pk(
+            "test",
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+            vec!["id"],
+        );
+        let exporter = SeaOrmExporter;
+        let result = exporter.render_entity(&table);
+        assert!(result.is_ok());
+        assert!(result.unwrap().contains("table_name = \"test\""));
+        let schema = vec![table.clone()];
+        let result = exporter.render_entity_with_schema(&table, &schema);
+        assert!(result.is_ok());
+        assert!(result.unwrap().contains("table_name = \"test\""));
     }
 }

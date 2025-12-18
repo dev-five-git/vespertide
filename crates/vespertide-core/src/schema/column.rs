@@ -241,4 +241,17 @@ mod tests {
             expected
         );
     }
+
+    #[rstest]
+    #[case(ComplexColumnType::Varchar { length: 255 })]
+    #[case(ComplexColumnType::Numeric { precision: 10, scale: 2 })]
+    #[case(ComplexColumnType::Char { length: 1 })]
+    #[case(ComplexColumnType::Custom { custom_type: "SERIAL".into() })]
+    #[case(ComplexColumnType::Enum { name: "status".into(), values: vec![] })]
+    fn test_complex_column_type_does_not_support_auto_increment(
+        #[case] column_type: ComplexColumnType,
+    ) {
+        // Complex types never support auto_increment
+        assert!(!ColumnType::Complex(column_type).supports_auto_increment());
+    }
 }

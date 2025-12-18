@@ -1,0 +1,18 @@
+---
+source: crates/vespertide-exporter/src/seaorm/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[sea_orm(table_name = "other")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    #[sea_orm(has_many)]
+    pub not_junctions: HasMany<super::not_junction::Entity>,
+}
+
+impl ActiveModelBehavior for ActiveModel {}
