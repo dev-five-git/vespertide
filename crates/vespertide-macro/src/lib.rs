@@ -308,8 +308,6 @@ mod tests {
             "Unexpected output: {}",
             output_str
         );
-        // Print for debugging coverage
-        eprintln!("Output contains 'async': {}", output_str.contains("async"));
     }
 
     #[test]
@@ -648,5 +646,34 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("Failed to build queries for migration version 1"));
+    }
+
+    #[test]
+    fn test_vespertide_migration_impl_loading_error() {
+        // Save original CARGO_MANIFEST_DIR
+        let original = std::env::var("CARGO_MANIFEST_DIR").ok();
+
+        // Remove CARGO_MANIFEST_DIR to trigger loading error
+        unsafe {
+            std::env::remove_var("CARGO_MANIFEST_DIR");
+        }
+
+        let input: proc_macro2::TokenStream = "pool".parse().unwrap();
+        let output = vespertide_migration_impl(input);
+        let output_str = output.to_string();
+
+        // Should contain error about failed loading
+        assert!(
+            output_str.contains("Failed to load migrations at compile time"),
+            "Expected loading error, got: {}",
+            output_str
+        );
+
+        // Restore CARGO_MANIFEST_DIR
+        if let Some(val) = original {
+            unsafe {
+                std::env::set_var("CARGO_MANIFEST_DIR", val);
+            }
+        }
     }
 }
