@@ -228,6 +228,43 @@ pub fn is_enum_type(column_type: &ColumnType) -> bool {
     )
 }
 
+/// Generate CHECK constraint name for SQLite enum column
+/// Format: chk_{table}_{column}
+pub fn build_sqlite_enum_check_name(table: &str, column: &str) -> String {
+    format!("chk_{}_{}", table, column)
+}
+
+/// Generate CHECK constraint expression for SQLite enum column
+/// Returns the constraint clause like: CONSTRAINT "chk_table_col" CHECK (col IN ('val1', 'val2'))
+pub fn build_sqlite_enum_check_clause(
+    table: &str,
+    column: &str,
+    column_type: &ColumnType,
+) -> Option<String> {
+    if let ColumnType::Complex(ComplexColumnType::Enum { values, .. }) = column_type {
+        let name = build_sqlite_enum_check_name(table, column);
+        let values_sql = values
+            .iter()
+            .map(|v| format!("'{}'", v.replace('\'', "''")))
+            .collect::<Vec<_>>()
+            .join(", ");
+        Some(format!(
+            "CONSTRAINT \"{}\" CHECK (\"{}\" IN ({}))",
+            name, column, values_sql
+        ))
+    } else {
+        None
+    }
+}
+
+/// Collect all CHECK constraints for enum columns in a table (for SQLite)
+pub fn collect_sqlite_enum_check_clauses(table: &str, columns: &[ColumnDef]) -> Vec<String> {
+    columns
+        .iter()
+        .filter_map(|col| build_sqlite_enum_check_clause(table, &col.name, &col.r#type))
+        .collect()
+}
+
 /// Extract enum name from column type if it's an enum
 pub fn get_enum_name(column_type: &ColumnType) -> Option<&str> {
     if let ColumnType::Complex(ComplexColumnType::Enum { name, .. }) = column_type {
