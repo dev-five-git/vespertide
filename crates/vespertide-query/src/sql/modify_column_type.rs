@@ -138,7 +138,7 @@ pub fn build_modify_column_type(
                 // 1. CREATE TYPE {enum}_new AS ENUM (new values)
                 let create_temp_values = new_values
                     .iter()
-                    .map(|v| format!("'{}'", v.replace('\'', "''")))
+                    .map(|v| v.to_sql_value())
                     .collect::<Vec<_>>()
                     .join(", ");
                 queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(

@@ -1,0 +1,11 @@
+---
+source: crates/vespertide-exporter/src/seaorm/mod.rs
+expression: result
+---
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
+#[sea_orm(rs_type = "i32", db_type = "Integer")]
+pub enum Color {
+    Black = 0,
+    White = 1,
+    Red = 2,
+}

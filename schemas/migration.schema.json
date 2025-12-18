@@ -205,7 +205,7 @@
             "values": {
               "type": "array",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/EnumValue"
               }
             }
           },
@@ -213,6 +213,32 @@
             "kind",
             "name",
             "values"
+          ]
+        }
+      ]
+    },
+    "EnumValue": {
+      "description": "Enum value definition - can be string-based or integer-based",
+      "anyOf": [
+        {
+          "description": "String enum value: \"pending\", \"active\", etc.",
+          "type": "string"
+        },
+        {
+          "description": "Integer enum value with name and numeric value: { \"name\": \"Black\", \"value\": 0 }",
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "value": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "required": [
+            "name",
+            "value"
           ]
         }
       ]

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::orm::OrmExporter;
 use vespertide_core::{
-    ColumnDef, ColumnType, ComplexColumnType, IndexDef, TableConstraint, TableDef,
+    ColumnDef, ColumnType, ComplexColumnType, EnumValue, IndexDef, TableConstraint, TableDef,
 };
 
 pub struct SeaOrmExporter;
@@ -578,20 +578,44 @@ fn unique_name(base: &str, used: &mut HashSet<String>) -> String {
     name
 }
 
-fn render_enum(lines: &mut Vec<String>, name: &str, values: &[String]) {
+fn render_enum(lines: &mut Vec<String>, name: &str, values: &[EnumValue]) {
     let enum_name = to_pascal_case(name);
 
-    lines.push("#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]".into());
-    lines.push(format!(
-        "#[sea_orm(rs_type = \"String\", db_type = \"Enum\", enum_name = \"{}\")]",
-        name
-    ));
+    // Check if this is an integer enum (all values have integer form)
+    let is_integer_enum = values
+        .iter()
+        .all(|v| matches!(v, EnumValue::Integer { .. }));
+
+    lines.push(
+        "#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]"
+            .into(),
+    );
+
+    if is_integer_enum {
+        // Integer enum: #[sea_orm(rs_type = "i32", db_type = "Integer")]
+        lines.push("#[sea_orm(rs_type = \"i32\", db_type = \"Integer\")]".into());
+    } else {
+        // String enum: #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "...")]
+        lines.push(format!(
+            "#[sea_orm(rs_type = \"String\", db_type = \"Enum\", enum_name = \"{}\")]",
+            name
+        ));
+    }
+
     lines.push(format!("pub enum {} {{", enum_name));
 
     for value in values {
-        let variant_name = enum_variant_name(value);
-        lines.push(format!("    #[sea_orm(string_value = \"{}\")]", value));
-        lines.push(format!("    {},", variant_name));
+        match value {
+            EnumValue::String(s) => {
+                let variant_name = enum_variant_name(s);
+                lines.push(format!("    #[sea_orm(string_value = \"{}\")]", s));
+                lines.push(format!("    {},", variant_name));
+            }
+            EnumValue::Integer { name: var_name, value: num } => {
+                let variant_name = enum_variant_name(var_name);
+                lines.push(format!("    {} = {},", variant_name, num));
+            }
+        }
     }
     lines.push("}".into());
     lines.push(String::new());
@@ -779,46 +803,79 @@ mod helper_tests {
         assert_eq!(enum_variant_name(input), expected);
     }
 
-    #[test]
-    fn test_render_enum() {
-        let mut lines = Vec::new();
-        render_enum(
-            &mut lines,
+    fn string_enum_order_status() -> (&'static str, Vec<EnumValue>) {
+        (
             "order_status",
-            &["pending".into(), "shipped".into()],
-        );
-
-        assert!(lines.iter().any(|l| l.contains("pub enum OrderStatus")));
-        assert!(lines.iter().any(|l| l.contains("Pending")));
-        assert!(lines.iter().any(|l| l.contains("Shipped")));
-        assert!(lines.iter().any(|l| l.contains("DeriveActiveEnum")));
-        assert!(lines.iter().any(|l| l.contains("EnumIter")));
-        assert!(
-            lines
-                .iter()
-                .any(|l| l.contains("enum_name = \"order_status\""))
-        );
+            vec!["pending".into(), "shipped".into(), "delivered".into()],
+        )
     }
 
-    #[test]
-    fn test_render_enum_with_numeric_prefix_value() {
-        let mut lines = Vec::new();
-        render_enum(
-            &mut lines,
+    fn string_enum_numeric_prefix() -> (&'static str, Vec<EnumValue>) {
+        (
             "priority",
-            &["1_high".into(), "2_medium".into(), "3_low".into()],
-        );
+            vec!["1_high".into(), "2_medium".into(), "3_low".into()],
+        )
+    }
 
-        // Numeric prefixed values should be prefixed with 'N'
-        assert!(lines.iter().any(|l| l.contains("N1High")));
-        assert!(lines.iter().any(|l| l.contains("N2Medium")));
-        assert!(lines.iter().any(|l| l.contains("N3Low")));
-        // But the string_value should remain original
-        assert!(
-            lines
-                .iter()
-                .any(|l| l.contains("string_value = \"1_high\""))
-        );
+    fn integer_enum_color() -> (&'static str, Vec<EnumValue>) {
+        (
+            "color",
+            vec![
+                EnumValue::Integer {
+                    name: "Black".into(),
+                    value: 0,
+                },
+                EnumValue::Integer {
+                    name: "White".into(),
+                    value: 1,
+                },
+                EnumValue::Integer {
+                    name: "Red".into(),
+                    value: 2,
+                },
+            ],
+        )
+    }
+
+    fn integer_enum_status() -> (&'static str, Vec<EnumValue>) {
+        (
+            "task_status",
+            vec![
+                EnumValue::Integer {
+                    name: "Pending".into(),
+                    value: 0,
+                },
+                EnumValue::Integer {
+                    name: "InProgress".into(),
+                    value: 1,
+                },
+                EnumValue::Integer {
+                    name: "Completed".into(),
+                    value: 100,
+                },
+            ],
+        )
+    }
+
+    #[rstest]
+    #[case::string_enum("string_order_status", string_enum_order_status())]
+    #[case::string_numeric_prefix("string_numeric_prefix", string_enum_numeric_prefix())]
+    #[case::integer_color("integer_color", integer_enum_color())]
+    #[case::integer_status("integer_status", integer_enum_status())]
+    fn test_render_enum_snapshots(
+        #[case] name: &str,
+        #[case] input: (&str, Vec<EnumValue>),
+    ) {
+        use insta::with_settings;
+
+        let (enum_name, values) = input;
+        let mut lines = Vec::new();
+        render_enum(&mut lines, enum_name, &values);
+        let result = lines.join("\n");
+
+        with_settings!({ snapshot_suffix => name }, {
+            insta::assert_snapshot!(result);
+        });
     }
 
     #[test]

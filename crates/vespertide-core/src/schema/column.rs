@@ -127,6 +127,63 @@ impl SimpleColumnType {
     }
 }
 
+/// Enum value definition - can be string-based or integer-based
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum EnumValue {
+    /// String enum value: "pending", "active", etc.
+    String(String),
+    /// Integer enum value with name and numeric value: { "name": "Black", "value": 0 }
+    Integer { name: String, value: i32 },
+}
+
+impl EnumValue {
+    /// Get the variant name for this enum value
+    pub fn variant_name(&self) -> &str {
+        match self {
+            EnumValue::String(s) => s.as_str(),
+            EnumValue::Integer { name, .. } => name.as_str(),
+        }
+    }
+
+    /// Get the SQL representation for CREATE TYPE ENUM
+    /// String enums return 'value', Integer enums return the number
+    pub fn to_sql_value(&self) -> String {
+        match self {
+            EnumValue::String(s) => format!("'{}'", s.replace('\'', "''")),
+            EnumValue::Integer { value, .. } => value.to_string(),
+        }
+    }
+
+    /// Check if this is a string enum value
+    pub fn is_string(&self) -> bool {
+        match self {
+            EnumValue::String(_) => true,
+            EnumValue::Integer { .. } => false,
+        }
+    }
+
+    /// Check if this is an integer enum value
+    pub fn is_integer(&self) -> bool {
+        match self {
+            EnumValue::String(_) => false,
+            EnumValue::Integer { .. } => true,
+        }
+    }
+}
+
+impl From<&str> for EnumValue {
+    fn from(s: &str) -> Self {
+        EnumValue::String(s.to_string())
+    }
+}
+
+impl From<String> for EnumValue {
+    fn from(s: String) -> Self {
+        EnumValue::String(s)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case", tag = "kind")]
 pub enum ComplexColumnType {
@@ -134,7 +191,7 @@ pub enum ComplexColumnType {
     Numeric { precision: u32, scale: u32 },
     Char { length: u32 },
     Custom { custom_type: String },
-    Enum { name: String, values: Vec<String> },
+    Enum { name: String, values: Vec<EnumValue> },
 }
 
 #[cfg(test)]
@@ -253,5 +310,75 @@ mod tests {
     ) {
         // Complex types never support auto_increment
         assert!(!ColumnType::Complex(column_type).supports_auto_increment());
+    }
+
+    #[test]
+    fn test_enum_value_integer_variant_name() {
+        let val = EnumValue::Integer { name: "Black".into(), value: 0 };
+        assert_eq!(val.variant_name(), "Black");
+    }
+
+    #[test]
+    fn test_enum_value_integer_to_sql_value() {
+        let val = EnumValue::Integer { name: "High".into(), value: 10 };
+        assert_eq!(val.to_sql_value(), "10");
+    }
+
+    #[test]
+    fn test_enum_value_is_string() {
+        let string_val = EnumValue::String("active".into());
+        let int_val = EnumValue::Integer { name: "Active".into(), value: 1 };
+        assert!(string_val.is_string());
+        assert!(!int_val.is_string());
+    }
+
+    #[test]
+    fn test_enum_value_from_string_owned() {
+        let owned = String::from("pending");
+        let val: EnumValue = owned.into();
+        assert_eq!(val, EnumValue::String("pending".into()));
+    }
+
+    #[test]
+    fn test_enum_value_is_integer() {
+        let string_val = EnumValue::String("active".into());
+        let int_val = EnumValue::Integer { name: "Active".into(), value: 1 };
+        assert!(!string_val.is_integer());
+        assert!(int_val.is_integer());
+    }
+
+    #[test]
+    fn test_enum_value_string_variant_name() {
+        let val = EnumValue::String("pending".into());
+        assert_eq!(val.variant_name(), "pending");
+    }
+
+    #[test]
+    fn test_enum_value_string_to_sql_value() {
+        let val = EnumValue::String("active".into());
+        assert_eq!(val.to_sql_value(), "'active'");
+    }
+
+    #[rstest]
+    #[case(SimpleColumnType::SmallInt, true)]
+    #[case(SimpleColumnType::Integer, true)]
+    #[case(SimpleColumnType::BigInt, true)]
+    #[case(SimpleColumnType::Text, false)]
+    #[case(SimpleColumnType::Boolean, false)]
+    fn test_simple_column_type_supports_auto_increment(
+        #[case] ty: SimpleColumnType,
+        #[case] expected: bool,
+    ) {
+        assert_eq!(ty.supports_auto_increment(), expected);
+    }
+
+    #[rstest]
+    #[case(SimpleColumnType::Integer, true)]
+    #[case(SimpleColumnType::Text, false)]
+    fn test_column_type_simple_supports_auto_increment(
+        #[case] ty: SimpleColumnType,
+        #[case] expected: bool,
+    ) {
+        assert_eq!(ColumnType::Simple(ty).supports_auto_increment(), expected);
     }
 }
