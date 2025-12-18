@@ -3,16 +3,18 @@
   "name": "article_user",
   "columns": [
     {
-      "name": "article_id",
+      "name": "article_media_id",
       "type": "uuid",
       "nullable": false,
-      "foreign_key": {
-        "ref_table": "article",
-        "ref_columns": ["id"],
-        "on_delete": "cascade"
-      },
-      "index": true,
-      "primary_key": true
+      "primary_key": true,
+      "foreign_key": "article.media_id"
+    },
+    {
+      "name": "article_id",
+      "type": "big_int",
+      "nullable": false,
+      "primary_key": true,
+      "foreign_key": "article.id"
     },
     {
       "name": "user_id",
@@ -34,7 +36,7 @@
     },
     {
       "name": "role",
-      "type": { "kind": "varchar", "length": 20 },
+      "type": { "kind": "enum", "name": "article_user_role", "values": ["lead", "contributor"] },
       "nullable": false,
       "default": "'contributor'"
     },

@@ -28,6 +28,14 @@ pub enum ColumnType {
 }
 
 impl ColumnType {
+    /// Returns true if this type supports auto_increment (integer types only)
+    pub fn supports_auto_increment(&self) -> bool {
+        match self {
+            ColumnType::Simple(ty) => ty.supports_auto_increment(),
+            ColumnType::Complex(_) => false,
+        }
+    }
+
     /// Convert column type to Rust type string (for SeaORM entity generation)
     pub fn to_rust_type(&self, nullable: bool) -> String {
         let base = match self {
@@ -107,6 +115,18 @@ pub enum SimpleColumnType {
 
     // XML type
     Xml,
+}
+
+impl SimpleColumnType {
+    /// Returns true if this type supports auto_increment (integer types only)
+    pub fn supports_auto_increment(&self) -> bool {
+        matches!(
+            self,
+            SimpleColumnType::SmallInt
+                | SimpleColumnType::Integer
+                | SimpleColumnType::BigInt
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

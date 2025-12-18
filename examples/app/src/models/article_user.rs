@@ -1,16 +1,29 @@
 use sea_orm::entity::prelude::*;
 
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum)]
+#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "article_user_role")]
+pub enum ArticleUserRole {
+    #[sea_orm(string_value = "lead")]
+    Lead,
+    #[sea_orm(string_value = "contributor")]
+    Contributor,
+}
+
 #[sea_orm::model]
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "article_user")]
 pub struct Model {
+    #[sea_orm(primary_key)]
+    pub article_media_id: Uuid,
     #[sea_orm(primary_key, auto_increment = false)]
-    pub article_id: Uuid,
-    #[sea_orm(primary_key, auto_increment = false)]
+    pub article_id: i64,
+    #[sea_orm(primary_key)]
     pub user_id: Uuid,
     pub author_order: i32,
-    pub role: String,
+    pub role: ArticleUserRole,
     pub created_at: DateTimeWithTimeZone,
+    #[sea_orm(belongs_to, from = "article_media_id", to = "id")]
+    pub media: HasOne<super::media::Entity>,
     #[sea_orm(belongs_to, from = "article_id", to = "id")]
     pub article: HasOne<super::article::Entity>,
     #[sea_orm(belongs_to, from = "user_id", to = "id")]
@@ -19,6 +32,5 @@ pub struct Model {
 
 
 // Index definitions (SeaORM uses Statement builders externally)
-// idx_article_user_article_id on [article_id] unique=false
 // idx_article_user_user_id on [user_id] unique=false
 impl ActiveModelBehavior for ActiveModel {}

@@ -11,6 +11,14 @@ impl OrmExporter for SeaOrmExporter {
     fn render_entity(&self, table: &TableDef) -> Result<String, String> {
         Ok(render_entity(table))
     }
+
+    fn render_entity_with_schema(
+        &self,
+        table: &TableDef,
+        schema: &[TableDef],
+    ) -> Result<String, String> {
+        Ok(render_entity_with_schema(table, schema))
+    }
 }
 
 /// Render a single table into SeaORM entity code.
@@ -18,10 +26,15 @@ impl OrmExporter for SeaOrmExporter {
 /// Follows the official entity format:
 /// <https://www.sea-ql.org/SeaORM/docs/generate-entity/entity-format/>
 pub fn render_entity(table: &TableDef) -> String {
+    render_entity_with_schema(table, &[])
+}
+
+/// Render a single table into SeaORM entity code with schema context for FK chain resolution.
+pub fn render_entity_with_schema(table: &TableDef, schema: &[TableDef]) -> String {
     let primary_keys = primary_key_columns(table);
     let composite_pk = primary_keys.len() > 1;
     let indexes = &table.indexes;
-    let relation_fields = relation_field_defs(table);
+    let relation_fields = relation_field_defs_with_schema(table, schema);
 
     let mut lines: Vec<String> = Vec::new();
     lines.push("use sea_orm::entity::prelude::*;".into());
@@ -71,7 +84,9 @@ fn render_column(
     composite_pk: bool,
 ) {
     if primary_keys.contains(&column.name) {
-        if composite_pk {
+        // Only show auto_increment = false for integer types that support auto_increment
+        // Non-integer types (like UUID) don't need this annotation
+        if composite_pk && column.r#type.supports_auto_increment() {
             lines.push("    #[sea_orm(primary_key, auto_increment = false)]".into());
         } else {
             lines.push("    #[sea_orm(primary_key)]".into());
@@ -122,7 +137,47 @@ fn primary_key_columns(table: &TableDef) -> HashSet<String> {
     keys
 }
 
-fn relation_field_defs(table: &TableDef) -> Vec<String> {
+/// Resolve FK chain to find the ultimate target table.
+/// If the referenced column is itself a FK, follow the chain.
+fn resolve_fk_target<'a>(
+    ref_table: &'a str,
+    ref_columns: &[String],
+    schema: &'a [TableDef],
+) -> (&'a str, Vec<String>) {
+    // If no schema context or ref_columns is not a single column, return as-is
+    if schema.is_empty() || ref_columns.len() != 1 {
+        return (ref_table, ref_columns.to_vec());
+    }
+
+    let ref_col = &ref_columns[0];
+
+    // Find the referenced table in schema
+    let Some(target_table) = schema.iter().find(|t| t.name == ref_table) else {
+        return (ref_table, ref_columns.to_vec());
+    };
+
+    // Check if the referenced column has a FK constraint
+    for constraint in &target_table.constraints {
+        if let TableConstraint::ForeignKey {
+            columns,
+            ref_table: next_ref_table,
+            ref_columns: next_ref_columns,
+            ..
+        } = constraint
+        {
+            // If the FK is on the column we're referencing
+            if columns.len() == 1 && columns[0] == *ref_col {
+                // Recursively resolve the FK chain
+                return resolve_fk_target(next_ref_table, next_ref_columns, schema);
+            }
+        }
+    }
+
+    // No further FK chain, return current target
+    (ref_table, ref_columns.to_vec())
+}
+
+fn relation_field_defs_with_schema(table: &TableDef, schema: &[TableDef]) -> Vec<String> {
     let mut out = Vec::new();
     let mut used = HashSet::new();
     for constraint in &table.constraints {
@@ -133,15 +188,19 @@ fn relation_field_defs(table: &TableDef) -> Vec<String> {
             ..
         } = constraint
         {
-            let base = sanitize_field_name(ref_table);
+            // Resolve FK chain to find ultimate target
+            let (resolved_table, resolved_columns) =
+                resolve_fk_target(ref_table, ref_columns, schema);
+
+            let base = sanitize_field_name(resolved_table);
             let field_name = unique_name(&base, &mut used);
             let from = fk_attr_value(columns);
-            let to = fk_attr_value(ref_columns);
+            let to = fk_attr_value(&resolved_columns);
             out.push(format!(
                 "    #[sea_orm(belongs_to, from = \"{from}\", to = \"{to}\")]"
             ));
             out.push(format!(
-                "    pub {field_name}: HasOne<super::{ref_table}::Entity>,"
+                "    pub {field_name}: HasOne<super::{resolved_table}::Entity>,"
             ));
         }
     }
@@ -565,6 +624,281 @@ mod helper_tests {
                 .iter()
                 .any(|l| l.contains("string_value = \"1_high\""))
         );
+    }
+
+    #[test]
+    fn test_resolve_fk_target_no_schema() {
+        // Without schema context, should return original ref_table
+        let (table, columns) = resolve_fk_target("article", &["media_id".into()], &[]);
+        assert_eq!(table, "article");
+        assert_eq!(columns, vec!["media_id"]);
+    }
+
+    #[test]
+    fn test_resolve_fk_target_no_chain() {
+        use vespertide_core::{ColumnType, SimpleColumnType};
+        // media table without FK chain
+        let media = TableDef {
+            name: "media".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
+            indexes: vec![],
+        };
+
+        let schema = vec![media];
+        let (table, columns) = resolve_fk_target("media", &["id".into()], &schema);
+        assert_eq!(table, "media");
+        assert_eq!(columns, vec!["id"]);
+    }
+
+    #[test]
+    fn test_resolve_fk_target_with_chain() {
+        use vespertide_core::{ColumnType, SimpleColumnType};
+        // media table
+        let media = TableDef {
+            name: "media".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
+            indexes: vec![],
+        };
+
+        // article table with FK to media
+        let article = TableDef {
+            name: "article".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "media_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::BigInt),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![
+                TableConstraint::PrimaryKey {
+                    auto_increment: false,
+                    columns: vec!["media_id".into(), "id".into()],
+                },
+                TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["media_id".into()],
+                    ref_table: "media".into(),
+                    ref_columns: vec!["id".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+            ],
+            indexes: vec![],
+        };
+
+        let schema = vec![media, article];
+        // Resolving article.media_id should follow FK chain to media.id
+        let (table, columns) = resolve_fk_target("article", &["media_id".into()], &schema);
+        assert_eq!(table, "media");
+        assert_eq!(columns, vec!["id"]);
+    }
+
+    #[test]
+    fn test_resolve_fk_target_table_not_in_schema() {
+        use vespertide_core::{ColumnType, SimpleColumnType};
+        let media = TableDef {
+            name: "media".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            indexes: vec![],
+        };
+
+        let schema = vec![media];
+        // article is not in schema, should return original
+        let (table, columns) = resolve_fk_target("article", &["media_id".into()], &schema);
+        assert_eq!(table, "article");
+        assert_eq!(columns, vec!["media_id"]);
+    }
+
+    #[test]
+    fn test_resolve_fk_target_composite_fk() {
+        // Composite FK should return as-is (not follow chain)
+        let (table, columns) =
+            resolve_fk_target("article", &["media_id".into(), "id".into()], &[]);
+        assert_eq!(table, "article");
+        assert_eq!(columns, vec!["media_id", "id"]);
+    }
+
+    #[test]
+    fn test_render_entity_with_schema_fk_chain() {
+        use vespertide_core::{ColumnType, SimpleColumnType};
+
+        // media table
+        let media = TableDef {
+            name: "media".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
+            indexes: vec![],
+        };
+
+        // article table with FK to media
+        let article = TableDef {
+            name: "article".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "media_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::BigInt),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![
+                TableConstraint::PrimaryKey {
+                    auto_increment: false,
+                    columns: vec!["media_id".into(), "id".into()],
+                },
+                TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["media_id".into()],
+                    ref_table: "media".into(),
+                    ref_columns: vec!["id".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+            ],
+            indexes: vec![],
+        };
+
+        // article_user table with FK to article.media_id
+        let article_user = TableDef {
+            name: "article_user".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "article_media_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![
+                TableConstraint::PrimaryKey {
+                    auto_increment: false,
+                    columns: vec!["article_media_id".into(), "user_id".into()],
+                },
+                TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["article_media_id".into()],
+                    ref_table: "article".into(),
+                    ref_columns: vec!["media_id".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+            ],
+            indexes: vec![],
+        };
+
+        let schema = vec![media, article.clone(), article_user.clone()];
+
+        // Render article_user with schema context
+        let rendered = render_entity_with_schema(&article_user, &schema);
+
+        // Should resolve to media, not article
+        assert!(rendered.contains("super::media::Entity"));
+        assert!(!rendered.contains("super::article::Entity"));
+        // The from should still be article_media_id, but to should be id
+        assert!(rendered.contains("from = \"article_media_id\""));
+        assert!(rendered.contains("to = \"id\""));
     }
 }
 

@@ -41,11 +41,6 @@
       "name": "updated_at",
       "type": "timestamptz",
       "nullable": true
-    },
-    {
-      "name": "status",
-      "type": { "kind": "enum", "name": "status", "values": ["active", "inactive", "pending"] },
-      "nullable": true
     }
   ],
   "constraints": [],
