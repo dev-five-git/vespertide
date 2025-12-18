@@ -14,8 +14,6 @@ pub enum ArticleUserRole {
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "article_user")]
 pub struct Model {
-    #[sea_orm(primary_key)]
-    pub article_media_id: Uuid,
     #[sea_orm(primary_key, auto_increment = false)]
     pub article_id: i64,
     #[sea_orm(primary_key)]
@@ -26,8 +24,6 @@ pub struct Model {
     pub role: ArticleUserRole,
     #[sea_orm(default_value = "now()")]
     pub created_at: DateTimeWithTimeZone,
-    #[sea_orm(belongs_to, from = "article_media_id", to = "id")]
-    pub media: HasOne<super::media::Entity>,
     #[sea_orm(belongs_to, from = "article_id", to = "id")]
     pub article: HasOne<super::article::Entity>,
     #[sea_orm(belongs_to, from = "user_id", to = "id")]

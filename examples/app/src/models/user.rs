@@ -15,6 +15,16 @@ pub struct Model {
     #[sea_orm(default_value = "now()")]
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: Option<DateTimeWithTimeZone>,
+    #[sea_orm(has_many)]
+    pub article_users: HasMany<super::article_user::Entity>,
+    #[sea_orm(has_many, via = "article_user")]
+    pub articles: HasMany<super::article::Entity>,
+    #[sea_orm(has_many)]
+    pub medias: HasMany<super::media::Entity>,
+    #[sea_orm(has_many)]
+    pub user_media_roles: HasMany<super::user_media_role::Entity>,
+    #[sea_orm(has_many, via = "user_media_role")]
+    pub medias_1: HasMany<super::media::Entity>,
 }
 
 

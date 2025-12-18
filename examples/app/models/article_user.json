@@ -3,18 +3,15 @@
   "name": "article_user",
   "columns": [
     {
-      "name": "article_media_id",
-      "type": "uuid",
-      "nullable": false,
-      "primary_key": true,
-      "foreign_key": "article.media_id"
-    },
-    {
       "name": "article_id",
       "type": "big_int",
       "nullable": false,
       "primary_key": true,
-      "foreign_key": "article.id"
+      "foreign_key": {
+        "ref_table": "article",
+        "ref_columns": ["id"],
+        "on_delete": "cascade"
+      }
     },
     {
       "name": "user_id",

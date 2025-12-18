@@ -299,6 +299,8 @@ fn resolve_fk_target<'a>(
 fn relation_field_defs_with_schema(table: &TableDef, schema: &[TableDef]) -> Vec<String> {
     let mut out = Vec::new();
     let mut used = HashSet::new();
+
+    // belongs_to relations (this table has FK to other tables)
     for constraint in &table.constraints {
         if let TableConstraint::ForeignKey {
             columns,
@@ -323,7 +325,195 @@ fn relation_field_defs_with_schema(table: &TableDef, schema: &[TableDef]) -> Vec
             ));
         }
     }
+
+    // has_one/has_many relations (other tables have FK to this table)
+    let reverse_relations = reverse_relation_field_defs(table, schema, &mut used);
+    out.extend(reverse_relations);
+
     out
+}
+
+/// Generate reverse relation fields (has_one/has_many) for tables that reference this table.
+fn reverse_relation_field_defs(
+    table: &TableDef,
+    schema: &[TableDef],
+    used: &mut HashSet<String>,
+) -> Vec<String> {
+    let mut out = Vec::new();
+
+    // Find all tables that have FK to this table
+    for other_table in schema {
+        if other_table.name == table.name {
+            continue;
+        }
+
+        // Get PK and unique columns for the other table
+        let other_pk = primary_key_columns(other_table);
+        let other_unique = single_column_unique_set(&other_table.constraints);
+
+        // Check if this is a junction table (composite PK with multiple FKs)
+        if let Some(m2m_relations) =
+            detect_many_to_many(table, other_table, &other_pk, schema, used)
+        {
+            out.extend(m2m_relations);
+            continue;
+        }
+
+        for constraint in &other_table.constraints {
+            if let TableConstraint::ForeignKey {
+                columns,
+                ref_table,
+                ..
+            } = constraint
+            {
+                // Check if this FK references our table
+                if ref_table == &table.name {
+                    // Determine if it's has_one or has_many
+                    // has_one: FK columns exactly match the entire PK, or have UNIQUE constraint
+                    // has_many: FK columns don't uniquely identify the row
+                    let is_one_to_one = if columns.len() == 1 {
+                        let col = &columns[0];
+                        // Single column FK: check if it's the entire PK (not just part of composite PK)
+                        // or has a UNIQUE constraint
+                        let is_sole_pk = other_pk.len() == 1 && other_pk.contains(col);
+                        let is_unique = other_unique.contains(col);
+                        is_sole_pk || is_unique
+                    } else {
+                        // Composite FK: check if FK columns exactly match the entire PK
+                        columns.len() == other_pk.len()
+                            && columns.iter().all(|c| other_pk.contains(c))
+                    };
+
+                    let relation_type = if is_one_to_one { "has_one" } else { "has_many" };
+                    let rust_type = if is_one_to_one { "HasOne" } else { "HasMany" };
+
+                    // Use plural form for has_many field names
+                    let base = if is_one_to_one {
+                        sanitize_field_name(&other_table.name)
+                    } else {
+                        pluralize(&sanitize_field_name(&other_table.name))
+                    };
+                    let field_name = unique_name(&base, used);
+
+                    // has_one/has_many don't use from/to attributes (unlike belongs_to)
+                    out.push(format!("    #[sea_orm({relation_type})]"));
+                    out.push(format!(
+                        "    pub {field_name}: {rust_type}<super::{}::Entity>,",
+                        other_table.name
+                    ));
+                }
+            }
+        }
+    }
+
+    out
+}
+
+/// Detect if a table is a junction table for many-to-many relationship.
+/// Returns Some(relations) if it's a junction table that links current table to other tables,
+/// or None if it's not a junction table.
+fn detect_many_to_many(
+    current_table: &TableDef,
+    junction_table: &TableDef,
+    junction_pk: &HashSet<String>,
+    schema: &[TableDef],
+    used: &mut HashSet<String>,
+) -> Option<Vec<String>> {
+    // Junction table must have composite PK (2+ columns)
+    if junction_pk.len() < 2 {
+        return None;
+    }
+
+    // Collect all FKs from the junction table
+    let fks: Vec<_> = junction_table
+        .constraints
+        .iter()
+        .filter_map(|c| {
+            if let TableConstraint::ForeignKey {
+                columns,
+                ref_table,
+                ..
+            } = c
+            {
+                Some((columns.clone(), ref_table.clone()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Must have at least 2 FKs to be a junction table
+    if fks.len() < 2 {
+        return None;
+    }
+
+    // Check if all FK columns are part of the PK (typical junction table pattern)
+    let all_fk_cols_in_pk = fks
+        .iter()
+        .all(|(cols, _)| cols.iter().all(|c| junction_pk.contains(c)));
+
+    if !all_fk_cols_in_pk {
+        return None;
+    }
+
+    // Find which FK references the current table
+    let fk_to_current = fks.iter().find(|(_, ref_table)| ref_table == &current_table.name);
+
+    if fk_to_current.is_none() {
+        return None;
+    }
+
+    // Generate many-to-many relations via this junction table
+    let mut out = Vec::new();
+
+    // First, add has_many to the junction table itself
+    let junction_base = pluralize(&sanitize_field_name(&junction_table.name));
+    let junction_field_name = unique_name(&junction_base, used);
+    out.push("    #[sea_orm(has_many)]".to_string());
+    out.push(format!(
+        "    pub {junction_field_name}: HasMany<super::{}::Entity>,",
+        junction_table.name
+    ));
+
+    // Then add has_many with via for the target tables
+    for (_, ref_table) in &fks {
+        // Skip the FK to the current table itself
+        if ref_table == &current_table.name {
+            continue;
+        }
+
+        // Find the target table in schema
+        let target_exists = schema.iter().any(|t| &t.name == ref_table);
+        if !target_exists {
+            continue;
+        }
+
+        // Generate has_many with via
+        let base = pluralize(&sanitize_field_name(ref_table));
+        let field_name = unique_name(&base, used);
+
+        out.push(format!(
+            "    #[sea_orm(has_many, via = \"{}\")]",
+            junction_table.name
+        ));
+        out.push(format!(
+            "    pub {field_name}: HasMany<super::{ref_table}::Entity>,",
+        ));
+    }
+
+    Some(out)
+}
+
+/// Simple pluralization for field names (adds 's' suffix).
+fn pluralize(name: &str) -> String {
+    if name.ends_with('s') || name.ends_with("es") {
+        name.to_string()
+    } else if name.ends_with('y') && !name.ends_with("ay") && !name.ends_with("ey") && !name.ends_with("oy") && !name.ends_with("uy") {
+        // e.g., category -> categories
+        format!("{}ies", &name[..name.len() - 1])
+    } else {
+        format!("{}s", name)
+    }
 }
 
 fn fk_attr_value(cols: &[String]) -> String {
@@ -1018,6 +1208,264 @@ mod helper_tests {
         // The from should still be article_media_id, but to should be id
         assert!(rendered.contains("from = \"article_media_id\""));
         assert!(rendered.contains("to = \"id\""));
+    }
+
+    #[test]
+    fn test_pluralize() {
+        assert_eq!(pluralize("user"), "users");
+        assert_eq!(pluralize("post"), "posts");
+        assert_eq!(pluralize("category"), "categories");
+        assert_eq!(pluralize("entity"), "entities");
+        assert_eq!(pluralize("users"), "users"); // already plural
+        assert_eq!(pluralize("day"), "days"); // 'ay' ending
+        assert_eq!(pluralize("key"), "keys"); // 'ey' ending
+    }
+
+    #[test]
+    fn test_reverse_relations_has_many() {
+        use vespertide_core::{ColumnType, SimpleColumnType};
+
+        // user table
+        let user = TableDef {
+            name: "user".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
+            indexes: vec![],
+        };
+
+        // post table with FK to user (not PK, so has_many)
+        let post = TableDef {
+            name: "post".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![
+                TableConstraint::PrimaryKey {
+                    auto_increment: false,
+                    columns: vec!["id".into()],
+                },
+                TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["user_id".into()],
+                    ref_table: "user".into(),
+                    ref_columns: vec!["id".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+            ],
+            indexes: vec![],
+        };
+
+        let schema = vec![user.clone(), post];
+
+        // Render user with schema context - should have has_many to posts
+        let rendered = render_entity_with_schema(&user, &schema);
+
+        assert!(rendered.contains("#[sea_orm(has_many)]"));
+        assert!(rendered.contains("HasMany<super::post::Entity>"));
+        assert!(rendered.contains("pub posts:")); // pluralized field name
+        // has_many should NOT have from/to attributes
+        assert!(!rendered.contains("has_many, from"));
+    }
+
+    #[test]
+    fn test_reverse_relations_has_one() {
+        use vespertide_core::{ColumnType, SimpleColumnType};
+
+        // user table
+        let user = TableDef {
+            name: "user".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
+            indexes: vec![],
+        };
+
+        // profile table with FK to user that is also the PK (one-to-one)
+        let profile = TableDef {
+            name: "profile".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "user_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "bio".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![
+                TableConstraint::PrimaryKey {
+                    auto_increment: false,
+                    columns: vec!["user_id".into()],
+                },
+                TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["user_id".into()],
+                    ref_table: "user".into(),
+                    ref_columns: vec!["id".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+            ],
+            indexes: vec![],
+        };
+
+        let schema = vec![user.clone(), profile];
+
+        // Render user with schema context - should have has_one to profile
+        let rendered = render_entity_with_schema(&user, &schema);
+
+        assert!(rendered.contains("#[sea_orm(has_one)]"));
+        assert!(rendered.contains("HasOne<super::profile::Entity>"));
+        assert!(rendered.contains("pub profile:")); // singular field name
+        // has_one should NOT have from/to attributes
+        assert!(!rendered.contains("has_one, from"));
+    }
+
+    #[test]
+    fn test_reverse_relations_unique_fk() {
+        use vespertide_core::{ColumnType, SimpleColumnType};
+
+        // user table
+        let user = TableDef {
+            name: "user".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
+            indexes: vec![],
+        };
+
+        // settings table with unique FK to user (one-to-one via UNIQUE constraint)
+        let settings = TableDef {
+            name: "settings".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![
+                TableConstraint::PrimaryKey {
+                    auto_increment: false,
+                    columns: vec!["id".into()],
+                },
+                TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["user_id".into()],
+                    ref_table: "user".into(),
+                    ref_columns: vec!["id".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+                TableConstraint::Unique {
+                    name: None,
+                    columns: vec!["user_id".into()],
+                },
+            ],
+            indexes: vec![],
+        };
+
+        let schema = vec![user.clone(), settings];
+
+        // Render user with schema context - should have has_one (because of UNIQUE)
+        let rendered = render_entity_with_schema(&user, &schema);
+
+        assert!(rendered.contains("#[sea_orm(has_one)]"));
+        assert!(rendered.contains("HasOne<super::settings::Entity>"));
+        assert!(rendered.contains("pub settings:")); // singular field name
+        // has_one should NOT have from/to attributes
+        assert!(!rendered.contains("has_one, from"));
     }
 }
 

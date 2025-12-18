@@ -35,6 +35,10 @@ pub struct Model {
     pub updated_at: Option<DateTimeWithTimeZone>,
     #[sea_orm(belongs_to, from = "media_id", to = "id")]
     pub media: HasOne<super::media::Entity>,
+    #[sea_orm(has_many)]
+    pub article_users: HasMany<super::article_user::Entity>,
+    #[sea_orm(has_many, via = "article_user")]
+    pub users: HasMany<super::user::Entity>,
 }
 
 
