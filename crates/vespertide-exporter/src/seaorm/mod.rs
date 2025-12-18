@@ -2,7 +2,8 @@ use std::collections::HashSet;
 
 use crate::orm::OrmExporter;
 use vespertide_core::{
-    ColumnDef, ColumnType, ComplexColumnType, EnumValue, IndexDef, TableConstraint, TableDef,
+    ColumnDef, ColumnType, ComplexColumnType, EnumValues, IndexDef, NumValue, TableConstraint,
+    TableDef,
 };
 
 pub struct SeaOrmExporter;
@@ -204,9 +205,26 @@ fn format_default_value(value: &str, column_type: &ColumnType) -> String {
             format!("default_value = {}", cleaned)
         }
         // Enum type: use enum variant format
-        ColumnType::Complex(ComplexColumnType::Enum { name, .. }) => {
+        ColumnType::Complex(ComplexColumnType::Enum { name, values }) => {
             let enum_name = to_pascal_case(name);
-            let variant = to_pascal_case(cleaned);
+            let variant = match values {
+                EnumValues::String(_) => {
+                    // String enum: cleaned is the string value, convert to PascalCase
+                    to_pascal_case(cleaned)
+                }
+                EnumValues::Integer(int_values) => {
+                    // Integer enum: cleaned is a number, find the matching variant name
+                    if let Ok(num) = cleaned.parse::<i32>() {
+                        int_values
+                            .iter()
+                            .find(|v| v.value == num)
+                            .map(|v| to_pascal_case(&v.name))
+                            .unwrap_or_else(|| to_pascal_case(cleaned))
+                    } else {
+                        to_pascal_case(cleaned)
+                    }
+                }
+            };
             format!("default_value = {}::{}", enum_name, variant)
         }
         // All other types: use quotes
@@ -578,40 +596,44 @@ fn unique_name(base: &str, used: &mut HashSet<String>) -> String {
     name
 }
 
-fn render_enum(lines: &mut Vec<String>, name: &str, values: &[EnumValue]) {
+fn render_enum(lines: &mut Vec<String>, name: &str, values: &EnumValues) {
     let enum_name = to_pascal_case(name);
-
-    // Check if this is an integer enum (all values have integer form)
-    let is_integer_enum = values
-        .iter()
-        .all(|v| matches!(v, EnumValue::Integer { .. }));
 
     lines.push(
         "#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]"
             .into(),
     );
 
-    if is_integer_enum {
-        // Integer enum: #[sea_orm(rs_type = "i32", db_type = "Integer")]
-        lines.push("#[sea_orm(rs_type = \"i32\", db_type = \"Integer\")]".into());
-    } else {
-        // String enum: #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "...")]
-        lines.push(format!(
-            "#[sea_orm(rs_type = \"String\", db_type = \"Enum\", enum_name = \"{}\")]",
-            name
-        ));
+    match values {
+        EnumValues::Integer(_) => {
+            // Integer enum: #[sea_orm(rs_type = "i32", db_type = "Integer")]
+            lines.push("#[sea_orm(rs_type = \"i32\", db_type = \"Integer\")]".into());
+        }
+        EnumValues::String(_) => {
+            // String enum: #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "...")]
+            lines.push(format!(
+                "#[sea_orm(rs_type = \"String\", db_type = \"Enum\", enum_name = \"{}\")]",
+                name
+            ));
+        }
     }
 
     lines.push(format!("pub enum {} {{", enum_name));
 
-    for value in values {
-        match value {
-            EnumValue::String(s) => {
+    match values {
+        EnumValues::String(string_values) => {
+            for s in string_values {
                 let variant_name = enum_variant_name(s);
                 lines.push(format!("    #[sea_orm(string_value = \"{}\")]", s));
                 lines.push(format!("    {},", variant_name));
             }
-            EnumValue::Integer { name: var_name, value: num } => {
+        }
+        EnumValues::Integer(int_values) => {
+            for NumValue {
+                name: var_name,
+                value: num,
+            } in int_values
+            {
                 let variant_name = enum_variant_name(var_name);
                 lines.push(format!("    {} = {},", variant_name, num));
             }
@@ -803,57 +825,57 @@ mod helper_tests {
         assert_eq!(enum_variant_name(input), expected);
     }
 
-    fn string_enum_order_status() -> (&'static str, Vec<EnumValue>) {
+    fn string_enum_order_status() -> (&'static str, EnumValues) {
         (
             "order_status",
-            vec!["pending".into(), "shipped".into(), "delivered".into()],
+            EnumValues::String(vec!["pending".into(), "shipped".into(), "delivered".into()]),
         )
     }
 
-    fn string_enum_numeric_prefix() -> (&'static str, Vec<EnumValue>) {
+    fn string_enum_numeric_prefix() -> (&'static str, EnumValues) {
         (
             "priority",
-            vec!["1_high".into(), "2_medium".into(), "3_low".into()],
+            EnumValues::String(vec!["1_high".into(), "2_medium".into(), "3_low".into()]),
         )
     }
 
-    fn integer_enum_color() -> (&'static str, Vec<EnumValue>) {
+    fn integer_enum_color() -> (&'static str, EnumValues) {
         (
             "color",
-            vec![
-                EnumValue::Integer {
+            EnumValues::Integer(vec![
+                NumValue {
                     name: "Black".into(),
                     value: 0,
                 },
-                EnumValue::Integer {
+                NumValue {
                     name: "White".into(),
                     value: 1,
                 },
-                EnumValue::Integer {
+                NumValue {
                     name: "Red".into(),
                     value: 2,
                 },
-            ],
+            ]),
         )
     }
 
-    fn integer_enum_status() -> (&'static str, Vec<EnumValue>) {
+    fn integer_enum_status() -> (&'static str, EnumValues) {
         (
             "task_status",
-            vec![
-                EnumValue::Integer {
+            EnumValues::Integer(vec![
+                NumValue {
                     name: "Pending".into(),
                     value: 0,
                 },
-                EnumValue::Integer {
+                NumValue {
                     name: "InProgress".into(),
                     value: 1,
                 },
-                EnumValue::Integer {
+                NumValue {
                     name: "Completed".into(),
                     value: 100,
                 },
-            ],
+            ]),
         )
     }
 
@@ -862,10 +884,7 @@ mod helper_tests {
     #[case::string_numeric_prefix("string_numeric_prefix", string_enum_numeric_prefix())]
     #[case::integer_color("integer_color", integer_enum_color())]
     #[case::integer_status("integer_status", integer_enum_status())]
-    fn test_render_enum_snapshots(
-        #[case] name: &str,
-        #[case] input: (&str, Vec<EnumValue>),
-    ) {
+    fn test_render_enum_snapshots(#[case] name: &str, #[case] input: (&str, EnumValues)) {
         use insta::with_settings;
 
         let (enum_name, values) = input;
@@ -1680,7 +1699,7 @@ mod tests {
                 name: "status".into(),
                 r#type: ColumnType::Complex(ComplexColumnType::Enum {
                     name: "order_status".into(),
-                    values: vec!["pending".into(), "shipped".into(), "delivered".into()]
+                    values: EnumValues::String(vec!["pending".into(), "shipped".into(), "delivered".into()])
                 }),
                 nullable: false,
                 default: None,
@@ -1702,7 +1721,7 @@ mod tests {
                 name: "priority".into(),
                 r#type: ColumnType::Complex(ComplexColumnType::Enum {
                     name: "task_priority".into(),
-                    values: vec!["low".into(), "medium".into(), "high".into(), "critical".into()]
+                    values: EnumValues::String(vec!["low".into(), "medium".into(), "high".into(), "critical".into()])
                 }),
                 nullable: true,
                 default: None,
@@ -1724,7 +1743,7 @@ mod tests {
                 name: "category".into(),
                 r#type: ColumnType::Complex(ComplexColumnType::Enum {
                     name: "product_category".into(),
-                    values: vec!["electronics".into(), "clothing".into(), "food".into()]
+                    values: EnumValues::String(vec!["electronics".into(), "clothing".into(), "food".into()])
                 }),
                 nullable: false,
                 default: None,
@@ -1738,7 +1757,7 @@ mod tests {
                 name: "availability".into(),
                 r#type: ColumnType::Complex(ComplexColumnType::Enum {
                     name: "availability_status".into(),
-                    values: vec!["in_stock".into(), "out_of_stock".into(), "pre_order".into()]
+                    values: EnumValues::String(vec!["in_stock".into(), "out_of_stock".into(), "pre_order".into()])
                 }),
                 nullable: false,
                 default: None,
@@ -1760,7 +1779,7 @@ mod tests {
                 name: "status".into(),
                 r#type: ColumnType::Complex(ComplexColumnType::Enum {
                     name: "doc_status".into(),
-                    values: vec!["draft".into(), "published".into(), "archived".into()]
+                    values: EnumValues::String(vec!["draft".into(), "published".into(), "archived".into()])
                 }),
                 nullable: false,
                 default: None,
@@ -1774,7 +1793,7 @@ mod tests {
                 name: "review_status".into(),
                 r#type: ColumnType::Complex(ComplexColumnType::Enum {
                     name: "doc_status".into(),
-                    values: vec!["draft".into(), "published".into(), "archived".into()]
+                    values: EnumValues::String(vec!["draft".into(), "published".into(), "archived".into()])
                 }),
                 nullable: true,
                 default: None,
@@ -1796,7 +1815,7 @@ mod tests {
                 name: "severity".into(),
                 r#type: ColumnType::Complex(ComplexColumnType::Enum {
                     name: "event_severity".into(),
-                    values: vec!["info-level".into(), "warning_level".into(), "ERROR_LEVEL".into(), "1critical".into()]
+                    values: EnumValues::String(vec!["info-level".into(), "warning_level".into(), "ERROR_LEVEL".into(), "1critical".into()])
                 }),
                 nullable: false,
                 default: None,
@@ -1835,7 +1854,7 @@ mod tests {
                 name: "status".into(),
                 r#type: ColumnType::Complex(ComplexColumnType::Enum {
                     name: "task_status".into(),
-                    values: vec!["pending".into(), "in_progress".into(), "completed".into()]
+                    values: EnumValues::String(vec!["pending".into(), "in_progress".into(), "completed".into()])
                 }),
                 nullable: false,
                 default: Some("'pending'".into()),
@@ -2159,5 +2178,65 @@ mod tests {
         let result = exporter.render_entity_with_schema(&table, &schema);
         assert!(result.is_ok());
         assert!(result.unwrap().contains("table_name = \"test\""));
+    }
+
+    fn int_enum_table(default_value: &str) -> TableDef {
+        use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+        TableDef {
+            name: "tasks".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "status".into(),
+                    r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "task_status".into(),
+                        values: EnumValues::Integer(vec![
+                            NumValue {
+                                name: "Pending".into(),
+                                value: 0,
+                            },
+                            NumValue {
+                                name: "InProgress".into(),
+                                value: 1,
+                            },
+                            NumValue {
+                                name: "Completed".into(),
+                                value: 100,
+                            },
+                        ]),
+                    }),
+                    nullable: false,
+                    default: Some(default_value.into()),
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![],
+            indexes: vec![],
+        }
+    }
+
+    #[rstest]
+    #[case::numeric_default("1")]
+    #[case::non_numeric_default("pending_status")]
+    fn test_integer_enum_default_value_snapshots(#[case] default_value: &str) {
+        let table = int_enum_table(default_value);
+        let rendered = render_entity(&table);
+        with_settings!({ snapshot_suffix => default_value }, {
+            assert_snapshot!(rendered);
+        });
     }
 }

@@ -1,0 +1,26 @@
+---
+source: crates/vespertide-exporter/src/seaorm/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
+#[sea_orm(rs_type = "i32", db_type = "Integer")]
+pub enum TaskStatus {
+    Pending = 0,
+    InProgress = 1,
+    Completed = 100,
+}
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[sea_orm(table_name = "tasks")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    #[sea_orm(default_value = TaskStatus::PendingStatus)]
+    pub status: TaskStatus,
+}
+
+impl ActiveModelBehavior for ActiveModel {}

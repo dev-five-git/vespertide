@@ -1,7 +1,7 @@
 use vespertide_core::schema::primary_key::PrimaryKeySyntax;
 use vespertide_core::{
-    ColumnDef, ColumnType, ComplexColumnType, MigrationAction, MigrationPlan, SimpleColumnType,
-    TableDef,
+    ColumnDef, ColumnType, ComplexColumnType, EnumValues, MigrationAction, MigrationPlan,
+    SimpleColumnType, TableDef,
 };
 use vespertide_query::{DatabaseBackend, build_plan_queries};
 
@@ -17,7 +17,11 @@ fn test_enum_value_change_generates_correct_sql() {
             column: "status".into(),
             new_type: ColumnType::Complex(ComplexColumnType::Enum {
                 name: "status".into(),
-                values: vec!["active".into(), "inactive".into(), "pending".into()],
+                values: EnumValues::String(vec![
+                    "active".into(),
+                    "inactive".into(),
+                    "pending".into(),
+                ]),
             }),
         }],
     };
@@ -41,7 +45,7 @@ fn test_enum_value_change_generates_correct_sql() {
                 name: "status".into(),
                 r#type: ColumnType::Complex(ComplexColumnType::Enum {
                     name: "status".into(),
-                    values: vec!["active".into(), "inactive".into()],
+                    values: EnumValues::String(vec!["active".into(), "inactive".into()]),
                 }),
                 nullable: true,
                 default: None,

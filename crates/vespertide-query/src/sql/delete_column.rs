@@ -78,9 +78,11 @@ mod tests {
 
     #[test]
     fn test_delete_enum_column_postgres() {
+        use vespertide_core::EnumValues;
+
         let enum_type = ColumnType::Complex(ComplexColumnType::Enum {
             name: "status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         });
         let result = build_delete_column("users", "status", Some(&enum_type));
 

@@ -586,7 +586,7 @@ mod tests {
         // Test MigrationAction::AddColumn (lines 46-49)
         let action = MigrationAction::AddColumn {
             table: "users".into(),
-            column: ColumnDef {
+            column: Box::new(ColumnDef {
                 name: "email".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Text),
                 nullable: true,
@@ -596,7 +596,7 @@ mod tests {
                 unique: None,
                 index: None,
                 foreign_key: None,
-            },
+            }),
             fill_with: None,
         };
         let current_schema = vec![TableDef {

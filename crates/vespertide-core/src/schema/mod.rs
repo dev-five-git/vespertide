@@ -8,7 +8,9 @@ pub mod reference;
 pub mod str_or_bool;
 pub mod table;
 
-pub use column::{ColumnDef, ColumnType, ComplexColumnType, EnumValue, SimpleColumnType};
+pub use column::{
+    ColumnDef, ColumnType, ComplexColumnType, EnumValues, NumValue, SimpleColumnType,
+};
 pub use constraint::TableConstraint;
 pub use index::IndexDef;
 pub use names::{ColumnName, IndexName, TableName};

@@ -48,7 +48,7 @@ pub fn apply_action(
                     column.name.clone(),
                 ))
             } else {
-                tbl.columns.push(column.clone());
+                tbl.columns.push((**column).clone());
                 Ok(())
             }
         }
@@ -339,7 +339,7 @@ mod tests {
         )],
         MigrationAction::AddColumn {
             table: "users".into(),
-            column: col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+            column: Box::new(col("id", ColumnType::Simple(SimpleColumnType::Integer))),
             fill_with: None,
         },
         ErrKind::ColumnExists
@@ -455,7 +455,7 @@ mod tests {
         actions: vec![
             MigrationAction::AddColumn {
                 table: "users".into(),
-                column: col("new_col", ColumnType::Simple(SimpleColumnType::Boolean)),
+                column: Box::new(col("new_col", ColumnType::Simple(SimpleColumnType::Boolean))),
                 fill_with: None,
             },
             MigrationAction::RenameColumn {

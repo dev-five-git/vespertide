@@ -587,7 +587,7 @@ mod tests {
             version: 1,
             actions: vec![MigrationAction::AddColumn {
                 table: "users".into(),
-                column: ColumnDef {
+                column: Box::new(ColumnDef {
                     name: "email".into(),
                     r#type: ColumnType::Simple(SimpleColumnType::Text),
                     nullable: false,
@@ -597,7 +597,7 @@ mod tests {
                     unique: None,
                     index: None,
                     foreign_key: None,
-                },
+                }),
                 fill_with: None,
             }],
         };
@@ -623,7 +623,7 @@ mod tests {
             version: 1,
             actions: vec![MigrationAction::AddColumn {
                 table: "users".into(),
-                column: ColumnDef {
+                column: Box::new(ColumnDef {
                     name: "email".into(),
                     r#type: ColumnType::Simple(SimpleColumnType::Text),
                     nullable: false,
@@ -633,7 +633,7 @@ mod tests {
                     unique: None,
                     index: None,
                     foreign_key: None,
-                },
+                }),
                 fill_with: Some("default@example.com".into()),
             }],
         };
@@ -652,7 +652,7 @@ mod tests {
             version: 1,
             actions: vec![MigrationAction::AddColumn {
                 table: "users".into(),
-                column: ColumnDef {
+                column: Box::new(ColumnDef {
                     name: "email".into(),
                     r#type: ColumnType::Simple(SimpleColumnType::Text),
                     nullable: true,
@@ -662,7 +662,7 @@ mod tests {
                     unique: None,
                     index: None,
                     foreign_key: None,
-                },
+                }),
                 fill_with: None,
             }],
         };
@@ -681,7 +681,7 @@ mod tests {
             version: 1,
             actions: vec![MigrationAction::AddColumn {
                 table: "users".into(),
-                column: ColumnDef {
+                column: Box::new(ColumnDef {
                     name: "email".into(),
                     r#type: ColumnType::Simple(SimpleColumnType::Text),
                     nullable: false,
@@ -691,7 +691,7 @@ mod tests {
                     unique: None,
                     index: None,
                     foreign_key: None,
-                },
+                }),
                 fill_with: None,
             }],
         };

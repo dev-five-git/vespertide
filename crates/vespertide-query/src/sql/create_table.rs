@@ -200,7 +200,7 @@ mod tests {
     use super::*;
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
-    use vespertide_core::{ColumnType, SimpleColumnType};
+    use vespertide_core::{ColumnType, EnumValues, SimpleColumnType};
 
     fn col(name: &str, ty: ColumnType) -> ColumnDef {
         ColumnDef {
@@ -413,7 +413,11 @@ mod tests {
                 name: "status".into(),
                 r#type: ColumnType::Complex(ComplexColumnType::Enum {
                     name: "user_status".into(),
-                    values: vec!["active".into(), "inactive".into(), "pending".into()],
+                    values: EnumValues::String(vec![
+                        "active".into(),
+                        "inactive".into(),
+                        "pending".into(),
+                    ]),
                 }),
                 nullable: false,
                 default: Some("'active'".into()),

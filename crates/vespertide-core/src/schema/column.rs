@@ -36,6 +36,31 @@ impl ColumnType {
         }
     }
 
+    /// Check if two column types require a migration.
+    /// For integer enums, no migration is ever needed because the underlying DB type is always INTEGER.
+    /// The enum name and values only affect code generation (SeaORM entities), not the database schema.
+    pub fn requires_migration(&self, other: &ColumnType) -> bool {
+        match (self, other) {
+            (
+                ColumnType::Complex(ComplexColumnType::Enum {
+                    values: values1, ..
+                }),
+                ColumnType::Complex(ComplexColumnType::Enum {
+                    values: values2, ..
+                }),
+            ) => {
+                // Both are integer enums - never require migration (DB type is always INTEGER)
+                if values1.is_integer() && values2.is_integer() {
+                    false
+                } else {
+                    // At least one is string enum - compare fully
+                    self != other
+                }
+            }
+            _ => self != other,
+        }
+    }
+
     /// Convert column type to Rust type string (for SeaORM entity generation)
     pub fn to_rust_type(&self, nullable: bool) -> String {
         let base = match self {
@@ -127,60 +152,75 @@ impl SimpleColumnType {
     }
 }
 
-/// Enum value definition - can be string-based or integer-based
+/// Integer enum variant with name and numeric value
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct NumValue {
+    pub name: String,
+    pub value: i32,
+}
+
+/// Enum values definition - either all string or all integer
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
-pub enum EnumValue {
-    /// String enum value: "pending", "active", etc.
-    String(String),
-    /// Integer enum value with name and numeric value: { "name": "Black", "value": 0 }
-    Integer { name: String, value: i32 },
+pub enum EnumValues {
+    String(Vec<String>),
+    Integer(Vec<NumValue>),
 }
 
-impl EnumValue {
-    /// Get the variant name for this enum value
-    pub fn variant_name(&self) -> &str {
-        match self {
-            EnumValue::String(s) => s.as_str(),
-            EnumValue::Integer { name, .. } => name.as_str(),
-        }
-    }
-
-    /// Get the SQL representation for CREATE TYPE ENUM
-    /// String enums return 'value', Integer enums return the number
-    pub fn to_sql_value(&self) -> String {
-        match self {
-            EnumValue::String(s) => format!("'{}'", s.replace('\'', "''")),
-            EnumValue::Integer { value, .. } => value.to_string(),
-        }
-    }
-
-    /// Check if this is a string enum value
+impl EnumValues {
+    /// Check if this is a string enum
     pub fn is_string(&self) -> bool {
-        match self {
-            EnumValue::String(_) => true,
-            EnumValue::Integer { .. } => false,
-        }
+        matches!(self, EnumValues::String(_))
     }
 
-    /// Check if this is an integer enum value
+    /// Check if this is an integer enum
     pub fn is_integer(&self) -> bool {
+        matches!(self, EnumValues::Integer(_))
+    }
+
+    /// Get all variant names
+    pub fn variant_names(&self) -> Vec<&str> {
         match self {
-            EnumValue::String(_) => false,
-            EnumValue::Integer { .. } => true,
+            EnumValues::String(values) => values.iter().map(|s| s.as_str()).collect(),
+            EnumValues::Integer(values) => values.iter().map(|v| v.name.as_str()).collect(),
+        }
+    }
+
+    /// Get the number of variants
+    pub fn len(&self) -> usize {
+        match self {
+            EnumValues::String(values) => values.len(),
+            EnumValues::Integer(values) => values.len(),
+        }
+    }
+
+    /// Check if there are no variants
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Get SQL values for CREATE TYPE ENUM (only for string enums)
+    /// Returns quoted strings like 'value1', 'value2'
+    pub fn to_sql_values(&self) -> Vec<String> {
+        match self {
+            EnumValues::String(values) => values
+                .iter()
+                .map(|s| format!("'{}'", s.replace('\'', "''")))
+                .collect(),
+            EnumValues::Integer(values) => values.iter().map(|v| v.value.to_string()).collect(),
         }
     }
 }
 
-impl From<&str> for EnumValue {
-    fn from(s: &str) -> Self {
-        EnumValue::String(s.to_string())
+impl From<Vec<String>> for EnumValues {
+    fn from(values: Vec<String>) -> Self {
+        EnumValues::String(values)
     }
 }
 
-impl From<String> for EnumValue {
-    fn from(s: String) -> Self {
-        EnumValue::String(s)
+impl From<Vec<&str>> for EnumValues {
+    fn from(values: Vec<&str>) -> Self {
+        EnumValues::String(values.into_iter().map(|s| s.to_string()).collect())
     }
 }
 
@@ -191,7 +231,7 @@ pub enum ComplexColumnType {
     Numeric { precision: u32, scale: u32 },
     Char { length: u32 },
     Custom { custom_type: String },
-    Enum { name: String, values: Vec<EnumValue> },
+    Enum { name: String, values: EnumValues },
 }
 
 #[cfg(test)]
@@ -267,7 +307,7 @@ mod tests {
     #[case(ComplexColumnType::Char { length: 1 }, false, "String")]
     #[case(ComplexColumnType::Custom { custom_type: "MONEY".into() }, false, "String")]
     #[case(ComplexColumnType::Custom { custom_type: "JSONB".into() }, false, "String")]
-    #[case(ComplexColumnType::Enum { name: "status".into(), values: vec!["active".into(), "inactive".into()] }, false, "String")]
+    #[case(ComplexColumnType::Enum { name: "status".into(), values: EnumValues::String(vec!["active".into(), "inactive".into()]) }, false, "String")]
     fn test_complex_column_type_to_rust_type_not_nullable(
         #[case] column_type: ComplexColumnType,
         #[case] nullable: bool,
@@ -288,7 +328,7 @@ mod tests {
     #[case(ComplexColumnType::Char { length: 1 }, "Option<String>")]
     #[case(ComplexColumnType::Custom { custom_type: "MONEY".into() }, "Option<String>")]
     #[case(ComplexColumnType::Custom { custom_type: "JSONB".into() }, "Option<String>")]
-    #[case(ComplexColumnType::Enum { name: "status".into(), values: vec!["active".into(), "inactive".into()] }, "Option<String>")]
+    #[case(ComplexColumnType::Enum { name: "status".into(), values: EnumValues::String(vec!["active".into(), "inactive".into()]) }, "Option<String>")]
     fn test_complex_column_type_to_rust_type_nullable(
         #[case] column_type: ComplexColumnType,
         #[case] expected: &str,
@@ -304,7 +344,7 @@ mod tests {
     #[case(ComplexColumnType::Numeric { precision: 10, scale: 2 })]
     #[case(ComplexColumnType::Char { length: 1 })]
     #[case(ComplexColumnType::Custom { custom_type: "SERIAL".into() })]
-    #[case(ComplexColumnType::Enum { name: "status".into(), values: vec![] })]
+    #[case(ComplexColumnType::Enum { name: "status".into(), values: EnumValues::String(vec![]) })]
     fn test_complex_column_type_does_not_support_auto_increment(
         #[case] column_type: ComplexColumnType,
     ) {
@@ -313,50 +353,107 @@ mod tests {
     }
 
     #[test]
-    fn test_enum_value_integer_variant_name() {
-        let val = EnumValue::Integer { name: "Black".into(), value: 0 };
-        assert_eq!(val.variant_name(), "Black");
+    fn test_enum_values_is_string() {
+        let string_vals = EnumValues::String(vec!["active".into()]);
+        let int_vals = EnumValues::Integer(vec![NumValue {
+            name: "Active".into(),
+            value: 1,
+        }]);
+        assert!(string_vals.is_string());
+        assert!(!int_vals.is_string());
     }
 
     #[test]
-    fn test_enum_value_integer_to_sql_value() {
-        let val = EnumValue::Integer { name: "High".into(), value: 10 };
-        assert_eq!(val.to_sql_value(), "10");
+    fn test_enum_values_is_integer() {
+        let string_vals = EnumValues::String(vec!["active".into()]);
+        let int_vals = EnumValues::Integer(vec![NumValue {
+            name: "Active".into(),
+            value: 1,
+        }]);
+        assert!(!string_vals.is_integer());
+        assert!(int_vals.is_integer());
     }
 
     #[test]
-    fn test_enum_value_is_string() {
-        let string_val = EnumValue::String("active".into());
-        let int_val = EnumValue::Integer { name: "Active".into(), value: 1 };
-        assert!(string_val.is_string());
-        assert!(!int_val.is_string());
+    fn test_enum_values_variant_names_string() {
+        let vals = EnumValues::String(vec!["pending".into(), "active".into()]);
+        assert_eq!(vals.variant_names(), vec!["pending", "active"]);
     }
 
     #[test]
-    fn test_enum_value_from_string_owned() {
-        let owned = String::from("pending");
-        let val: EnumValue = owned.into();
-        assert_eq!(val, EnumValue::String("pending".into()));
+    fn test_enum_values_variant_names_integer() {
+        let vals = EnumValues::Integer(vec![
+            NumValue {
+                name: "Low".into(),
+                value: 0,
+            },
+            NumValue {
+                name: "High".into(),
+                value: 10,
+            },
+        ]);
+        assert_eq!(vals.variant_names(), vec!["Low", "High"]);
     }
 
     #[test]
-    fn test_enum_value_is_integer() {
-        let string_val = EnumValue::String("active".into());
-        let int_val = EnumValue::Integer { name: "Active".into(), value: 1 };
-        assert!(!string_val.is_integer());
-        assert!(int_val.is_integer());
+    fn test_enum_values_len_and_is_empty() {
+        // String variant
+        let empty = EnumValues::String(vec![]);
+        let non_empty = EnumValues::String(vec!["a".into()]);
+        assert!(empty.is_empty());
+        assert_eq!(empty.len(), 0);
+        assert!(!non_empty.is_empty());
+        assert_eq!(non_empty.len(), 1);
+
+        // Integer variant
+        let empty_int = EnumValues::Integer(vec![]);
+        let non_empty_int = EnumValues::Integer(vec![
+            NumValue {
+                name: "A".into(),
+                value: 0,
+            },
+            NumValue {
+                name: "B".into(),
+                value: 1,
+            },
+        ]);
+        assert!(empty_int.is_empty());
+        assert_eq!(empty_int.len(), 0);
+        assert!(!non_empty_int.is_empty());
+        assert_eq!(non_empty_int.len(), 2);
     }
 
     #[test]
-    fn test_enum_value_string_variant_name() {
-        let val = EnumValue::String("pending".into());
-        assert_eq!(val.variant_name(), "pending");
+    fn test_enum_values_to_sql_values_string() {
+        let vals = EnumValues::String(vec!["active".into(), "pending".into()]);
+        assert_eq!(vals.to_sql_values(), vec!["'active'", "'pending'"]);
     }
 
     #[test]
-    fn test_enum_value_string_to_sql_value() {
-        let val = EnumValue::String("active".into());
-        assert_eq!(val.to_sql_value(), "'active'");
+    fn test_enum_values_to_sql_values_integer() {
+        let vals = EnumValues::Integer(vec![
+            NumValue {
+                name: "Low".into(),
+                value: 0,
+            },
+            NumValue {
+                name: "High".into(),
+                value: 10,
+            },
+        ]);
+        assert_eq!(vals.to_sql_values(), vec!["0", "10"]);
+    }
+
+    #[test]
+    fn test_enum_values_from_vec_string() {
+        let vals: EnumValues = vec!["a".to_string(), "b".to_string()].into();
+        assert!(matches!(vals, EnumValues::String(_)));
+    }
+
+    #[test]
+    fn test_enum_values_from_vec_str() {
+        let vals: EnumValues = vec!["a", "b"].into();
+        assert!(matches!(vals, EnumValues::String(_)));
     }
 
     #[rstest]
@@ -380,5 +477,100 @@ mod tests {
         #[case] expected: bool,
     ) {
         assert_eq!(ColumnType::Simple(ty).supports_auto_increment(), expected);
+    }
+
+    #[test]
+    fn test_requires_migration_integer_enum_values_changed() {
+        // Integer enum values changed - should NOT require migration
+        let from = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: EnumValues::Integer(vec![
+                NumValue {
+                    name: "Pending".into(),
+                    value: 0,
+                },
+                NumValue {
+                    name: "Active".into(),
+                    value: 1,
+                },
+            ]),
+        });
+        let to = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: EnumValues::Integer(vec![
+                NumValue {
+                    name: "Pending".into(),
+                    value: 0,
+                },
+                NumValue {
+                    name: "Active".into(),
+                    value: 1,
+                },
+                NumValue {
+                    name: "Completed".into(),
+                    value: 100,
+                },
+            ]),
+        });
+        assert!(!from.requires_migration(&to));
+    }
+
+    #[test]
+    fn test_requires_migration_integer_enum_name_changed() {
+        // Integer enum name changed - should NOT require migration (DB type is always INTEGER)
+        let from = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "old_status".into(),
+            values: EnumValues::Integer(vec![NumValue {
+                name: "Pending".into(),
+                value: 0,
+            }]),
+        });
+        let to = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "new_status".into(),
+            values: EnumValues::Integer(vec![NumValue {
+                name: "Pending".into(),
+                value: 0,
+            }]),
+        });
+        assert!(!from.requires_migration(&to));
+    }
+
+    #[test]
+    fn test_requires_migration_string_enum_values_changed() {
+        // String enum values changed - SHOULD require migration
+        let from = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: EnumValues::String(vec!["pending".into(), "active".into()]),
+        });
+        let to = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: EnumValues::String(vec!["pending".into(), "active".into(), "completed".into()]),
+        });
+        assert!(from.requires_migration(&to));
+    }
+
+    #[test]
+    fn test_requires_migration_simple_types() {
+        let int = ColumnType::Simple(SimpleColumnType::Integer);
+        let text = ColumnType::Simple(SimpleColumnType::Text);
+        assert!(int.requires_migration(&text));
+        assert!(!int.requires_migration(&int));
+    }
+
+    #[test]
+    fn test_requires_migration_mixed_enum_types() {
+        // String enum to integer enum - SHOULD require migration
+        let string_enum = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: EnumValues::String(vec!["pending".into()]),
+        });
+        let int_enum = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: EnumValues::Integer(vec![NumValue {
+                name: "Pending".into(),
+                value: 0,
+            }]),
+        });
+        assert!(string_enum.requires_migration(&int_enum));
     }
 }
