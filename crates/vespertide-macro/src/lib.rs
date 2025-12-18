@@ -293,12 +293,23 @@ mod tests {
 
     #[test]
     fn test_macro_parsing_valid_input() {
-        // Test that valid input is parsed correctly (even though migration loading fails)
+        // Test that valid input is parsed correctly
+        // The macro will either succeed (if migrations dir exists and is empty)
+        // or fail with a migration loading error
         let input: proc_macro2::TokenStream = "my_pool".parse().unwrap();
         let output = vespertide_migration_impl(input);
         let output_str = output.to_string();
         // Should produce output (either success or migration loading error)
         assert!(!output_str.is_empty());
+        // If error, it should mention "Failed to load"
+        // If success, it should contain "async"
+        assert!(
+            output_str.contains("async") || output_str.contains("Failed to load"),
+            "Unexpected output: {}",
+            output_str
+        );
+        // Print for debugging coverage
+        eprintln!("Output contains 'async': {}", output_str.contains("async"));
     }
 
     #[test]
@@ -615,5 +626,27 @@ mod tests {
         let table = &baseline[0];
         let normalized = table.clone().normalize();
         assert!(normalized.is_ok());
+    }
+
+    #[test]
+    fn test_build_migration_block_error_nonexistent_table() {
+        // Try to add column to a table that doesn't exist - should fail
+        let migration = MigrationPlan {
+            version: 1,
+            comment: None,
+            created_at: None,
+            actions: vec![MigrationAction::AddColumn {
+                table: "nonexistent_table".into(),
+                column: Box::new(test_column("new_col")),
+                fill_with: None,
+            }],
+        };
+
+        let mut baseline = Vec::new();
+        let result = build_migration_block(&migration, &mut baseline);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Failed to build queries for migration version 1"));
     }
 }
