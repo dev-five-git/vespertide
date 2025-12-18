@@ -36,8 +36,13 @@ pub fn render_entity_with_schema(table: &TableDef, schema: &[TableDef]) -> Strin
     let indexes = &table.indexes;
     let relation_fields = relation_field_defs_with_schema(table, schema);
 
+    // Build sets of columns with single-column unique constraints and indexes
+    let unique_columns = single_column_unique_set(&table.constraints);
+    let indexed_columns = single_column_index_set(indexes);
+
     let mut lines: Vec<String> = Vec::new();
     lines.push("use sea_orm::entity::prelude::*;".into());
+    lines.push("use serde::{Deserialize, Serialize};".into());
     lines.push(String::new());
 
     // Generate Enum definitions first
@@ -53,12 +58,19 @@ pub fn render_entity_with_schema(table: &TableDef, schema: &[TableDef]) -> Strin
     }
 
     lines.push("#[sea_orm::model]".into());
-    lines.push("#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]".into());
+    lines.push("#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]".into());
     lines.push(format!("#[sea_orm(table_name = \"{}\")]", table.name));
     lines.push("pub struct Model {".into());
 
     for column in &table.columns {
-        render_column(&mut lines, column, &primary_keys, composite_pk);
+        render_column(
+            &mut lines,
+            column,
+            &primary_keys,
+            composite_pk,
+            &unique_columns,
+            &indexed_columns,
+        );
     }
     for field in relation_fields {
         lines.push(field);
@@ -77,20 +89,75 @@ pub fn render_entity_with_schema(table: &TableDef, schema: &[TableDef]) -> Strin
     lines.join("\n")
 }
 
+/// Build a set of column names that have single-column unique constraints.
+fn single_column_unique_set(constraints: &[TableConstraint]) -> HashSet<String> {
+    let mut unique_cols = HashSet::new();
+    for constraint in constraints {
+        if let TableConstraint::Unique { columns, .. } = constraint {
+            if columns.len() == 1 {
+                unique_cols.insert(columns[0].clone());
+            }
+        }
+    }
+    unique_cols
+}
+
+/// Build a set of column names that have single-column indexes.
+fn single_column_index_set(indexes: &[IndexDef]) -> HashSet<String> {
+    let mut indexed_cols = HashSet::new();
+    for index in indexes {
+        if index.columns.len() == 1 {
+            indexed_cols.insert(index.columns[0].clone());
+        }
+    }
+    indexed_cols
+}
+
 fn render_column(
     lines: &mut Vec<String>,
     column: &ColumnDef,
     primary_keys: &HashSet<String>,
     composite_pk: bool,
+    unique_columns: &HashSet<String>,
+    indexed_columns: &HashSet<String>,
 ) {
-    if primary_keys.contains(&column.name) {
+    let is_pk = primary_keys.contains(&column.name);
+    let is_unique = unique_columns.contains(&column.name);
+    let is_indexed = indexed_columns.contains(&column.name);
+    let has_default = column.default.is_some();
+
+    // Build attribute parts
+    let mut attrs: Vec<String> = Vec::new();
+
+    if is_pk {
+        attrs.push("primary_key".into());
         // Only show auto_increment = false for integer types that support auto_increment
-        // Non-integer types (like UUID) don't need this annotation
         if composite_pk && column.r#type.supports_auto_increment() {
-            lines.push("    #[sea_orm(primary_key, auto_increment = false)]".into());
-        } else {
-            lines.push("    #[sea_orm(primary_key)]".into());
+            attrs.push("auto_increment = false".into());
         }
+    }
+
+    if is_unique && !is_pk {
+        // unique is redundant if it's already a primary key
+        attrs.push("unique".into());
+    }
+
+    if is_indexed && !is_pk && !is_unique {
+        // indexed is redundant if it's already a primary key or unique
+        attrs.push("indexed".into());
+    }
+
+    if has_default {
+        if let Some(ref default_val) = column.default {
+            // Format the default value for SeaORM
+            let formatted = format_default_value(default_val, &column.r#type);
+            attrs.push(formatted);
+        }
+    }
+
+    // Output attribute if any
+    if !attrs.is_empty() {
+        lines.push(format!("    #[sea_orm({})]", attrs.join(", ")));
     }
 
     let field_name = sanitize_field_name(&column.name);
@@ -108,6 +175,58 @@ fn render_column(
     };
 
     lines.push(format!("    pub {}: {},", field_name, ty));
+}
+
+/// Format default value for SeaORM attribute.
+/// Returns the full attribute string like `default_value = "..."` or `default_value = 0`.
+fn format_default_value(value: &str, column_type: &ColumnType) -> String {
+    let trimmed = value.trim();
+
+    // Remove surrounding single quotes if present (SQL string literals)
+    let cleaned = if trimmed.starts_with('\'') && trimmed.ends_with('\'') && trimmed.len() >= 2 {
+        &trimmed[1..trimmed.len() - 1]
+    } else {
+        trimmed
+    };
+
+    // Format based on column type
+    match column_type {
+        // Numeric types: no quotes
+        ColumnType::Simple(simple) if is_numeric_simple_type(simple) => {
+            format!("default_value = {}", cleaned)
+        }
+        // Boolean type: no quotes
+        ColumnType::Simple(vespertide_core::SimpleColumnType::Boolean) => {
+            format!("default_value = {}", cleaned)
+        }
+        // Numeric complex type: no quotes
+        ColumnType::Complex(ComplexColumnType::Numeric { .. }) => {
+            format!("default_value = {}", cleaned)
+        }
+        // Enum type: use enum variant format
+        ColumnType::Complex(ComplexColumnType::Enum { name, .. }) => {
+            let enum_name = to_pascal_case(name);
+            let variant = to_pascal_case(cleaned);
+            format!("default_value = {}::{}", enum_name, variant)
+        }
+        // All other types: use quotes
+        _ => {
+            format!("default_value = \"{}\"", cleaned)
+        }
+    }
+}
+
+/// Check if the simple column type is numeric.
+fn is_numeric_simple_type(simple: &vespertide_core::SimpleColumnType) -> bool {
+    use vespertide_core::SimpleColumnType;
+    matches!(
+        simple,
+        SimpleColumnType::SmallInt
+            | SimpleColumnType::Integer
+            | SimpleColumnType::BigInt
+            | SimpleColumnType::Real
+            | SimpleColumnType::DoublePrecision
+    )
 }
 
 fn primary_key_columns(table: &TableDef) -> HashSet<String> {
@@ -265,7 +384,7 @@ fn unique_name(base: &str, used: &mut HashSet<String>) -> String {
 fn render_enum(lines: &mut Vec<String>, name: &str, values: &[String]) {
     let enum_name = to_pascal_case(name);
 
-    lines.push("#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum)]".into());
+    lines.push("#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]".into());
     lines.push(format!(
         "#[sea_orm(rs_type = \"String\", db_type = \"Enum\", enum_name = \"{}\")]",
         name
@@ -1202,6 +1321,47 @@ mod tests {
                 index: None,
                 foreign_key: None,
             },
+        ],
+        constraints: vec![],
+        indexes: vec![],
+    })]
+    #[case("unique_and_indexed", TableDef {
+        name: "users".into(),
+        columns: vec![
+            ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: Some(PrimaryKeySyntax::Bool(true)), unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "email".into(), r#type: ColumnType::Simple(SimpleColumnType::Text), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "username".into(), r#type: ColumnType::Simple(SimpleColumnType::Text), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "department".into(), r#type: ColumnType::Simple(SimpleColumnType::Text), nullable: true, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "status".into(), r#type: ColumnType::Simple(SimpleColumnType::Text), nullable: false, default: Some("'active'".into()), comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+        ],
+        constraints: vec![
+            TableConstraint::Unique { name: None, columns: vec!["email".into()] },
+            TableConstraint::Unique { name: Some("uq_username".into()), columns: vec!["username".into()] },
+        ],
+        indexes: vec![
+            IndexDef { name: "idx_department".into(), columns: vec!["department".into()], unique: false },
+        ],
+    })]
+    #[case("enum_with_default", TableDef {
+        name: "tasks".into(),
+        columns: vec![
+            ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: Some(PrimaryKeySyntax::Bool(true)), unique: None, index: None, foreign_key: None },
+            ColumnDef {
+                name: "status".into(),
+                r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                    name: "task_status".into(),
+                    values: vec!["pending".into(), "in_progress".into(), "completed".into()]
+                }),
+                nullable: false,
+                default: Some("'pending'".into()),
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            },
+            ColumnDef { name: "priority".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: Some("0".into()), comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "is_archived".into(), r#type: ColumnType::Simple(SimpleColumnType::Boolean), nullable: false, default: Some("false".into()), comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
         ],
         constraints: vec![],
         indexes: vec![],
