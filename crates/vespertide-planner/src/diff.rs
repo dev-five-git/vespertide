@@ -17,18 +17,19 @@ fn topological_sort_tables<'a>(tables: &[&'a TableDef]) -> Result<Vec<&'a TableD
 
     // Build adjacency list: for each table, list the tables it depends on (via FK)
     // Use BTreeMap for consistent ordering
+    // Use BTreeSet to avoid duplicate dependencies (e.g., multiple FKs referencing the same table)
     let mut dependencies: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for table in tables {
-        let mut deps = Vec::new();
+        let mut deps_set: BTreeSet<&str> = BTreeSet::new();
         for constraint in &table.constraints {
             if let TableConstraint::ForeignKey { ref_table, .. } = constraint {
                 // Only consider dependencies within the set of tables being created
                 if table_names.contains(ref_table.as_str()) && ref_table != &table.name {
-                    deps.push(ref_table.as_str());
+                    deps_set.insert(ref_table.as_str());
                 }
             }
         }
-        dependencies.insert(table.name.as_str(), deps);
+        dependencies.insert(table.name.as_str(), deps_set.into_iter().collect());
     }
 
     // Kahn's algorithm for topological sort
@@ -140,20 +141,21 @@ fn sort_delete_tables(actions: &mut [MigrationAction], all_tables: &BTreeMap<&st
     // Build dependency graph for tables being deleted
     // dependencies[A] = [B] means A has FK referencing B
     // Use BTreeMap for consistent ordering
+    // Use BTreeSet to avoid duplicate dependencies (e.g., multiple FKs referencing the same table)
     let mut dependencies: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for &table_name in &delete_table_names {
-        let mut deps = Vec::new();
+        let mut deps_set: BTreeSet<&str> = BTreeSet::new();
         if let Some(table_def) = all_tables.get(table_name) {
             for constraint in &table_def.constraints {
                 if let TableConstraint::ForeignKey { ref_table, .. } = constraint
                     && delete_table_names.contains(ref_table.as_str())
                     && ref_table != table_name
                 {
-                    deps.push(ref_table.as_str());
+                    deps_set.insert(ref_table.as_str());
                 }
             }
         }
-        dependencies.insert(table_name, deps);
+        dependencies.insert(table_name, deps_set.into_iter().collect());
     }
 
     // Use Kahn's algorithm for topological sort
@@ -1500,6 +1502,230 @@ mod tests {
 
             // This should panic
             extract_delete_table_name(&action);
+        }
+
+        /// Test that inline FK across multiple tables works correctly with topological sort
+        #[test]
+        fn create_tables_with_inline_fk_chain() {
+            use super::*;
+            use vespertide_core::schema::foreign_key::ForeignKeySyntax;
+            use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+
+            fn col_pk(name: &str) -> ColumnDef {
+                ColumnDef {
+                    name: name.to_string(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }
+            }
+
+            fn col_inline_fk(name: &str, ref_table: &str) -> ColumnDef {
+                ColumnDef {
+                    name: name.to_string(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: Some(ForeignKeySyntax::String(format!("{}.id", ref_table))),
+                }
+            }
+
+            // Reproduce the app example structure:
+            // user -> (no deps)
+            // product -> (no deps)
+            // project -> user
+            // code -> product, user, project
+            // order -> user, project, product, code
+            // payment -> order
+
+            let user = TableDef {
+                name: "user".to_string(),
+                columns: vec![col_pk("id")],
+                constraints: vec![],
+                indexes: vec![],
+            };
+
+            let product = TableDef {
+                name: "product".to_string(),
+                columns: vec![col_pk("id")],
+                constraints: vec![],
+                indexes: vec![],
+            };
+
+            let project = TableDef {
+                name: "project".to_string(),
+                columns: vec![col_pk("id"), col_inline_fk("user_id", "user")],
+                constraints: vec![],
+                indexes: vec![],
+            };
+
+            let code = TableDef {
+                name: "code".to_string(),
+                columns: vec![
+                    col_pk("id"),
+                    col_inline_fk("product_id", "product"),
+                    col_inline_fk("creator_user_id", "user"),
+                    col_inline_fk("project_id", "project"),
+                ],
+                constraints: vec![],
+                indexes: vec![],
+            };
+
+            let order = TableDef {
+                name: "order".to_string(),
+                columns: vec![
+                    col_pk("id"),
+                    col_inline_fk("user_id", "user"),
+                    col_inline_fk("project_id", "project"),
+                    col_inline_fk("product_id", "product"),
+                    col_inline_fk("code_id", "code"),
+                ],
+                constraints: vec![],
+                indexes: vec![],
+            };
+
+            let payment = TableDef {
+                name: "payment".to_string(),
+                columns: vec![col_pk("id"), col_inline_fk("order_id", "order")],
+                constraints: vec![],
+                indexes: vec![],
+            };
+
+            // Pass in arbitrary order - should NOT return circular dependency error
+            let result = diff_schemas(&[], &[payment, order, code, project, product, user]);
+            assert!(result.is_ok(), "Expected Ok, got: {:?}", result);
+
+            let plan = result.unwrap();
+            let create_order: Vec<&str> = plan
+                .actions
+                .iter()
+                .filter_map(|a| {
+                    if let MigrationAction::CreateTable { table, .. } = a {
+                        Some(table.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            // Verify order respects FK dependencies
+            let get_pos = |name: &str| create_order.iter().position(|&t| t == name).unwrap();
+
+            // user and product have no deps, can be in any order
+            // project depends on user
+            assert!(
+                get_pos("user") < get_pos("project"),
+                "user must come before project"
+            );
+            // code depends on product, user, project
+            assert!(
+                get_pos("product") < get_pos("code"),
+                "product must come before code"
+            );
+            assert!(
+                get_pos("user") < get_pos("code"),
+                "user must come before code"
+            );
+            assert!(
+                get_pos("project") < get_pos("code"),
+                "project must come before code"
+            );
+            // order depends on user, project, product, code
+            assert!(
+                get_pos("code") < get_pos("order"),
+                "code must come before order"
+            );
+            // payment depends on order
+            assert!(
+                get_pos("order") < get_pos("payment"),
+                "order must come before payment"
+            );
+        }
+
+        /// Test that multiple FKs to the same table are deduplicated correctly
+        #[test]
+        fn create_tables_with_duplicate_fk_references() {
+            use super::*;
+            use vespertide_core::schema::foreign_key::ForeignKeySyntax;
+            use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+
+            fn col_pk(name: &str) -> ColumnDef {
+                ColumnDef {
+                    name: name.to_string(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }
+            }
+
+            fn col_inline_fk(name: &str, ref_table: &str) -> ColumnDef {
+                ColumnDef {
+                    name: name.to_string(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: Some(ForeignKeySyntax::String(format!("{}.id", ref_table))),
+                }
+            }
+
+            // Table with multiple FKs referencing the same table (like code.creator_user_id and code.used_by_user_id)
+            let user = TableDef {
+                name: "user".to_string(),
+                columns: vec![col_pk("id")],
+                constraints: vec![],
+                indexes: vec![],
+            };
+
+            let code = TableDef {
+                name: "code".to_string(),
+                columns: vec![
+                    col_pk("id"),
+                    col_inline_fk("creator_user_id", "user"),
+                    col_inline_fk("used_by_user_id", "user"), // Second FK to same table
+                ],
+                constraints: vec![],
+                indexes: vec![],
+            };
+
+            // This should NOT return circular dependency error even with duplicate FK refs
+            let result = diff_schemas(&[], &[code, user]);
+            assert!(result.is_ok(), "Expected Ok, got: {:?}", result);
+
+            let plan = result.unwrap();
+            let create_order: Vec<&str> = plan
+                .actions
+                .iter()
+                .filter_map(|a| {
+                    if let MigrationAction::CreateTable { table, .. } = a {
+                        Some(table.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            // user must come before code
+            let user_pos = create_order.iter().position(|&t| t == "user").unwrap();
+            let code_pos = create_order.iter().position(|&t| t == "code").unwrap();
+            assert!(user_pos < code_pos, "user must come before code");
         }
     }
 }
