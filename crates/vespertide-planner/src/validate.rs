@@ -1,6 +1,9 @@
 use std::collections::HashSet;
 
-use vespertide_core::{IndexDef, MigrationAction, MigrationPlan, TableConstraint, TableDef};
+use vespertide_core::{
+    ColumnDef, ColumnType, ComplexColumnType, EnumValues, IndexDef, MigrationAction, MigrationPlan,
+    TableConstraint, TableDef,
+};
 
 use crate::error::PlannerError;
 
@@ -58,6 +61,11 @@ fn validate_table(
         return Err(PlannerError::MissingPrimaryKey(table.name.clone()));
     }
 
+    // Validate columns (enum types)
+    for column in &table.columns {
+        validate_column(column, &table.name)?;
+    }
+
     // Validate constraints
     for constraint in &table.constraints {
         validate_constraint(constraint, &table.name, &table_columns, table_map)?;
@@ -68,6 +76,54 @@ fn validate_table(
         validate_index(index, &table.name, &table_columns)?;
     }
 
+    Ok(())
+}
+
+fn validate_column(column: &ColumnDef, table_name: &str) -> Result<(), PlannerError> {
+    // Validate enum types for duplicate names/values
+    if let ColumnType::Complex(ComplexColumnType::Enum { name, values }) = &column.r#type {
+        match values {
+            EnumValues::String(variants) => {
+                let mut seen = HashSet::new();
+                for variant in variants {
+                    if !seen.insert(variant.as_str()) {
+                        return Err(PlannerError::DuplicateEnumVariantName(
+                            name.clone(),
+                            table_name.to_string(),
+                            column.name.clone(),
+                            variant.clone(),
+                        ));
+                    }
+                }
+            }
+            EnumValues::Integer(variants) => {
+                // Check duplicate names
+                let mut seen_names = HashSet::new();
+                for variant in variants {
+                    if !seen_names.insert(variant.name.as_str()) {
+                        return Err(PlannerError::DuplicateEnumVariantName(
+                            name.clone(),
+                            table_name.to_string(),
+                            column.name.clone(),
+                            variant.name.clone(),
+                        ));
+                    }
+                }
+                // Check duplicate values
+                let mut seen_values = HashSet::new();
+                for variant in variants {
+                    if !seen_values.insert(variant.value) {
+                        return Err(PlannerError::DuplicateEnumValue(
+                            name.clone(),
+                            table_name.to_string(),
+                            column.name.clone(),
+                            variant.value,
+                        ));
+                    }
+                }
+            }
+        }
+    }
     Ok(())
 }
 
@@ -237,7 +293,10 @@ pub fn validate_migration_plan(plan: &MigrationPlan) -> Result<(), PlannerError>
 mod tests {
     use super::*;
     use rstest::rstest;
-    use vespertide_core::{ColumnDef, ColumnType, IndexDef, SimpleColumnType, TableConstraint};
+    use vespertide_core::{
+        ColumnDef, ColumnType, ComplexColumnType, EnumValues, IndexDef, NumValue, SimpleColumnType,
+        TableConstraint,
+    };
 
     fn col(name: &str, ty: ColumnType) -> ColumnDef {
         ColumnDef {
@@ -697,6 +756,187 @@ mod tests {
         };
 
         let result = validate_migration_plan(&plan);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_string_enum_duplicate_variant_name() {
+        let schema = vec![table(
+            "users",
+            vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col(
+                    "status",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "user_status".into(),
+                        values: EnumValues::String(vec![
+                            "active".into(),
+                            "inactive".into(),
+                            "active".into(), // duplicate
+                        ]),
+                    }),
+                ),
+            ],
+            vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
+            vec![],
+        )];
+
+        let result = validate_schema(&schema);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            PlannerError::DuplicateEnumVariantName(enum_name, table, column, variant) => {
+                assert_eq!(enum_name, "user_status");
+                assert_eq!(table, "users");
+                assert_eq!(column, "status");
+                assert_eq!(variant, "active");
+            }
+            err => panic!("expected DuplicateEnumVariantName, got {:?}", err),
+        }
+    }
+
+    #[test]
+    fn validate_integer_enum_duplicate_variant_name() {
+        let schema = vec![table(
+            "tasks",
+            vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col(
+                    "priority",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "priority_level".into(),
+                        values: EnumValues::Integer(vec![
+                            NumValue {
+                                name: "Low".into(),
+                                value: 0,
+                            },
+                            NumValue {
+                                name: "High".into(),
+                                value: 1,
+                            },
+                            NumValue {
+                                name: "Low".into(), // duplicate name
+                                value: 2,
+                            },
+                        ]),
+                    }),
+                ),
+            ],
+            vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
+            vec![],
+        )];
+
+        let result = validate_schema(&schema);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            PlannerError::DuplicateEnumVariantName(enum_name, table, column, variant) => {
+                assert_eq!(enum_name, "priority_level");
+                assert_eq!(table, "tasks");
+                assert_eq!(column, "priority");
+                assert_eq!(variant, "Low");
+            }
+            err => panic!("expected DuplicateEnumVariantName, got {:?}", err),
+        }
+    }
+
+    #[test]
+    fn validate_integer_enum_duplicate_value() {
+        let schema = vec![table(
+            "tasks",
+            vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col(
+                    "priority",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "priority_level".into(),
+                        values: EnumValues::Integer(vec![
+                            NumValue {
+                                name: "Low".into(),
+                                value: 0,
+                            },
+                            NumValue {
+                                name: "Medium".into(),
+                                value: 1,
+                            },
+                            NumValue {
+                                name: "High".into(),
+                                value: 0, // duplicate value
+                            },
+                        ]),
+                    }),
+                ),
+            ],
+            vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
+            vec![],
+        )];
+
+        let result = validate_schema(&schema);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            PlannerError::DuplicateEnumValue(enum_name, table, column, value) => {
+                assert_eq!(enum_name, "priority_level");
+                assert_eq!(table, "tasks");
+                assert_eq!(column, "priority");
+                assert_eq!(value, 0);
+            }
+            err => panic!("expected DuplicateEnumValue, got {:?}", err),
+        }
+    }
+
+    #[test]
+    fn validate_enum_valid() {
+        let schema = vec![table(
+            "tasks",
+            vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col(
+                    "status",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "task_status".into(),
+                        values: EnumValues::String(vec![
+                            "pending".into(),
+                            "in_progress".into(),
+                            "completed".into(),
+                        ]),
+                    }),
+                ),
+                col(
+                    "priority",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "priority_level".into(),
+                        values: EnumValues::Integer(vec![
+                            NumValue {
+                                name: "Low".into(),
+                                value: 0,
+                            },
+                            NumValue {
+                                name: "Medium".into(),
+                                value: 50,
+                            },
+                            NumValue {
+                                name: "High".into(),
+                                value: 100,
+                            },
+                        ]),
+                    }),
+                ),
+            ],
+            vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
+            vec![],
+        )];
+
+        let result = validate_schema(&schema);
         assert!(result.is_ok());
     }
 }
