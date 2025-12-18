@@ -1858,6 +1858,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "runtime-macros"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34bef7b9430b9f9e666d930202e1344765b623203affe2f779bcd1f269384248"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.111",
+]
+
+[[package]]
 name = "rust_decimal"
 version = "1.39.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3017,6 +3028,7 @@ version = "0.1.12"
 dependencies = [
  "proc-macro2",
  "quote",
+ "runtime-macros",
  "syn 2.0.111",
  "tempfile",
  "thiserror",
