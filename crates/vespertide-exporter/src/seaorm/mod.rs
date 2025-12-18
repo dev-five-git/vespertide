@@ -264,7 +264,11 @@ fn as_fk(constraint: &TableConstraint) -> Option<(&[String], &str, &[String])> {
             ref_table,
             ref_columns,
             ..
-        } => Some((columns.as_slice(), ref_table.as_str(), ref_columns.as_slice())),
+        } => Some((
+            columns.as_slice(),
+            ref_table.as_str(),
+            ref_columns.as_slice(),
+        )),
         _ => None,
     }
 }
@@ -290,9 +294,8 @@ fn resolve_fk_target<'a>(
 
     // Check if the referenced column has a FK constraint and follow the chain
     for constraint in &target_table.constraints {
-        let fk_match = as_fk(constraint).filter(|(cols, _, _)| {
-            cols.len() == 1 && cols[0] == *ref_col
-        });
+        let fk_match =
+            as_fk(constraint).filter(|(cols, _, _)| cols.len() == 1 && cols[0] == *ref_col);
         if let Some((_, next_table, next_cols)) = fk_match {
             return resolve_fk_target(next_table, next_cols, schema);
         }
@@ -626,7 +629,11 @@ fn to_pascal_case(s: &str) -> String {
             capitalize = true;
             continue;
         }
-        let ch = if capitalize { c.to_ascii_uppercase() } else { c };
+        let ch = if capitalize {
+            c.to_ascii_uppercase()
+        } else {
+            c
+        };
         capitalize = false;
         result.push(ch);
     }
@@ -636,7 +643,8 @@ fn to_pascal_case(s: &str) -> String {
 #[cfg(test)]
 mod helper_tests {
     use super::*;
-    use vespertide_core::IndexDef;
+    use rstest::rstest;
+    use vespertide_core::{ColumnType, ComplexColumnType, IndexDef, SimpleColumnType};
 
     #[test]
     fn test_render_indexes() {
@@ -663,177 +671,72 @@ mod helper_tests {
     fn test_render_indexes_empty() {
         let mut lines = Vec::new();
         render_indexes(&mut lines, &[]);
-        // Should not add anything when indexes are empty
         assert_eq!(lines.len(), 0);
     }
 
-    #[test]
-    fn test_rust_type() {
-        use vespertide_core::{ColumnType, ComplexColumnType, SimpleColumnType};
-        // Numeric types
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::SmallInt).to_rust_type(false),
-            "i16"
-        );
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::SmallInt).to_rust_type(true),
-            "Option<i16>"
-        );
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::Integer).to_rust_type(false),
-            "i32"
-        );
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::Integer).to_rust_type(true),
-            "Option<i32>"
-        );
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::BigInt).to_rust_type(false),
-            "i64"
-        );
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::BigInt).to_rust_type(true),
-            "Option<i64>"
-        );
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::Real).to_rust_type(false),
-            "f32"
-        );
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::DoublePrecision).to_rust_type(false),
-            "f64"
-        );
-
-        // Text type
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::Text).to_rust_type(false),
-            "String"
-        );
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::Text).to_rust_type(true),
-            "Option<String>"
-        );
-
-        // Boolean type
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::Boolean).to_rust_type(false),
-            "bool"
-        );
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::Boolean).to_rust_type(true),
-            "Option<bool>"
-        );
-
-        // Date/Time types
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::Date).to_rust_type(false),
-            "Date"
-        );
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::Time).to_rust_type(false),
-            "Time"
-        );
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::Timestamp).to_rust_type(false),
-            "DateTime"
-        );
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::Timestamp).to_rust_type(true),
-            "Option<DateTime>"
-        );
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::Timestamptz).to_rust_type(false),
-            "DateTimeWithTimeZone"
-        );
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::Timestamptz).to_rust_type(true),
-            "Option<DateTimeWithTimeZone>"
-        );
-
-        // Binary type
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::Bytea).to_rust_type(false),
-            "Vec<u8>"
-        );
-
-        // UUID type
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::Uuid).to_rust_type(false),
-            "Uuid"
-        );
-
-        // JSON types
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::Json).to_rust_type(false),
-            "Json"
-        );
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::Jsonb).to_rust_type(false),
-            "Json"
-        );
-
-        // Network types
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::Inet).to_rust_type(false),
-            "String"
-        );
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::Cidr).to_rust_type(false),
-            "String"
-        );
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::Macaddr).to_rust_type(false),
-            "String"
-        );
-
-        // Interval type
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::Interval).to_rust_type(false),
-            "String"
-        );
-
-        // XML type
-        assert_eq!(
-            ColumnType::Simple(SimpleColumnType::Xml).to_rust_type(false),
-            "String"
-        );
-
-        // Complex types
-        assert_eq!(
-            ColumnType::Complex(ComplexColumnType::Numeric {
-                precision: 10,
-                scale: 2
-            })
-            .to_rust_type(false),
-            "Decimal"
-        );
-        assert_eq!(
-            ColumnType::Complex(ComplexColumnType::Char { length: 10 }).to_rust_type(false),
-            "String"
-        );
+    #[rstest]
+    #[case(ColumnType::Simple(SimpleColumnType::SmallInt), false, "i16")]
+    #[case(ColumnType::Simple(SimpleColumnType::SmallInt), true, "Option<i16>")]
+    #[case(ColumnType::Simple(SimpleColumnType::Integer), false, "i32")]
+    #[case(ColumnType::Simple(SimpleColumnType::Integer), true, "Option<i32>")]
+    #[case(ColumnType::Simple(SimpleColumnType::BigInt), false, "i64")]
+    #[case(ColumnType::Simple(SimpleColumnType::BigInt), true, "Option<i64>")]
+    #[case(ColumnType::Simple(SimpleColumnType::Real), false, "f32")]
+    #[case(ColumnType::Simple(SimpleColumnType::DoublePrecision), false, "f64")]
+    #[case(ColumnType::Simple(SimpleColumnType::Text), false, "String")]
+    #[case(ColumnType::Simple(SimpleColumnType::Text), true, "Option<String>")]
+    #[case(ColumnType::Simple(SimpleColumnType::Boolean), false, "bool")]
+    #[case(ColumnType::Simple(SimpleColumnType::Boolean), true, "Option<bool>")]
+    #[case(ColumnType::Simple(SimpleColumnType::Date), false, "Date")]
+    #[case(ColumnType::Simple(SimpleColumnType::Time), false, "Time")]
+    #[case(ColumnType::Simple(SimpleColumnType::Timestamp), false, "DateTime")]
+    #[case(
+        ColumnType::Simple(SimpleColumnType::Timestamp),
+        true,
+        "Option<DateTime>"
+    )]
+    #[case(
+        ColumnType::Simple(SimpleColumnType::Timestamptz),
+        false,
+        "DateTimeWithTimeZone"
+    )]
+    #[case(
+        ColumnType::Simple(SimpleColumnType::Timestamptz),
+        true,
+        "Option<DateTimeWithTimeZone>"
+    )]
+    #[case(ColumnType::Simple(SimpleColumnType::Bytea), false, "Vec<u8>")]
+    #[case(ColumnType::Simple(SimpleColumnType::Uuid), false, "Uuid")]
+    #[case(ColumnType::Simple(SimpleColumnType::Json), false, "Json")]
+    #[case(ColumnType::Simple(SimpleColumnType::Jsonb), false, "Json")]
+    #[case(ColumnType::Simple(SimpleColumnType::Inet), false, "String")]
+    #[case(ColumnType::Simple(SimpleColumnType::Cidr), false, "String")]
+    #[case(ColumnType::Simple(SimpleColumnType::Macaddr), false, "String")]
+    #[case(ColumnType::Simple(SimpleColumnType::Interval), false, "String")]
+    #[case(ColumnType::Simple(SimpleColumnType::Xml), false, "String")]
+    #[case(ColumnType::Complex(ComplexColumnType::Numeric { precision: 10, scale: 2 }), false, "Decimal")]
+    #[case(ColumnType::Complex(ComplexColumnType::Char { length: 10 }), false, "String")]
+    fn test_rust_type(
+        #[case] col_type: ColumnType,
+        #[case] nullable: bool,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(col_type.to_rust_type(nullable), expected);
     }
 
-    #[test]
-    fn test_sanitize_field_name() {
-        assert_eq!(sanitize_field_name("normal_name"), "normal_name");
-        assert_eq!(sanitize_field_name("123name"), "_123name");
-        assert_eq!(sanitize_field_name("name-with-dash"), "name_with_dash");
-        assert_eq!(sanitize_field_name("name.with.dot"), "name_with_dot");
-        assert_eq!(sanitize_field_name("name with space"), "name_with_space");
-        assert_eq!(
-            sanitize_field_name("name  with  multiple  spaces"),
-            "name__with__multiple__spaces"
-        );
-        assert_eq!(
-            sanitize_field_name(" name_with_leading_space"),
-            "_name_with_leading_space"
-        );
-        assert_eq!(
-            sanitize_field_name("name_with_trailing_space "),
-            "name_with_trailing_space_"
-        );
-        assert_eq!(sanitize_field_name(""), "_col");
-        assert_eq!(sanitize_field_name("a"), "a");
+    #[rstest]
+    #[case("normal_name", "normal_name")]
+    #[case("123name", "_123name")]
+    #[case("name-with-dash", "name_with_dash")]
+    #[case("name.with.dot", "name_with_dot")]
+    #[case("name with space", "name_with_space")]
+    #[case("name  with  multiple  spaces", "name__with__multiple__spaces")]
+    #[case(" name_with_leading_space", "_name_with_leading_space")]
+    #[case("name_with_trailing_space ", "name_with_trailing_space_")]
+    #[case("", "_col")]
+    #[case("a", "a")]
+    fn test_sanitize_field_name(#[case] input: &str, #[case] expected: &str) {
+        assert_eq!(sanitize_field_name(input), expected);
     }
 
     #[test]
@@ -846,55 +749,34 @@ mod helper_tests {
         assert_eq!(unique_name("other", &mut used), "other_1");
     }
 
-    #[test]
-    fn test_to_pascal_case() {
-        // Basic snake_case conversion
-        assert_eq!(to_pascal_case("hello_world"), "HelloWorld");
-        assert_eq!(to_pascal_case("order_status"), "OrderStatus");
-
-        // Kebab-case conversion
-        assert_eq!(to_pascal_case("hello-world"), "HelloWorld");
-        assert_eq!(to_pascal_case("info-level"), "InfoLevel");
-
-        // Already PascalCase
-        assert_eq!(to_pascal_case("HelloWorld"), "HelloWorld");
-
-        // Single word
-        assert_eq!(to_pascal_case("hello"), "Hello");
-        assert_eq!(to_pascal_case("pending"), "Pending");
-
-        // Mixed delimiters
-        assert_eq!(to_pascal_case("hello_world-test"), "HelloWorldTest");
-
-        // Uppercase input
-        assert_eq!(to_pascal_case("HELLO_WORLD"), "HELLOWORLD");
-        assert_eq!(to_pascal_case("ERROR_LEVEL"), "ERRORLEVEL");
-
-        // With numbers
-        assert_eq!(to_pascal_case("level_1"), "Level1");
-        assert_eq!(to_pascal_case("1_critical"), "1Critical");
-
-        // Empty string
-        assert_eq!(to_pascal_case(""), "");
+    #[rstest]
+    #[case("hello_world", "HelloWorld")]
+    #[case("order_status", "OrderStatus")]
+    #[case("hello-world", "HelloWorld")]
+    #[case("info-level", "InfoLevel")]
+    #[case("HelloWorld", "HelloWorld")]
+    #[case("hello", "Hello")]
+    #[case("pending", "Pending")]
+    #[case("hello_world-test", "HelloWorldTest")]
+    #[case("HELLO_WORLD", "HELLOWORLD")]
+    #[case("ERROR_LEVEL", "ERRORLEVEL")]
+    #[case("level_1", "Level1")]
+    #[case("1_critical", "1Critical")]
+    #[case("", "")]
+    fn test_to_pascal_case(#[case] input: &str, #[case] expected: &str) {
+        assert_eq!(to_pascal_case(input), expected);
     }
 
-    #[test]
-    fn test_enum_variant_name() {
-        // Normal cases
-        assert_eq!(enum_variant_name("pending"), "Pending");
-        assert_eq!(enum_variant_name("in_stock"), "InStock");
-        assert_eq!(enum_variant_name("info-level"), "InfoLevel");
-
-        // Numeric prefix - should add 'N' prefix
-        // Note: to_pascal_case("1critical") returns "1critical" (starts with digit, so no uppercase)
-        // then enum_variant_name adds 'N' prefix
-        assert_eq!(enum_variant_name("1critical"), "N1critical");
-        assert_eq!(enum_variant_name("123abc"), "N123abc");
-        // With underscore separator, the part after underscore gets capitalized
-        assert_eq!(enum_variant_name("1_critical"), "N1Critical");
-
-        // Empty string - should return default
-        assert_eq!(enum_variant_name(""), "Value");
+    #[rstest]
+    #[case("pending", "Pending")]
+    #[case("in_stock", "InStock")]
+    #[case("info-level", "InfoLevel")]
+    #[case("1critical", "N1critical")]
+    #[case("123abc", "N123abc")]
+    #[case("1_critical", "N1Critical")]
+    #[case("", "Value")]
+    fn test_enum_variant_name(#[case] input: &str, #[case] expected: &str) {
+        assert_eq!(enum_variant_name(input), expected);
     }
 
     #[test]
@@ -1565,7 +1447,6 @@ mod helper_tests {
         // has_one should NOT have from/to attributes
         assert!(!rendered.contains("has_one, from"));
     }
-
 }
 
 #[cfg(test)]
@@ -2073,7 +1954,11 @@ mod tests {
                         col("parent_id2", ColumnType::Simple(Integer)),
                     ],
                     vec!["parent_id1", "parent_id2"],
-                    vec![(vec!["parent_id1", "parent_id2"], "parent", vec!["id1", "id2"])],
+                    vec![(
+                        vec!["parent_id1", "parent_id2"],
+                        "parent",
+                        vec!["id1", "id2"],
+                    )],
                 );
                 let child_many = table_with_pk_and_fk(
                     "child_many",
@@ -2083,7 +1968,11 @@ mod tests {
                         col("parent_id2", ColumnType::Simple(Integer)),
                     ],
                     vec!["id"],
-                    vec![(vec!["parent_id1", "parent_id2"], "parent", vec!["id1", "id2"])],
+                    vec![(
+                        vec!["parent_id1", "parent_id2"],
+                        "parent",
+                        vec!["id1", "id2"],
+                    )],
                 );
                 (parent.clone(), vec![parent, child_one, child_many])
             }

@@ -809,7 +809,9 @@ mod tests {
         // inline index should only have idx_b remaining
         assert_eq!(
             schema[0].columns[0].index,
-            Some(vespertide_core::StrOrBoolOrArray::Array(vec!["idx_b".into()]))
+            Some(vespertide_core::StrOrBoolOrArray::Array(vec![
+                "idx_b".into()
+            ]))
         );
     }
 
