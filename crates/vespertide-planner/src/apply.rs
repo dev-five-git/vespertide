@@ -114,6 +114,38 @@ pub fn apply_action(
                 .ok_or_else(|| PlannerError::TableNotFound(table.clone()))?;
             let before = tbl.indexes.len();
             tbl.indexes.retain(|i| i.name != *name);
+
+            // Also clear inline index on column if index name matches the auto-generated pattern
+            // Pattern: idx_{table}_{column} for Bool(true) or the name itself for Str(name)
+            let prefix = format!("idx_{}_", table);
+            if let Some(col_name) = name.strip_prefix(&prefix) {
+                // This is an auto-generated index name - clear the inline index on that column
+                if let Some(col) = tbl.columns.iter_mut().find(|c| c.name == col_name) {
+                    col.index = None;
+                }
+            }
+            // Also check if any column has a named index matching this name
+            for col in &mut tbl.columns {
+                if let Some(ref idx_val) = col.index {
+                    match idx_val {
+                        vespertide_core::StrOrBoolOrArray::Str(idx_name) if idx_name == name => {
+                            col.index = None;
+                        }
+                        vespertide_core::StrOrBoolOrArray::Array(names) => {
+                            let filtered: Vec<_> =
+                                names.iter().filter(|n| *n != name).cloned().collect();
+                            if filtered.is_empty() {
+                                col.index = None;
+                            } else if filtered.len() < names.len() {
+                                col.index =
+                                    Some(vespertide_core::StrOrBoolOrArray::Array(filtered));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
             if tbl.indexes.len() == before {
                 Err(PlannerError::IndexNotFound(table.clone(), name.clone()))
             } else {

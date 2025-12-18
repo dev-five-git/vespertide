@@ -58,7 +58,9 @@ pub fn render_entity_with_schema(table: &TableDef, schema: &[TableDef]) -> Strin
     }
 
     lines.push("#[sea_orm::model]".into());
-    lines.push("#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]".into());
+    lines.push(
+        "#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]".into(),
+    );
     lines.push(format!("#[sea_orm(table_name = \"{}\")]", table.name));
     lines.push("pub struct Model {".into());
 
@@ -93,10 +95,10 @@ pub fn render_entity_with_schema(table: &TableDef, schema: &[TableDef]) -> Strin
 fn single_column_unique_set(constraints: &[TableConstraint]) -> HashSet<String> {
     let mut unique_cols = HashSet::new();
     for constraint in constraints {
-        if let TableConstraint::Unique { columns, .. } = constraint {
-            if columns.len() == 1 {
-                unique_cols.insert(columns[0].clone());
-            }
+        if let TableConstraint::Unique { columns, .. } = constraint
+            && columns.len() == 1
+        {
+            unique_cols.insert(columns[0].clone());
         }
     }
     unique_cols
@@ -147,12 +149,10 @@ fn render_column(
         attrs.push("indexed".into());
     }
 
-    if has_default {
-        if let Some(ref default_val) = column.default {
-            // Format the default value for SeaORM
-            let formatted = format_default_value(default_val, &column.r#type);
-            attrs.push(formatted);
-        }
+    if has_default && let Some(ref default_val) = column.default {
+        // Format the default value for SeaORM
+        let formatted = format_default_value(default_val, &column.r#type);
+        attrs.push(formatted);
     }
 
     // Output attribute if any
@@ -361,9 +361,7 @@ fn reverse_relation_field_defs(
 
         for constraint in &other_table.constraints {
             if let TableConstraint::ForeignKey {
-                columns,
-                ref_table,
-                ..
+                columns, ref_table, ..
             } = constraint
             {
                 // Check if this FK references our table
@@ -430,9 +428,7 @@ fn detect_many_to_many(
         .iter()
         .filter_map(|c| {
             if let TableConstraint::ForeignKey {
-                columns,
-                ref_table,
-                ..
+                columns, ref_table, ..
             } = c
             {
                 Some((columns.clone(), ref_table.clone()))
@@ -457,11 +453,8 @@ fn detect_many_to_many(
     }
 
     // Find which FK references the current table
-    let fk_to_current = fks.iter().find(|(_, ref_table)| ref_table == &current_table.name);
-
-    if fk_to_current.is_none() {
-        return None;
-    }
+    fks.iter()
+        .find(|(_, ref_table)| ref_table == &current_table.name)?;
 
     // Generate many-to-many relations via this junction table
     let mut out = Vec::new();
@@ -508,7 +501,12 @@ fn detect_many_to_many(
 fn pluralize(name: &str) -> String {
     if name.ends_with('s') || name.ends_with("es") {
         name.to_string()
-    } else if name.ends_with('y') && !name.ends_with("ay") && !name.ends_with("ey") && !name.ends_with("oy") && !name.ends_with("uy") {
+    } else if name.ends_with('y')
+        && !name.ends_with("ay")
+        && !name.ends_with("ey")
+        && !name.ends_with("oy")
+        && !name.ends_with("uy")
+    {
         // e.g., category -> categories
         format!("{}ies", &name[..name.len() - 1])
     } else {
@@ -1078,8 +1076,7 @@ mod helper_tests {
     #[test]
     fn test_resolve_fk_target_composite_fk() {
         // Composite FK should return as-is (not follow chain)
-        let (table, columns) =
-            resolve_fk_target("article", &["media_id".into(), "id".into()], &[]);
+        let (table, columns) = resolve_fk_target("article", &["media_id".into(), "id".into()], &[]);
         assert_eq!(table, "article");
         assert_eq!(columns, vec!["media_id", "id"]);
     }

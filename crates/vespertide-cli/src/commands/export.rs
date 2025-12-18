@@ -55,8 +55,8 @@ pub fn cmd_export(orm: OrmArg, export_dir: Option<PathBuf>) -> Result<()> {
     let all_tables: Vec<TableDef> = normalized_models.iter().map(|(t, _)| t.clone()).collect();
 
     for (table, rel_path) in &normalized_models {
-        let code =
-            render_entity_with_schema(orm_kind, table, &all_tables).map_err(|e| anyhow::anyhow!(e))?;
+        let code = render_entity_with_schema(orm_kind, table, &all_tables)
+            .map_err(|e| anyhow::anyhow!(e))?;
         let out_path = build_output_path(&target_root, rel_path, orm_kind);
         if let Some(parent) = out_path.parent() {
             fs::create_dir_all(parent)

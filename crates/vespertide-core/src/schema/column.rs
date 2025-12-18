@@ -122,9 +122,7 @@ impl SimpleColumnType {
     pub fn supports_auto_increment(&self) -> bool {
         matches!(
             self,
-            SimpleColumnType::SmallInt
-                | SimpleColumnType::Integer
-                | SimpleColumnType::BigInt
+            SimpleColumnType::SmallInt | SimpleColumnType::Integer | SimpleColumnType::BigInt
         )
     }
 }
