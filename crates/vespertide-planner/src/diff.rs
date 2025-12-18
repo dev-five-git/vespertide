@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 
 use vespertide_core::{MigrationAction, MigrationPlan, TableConstraint, TableDef};
 
@@ -16,7 +16,8 @@ fn topological_sort_tables<'a>(tables: &[&'a TableDef]) -> Result<Vec<&'a TableD
     let table_names: HashSet<&str> = tables.iter().map(|t| t.name.as_str()).collect();
 
     // Build adjacency list: for each table, list the tables it depends on (via FK)
-    let mut dependencies: HashMap<&str, Vec<&str>> = HashMap::new();
+    // Use BTreeMap for consistent ordering
+    let mut dependencies: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for table in tables {
         let mut deps = Vec::new();
         for constraint in &table.constraints {
@@ -32,7 +33,8 @@ fn topological_sort_tables<'a>(tables: &[&'a TableDef]) -> Result<Vec<&'a TableD
 
     // Kahn's algorithm for topological sort
     // Calculate in-degrees (number of tables that depend on each table)
-    let mut in_degree: HashMap<&str, usize> = HashMap::new();
+    // Use BTreeMap for consistent ordering
+    let mut in_degree: BTreeMap<&str, usize> = BTreeMap::new();
     for table in tables {
         in_degree.entry(table.name.as_str()).or_insert(0);
     }
@@ -49,15 +51,15 @@ fn topological_sort_tables<'a>(tables: &[&'a TableDef]) -> Result<Vec<&'a TableD
     }
 
     // Start with tables that have no dependencies
-    let mut queue: VecDeque<&str> = VecDeque::new();
-    for table in tables {
-        if in_degree.get(table.name.as_str()) == Some(&0) {
-            queue.push_back(table.name.as_str());
-        }
-    }
+    // BTreeMap iteration is already sorted by key
+    let mut queue: VecDeque<&str> = in_degree
+        .iter()
+        .filter(|(_, deg)| **deg == 0)
+        .map(|(name, _)| *name)
+        .collect();
 
     let mut result: Vec<&TableDef> = Vec::new();
-    let table_map: HashMap<&str, &TableDef> =
+    let table_map: BTreeMap<&str, &TableDef> =
         tables.iter().map(|t| (t.name.as_str(), *t)).collect();
 
     while let Some(table_name) = queue.pop_front() {
@@ -65,16 +67,21 @@ fn topological_sort_tables<'a>(tables: &[&'a TableDef]) -> Result<Vec<&'a TableD
             result.push(table);
         }
 
-        // For each table that depends on this one, decrement its in-degree
+        // Collect tables that become ready (in-degree becomes 0)
+        // Use BTreeSet for consistent ordering
+        let mut ready_tables: BTreeSet<&str> = BTreeSet::new();
         for (dependent, deps) in &dependencies {
             if deps.contains(&table_name)
                 && let Some(degree) = in_degree.get_mut(dependent)
             {
                 *degree -= 1;
                 if *degree == 0 {
-                    queue.push_back(dependent);
+                    ready_tables.insert(dependent);
                 }
             }
+        }
+        for t in ready_tables {
+            queue.push_back(t);
         }
     }
 
@@ -105,7 +112,7 @@ fn extract_delete_table_name(action: &MigrationAction) -> &str {
     }
 }
 
-fn sort_delete_tables(actions: &mut [MigrationAction], all_tables: &HashMap<&str, &TableDef>) {
+fn sort_delete_tables(actions: &mut [MigrationAction], all_tables: &BTreeMap<&str, &TableDef>) {
     // Collect DeleteTable actions and their indices
     let delete_indices: Vec<usize> = actions
         .iter()
@@ -124,14 +131,16 @@ fn sort_delete_tables(actions: &mut [MigrationAction], all_tables: &HashMap<&str
     }
 
     // Extract table names being deleted
-    let delete_table_names: HashSet<&str> = delete_indices
+    // Use BTreeSet for consistent ordering
+    let delete_table_names: BTreeSet<&str> = delete_indices
         .iter()
         .map(|&i| extract_delete_table_name(&actions[i]))
         .collect();
 
     // Build dependency graph for tables being deleted
     // dependencies[A] = [B] means A has FK referencing B
-    let mut dependencies: HashMap<&str, Vec<&str>> = HashMap::new();
+    // Use BTreeMap for consistent ordering
+    let mut dependencies: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for &table_name in &delete_table_names {
         let mut deps = Vec::new();
         if let Some(table_def) = all_tables.get(table_name) {
@@ -149,7 +158,8 @@ fn sort_delete_tables(actions: &mut [MigrationAction], all_tables: &HashMap<&str
 
     // Use Kahn's algorithm for topological sort
     // in_degree[A] = number of tables A depends on
-    let mut in_degree: HashMap<&str, usize> = HashMap::new();
+    // Use BTreeMap for consistent ordering
+    let mut in_degree: BTreeMap<&str, usize> = BTreeMap::new();
     for &table_name in &delete_table_names {
         in_degree.insert(
             table_name,
@@ -158,27 +168,32 @@ fn sort_delete_tables(actions: &mut [MigrationAction], all_tables: &HashMap<&str
     }
 
     // Start with tables that have no dependencies (can be deleted last in creation order)
-    let mut queue: VecDeque<&str> = VecDeque::new();
-    for &table_name in &delete_table_names {
-        if in_degree.get(table_name) == Some(&0) {
-            queue.push_back(table_name);
-        }
-    }
+    // BTreeMap iteration is already sorted
+    let mut queue: VecDeque<&str> = in_degree
+        .iter()
+        .filter(|(_, deg)| **deg == 0)
+        .map(|(name, _)| *name)
+        .collect();
 
     let mut sorted_tables: Vec<&str> = Vec::new();
     while let Some(table_name) = queue.pop_front() {
         sorted_tables.push(table_name);
 
         // For each table that has this one as a dependency, decrement its in-degree
+        // Use BTreeSet for consistent ordering of newly ready tables
+        let mut ready_tables: BTreeSet<&str> = BTreeSet::new();
         for (&dependent, deps) in &dependencies {
             if deps.contains(&table_name)
                 && let Some(degree) = in_degree.get_mut(dependent)
             {
                 *degree -= 1;
                 if *degree == 0 {
-                    queue.push_back(dependent);
+                    ready_tables.insert(dependent);
                 }
             }
+        }
+        for t in ready_tables {
+            queue.push_back(t);
         }
     }
 
@@ -234,11 +249,12 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let from_map: HashMap<_, _> = from_normalized
+    // Use BTreeMap for consistent ordering
+    let from_map: BTreeMap<_, _> = from_normalized
         .iter()
         .map(|t| (t.name.as_str(), t))
         .collect();
-    let to_map: HashMap<_, _> = to_normalized.iter().map(|t| (t.name.as_str(), t)).collect();
+    let to_map: BTreeMap<_, _> = to_normalized.iter().map(|t| (t.name.as_str(), t)).collect();
 
     // Drop tables that disappeared.
     for name in from_map.keys() {
@@ -252,13 +268,13 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
     // Update existing tables and their indexes/columns.
     for (name, to_tbl) in &to_map {
         if let Some(from_tbl) = from_map.get(name) {
-            // Columns
-            let from_cols: HashMap<_, _> = from_tbl
+            // Columns - use BTreeMap for consistent ordering
+            let from_cols: BTreeMap<_, _> = from_tbl
                 .columns
                 .iter()
                 .map(|c| (c.name.as_str(), c))
                 .collect();
-            let to_cols: HashMap<_, _> = to_tbl
+            let to_cols: BTreeMap<_, _> = to_tbl
                 .columns
                 .iter()
                 .map(|c| (c.name.as_str(), c))
@@ -300,13 +316,13 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
                 }
             }
 
-            // Indexes
-            let from_indexes: HashMap<_, _> = from_tbl
+            // Indexes - use BTreeMap for consistent ordering
+            let from_indexes: BTreeMap<_, _> = from_tbl
                 .indexes
                 .iter()
                 .map(|i| (i.name.as_str(), i))
                 .collect();
-            let to_indexes: HashMap<_, _> = to_tbl
+            let to_indexes: BTreeMap<_, _> = to_tbl
                 .indexes
                 .iter()
                 .map(|i| (i.name.as_str(), i))

@@ -2,8 +2,11 @@ use sea_query::{Alias, ForeignKey, Index, Table, TableCreateStatement};
 
 use vespertide_core::{ColumnDef, ColumnType, ComplexColumnType, TableConstraint};
 
-use super::helpers::{build_create_enum_type_sql, build_sea_column_def, to_sea_fk_action};
-use super::types::{BuiltQuery, DatabaseBackend};
+use super::helpers::{
+    build_create_enum_type_sql, build_schema_statement, build_sea_column_def,
+    collect_sqlite_enum_check_clauses, to_sea_fk_action,
+};
+use super::types::{BuiltQuery, DatabaseBackend, RawSql};
 use crate::error::QueryError;
 
 pub(crate) fn build_create_table_for_backend(
@@ -145,7 +148,29 @@ pub fn build_create_table(
             table_constraints.iter().cloned().cloned().collect();
         build_create_table_for_backend(backend, table, columns, &table_constraints_owned)
     };
-    queries.push(BuiltQuery::CreateTable(Box::new(create_table_stmt)));
+
+    // For SQLite, add CHECK constraints for enum columns
+    if matches!(backend, DatabaseBackend::Sqlite) {
+        let enum_check_clauses = collect_sqlite_enum_check_clauses(table, columns);
+        if !enum_check_clauses.is_empty() {
+            // Embed CHECK constraints into CREATE TABLE statement
+            let base_sql = build_schema_statement(&create_table_stmt, *backend);
+            let mut modified_sql = base_sql;
+            if let Some(pos) = modified_sql.rfind(')') {
+                let check_sql = enum_check_clauses.join(", ");
+                modified_sql.insert_str(pos, &format!(", {}", check_sql));
+            }
+            queries.push(BuiltQuery::Raw(RawSql::per_backend(
+                modified_sql.clone(),
+                modified_sql.clone(),
+                modified_sql,
+            )));
+        } else {
+            queries.push(BuiltQuery::CreateTable(Box::new(create_table_stmt)));
+        }
+    } else {
+        queries.push(BuiltQuery::CreateTable(Box::new(create_table_stmt)));
+    }
 
     // For Postgres and SQLite, add unique constraints as separate CREATE UNIQUE INDEX statements
     if matches!(backend, DatabaseBackend::Postgres | DatabaseBackend::Sqlite) {

@@ -3,9 +3,12 @@ use sea_query::{Alias, Expr, Query, Table, TableAlterStatement};
 use vespertide_core::{ColumnDef, TableDef};
 
 use super::create_table::build_create_table_for_backend;
-use super::helpers::{build_create_enum_type_sql, build_sea_column_def};
+use super::helpers::{
+    build_create_enum_type_sql, build_schema_statement, build_sea_column_def,
+    collect_sqlite_enum_check_clauses,
+};
 use super::rename_table::build_rename_table;
-use super::types::{BuiltQuery, DatabaseBackend};
+use super::types::{BuiltQuery, DatabaseBackend, RawSql};
 use crate::error::QueryError;
 
 fn build_add_column_alter_for_backend(
@@ -20,6 +23,14 @@ fn build_add_column_alter_for_backend(
         .to_owned()
 }
 
+/// Check if the column type is an enum
+fn is_enum_column(column: &ColumnDef) -> bool {
+    matches!(
+        column.r#type,
+        vespertide_core::ColumnType::Complex(vespertide_core::ComplexColumnType::Enum { .. })
+    )
+}
+
 pub fn build_add_column(
     backend: &DatabaseBackend,
     table: &str,
@@ -27,8 +38,12 @@ pub fn build_add_column(
     fill_with: Option<&str>,
     current_schema: &[TableDef],
 ) -> Result<Vec<BuiltQuery>, QueryError> {
-    // SQLite: only NOT NULL additions require table recreation
-    if *backend == DatabaseBackend::Sqlite && !column.nullable {
+    // SQLite: NOT NULL additions or enum columns require table recreation
+    // (enum columns need CHECK constraint which requires table recreation in SQLite)
+    let sqlite_needs_recreation =
+        *backend == DatabaseBackend::Sqlite && (!column.nullable || is_enum_column(column));
+
+    if sqlite_needs_recreation {
         let table_def = current_schema
             .iter()
             .find(|t| t.name == table)
@@ -47,7 +62,25 @@ pub fn build_add_column(
             &new_columns,
             &table_def.constraints,
         );
-        let create_query = BuiltQuery::CreateTable(Box::new(create_temp));
+
+        // For SQLite, add CHECK constraints for enum columns
+        // Use original table name for constraint naming (table will be renamed back)
+        let enum_check_clauses = collect_sqlite_enum_check_clauses(table, &new_columns);
+        let create_query = if !enum_check_clauses.is_empty() {
+            let base_sql = build_schema_statement(&create_temp, *backend);
+            let mut modified_sql = base_sql;
+            if let Some(pos) = modified_sql.rfind(')') {
+                let check_sql = enum_check_clauses.join(", ");
+                modified_sql.insert_str(pos, &format!(", {}", check_sql));
+            }
+            BuiltQuery::Raw(RawSql::per_backend(
+                modified_sql.clone(),
+                modified_sql.clone(),
+                modified_sql,
+            ))
+        } else {
+            BuiltQuery::CreateTable(Box::new(create_temp))
+        };
 
         // Copy existing data, filling new column
         let mut select_query = Query::select();
