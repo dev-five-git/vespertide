@@ -112,10 +112,19 @@ pub fn apply_column_type(col: &mut SeaColumnDef, ty: &ColumnType) {
                 col.custom(Alias::new(custom_type));
             }
             ComplexColumnType::Enum { name, values } => {
-                col.enumeration(
-                    Alias::new(name),
-                    values.iter().map(Alias::new).collect::<Vec<Alias>>(),
-                );
+                // For integer enums, use INTEGER type instead of ENUM
+                if values.is_integer() {
+                    col.integer();
+                } else {
+                    col.enumeration(
+                        Alias::new(name),
+                        values
+                            .variant_names()
+                            .into_iter()
+                            .map(Alias::new)
+                            .collect::<Vec<Alias>>(),
+                    );
+                }
             }
         },
     }
@@ -181,11 +190,12 @@ pub fn build_sea_column_def(backend: &DatabaseBackend, column: &ColumnDef) -> Se
 /// Returns None for non-PostgreSQL backends or non-enum types
 pub fn build_create_enum_type_sql(column_type: &ColumnType) -> Option<super::types::RawSql> {
     if let ColumnType::Complex(ComplexColumnType::Enum { name, values }) = column_type {
-        let values_sql = values
-            .iter()
-            .map(|v| format!("'{}'", v.replace('\'', "''")))
-            .collect::<Vec<_>>()
-            .join(", ");
+        // Integer enums don't need CREATE TYPE - they use INTEGER column
+        if values.is_integer() {
+            return None;
+        }
+
+        let values_sql = values.to_sql_values().join(", ");
 
         // PostgreSQL: CREATE TYPE name AS ENUM (...)
         let pg_sql = format!("CREATE TYPE \"{}\" AS ENUM ({})", name, values_sql);
@@ -243,11 +253,7 @@ pub fn build_sqlite_enum_check_clause(
 ) -> Option<String> {
     if let ColumnType::Complex(ComplexColumnType::Enum { values, .. }) = column_type {
         let name = build_sqlite_enum_check_name(table, column);
-        let values_sql = values
-            .iter()
-            .map(|v| format!("'{}'", v.replace('\'', "''")))
-            .collect::<Vec<_>>()
-            .join(", ");
+        let values_sql = values.to_sql_values().join(", ");
         Some(format!(
             "CONSTRAINT \"{}\" CHECK (\"{}\" IN ({}))",
             name, column, values_sql
@@ -279,6 +285,7 @@ mod tests {
     use super::*;
     use rstest::rstest;
     use sea_query::{Alias, ColumnDef as SeaColumnDef, ForeignKeyAction};
+    use vespertide_core::EnumValues;
 
     #[rstest]
     #[case(ColumnType::Simple(SimpleColumnType::Integer))]
@@ -326,7 +333,7 @@ mod tests {
     #[case(ComplexColumnType::Numeric { precision: 8, scale: 3 })]
     #[case(ComplexColumnType::Char { length: 3 })]
     #[case(ComplexColumnType::Custom { custom_type: "GEOGRAPHY".into() })]
-    #[case(ComplexColumnType::Enum { name: "status".into(), values: vec!["active".into(), "inactive".into()] })]
+    #[case(ComplexColumnType::Enum { name: "status".into(), values: EnumValues::String(vec!["active".into(), "inactive".into()]) })]
     fn test_all_complex_types_cover_branches(#[case] ty: ComplexColumnType) {
         let mut col = SeaColumnDef::new(Alias::new("t"));
         apply_column_type(&mut col, &ColumnType::Complex(ty));
@@ -421,9 +428,11 @@ mod tests {
 
     #[test]
     fn test_is_enum_type_true() {
+        use vespertide_core::EnumValues;
+
         let enum_type = ColumnType::Complex(ComplexColumnType::Enum {
             name: "status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         });
         assert!(is_enum_type(&enum_type));
     }
@@ -436,9 +445,11 @@ mod tests {
 
     #[test]
     fn test_get_enum_name_some() {
+        use vespertide_core::EnumValues;
+
         let enum_type = ColumnType::Complex(ComplexColumnType::Enum {
             name: "user_status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         });
         assert_eq!(get_enum_name(&enum_type), Some("user_status"));
     }
@@ -447,5 +458,46 @@ mod tests {
     fn test_get_enum_name_none() {
         let text_type = ColumnType::Simple(SimpleColumnType::Text);
         assert_eq!(get_enum_name(&text_type), None);
+    }
+
+    #[test]
+    fn test_apply_column_type_integer_enum() {
+        use vespertide_core::{EnumValues, NumValue};
+        let integer_enum = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "color".into(),
+            values: EnumValues::Integer(vec![
+                NumValue {
+                    name: "Black".into(),
+                    value: 0,
+                },
+                NumValue {
+                    name: "White".into(),
+                    value: 1,
+                },
+            ]),
+        });
+        let mut col = SeaColumnDef::new(Alias::new("color"));
+        apply_column_type(&mut col, &integer_enum);
+        // Integer enums should use INTEGER type, not ENUM
+    }
+
+    #[test]
+    fn test_build_create_enum_type_sql_integer_enum_returns_none() {
+        use vespertide_core::{EnumValues, NumValue};
+        let integer_enum = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "priority".into(),
+            values: EnumValues::Integer(vec![
+                NumValue {
+                    name: "Low".into(),
+                    value: 0,
+                },
+                NumValue {
+                    name: "High".into(),
+                    value: 10,
+                },
+            ]),
+        });
+        // Integer enums should return None (no CREATE TYPE needed)
+        assert!(build_create_enum_type_sql(&integer_enum).is_none());
     }
 }

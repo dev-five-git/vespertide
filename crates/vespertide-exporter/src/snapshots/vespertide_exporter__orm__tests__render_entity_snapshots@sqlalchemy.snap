@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-exporter/src/orm.rs
+expression: result.unwrap()
+---
+# SQLAlchemy model placeholder for test

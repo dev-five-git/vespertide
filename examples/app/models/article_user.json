@@ -4,15 +4,14 @@
   "columns": [
     {
       "name": "article_id",
-      "type": "uuid",
+      "type": "big_int",
       "nullable": false,
+      "primary_key": true,
       "foreign_key": {
         "ref_table": "article",
         "ref_columns": ["id"],
         "on_delete": "cascade"
-      },
-      "index": true,
-      "primary_key": true
+      }
     },
     {
       "name": "user_id",
@@ -34,7 +33,7 @@
     },
     {
       "name": "role",
-      "type": { "kind": "varchar", "length": 20 },
+      "type": { "kind": "enum", "name": "article_user_role", "values": ["lead", "contributor"] },
       "nullable": false,
       "default": "'contributor'"
     },

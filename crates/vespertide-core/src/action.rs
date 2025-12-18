@@ -28,7 +28,7 @@ pub enum MigrationAction {
     },
     AddColumn {
         table: TableName,
-        column: ColumnDef,
+        column: Box<ColumnDef>,
         /// Optional fill value to backfill existing rows when adding NOT NULL without default.
         fill_with: Option<String>,
     },
@@ -194,7 +194,7 @@ mod tests {
     #[case::add_column(
         MigrationAction::AddColumn {
             table: "users".into(),
-            column: default_column(),
+            column: Box::new(default_column()),
             fill_with: None,
         },
         "AddColumn: users.email"

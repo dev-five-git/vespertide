@@ -48,7 +48,7 @@ pub fn apply_action(
                     column.name.clone(),
                 ))
             } else {
-                tbl.columns.push(column.clone());
+                tbl.columns.push((**column).clone());
                 Ok(())
             }
         }
@@ -114,6 +114,38 @@ pub fn apply_action(
                 .ok_or_else(|| PlannerError::TableNotFound(table.clone()))?;
             let before = tbl.indexes.len();
             tbl.indexes.retain(|i| i.name != *name);
+
+            // Also clear inline index on column if index name matches the auto-generated pattern
+            // Pattern: idx_{table}_{column} for Bool(true) or the name itself for Str(name)
+            let prefix = format!("idx_{}_", table);
+            if let Some(col_name) = name.strip_prefix(&prefix) {
+                // This is an auto-generated index name - clear the inline index on that column
+                if let Some(col) = tbl.columns.iter_mut().find(|c| c.name == col_name) {
+                    col.index = None;
+                }
+            }
+            // Also check if any column has a named index matching this name
+            for col in &mut tbl.columns {
+                if let Some(ref idx_val) = col.index {
+                    match idx_val {
+                        vespertide_core::StrOrBoolOrArray::Str(idx_name) if idx_name == name => {
+                            col.index = None;
+                        }
+                        vespertide_core::StrOrBoolOrArray::Array(names) => {
+                            let filtered: Vec<_> =
+                                names.iter().filter(|n| *n != name).cloned().collect();
+                            if filtered.is_empty() {
+                                col.index = None;
+                            } else if filtered.len() < names.len() {
+                                col.index =
+                                    Some(vespertide_core::StrOrBoolOrArray::Array(filtered));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
             if tbl.indexes.len() == before {
                 Err(PlannerError::IndexNotFound(table.clone(), name.clone()))
             } else {
@@ -307,7 +339,7 @@ mod tests {
         )],
         MigrationAction::AddColumn {
             table: "users".into(),
-            column: col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+            column: Box::new(col("id", ColumnType::Simple(SimpleColumnType::Integer))),
             fill_with: None,
         },
         ErrKind::ColumnExists
@@ -423,7 +455,7 @@ mod tests {
         actions: vec![
             MigrationAction::AddColumn {
                 table: "users".into(),
-                column: col("new_col", ColumnType::Simple(SimpleColumnType::Boolean)),
+                column: Box::new(col("new_col", ColumnType::Simple(SimpleColumnType::Boolean))),
                 fill_with: None,
             },
             MigrationAction::RenameColumn {
@@ -684,5 +716,163 @@ mod tests {
         rename_column_in_indexes(&mut indexes, from, to);
         assert_eq!(constraints, expected_constraints);
         assert_eq!(indexes, expected_indexes);
+    }
+
+    // Tests for RemoveIndex clearing inline index on columns
+    #[test]
+    fn remove_index_clears_inline_index_bool() {
+        // Column with inline index: true creates idx_{table}_{column} pattern
+        let mut col_with_index = col("email", ColumnType::Simple(SimpleColumnType::Text));
+        col_with_index.index = Some(vespertide_core::StrOrBoolOrArray::Bool(true));
+
+        let mut schema = vec![table(
+            "users",
+            vec![col_with_index],
+            vec![],
+            vec![idx("idx_users_email", vec!["email"], false)],
+        )];
+
+        apply_action(
+            &mut schema,
+            &MigrationAction::RemoveIndex {
+                table: "users".into(),
+                name: "idx_users_email".into(),
+            },
+        )
+        .unwrap();
+
+        // Index should be removed from indexes array
+        assert!(schema[0].indexes.is_empty());
+        // Inline index on column should also be cleared
+        assert!(schema[0].columns[0].index.is_none());
+    }
+
+    #[test]
+    fn remove_index_clears_inline_index_str() {
+        // Column with inline index: "custom_idx_name"
+        let mut col_with_index = col("email", ColumnType::Simple(SimpleColumnType::Text));
+        col_with_index.index = Some(vespertide_core::StrOrBoolOrArray::Str(
+            "custom_idx_name".into(),
+        ));
+
+        let mut schema = vec![table(
+            "users",
+            vec![col_with_index],
+            vec![],
+            vec![idx("custom_idx_name", vec!["email"], false)],
+        )];
+
+        apply_action(
+            &mut schema,
+            &MigrationAction::RemoveIndex {
+                table: "users".into(),
+                name: "custom_idx_name".into(),
+            },
+        )
+        .unwrap();
+
+        assert!(schema[0].indexes.is_empty());
+        assert!(schema[0].columns[0].index.is_none());
+    }
+
+    #[test]
+    fn remove_index_clears_inline_index_array_partial() {
+        // Column with inline index: ["idx_a", "idx_b"]
+        let mut col_with_index = col("email", ColumnType::Simple(SimpleColumnType::Text));
+        col_with_index.index = Some(vespertide_core::StrOrBoolOrArray::Array(vec![
+            "idx_a".into(),
+            "idx_b".into(),
+        ]));
+
+        let mut schema = vec![table(
+            "users",
+            vec![col_with_index],
+            vec![],
+            vec![
+                idx("idx_a", vec!["email"], false),
+                idx("idx_b", vec!["email"], false),
+            ],
+        )];
+
+        // Remove only idx_a
+        apply_action(
+            &mut schema,
+            &MigrationAction::RemoveIndex {
+                table: "users".into(),
+                name: "idx_a".into(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(schema[0].indexes.len(), 1);
+        assert_eq!(schema[0].indexes[0].name, "idx_b");
+        // inline index should only have idx_b remaining
+        assert_eq!(
+            schema[0].columns[0].index,
+            Some(vespertide_core::StrOrBoolOrArray::Array(vec![
+                "idx_b".into()
+            ]))
+        );
+    }
+
+    #[test]
+    fn remove_index_clears_inline_index_array_all() {
+        // Column with inline index: ["idx_single"]
+        let mut col_with_index = col("email", ColumnType::Simple(SimpleColumnType::Text));
+        col_with_index.index = Some(vespertide_core::StrOrBoolOrArray::Array(vec![
+            "idx_single".into(),
+        ]));
+
+        let mut schema = vec![table(
+            "users",
+            vec![col_with_index],
+            vec![],
+            vec![idx("idx_single", vec!["email"], false)],
+        )];
+
+        apply_action(
+            &mut schema,
+            &MigrationAction::RemoveIndex {
+                table: "users".into(),
+                name: "idx_single".into(),
+            },
+        )
+        .unwrap();
+
+        assert!(schema[0].indexes.is_empty());
+        // When array becomes empty, inline index should be None
+        assert!(schema[0].columns[0].index.is_none());
+    }
+
+    #[test]
+    fn remove_index_with_inline_bool_non_matching_name() {
+        // Column with inline index: true, but index name doesn't match idx_{table}_{column} pattern
+        // This tests the `_ => {}` branch (line 144) where Bool(true) doesn't match Str or Array
+        let mut col_with_index = col("email", ColumnType::Simple(SimpleColumnType::Text));
+        col_with_index.index = Some(vespertide_core::StrOrBoolOrArray::Bool(true));
+
+        let mut schema = vec![table(
+            "users",
+            vec![col_with_index],
+            vec![],
+            vec![idx("custom_email_idx", vec!["email"], false)], // not idx_users_email
+        )];
+
+        apply_action(
+            &mut schema,
+            &MigrationAction::RemoveIndex {
+                table: "users".into(),
+                name: "custom_email_idx".into(),
+            },
+        )
+        .unwrap();
+
+        // Index removed from array
+        assert!(schema[0].indexes.is_empty());
+        // Inline index NOT cleared because name didn't match pattern and Bool(true) hits _ branch
+        assert_eq!(
+            schema[0].columns[0].index,
+            Some(vespertide_core::StrOrBoolOrArray::Bool(true))
+        );
     }
 }

@@ -431,7 +431,7 @@ mod tests {
             version: 1,
             actions: vec![MigrationAction::AddColumn {
                 table: "users".into(),
-                column: ColumnDef {
+                column: Box::new(ColumnDef {
                     name: "nickname".into(),
                     r#type: ColumnType::Simple(SimpleColumnType::Text),
                     nullable: false,
@@ -441,7 +441,7 @@ mod tests {
                     unique: None,
                     index: None,
                     foreign_key: None,
-                },
+                }),
                 fill_with: Some("default".into()),
             }],
         };

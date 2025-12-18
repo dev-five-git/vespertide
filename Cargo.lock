@@ -1858,6 +1858,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "runtime-macros"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34bef7b9430b9f9e666d930202e1344765b623203affe2f779bcd1f269384248"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.111",
+]
+
+[[package]]
 name = "rust_decimal"
 version = "1.39.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2938,7 +2949,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vespertide"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "vespertide-core",
  "vespertide-macro",
@@ -2946,7 +2957,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-cli"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2970,7 +2981,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-config"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "clap",
  "serde",
@@ -2978,7 +2989,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-core"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "rstest",
  "schemars",
@@ -2988,7 +2999,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-exporter"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "insta",
  "rstest",
@@ -2998,7 +3009,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-loader"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "anyhow",
  "rstest",
@@ -3013,10 +3024,11 @@ dependencies = [
 
 [[package]]
 name = "vespertide-macro"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "proc-macro2",
  "quote",
+ "runtime-macros",
  "syn 2.0.111",
  "tempfile",
  "thiserror",
@@ -3029,7 +3041,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-planner"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "rstest",
  "thiserror",
@@ -3038,7 +3050,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-query"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "insta",
  "rstest",

@@ -30,4 +30,8 @@ pub enum PlannerError {
     TableValidation(String),
     #[error("table '{0}' must have a primary key")]
     MissingPrimaryKey(String),
+    #[error("enum '{0}' in column '{1}.{2}' has duplicate variant name: '{3}'")]
+    DuplicateEnumVariantName(String, String, String, String),
+    #[error("enum '{0}' in column '{1}.{2}' has duplicate value: {3}")]
+    DuplicateEnumValue(String, String, String, i32),
 }

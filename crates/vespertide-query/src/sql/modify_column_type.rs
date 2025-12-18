@@ -136,11 +136,7 @@ pub fn build_modify_column_type(
                 let temp_type_name = format!("{}_new", enum_name);
 
                 // 1. CREATE TYPE {enum}_new AS ENUM (new values)
-                let create_temp_values = new_values
-                    .iter()
-                    .map(|v| format!("'{}'", v.replace('\'', "''")))
-                    .collect::<Vec<_>>()
-                    .join(", ");
+                let create_temp_values = new_values.to_sql_values().join(", ");
                 queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
                     format!(
                         "CREATE TYPE \"{}\" AS ENUM ({})",
@@ -241,7 +237,9 @@ mod tests {
     use super::*;
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
-    use vespertide_core::{ColumnDef, ColumnType, ComplexColumnType, SimpleColumnType, TableDef};
+    use vespertide_core::{
+        ColumnDef, ColumnType, ComplexColumnType, EnumValues, SimpleColumnType, TableDef,
+    };
 
     #[rstest]
     #[case::modify_column_type_postgres(
@@ -541,11 +539,11 @@ mod tests {
         DatabaseBackend::Postgres,
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         }),
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "status".into(),
-            values: vec!["active".into(), "inactive".into(), "pending".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into(), "pending".into()]),
         })
     )]
     #[case::enum_values_changed_mysql(
@@ -553,11 +551,11 @@ mod tests {
         DatabaseBackend::MySql,
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         }),
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "status".into(),
-            values: vec!["active".into(), "inactive".into(), "pending".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into(), "pending".into()]),
         })
     )]
     #[case::enum_values_changed_sqlite(
@@ -565,11 +563,11 @@ mod tests {
         DatabaseBackend::Sqlite,
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         }),
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "status".into(),
-            values: vec!["active".into(), "inactive".into(), "pending".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into(), "pending".into()]),
         })
     )]
     #[case::enum_same_values_postgres(
@@ -577,11 +575,11 @@ mod tests {
         DatabaseBackend::Postgres,
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         }),
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         })
     )]
     #[case::enum_same_values_mysql(
@@ -589,11 +587,11 @@ mod tests {
         DatabaseBackend::MySql,
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         }),
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         })
     )]
     #[case::enum_same_values_sqlite(
@@ -601,11 +599,11 @@ mod tests {
         DatabaseBackend::Sqlite,
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         }),
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         })
     )]
     #[case::enum_name_changed_postgres(
@@ -613,11 +611,11 @@ mod tests {
         DatabaseBackend::Postgres,
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "old_status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         }),
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "new_status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         })
     )]
     #[case::enum_name_changed_mysql(
@@ -625,11 +623,11 @@ mod tests {
         DatabaseBackend::MySql,
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "old_status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         }),
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "new_status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         })
     )]
     #[case::enum_name_changed_sqlite(
@@ -637,11 +635,11 @@ mod tests {
         DatabaseBackend::Sqlite,
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "old_status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         }),
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "new_status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         })
     )]
     #[case::text_to_enum_postgres(
@@ -650,7 +648,7 @@ mod tests {
         ColumnType::Simple(SimpleColumnType::Text),
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "user_status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         })
     )]
     #[case::text_to_enum_mysql(
@@ -659,7 +657,7 @@ mod tests {
         ColumnType::Simple(SimpleColumnType::Text),
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "user_status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         })
     )]
     #[case::text_to_enum_sqlite(
@@ -668,7 +666,7 @@ mod tests {
         ColumnType::Simple(SimpleColumnType::Text),
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "user_status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         })
     )]
     #[case::enum_to_text_postgres(
@@ -676,7 +674,7 @@ mod tests {
         DatabaseBackend::Postgres,
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "user_status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         }),
         ColumnType::Simple(SimpleColumnType::Text)
     )]
@@ -685,7 +683,7 @@ mod tests {
         DatabaseBackend::MySql,
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "user_status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         }),
         ColumnType::Simple(SimpleColumnType::Text)
     )]
@@ -694,7 +692,7 @@ mod tests {
         DatabaseBackend::Sqlite,
         ColumnType::Complex(ComplexColumnType::Enum {
             name: "user_status".into(),
-            values: vec!["active".into(), "inactive".into()],
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
         }),
         ColumnType::Simple(SimpleColumnType::Text)
     )]
@@ -748,7 +746,7 @@ mod tests {
             "status",
             &ColumnType::Complex(ComplexColumnType::Enum {
                 name: "status_type".into(),
-                values: vec!["active".into(), "inactive".into()],
+                values: EnumValues::String(vec!["active".into(), "inactive".into()]),
             }),
             &[], // Empty schema - old_type will be None
         );

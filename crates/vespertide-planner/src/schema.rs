@@ -87,7 +87,7 @@ mod tests {
                 version: 2,
                 actions: vec![MigrationAction::AddColumn {
                     table: "users".into(),
-                    column: col("name", ColumnType::Simple(SimpleColumnType::Text)),
+                    column: Box::new(col("name", ColumnType::Simple(SimpleColumnType::Text))),
                     fill_with: None,
                 }],
             },
@@ -120,7 +120,7 @@ mod tests {
                 version: 2,
                 actions: vec![MigrationAction::AddColumn {
                     table: "users".into(),
-                    column: col("name", ColumnType::Simple(SimpleColumnType::Text)),
+                    column: Box::new(col("name", ColumnType::Simple(SimpleColumnType::Text))),
                     fill_with: None,
                 }],
             },

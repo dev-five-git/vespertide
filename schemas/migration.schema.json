@@ -203,10 +203,7 @@
               "type": "string"
             },
             "values": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
+              "$ref": "#/$defs/EnumValues"
             }
           },
           "required": [
@@ -214,6 +211,23 @@
             "name",
             "values"
           ]
+        }
+      ]
+    },
+    "EnumValues": {
+      "description": "Enum values definition - either all string or all integer",
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NumValue"
+          }
         }
       ]
     },
@@ -547,6 +561,23 @@
             "sql"
           ]
         }
+      ]
+    },
+    "NumValue": {
+      "description": "Integer enum variant with name and numeric value",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "type": "integer",
+          "format": "int32"
+        }
+      },
+      "required": [
+        "name",
+        "value"
       ]
     },
     "PrimaryKeyDef": {

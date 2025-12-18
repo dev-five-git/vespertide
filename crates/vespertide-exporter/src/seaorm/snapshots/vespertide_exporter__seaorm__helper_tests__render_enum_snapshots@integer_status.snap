@@ -1,0 +1,11 @@
+---
+source: crates/vespertide-exporter/src/seaorm/mod.rs
+expression: result
+---
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
+#[sea_orm(rs_type = "i32", db_type = "Integer")]
+pub enum TaskStatus {
+    Pending = 0,
+    InProgress = 1,
+    Completed = 100,
+}

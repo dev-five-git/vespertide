@@ -293,7 +293,7 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
             // Modified columns
             for (col, to_def) in &to_cols {
                 if let Some(from_def) = from_cols.get(col)
-                    && from_def.r#type != to_def.r#type
+                    && from_def.r#type.requires_migration(&to_def.r#type)
                 {
                     actions.push(MigrationAction::ModifyColumnType {
                         table: (*name).to_string(),
@@ -310,7 +310,7 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
                 if !from_cols.contains_key(col) {
                     actions.push(MigrationAction::AddColumn {
                         table: (*name).to_string(),
-                        column: (*def).clone(),
+                        column: Box::new((*def).clone()),
                         fill_with: None,
                     });
                 }
@@ -458,7 +458,7 @@ mod tests {
         vec![
             MigrationAction::AddColumn {
                 table: "users".into(),
-                column: col("name", ColumnType::Simple(SimpleColumnType::Text)),
+                column: Box::new(col("name", ColumnType::Simple(SimpleColumnType::Text))),
                 fill_with: None,
             },
             MigrationAction::AddIndex {
@@ -603,6 +603,117 @@ mod tests {
     ) {
         let plan = diff_schemas(&from_schema, &to_schema).unwrap();
         assert_eq!(plan.actions, expected_actions);
+    }
+
+    // Tests for integer enum handling
+    mod integer_enum {
+        use super::*;
+        use vespertide_core::{ComplexColumnType, EnumValues, NumValue};
+
+        #[test]
+        fn integer_enum_values_changed_no_migration() {
+            // Integer enum values changed - should NOT generate ModifyColumnType
+            let from = vec![table(
+                "orders",
+                vec![col(
+                    "status",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "order_status".into(),
+                        values: EnumValues::Integer(vec![
+                            NumValue {
+                                name: "Pending".into(),
+                                value: 0,
+                            },
+                            NumValue {
+                                name: "Shipped".into(),
+                                value: 1,
+                            },
+                        ]),
+                    }),
+                )],
+                vec![],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "orders",
+                vec![col(
+                    "status",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "order_status".into(),
+                        values: EnumValues::Integer(vec![
+                            NumValue {
+                                name: "Pending".into(),
+                                value: 0,
+                            },
+                            NumValue {
+                                name: "Shipped".into(),
+                                value: 1,
+                            },
+                            NumValue {
+                                name: "Delivered".into(),
+                                value: 2,
+                            },
+                            NumValue {
+                                name: "Cancelled".into(),
+                                value: 100,
+                            },
+                        ]),
+                    }),
+                )],
+                vec![],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+            assert!(
+                plan.actions.is_empty(),
+                "Expected no actions, got: {:?}",
+                plan.actions
+            );
+        }
+
+        #[test]
+        fn string_enum_values_changed_requires_migration() {
+            // String enum values changed - SHOULD generate ModifyColumnType
+            let from = vec![table(
+                "orders",
+                vec![col(
+                    "status",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "order_status".into(),
+                        values: EnumValues::String(vec!["pending".into(), "shipped".into()]),
+                    }),
+                )],
+                vec![],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "orders",
+                vec![col(
+                    "status",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "order_status".into(),
+                        values: EnumValues::String(vec![
+                            "pending".into(),
+                            "shipped".into(),
+                            "delivered".into(),
+                        ]),
+                    }),
+                )],
+                vec![],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+            assert_eq!(plan.actions.len(), 1);
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::ModifyColumnType { table, column, .. }
+                if table == "orders" && column == "status"
+            ));
+        }
     }
 
     // Tests for inline column constraints normalization
@@ -1373,7 +1484,7 @@ mod tests {
 
             let action = MigrationAction::AddColumn {
                 table: "users".into(),
-                column: ColumnDef {
+                column: Box::new(ColumnDef {
                     name: "email".into(),
                     r#type: ColumnType::Simple(SimpleColumnType::Text),
                     nullable: true,
@@ -1383,7 +1494,7 @@ mod tests {
                     unique: None,
                     index: None,
                     foreign_key: None,
-                },
+                }),
                 fill_with: None,
             };
 

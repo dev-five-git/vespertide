@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use clap::ValueEnum;
 use vespertide_config::VespertideConfig;
 use vespertide_core::TableDef;
-use vespertide_exporter::{Orm, render_entity};
+use vespertide_exporter::{Orm, render_entity_with_schema};
 
 use crate::utils::load_config;
 
@@ -51,8 +51,12 @@ pub fn cmd_export(orm: OrmArg, export_dir: Option<PathBuf>) -> Result<()> {
 
     let orm_kind: Orm = orm.into();
 
+    // Extract all tables for schema context (used for FK chain resolution)
+    let all_tables: Vec<TableDef> = normalized_models.iter().map(|(t, _)| t.clone()).collect();
+
     for (table, rel_path) in &normalized_models {
-        let code = render_entity(orm_kind, table).map_err(|e| anyhow::anyhow!(e))?;
+        let code = render_entity_with_schema(orm_kind, table, &all_tables)
+            .map_err(|e| anyhow::anyhow!(e))?;
         let out_path = build_output_path(&target_root, rel_path, orm_kind);
         if let Some(parent) = out_path.parent() {
             fs::create_dir_all(parent)

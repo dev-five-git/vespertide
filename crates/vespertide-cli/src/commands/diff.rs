@@ -248,7 +248,7 @@ mod tests {
     #[case(
         MigrationAction::AddColumn {
             table: "users".into(),
-            column: ColumnDef {
+            column: Box::new(ColumnDef {
                 name: "name".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Text),
                 nullable: true,
@@ -258,7 +258,7 @@ mod tests {
                 unique: None,
                 index: None,
                 foreign_key: None,
-            },
+            }),
             fill_with: None,
         },
         format!("{} {}.{}", "Add column:".bright_green(), "users".bright_cyan(), "name".bright_cyan().bold())

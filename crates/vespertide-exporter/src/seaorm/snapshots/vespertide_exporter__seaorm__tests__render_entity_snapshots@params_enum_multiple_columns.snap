@@ -3,8 +3,9 @@ source: crates/vespertide-exporter/src/seaorm/mod.rs
 expression: rendered
 ---
 use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
 #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "product_category")]
 pub enum ProductCategory {
     #[sea_orm(string_value = "electronics")]
@@ -15,7 +16,7 @@ pub enum ProductCategory {
     Food,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
 #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "availability_status")]
 pub enum AvailabilityStatus {
     #[sea_orm(string_value = "in_stock")]
@@ -27,7 +28,7 @@ pub enum AvailabilityStatus {
 }
 
 #[sea_orm::model]
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "products")]
 pub struct Model {
     #[sea_orm(primary_key)]

@@ -532,14 +532,14 @@ mod tests {
     #[case::add_column_with_enum_type_sqlite(DatabaseBackend::Sqlite)]
     fn test_add_column_with_enum_type(#[case] backend: DatabaseBackend) {
         use insta::{assert_snapshot, with_settings};
-        use vespertide_core::ComplexColumnType;
+        use vespertide_core::{ComplexColumnType, EnumValues};
 
         // Test that adding an enum column creates the enum type first (PostgreSQL only)
         let column = ColumnDef {
             name: "status".into(),
             r#type: ColumnType::Complex(ComplexColumnType::Enum {
                 name: "status_type".into(),
-                values: vec!["active".into(), "inactive".into()],
+                values: EnumValues::String(vec!["active".into(), "inactive".into()]),
             }),
             nullable: true,
             default: None,

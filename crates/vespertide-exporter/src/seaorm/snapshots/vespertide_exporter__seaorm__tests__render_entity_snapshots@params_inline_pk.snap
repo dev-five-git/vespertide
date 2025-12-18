@@ -3,12 +3,13 @@ source: crates/vespertide-exporter/src/seaorm/mod.rs
 expression: rendered
 ---
 use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
 
 #[sea_orm::model]
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "users")]
 pub struct Model {
-    #[sea_orm(primary_key)]
+    #[sea_orm(primary_key, default_value = "gen_random_uuid()")]
     pub id: Uuid,
     pub email: String,
 }

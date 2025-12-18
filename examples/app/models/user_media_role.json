@@ -28,7 +28,7 @@
     },
     {
       "name": "role",
-      "type": { "kind": "varchar", "length": 20 },
+      "type": { "kind": "enum", "name": "media_role", "values": ["owner", "editor", "reporter"] },
       "nullable": false,
       "index": true
     },

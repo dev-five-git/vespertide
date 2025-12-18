@@ -3,18 +3,23 @@ source: crates/vespertide-exporter/src/seaorm/mod.rs
 expression: rendered
 ---
 use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
 
 #[sea_orm::model]
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "article_user")]
 pub struct Model {
-    #[sea_orm(primary_key, auto_increment = false)]
+    #[sea_orm(primary_key)]
     pub article_id: Uuid,
-    #[sea_orm(primary_key, auto_increment = false)]
+    #[sea_orm(primary_key)]
     pub user_id: Uuid,
+    #[sea_orm(default_value = 1)]
     pub author_order: i32,
+    #[sea_orm(default_value = "contributor")]
     pub role: String,
+    #[sea_orm(default_value = false)]
     pub is_lead: bool,
+    #[sea_orm(default_value = "now()")]
     pub created_at: DateTimeWithTimeZone,
     #[sea_orm(belongs_to, from = "article_id", to = "id")]
     pub article: HasOne<super::article::Entity>,
