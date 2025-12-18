@@ -452,7 +452,7 @@ mod tests {
             ],
             vec![],
             vec![IndexDef {
-                name: "idx_users_name".into(),
+                name: "ix_users__name".into(),
                 columns: vec!["name".into()],
                 unique: false,
             }],
@@ -466,7 +466,7 @@ mod tests {
             MigrationAction::AddIndex {
                 table: "users".into(),
                 index: IndexDef {
-                    name: "idx_users_name".into(),
+                    name: "ix_users__name".into(),
                     columns: vec!["name".into()],
                     unique: false,
                 },
@@ -866,7 +866,7 @@ mod tests {
                 MigrationAction::CreateTable { .. }
             ));
             if let MigrationAction::AddIndex { index, .. } = &plan.actions[1] {
-                assert_eq!(index.name, "idx_users_name");
+                assert_eq!(index.name, "ix_users__name");
                 assert_eq!(index.columns, vec!["name".to_string()]);
             } else {
                 panic!("Expected AddIndex action");
@@ -937,7 +937,7 @@ mod tests {
             assert_eq!(plan.actions.len(), 1);
             if let MigrationAction::AddIndex { table, index } = &plan.actions[0] {
                 assert_eq!(table, "users");
-                assert_eq!(index.name, "idx_users_name");
+                assert_eq!(index.name, "ix_users__name");
                 assert_eq!(index.columns, vec!["name".to_string()]);
             } else {
                 panic!("Expected AddIndex action, got {:?}", plan.actions[0]);

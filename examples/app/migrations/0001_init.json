@@ -114,7 +114,7 @@
         "columns": [
           "email"
         ],
-        "name": "idx_user_email",
+        "name": "ix_user__email",
         "unique": false
       },
       "table": "user",
@@ -240,7 +240,7 @@
         "columns": [
           "owner_id"
         ],
-        "name": "idx_media_owner_id",
+        "name": "ix_media__owner_id",
         "unique": false
       },
       "table": "media",
@@ -409,7 +409,7 @@
         "columns": [
           "status"
         ],
-        "name": "idx_article_status",
+        "name": "ix_article__status",
         "unique": false
       },
       "table": "article",
@@ -420,7 +420,7 @@
         "columns": [
           "published_at"
         ],
-        "name": "idx_article_published_at",
+        "name": "ix_article__published_at",
         "unique": false
       },
       "table": "article",
@@ -539,7 +539,7 @@
         "columns": [
           "user_id"
         ],
-        "name": "idx_user_media_role_user_id",
+        "name": "ix_user_media_role__user_id",
         "unique": false
       },
       "table": "user_media_role",
@@ -550,7 +550,7 @@
         "columns": [
           "media_id"
         ],
-        "name": "idx_user_media_role_media_id",
+        "name": "ix_user_media_role__media_id",
         "unique": false
       },
       "table": "user_media_role",
@@ -561,7 +561,7 @@
         "columns": [
           "role"
         ],
-        "name": "idx_user_media_role_role",
+        "name": "ix_user_media_role__role",
         "unique": false
       },
       "table": "user_media_role",
@@ -690,7 +690,7 @@
         "columns": [
           "user_id"
         ],
-        "name": "idx_article_user_user_id",
+        "name": "ix_article_user__user_id",
         "unique": false
       },
       "table": "article_user",
@@ -698,6 +698,6 @@
     }
   ],
   "comment": "Init",
-  "created_at": "2025-12-18T17:16:53Z",
+  "created_at": "2025-12-18T17:35:37Z",
   "version": 1
 }

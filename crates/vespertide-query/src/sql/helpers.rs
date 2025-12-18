@@ -238,44 +238,15 @@ pub fn is_enum_type(column_type: &ColumnType) -> bool {
     )
 }
 
-/// Generate index name from table name, columns, and optional user-provided key
-/// Always includes table name to avoid conflicts across tables.
-/// Uses double underscore to separate table name from the rest.
-/// Format: ix_{table}__{key} or ix_{table}__{col1}_{col2}...
-pub fn build_index_name(table: &str, columns: &[String], key: Option<&str>) -> String {
-    match key {
-        Some(k) => format!("ix_{}__{}", table, k),
-        None => format!("ix_{}__{}", table, columns.join("_")),
-    }
-}
+// Re-export naming functions from vespertide-naming
+pub use vespertide_naming::{
+    build_check_constraint_name, build_foreign_key_name, build_index_name,
+    build_unique_constraint_name,
+};
 
-/// Generate unique constraint name from table name, columns, and optional user-provided key
-/// Always includes table name to avoid conflicts across tables.
-/// Uses double underscore to separate table name from the rest.
-/// Format: uq_{table}__{key} or uq_{table}__{col1}_{col2}...
-pub fn build_unique_constraint_name(table: &str, columns: &[String], key: Option<&str>) -> String {
-    match key {
-        Some(k) => format!("uq_{}__{}", table, k),
-        None => format!("uq_{}__{}", table, columns.join("_")),
-    }
-}
-
-/// Generate foreign key constraint name from table name, columns, and optional user-provided key
-/// Always includes table name to avoid conflicts across tables.
-/// Uses double underscore to separate table name from the rest.
-/// Format: fk_{table}__{key} or fk_{table}__{col1}_{col2}...
-pub fn build_foreign_key_name(table: &str, columns: &[String], key: Option<&str>) -> String {
-    match key {
-        Some(k) => format!("fk_{}__{}", table, k),
-        None => format!("fk_{}__{}", table, columns.join("_")),
-    }
-}
-
-/// Generate CHECK constraint name for SQLite enum column
-/// Uses double underscore to separate table name from the rest.
-/// Format: chk_{table}__{column}
+/// Alias for build_check_constraint_name for SQLite enum columns
 pub fn build_sqlite_enum_check_name(table: &str, column: &str) -> String {
-    format!("chk_{}__{}", table, column)
+    build_check_constraint_name(table, column)
 }
 
 /// Generate CHECK constraint expression for SQLite enum column

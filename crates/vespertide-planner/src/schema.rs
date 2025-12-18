@@ -131,7 +131,7 @@ mod tests {
                 actions: vec![MigrationAction::AddIndex {
                     table: "users".into(),
                     index: IndexDef {
-                        name: "idx_users_name".into(),
+                        name: "ix_users__name".into(),
                         columns: vec!["name".into()],
                         unique: false,
                     },
@@ -146,7 +146,7 @@ mod tests {
             ],
             vec![TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] }],
             vec![IndexDef {
-                name: "idx_users_name".into(),
+                name: "ix_users__name".into(),
                 columns: vec!["name".into()],
                 unique: false,
             }],

@@ -10,6 +10,7 @@ description = "Converts migration actions into SQL statements with bind paramete
 
 [dependencies]
 vespertide-core = { workspace = true }
+vespertide-naming = { workspace = true }
 vespertide-planner = { workspace = true }
 thiserror = "2"
 sea-query = "0.32"

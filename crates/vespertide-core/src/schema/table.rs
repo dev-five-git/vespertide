@@ -269,8 +269,9 @@ impl TableDef {
                             .insert(col.name.clone());
                     }
                     StrOrBoolOrArray::Bool(true) => {
-                        // Auto-generated index name
-                        let index_name = format!("idx_{}_{}", self.name, col.name);
+                        // Auto-generated index name using vespertide-naming
+                        let index_name =
+                            vespertide_naming::build_index_name(&self.name, &[col.name.clone()], None);
 
                         // Check for duplicate (auto-generated names are unique per column, so this shouldn't happen)
                         // But we check anyway for consistency - only check inline definitions
@@ -542,7 +543,7 @@ mod tests {
 
         let normalized = table.normalize().unwrap();
         assert_eq!(normalized.indexes.len(), 1);
-        assert_eq!(normalized.indexes[0].name, "idx_users_name");
+        assert_eq!(normalized.indexes[0].name, "ix_users__name");
         assert_eq!(normalized.indexes[0].columns, vec!["name".to_string()]);
         assert!(!normalized.indexes[0].unique);
     }
@@ -719,7 +720,7 @@ mod tests {
         let idx_col4 = normalized
             .indexes
             .iter()
-            .find(|i| i.name == "idx_test_col4")
+            .find(|i| i.name == "ix_test__col4")
             .unwrap();
         assert_eq!(idx_col4.columns, vec!["col4".to_string()]);
     }
@@ -1189,7 +1190,7 @@ mod tests {
             column_name,
         }) = result
         {
-            assert!(index_name.contains("idx_test"));
+            assert!(index_name.contains("ix_test"));
             assert!(index_name.contains("col1"));
             assert_eq!(column_name, "col1");
         } else {

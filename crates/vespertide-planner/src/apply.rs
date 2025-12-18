@@ -116,8 +116,18 @@ pub fn apply_action(
             tbl.indexes.retain(|i| i.name != *name);
 
             // Also clear inline index on column if index name matches the auto-generated pattern
-            // Pattern: idx_{table}_{column} for Bool(true) or the name itself for Str(name)
-            let prefix = format!("idx_{}_", table);
+            // Pattern: ix_{table}__{column} for Bool(true) or the name itself for Str(name)
+            // Check if this index name was auto-generated for a single column
+            for col in &mut tbl.columns {
+                let auto_name =
+                    vespertide_naming::build_index_name(table, &[col.name.clone()], None);
+                if *name == auto_name {
+                    col.index = None;
+                    break;
+                }
+            }
+            // Legacy prefix check for backwards compatibility
+            let prefix = format!("ix_{}__", table);
             if let Some(col_name) = name.strip_prefix(&prefix) {
                 // This is an auto-generated index name - clear the inline index on that column
                 if let Some(col) = tbl.columns.iter_mut().find(|c| c.name == col_name) {
@@ -772,7 +782,7 @@ mod tests {
     // Tests for RemoveIndex clearing inline index on columns
     #[test]
     fn remove_index_clears_inline_index_bool() {
-        // Column with inline index: true creates idx_{table}_{column} pattern
+        // Column with inline index: true creates ix_{table}__{column} pattern
         let mut col_with_index = col("email", ColumnType::Simple(SimpleColumnType::Text));
         col_with_index.index = Some(vespertide_core::StrOrBoolOrArray::Bool(true));
 
@@ -780,14 +790,14 @@ mod tests {
             "users",
             vec![col_with_index],
             vec![],
-            vec![idx("idx_users_email", vec!["email"], false)],
+            vec![idx("ix_users__email", vec!["email"], false)],
         )];
 
         apply_action(
             &mut schema,
             &MigrationAction::RemoveIndex {
                 table: "users".into(),
-                name: "idx_users_email".into(),
+                name: "ix_users__email".into(),
             },
         )
         .unwrap();
