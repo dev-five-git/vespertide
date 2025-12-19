@@ -177,8 +177,11 @@ pub fn apply_action(
                     // Clear inline index on columns when removing an index constraint
                     // Check if this index name was auto-generated for a single column
                     for col in &mut tbl.columns {
-                        let auto_name =
-                            vespertide_naming::build_index_name(table, &[col.name.clone()], None);
+                        let auto_name = vespertide_naming::build_index_name(
+                            table,
+                            std::slice::from_ref(&col.name),
+                            None,
+                        );
                         if name.as_ref() == Some(&auto_name) {
                             col.index = None;
                             break;

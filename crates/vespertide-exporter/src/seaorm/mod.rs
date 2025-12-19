@@ -107,10 +107,10 @@ fn single_column_unique_set(constraints: &[TableConstraint]) -> HashSet<String> 
 fn single_column_index_set(constraints: &[TableConstraint]) -> HashSet<String> {
     let mut indexed_cols = HashSet::new();
     for constraint in constraints {
-        if let TableConstraint::Index { columns, .. } = constraint {
-            if columns.len() == 1 {
-                indexed_cols.insert(columns[0].clone());
-            }
+        if let TableConstraint::Index { columns, .. } = constraint
+            && columns.len() == 1
+        {
+            indexed_cols.insert(columns[0].clone());
         }
     }
     indexed_cols

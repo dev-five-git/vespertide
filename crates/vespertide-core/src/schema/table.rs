@@ -773,7 +773,7 @@ mod tests {
         assert_eq!(idx_b.1, vec!["col3".to_string()]);
 
         // Check auto-generated index for col4 (should have name: None)
-        let idx_col4 = indexes.iter().find(|(n, _)| n == &None).unwrap();
+        let idx_col4 = indexes.iter().find(|(n, _)| n.is_none()).unwrap();
         assert_eq!(idx_col4.1, vec!["col4".to_string()]);
     }
 

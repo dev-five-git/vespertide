@@ -228,7 +228,7 @@ pub fn build_create_table(
         } = constraint
         {
             // Always generate a proper name: ix_{table}_{key} or ix_{table}_{columns}
-            let index_name = super::helpers::build_index_name(table, &index_cols, name.as_deref());
+            let index_name = super::helpers::build_index_name(table, index_cols, name.as_deref());
             let mut idx = Index::create()
                 .table(Alias::new(table))
                 .name(&index_name)

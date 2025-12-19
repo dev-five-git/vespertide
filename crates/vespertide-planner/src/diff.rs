@@ -380,11 +380,7 @@ mod tests {
     use rstest::rstest;
     use vespertide_core::{
         ColumnDef, ColumnType, MigrationAction, SimpleColumnType,
-        schema::{
-            foreign_key::{ForeignKeyDef, ForeignKeySyntax},
-            primary_key::PrimaryKeySyntax,
-            str_or_bool::StrOrBoolOrArray,
-        },
+        schema::{primary_key::PrimaryKeySyntax, str_or_bool::StrOrBoolOrArray},
     };
 
     fn col(name: &str, ty: ColumnType) -> ColumnDef {
@@ -1684,7 +1680,7 @@ mod tests {
     }
 
     mod index {
-        use insta::{Snapshot, assert_debug_snapshot};
+        use insta::assert_debug_snapshot;
 
         use super::*;
 

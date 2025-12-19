@@ -1,6 +1,5 @@
 ---
 source: crates/vespertide-planner/src/diff.rs
-assertion_line: 1723
 expression: plan.actions
 ---
 [
