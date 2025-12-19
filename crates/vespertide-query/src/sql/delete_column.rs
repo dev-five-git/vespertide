@@ -23,7 +23,7 @@ pub fn build_delete_column(
     // If column type is an enum, drop the type after (PostgreSQL only)
     // Note: Only drop if this is the last column using this enum type
     if let Some(col_type) = column_type
-        && let Some(drop_type_sql) = build_drop_enum_type_sql(col_type)
+        && let Some(drop_type_sql) = build_drop_enum_type_sql(table, col_type)
     {
         stmts.push(BuiltQuery::Raw(drop_type_sql));
     }
@@ -93,7 +93,7 @@ mod tests {
         assert!(alter_sql.contains("DROP COLUMN"));
 
         let drop_type_sql = result[1].build(DatabaseBackend::Postgres);
-        assert!(drop_type_sql.contains("DROP TYPE IF EXISTS \"status\""));
+        assert!(drop_type_sql.contains("DROP TYPE IF EXISTS \"users_status\""));
 
         // MySQL and SQLite should have empty DROP TYPE
         let drop_type_mysql = result[1].build(DatabaseBackend::MySql);

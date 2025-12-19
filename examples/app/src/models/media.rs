@@ -27,5 +27,5 @@ pub struct Model {
 
 
 // Index definitions (SeaORM uses Statement builders externally)
-// idx_media_owner_id on [owner_id] unique=false
+// (unnamed) on [owner_id]
 impl ActiveModelBehavior for ActiveModel {}

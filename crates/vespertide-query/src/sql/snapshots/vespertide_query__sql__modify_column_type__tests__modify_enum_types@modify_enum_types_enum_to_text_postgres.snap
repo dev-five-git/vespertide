@@ -3,4 +3,4 @@ source: crates/vespertide-query/src/sql/modify_column_type.rs
 expression: sql
 ---
 ALTER TABLE "users" ALTER COLUMN "status" TYPE text;
-DROP TYPE IF EXISTS "user_status"
+DROP TYPE IF EXISTS "users_user_status"

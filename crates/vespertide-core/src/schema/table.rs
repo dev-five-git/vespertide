@@ -100,87 +100,101 @@ impl TableDef {
             }
         }
 
-        // Process inline unique and index for each column
+        // Group columns by unique constraint name to create composite unique constraints
+        // Use same pattern as index grouping
+        let mut unique_groups: HashMap<String, Vec<String>> = HashMap::new();
+        let mut unique_order: Vec<String> = Vec::new(); // Preserve order of first occurrence
+
         for col in &self.columns {
-            // Handle inline unique
             if let Some(ref unique_val) = col.unique {
                 match unique_val {
                     StrOrBoolOrArray::Str(name) => {
-                        let constraint_name = Some(name.clone());
+                        // Named unique constraint - group by name for composite constraints
+                        let unique_name = name.clone();
 
-                        // Check if this unique constraint already exists
-                        let exists = constraints.iter().any(|c| {
-                            if let TableConstraint::Unique {
-                                name: c_name,
-                                columns,
-                            } = c
-                            {
-                                c_name.as_ref() == Some(name)
-                                    && columns.len() == 1
-                                    && columns[0] == col.name
-                            } else {
-                                false
-                            }
-                        });
-
-                        if !exists {
-                            constraints.push(TableConstraint::Unique {
-                                name: constraint_name,
-                                columns: vec![col.name.clone()],
-                            });
+                        if !unique_groups.contains_key(&unique_name) {
+                            unique_order.push(unique_name.clone());
                         }
+
+                        unique_groups
+                            .entry(unique_name)
+                            .or_default()
+                            .push(col.name.clone());
                     }
                     StrOrBoolOrArray::Bool(true) => {
-                        let exists = constraints.iter().any(|c| {
-                            if let TableConstraint::Unique {
-                                name: None,
-                                columns,
-                            } = c
-                            {
-                                columns.len() == 1 && columns[0] == col.name
-                            } else {
-                                false
-                            }
-                        });
+                        // Use special marker for auto-generated unique constraints (without custom name)
+                        let group_key = format!("__auto_{}", col.name);
 
-                        if !exists {
-                            constraints.push(TableConstraint::Unique {
-                                name: None,
-                                columns: vec![col.name.clone()],
-                            });
+                        if !unique_groups.contains_key(&group_key) {
+                            unique_order.push(group_key.clone());
                         }
+
+                        unique_groups
+                            .entry(group_key)
+                            .or_default()
+                            .push(col.name.clone());
                     }
                     StrOrBoolOrArray::Bool(false) => continue,
                     StrOrBoolOrArray::Array(names) => {
                         // Array format: each element is a constraint name
                         // This column will be part of all these named constraints
-                        for constraint_name in names {
-                            // Check if constraint with this name already exists
-                            if let Some(existing) = constraints.iter_mut().find(|c| {
-                                if let TableConstraint::Unique { name: Some(n), .. } = c {
-                                    n == constraint_name
-                                } else {
-                                    false
-                                }
-                            }) {
-                                // Add this column to existing composite constraint
-                                if let TableConstraint::Unique { columns, .. } = existing
-                                    && !columns.contains(&col.name)
-                                {
-                                    columns.push(col.name.clone());
-                                }
-                            } else {
-                                // Create new constraint with this column
-                                constraints.push(TableConstraint::Unique {
-                                    name: Some(constraint_name.clone()),
-                                    columns: vec![col.name.clone()],
-                                });
+                        for unique_name in names {
+                            if !unique_groups.contains_key(unique_name.as_str()) {
+                                unique_order.push(unique_name.clone());
                             }
+
+                            unique_groups
+                                .entry(unique_name.clone())
+                                .or_default()
+                                .push(col.name.clone());
                         }
                     }
                 }
             }
+        }
 
+        // Create unique constraints from grouped columns in order
+        for unique_name in unique_order {
+            let columns = unique_groups.get(&unique_name).unwrap().clone();
+
+            // Determine if this is an auto-generated unique (from unique: true)
+            // or a named unique (from unique: "name")
+            let constraint_name = if unique_name.starts_with("__auto_") {
+                // Auto-generated unique - use None so SQL generation can create the name
+                None
+            } else {
+                // Named unique - preserve the custom name
+                Some(unique_name.clone())
+            };
+
+            // Check if this unique constraint already exists
+            let exists = constraints.iter().any(|c| {
+                if let TableConstraint::Unique {
+                    name,
+                    columns: cols,
+                } = c
+                {
+                    // Match by name if both have names, otherwise match by columns
+                    match (&constraint_name, name) {
+                        (Some(n1), Some(n2)) => n1 == n2,
+                        (None, None) => cols == &columns,
+                        _ => false,
+                    }
+                } else {
+                    false
+                }
+            });
+
+            if !exists {
+                constraints.push(TableConstraint::Unique {
+                    name: constraint_name,
+                    columns,
+                });
+            }
+        }
+
+        // Process inline foreign_key and index for each column
+        for col in &self.columns {
             // Handle inline foreign_key
             if let Some(ref fk_syntax) = col.foreign_key {
                 // Convert ForeignKeySyntax to ForeignKeyDef
@@ -537,6 +551,84 @@ mod tests {
             TableConstraint::Unique { name: Some(n), columns }
                 if n == "uq_users_email" && columns == &["email".to_string()]
         ));
+    }
+
+    #[test]
+    fn normalize_composite_unique_from_string_name() {
+        // Test that multiple columns with the same unique constraint name
+        // are grouped into a single composite unique constraint
+        let mut route_col = col("join_route", ColumnType::Simple(SimpleColumnType::Text));
+        route_col.unique = Some(StrOrBoolOrArray::Str("route_provider_id".into()));
+
+        let mut provider_col = col("provider_id", ColumnType::Simple(SimpleColumnType::Text));
+        provider_col.unique = Some(StrOrBoolOrArray::Str("route_provider_id".into()));
+
+        let table = TableDef {
+            name: "user".into(),
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                route_col,
+                provider_col,
+            ],
+            constraints: vec![],
+        };
+
+        let normalized = table.normalize().unwrap();
+        assert_eq!(normalized.constraints.len(), 1);
+        assert!(matches!(
+            &normalized.constraints[0],
+            TableConstraint::Unique { name: Some(n), columns }
+                if n == "route_provider_id"
+                    && columns == &["join_route".to_string(), "provider_id".to_string()]
+        ));
+    }
+
+    #[test]
+    fn normalize_unique_name_mismatch_creates_both_constraints() {
+        // Test coverage for line 181: When an inline unique has a name but existing doesn't (or vice versa),
+        // they should not match and both constraints should be created
+        let mut email_col = col("email", ColumnType::Simple(SimpleColumnType::Text));
+        email_col.unique = Some(StrOrBoolOrArray::Str("named_unique".into()));
+
+        let table = TableDef {
+            name: "user".into(),
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                email_col,
+            ],
+            constraints: vec![
+                // Existing unnamed unique constraint on same column
+                TableConstraint::Unique {
+                    name: None,
+                    columns: vec!["email".into()],
+                },
+            ],
+        };
+
+        let normalized = table.normalize().unwrap();
+
+        // Should have 2 unique constraints: one named, one unnamed
+        let unique_constraints: Vec<_> = normalized
+            .constraints
+            .iter()
+            .filter(|c| matches!(c, TableConstraint::Unique { .. }))
+            .collect();
+        assert_eq!(
+            unique_constraints.len(),
+            2,
+            "Should keep both named and unnamed unique constraints as they don't match"
+        );
+
+        // Verify we have one named and one unnamed
+        let has_named = unique_constraints.iter().any(|c| {
+            matches!(c, TableConstraint::Unique { name: Some(n), .. } if n == "named_unique")
+        });
+        let has_unnamed = unique_constraints.iter().any(|c| {
+            matches!(c, TableConstraint::Unique { name: None, .. })
+        });
+
+        assert!(has_named, "Should have named unique constraint");
+        assert!(has_unnamed, "Should have unnamed unique constraint");
     }
 
     #[test]

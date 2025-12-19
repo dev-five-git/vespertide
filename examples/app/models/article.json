@@ -64,5 +64,6 @@
       "nullable": true
     }
   ],
-  "constraints": []
+  "constraints": [],
+  "indexes": []
 }

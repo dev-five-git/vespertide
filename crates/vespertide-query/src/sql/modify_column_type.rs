@@ -3,7 +3,7 @@ use sea_query::{Alias, ColumnDef as SeaColumnDef, Query, Table};
 use vespertide_core::{ColumnType, ComplexColumnType, TableDef};
 
 use super::create_table::build_create_table_for_backend;
-use super::helpers::{apply_column_type, build_create_enum_type_sql};
+use super::helpers::{apply_column_type_with_table, build_create_enum_type_sql};
 use super::rename_table::build_rename_table;
 use super::types::{BuiltQuery, DatabaseBackend};
 use crate::error::QueryError;
@@ -83,11 +83,8 @@ pub fn build_modify_column_type(
         let mut index_queries = Vec::new();
         for constraint in &table_def.constraints {
             if let vespertide_core::TableConstraint::Index { name, columns } = constraint {
-                let index_name = vespertide_naming::build_index_name(
-                    table,
-                    columns,
-                    name.as_deref(),
-                );
+                let index_name =
+                    vespertide_naming::build_index_name(table, columns, name.as_deref());
                 let mut idx_stmt = sea_query::Index::create();
                 idx_stmt = idx_stmt.name(&index_name).to_owned();
                 for col_name in columns {
@@ -137,9 +134,11 @@ pub fn build_modify_column_type(
                 }),
             ) = (old_type, new_type)
             {
-                let temp_type_name = format!("{}_new", enum_name);
+                // Use table-prefixed enum type names
+                let type_name = super::helpers::build_enum_type_name(table, enum_name);
+                let temp_type_name = format!("{}_new", type_name);
 
-                // 1. CREATE TYPE {enum}_new AS ENUM (new values)
+                // 1. CREATE TYPE {table}_{enum}_new AS ENUM (new values)
                 let create_temp_values = new_values.to_sql_values().join(", ");
                 queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
                     format!(
@@ -150,7 +149,7 @@ pub fn build_modify_column_type(
                     String::new(),
                 )));
 
-                // 2. ALTER TABLE ... ALTER COLUMN ... TYPE {enum}_new USING {column}::text::{enum}_new
+                // 2. ALTER TABLE ... ALTER COLUMN ... TYPE {table}_{enum}_new USING {column}::text::{table}_{enum}_new
                 queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
                     format!(
                         "ALTER TABLE \"{}\" ALTER COLUMN \"{}\" TYPE \"{}\" USING \"{}\"::text::\"{}\"",
@@ -160,18 +159,18 @@ pub fn build_modify_column_type(
                     String::new(),
                 )));
 
-                // 3. DROP TYPE {enum}
+                // 3. DROP TYPE {table}_{enum}
                 queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
-                    format!("DROP TYPE \"{}\"", enum_name),
+                    format!("DROP TYPE \"{}\"", type_name),
                     String::new(),
                     String::new(),
                 )));
 
-                // 4. ALTER TYPE {enum}_new RENAME TO {enum}
+                // 4. ALTER TYPE {table}_{enum}_new RENAME TO {table}_{enum}
                 queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
                     format!(
                         "ALTER TYPE \"{}\" RENAME TO \"{}\"",
-                        temp_type_name, enum_name
+                        temp_type_name, type_name
                     ),
                     String::new(),
                     String::new(),
@@ -196,14 +195,15 @@ pub fn build_modify_column_type(
                     true
                 };
 
-                if should_create && let Some(create_type_sql) = build_create_enum_type_sql(new_type)
+                if should_create
+                    && let Some(create_type_sql) = build_create_enum_type_sql(table, new_type)
                 {
                     queries.push(BuiltQuery::Raw(create_type_sql));
                 }
             }
 
             let mut col = SeaColumnDef::new(Alias::new(column));
-            apply_column_type(&mut col, new_type);
+            apply_column_type_with_table(&mut col, new_type, table);
 
             let stmt = Table::alter()
                 .table(Alias::new(table))
@@ -223,8 +223,10 @@ pub fn build_modify_column_type(
                 };
 
                 if should_drop {
+                    // Use table-prefixed enum type name
+                    let old_type_name = super::helpers::build_enum_type_name(table, old_name);
                     queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
-                        format!("DROP TYPE IF EXISTS \"{}\"", old_name),
+                        format!("DROP TYPE IF EXISTS \"{}\"", old_type_name),
                         String::new(),
                         String::new(),
                     )));

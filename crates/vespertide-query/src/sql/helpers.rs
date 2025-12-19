@@ -33,8 +33,8 @@ pub fn build_query_statement<T: QueryStatementWriter>(
     }
 }
 
-/// Apply vespertide ColumnType to sea_query ColumnDef
-pub fn apply_column_type(col: &mut SeaColumnDef, ty: &ColumnType) {
+/// Apply vespertide ColumnType to sea_query ColumnDef with table-aware enum type naming
+pub fn apply_column_type_with_table(col: &mut SeaColumnDef, ty: &ColumnType, table: &str) {
     match ty {
         ColumnType::Simple(simple) => match simple {
             SimpleColumnType::SmallInt => {
@@ -116,8 +116,10 @@ pub fn apply_column_type(col: &mut SeaColumnDef, ty: &ColumnType) {
                 if values.is_integer() {
                     col.integer();
                 } else {
+                    // Use table-prefixed enum type name to avoid conflicts
+                    let type_name = build_enum_type_name(table, name);
                     col.enumeration(
-                        Alias::new(name),
+                        Alias::new(&type_name),
                         values
                             .variant_names()
                             .into_iter()
@@ -169,10 +171,14 @@ pub fn convert_default_for_backend(default: &str, backend: &DatabaseBackend) -> 
     }
 }
 
-/// Build sea_query ColumnDef from vespertide ColumnDef for a specific backend
-pub fn build_sea_column_def(backend: &DatabaseBackend, column: &ColumnDef) -> SeaColumnDef {
+/// Build sea_query ColumnDef from vespertide ColumnDef for a specific backend with table-aware enum naming
+pub fn build_sea_column_def_with_table(
+    backend: &DatabaseBackend,
+    table: &str,
+    column: &ColumnDef,
+) -> SeaColumnDef {
     let mut col = SeaColumnDef::new(Alias::new(&column.name));
-    apply_column_type(&mut col, &column.r#type);
+    apply_column_type_with_table(&mut col, &column.r#type, table);
 
     if !column.nullable {
         col.not_null();
@@ -188,7 +194,13 @@ pub fn build_sea_column_def(backend: &DatabaseBackend, column: &ColumnDef) -> Se
 
 /// Generate CREATE TYPE SQL for an enum type (PostgreSQL only)
 /// Returns None for non-PostgreSQL backends or non-enum types
-pub fn build_create_enum_type_sql(column_type: &ColumnType) -> Option<super::types::RawSql> {
+///
+/// The enum type name will be prefixed with the table name to avoid conflicts
+/// across tables using the same enum name (e.g., "status", "gender").
+pub fn build_create_enum_type_sql(
+    table: &str,
+    column_type: &ColumnType,
+) -> Option<super::types::RawSql> {
     if let ColumnType::Complex(ComplexColumnType::Enum { name, values }) = column_type {
         // Integer enums don't need CREATE TYPE - they use INTEGER column
         if values.is_integer() {
@@ -197,8 +209,11 @@ pub fn build_create_enum_type_sql(column_type: &ColumnType) -> Option<super::typ
 
         let values_sql = values.to_sql_values().join(", ");
 
-        // PostgreSQL: CREATE TYPE name AS ENUM (...)
-        let pg_sql = format!("CREATE TYPE \"{}\" AS ENUM ({})", name, values_sql);
+        // Generate unique type name with table prefix
+        let type_name = build_enum_type_name(table, name);
+
+        // PostgreSQL: CREATE TYPE {table}_{name} AS ENUM (...)
+        let pg_sql = format!("CREATE TYPE \"{}\" AS ENUM ({})", type_name, values_sql);
 
         // MySQL: ENUMs are inline, no CREATE TYPE needed
         // SQLite: Uses TEXT, no CREATE TYPE needed
@@ -214,10 +229,18 @@ pub fn build_create_enum_type_sql(column_type: &ColumnType) -> Option<super::typ
 
 /// Generate DROP TYPE SQL for an enum type (PostgreSQL only)
 /// Returns None for non-PostgreSQL backends or non-enum types
-pub fn build_drop_enum_type_sql(column_type: &ColumnType) -> Option<super::types::RawSql> {
+///
+/// The enum type name will be prefixed with the table name to match the CREATE TYPE.
+pub fn build_drop_enum_type_sql(
+    table: &str,
+    column_type: &ColumnType,
+) -> Option<super::types::RawSql> {
     if let ColumnType::Complex(ComplexColumnType::Enum { name, .. }) = column_type {
-        // PostgreSQL: DROP TYPE IF EXISTS name
-        let pg_sql = format!("DROP TYPE IF EXISTS \"{}\"", name);
+        // Generate the same unique type name used in CREATE TYPE
+        let type_name = build_enum_type_name(table, name);
+
+        // PostgreSQL: DROP TYPE IF EXISTS {table}_{name}
+        let pg_sql = format!("DROP TYPE IF EXISTS \"{}\"", type_name);
 
         // MySQL/SQLite: No action needed
         Some(super::types::RawSql::per_backend(
@@ -240,7 +263,7 @@ pub fn is_enum_type(column_type: &ColumnType) -> bool {
 
 // Re-export naming functions from vespertide-naming
 pub use vespertide_naming::{
-    build_check_constraint_name, build_foreign_key_name, build_index_name,
+    build_check_constraint_name, build_enum_type_name, build_foreign_key_name, build_index_name,
     build_unique_constraint_name,
 };
 
@@ -304,7 +327,7 @@ mod tests {
     fn test_column_type_conversion(#[case] ty: ColumnType) {
         // Just ensure no panic - test by creating a column with this type
         let mut col = SeaColumnDef::new(Alias::new("test"));
-        apply_column_type(&mut col, &ty);
+        apply_column_type_with_table(&mut col, &ty, "test_table");
     }
 
     #[rstest]
@@ -330,7 +353,7 @@ mod tests {
     #[case(SimpleColumnType::Xml)]
     fn test_all_simple_types_cover_branches(#[case] ty: SimpleColumnType) {
         let mut col = SeaColumnDef::new(Alias::new("t"));
-        apply_column_type(&mut col, &ColumnType::Simple(ty));
+        apply_column_type_with_table(&mut col, &ColumnType::Simple(ty), "test_table");
     }
 
     #[rstest]
@@ -341,7 +364,7 @@ mod tests {
     #[case(ComplexColumnType::Enum { name: "status".into(), values: EnumValues::String(vec!["active".into(), "inactive".into()]) })]
     fn test_all_complex_types_cover_branches(#[case] ty: ComplexColumnType) {
         let mut col = SeaColumnDef::new(Alias::new("t"));
-        apply_column_type(&mut col, &ColumnType::Complex(ty));
+        apply_column_type_with_table(&mut col, &ColumnType::Complex(ty), "test_table");
     }
 
     #[rstest]
@@ -482,7 +505,7 @@ mod tests {
             ]),
         });
         let mut col = SeaColumnDef::new(Alias::new("color"));
-        apply_column_type(&mut col, &integer_enum);
+        apply_column_type_with_table(&mut col, &integer_enum, "test_table");
         // Integer enums should use INTEGER type, not ENUM
     }
 
@@ -503,6 +526,6 @@ mod tests {
             ]),
         });
         // Integer enums should return None (no CREATE TYPE needed)
-        assert!(build_create_enum_type_sql(&integer_enum).is_none());
+        assert!(build_create_enum_type_sql("test_table", &integer_enum).is_none());
     }
 }
