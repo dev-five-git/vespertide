@@ -1,6 +1,5 @@
 pub mod add_column;
 pub mod add_constraint;
-pub mod add_index;
 pub mod create_table;
 pub mod delete_column;
 pub mod delete_table;
@@ -8,7 +7,6 @@ pub mod helpers;
 pub mod modify_column_type;
 pub mod raw_sql;
 pub mod remove_constraint;
-pub mod remove_index;
 pub mod rename_column;
 pub mod rename_table;
 pub mod types;
@@ -20,12 +18,11 @@ use crate::error::QueryError;
 use vespertide_core::{MigrationAction, TableDef};
 
 use self::{
-    add_column::build_add_column, add_constraint::build_add_constraint, add_index::build_add_index,
+    add_column::build_add_column, add_constraint::build_add_constraint,
     create_table::build_create_table, delete_column::build_delete_column,
     delete_table::build_delete_table, modify_column_type::build_modify_column_type,
     raw_sql::build_raw_sql, remove_constraint::build_remove_constraint,
-    remove_index::build_remove_index, rename_column::build_rename_column,
-    rename_table::build_rename_table,
+    rename_column::build_rename_column, rename_table::build_rename_table,
 };
 
 pub fn build_action_queries(
@@ -67,10 +64,6 @@ pub fn build_action_queries(
             column,
             new_type,
         } => build_modify_column_type(backend, table, column, new_type, current_schema),
-
-        MigrationAction::AddIndex { table, index } => Ok(vec![build_add_index(table, index)]),
-
-        MigrationAction::RemoveIndex { table, name } => Ok(vec![build_remove_index(table, name)]),
 
         MigrationAction::RenameTable { from, to } => Ok(vec![build_rename_table(from, to)]),
 
@@ -404,7 +397,6 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![],
-            indexes: vec![],
         }];
         let result = build_action_queries(&backend, &action, &current_schema).unwrap();
         assert!(!result.is_empty());
@@ -421,14 +413,17 @@ mod tests {
     }
 
     #[rstest]
-    #[case::remove_index_postgres(DatabaseBackend::Postgres)]
-    #[case::remove_index_mysql(DatabaseBackend::MySql)]
-    #[case::remove_index_sqlite(DatabaseBackend::Sqlite)]
-    fn test_build_action_queries_remove_index(#[case] backend: DatabaseBackend) {
-        // Test MigrationAction::RemoveIndex (line 67)
-        let action = MigrationAction::RemoveIndex {
+    #[case::remove_index_constraint_postgres(DatabaseBackend::Postgres)]
+    #[case::remove_index_constraint_mysql(DatabaseBackend::MySql)]
+    #[case::remove_index_constraint_sqlite(DatabaseBackend::Sqlite)]
+    fn test_build_action_queries_remove_index_constraint(#[case] backend: DatabaseBackend) {
+        // Test MigrationAction::RemoveConstraint with Index variant
+        let action = MigrationAction::RemoveConstraint {
             table: "users".into(),
-            name: "idx_email".into(),
+            constraint: TableConstraint::Index {
+                name: Some("idx_email".into()),
+                columns: vec!["email".into()],
+            },
         };
         let result = build_action_queries(&backend, &action, &[]).unwrap();
         assert_eq!(result.len(), 1);
@@ -436,7 +431,7 @@ mod tests {
         assert!(sql.contains("DROP INDEX"));
         assert!(sql.contains("idx_email"));
 
-        with_settings!({ snapshot_suffix => format!("remove_index_{:?}", backend) }, {
+        with_settings!({ snapshot_suffix => format!("remove_index_constraint_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }
@@ -503,7 +498,6 @@ mod tests {
                 },
             ],
             constraints: vec![],
-            indexes: vec![],
         }];
         let result = build_action_queries(&backend, &action, &current_schema).unwrap();
         assert!(!result.is_empty());
@@ -562,7 +556,6 @@ mod tests {
                 name: Some("uq_email".into()),
                 columns: vec!["email".into()],
             }],
-            indexes: vec![],
         }];
         let result = build_action_queries(&backend, &action, &current_schema).unwrap();
         assert!(!result.is_empty());
@@ -613,7 +606,6 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![],
-            indexes: vec![],
         }];
         let result = build_action_queries(&backend, &action, &current_schema).unwrap();
         assert!(!result.is_empty());
@@ -631,17 +623,16 @@ mod tests {
     }
 
     #[rstest]
-    #[case::add_index_postgres(DatabaseBackend::Postgres)]
-    #[case::add_index_mysql(DatabaseBackend::MySql)]
-    #[case::add_index_sqlite(DatabaseBackend::Sqlite)]
-    fn test_build_action_queries_add_index(#[case] backend: DatabaseBackend) {
-        // Test MigrationAction::AddIndex (line 65)
-        let action = MigrationAction::AddIndex {
+    #[case::add_index_constraint_postgres(DatabaseBackend::Postgres)]
+    #[case::add_index_constraint_mysql(DatabaseBackend::MySql)]
+    #[case::add_index_constraint_sqlite(DatabaseBackend::Sqlite)]
+    fn test_build_action_queries_add_index_constraint(#[case] backend: DatabaseBackend) {
+        // Test MigrationAction::AddConstraint with Index variant
+        let action = MigrationAction::AddConstraint {
             table: "users".into(),
-            index: vespertide_core::IndexDef {
-                name: "idx_email".into(),
+            constraint: TableConstraint::Index {
+                name: Some("idx_email".into()),
                 columns: vec!["email".into()],
-                unique: false,
             },
         };
         let result = build_action_queries(&backend, &action, &[]).unwrap();
@@ -650,7 +641,7 @@ mod tests {
         assert!(sql.contains("CREATE INDEX"));
         assert!(sql.contains("idx_email"));
 
-        with_settings!({ snapshot_suffix => format!("add_index_{:?}", backend) }, {
+        with_settings!({ snapshot_suffix => format!("add_index_constraint_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }
@@ -670,6 +661,513 @@ mod tests {
         assert_eq!(sql, "SELECT 1;");
 
         with_settings!({ snapshot_suffix => format!("raw_sql_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    // Comprehensive index naming tests
+    #[rstest]
+    #[case::add_index_with_custom_name_postgres(
+        DatabaseBackend::Postgres,
+        "hello",
+        vec!["email", "password"]
+    )]
+    #[case::add_index_with_custom_name_mysql(
+        DatabaseBackend::MySql,
+        "hello",
+        vec!["email", "password"]
+    )]
+    #[case::add_index_with_custom_name_sqlite(
+        DatabaseBackend::Sqlite,
+        "hello",
+        vec!["email", "password"]
+    )]
+    #[case::add_index_single_column_postgres(
+        DatabaseBackend::Postgres,
+        "email_idx",
+        vec!["email"]
+    )]
+    #[case::add_index_single_column_mysql(
+        DatabaseBackend::MySql,
+        "email_idx",
+        vec!["email"]
+    )]
+    #[case::add_index_single_column_sqlite(
+        DatabaseBackend::Sqlite,
+        "email_idx",
+        vec!["email"]
+    )]
+    fn test_add_index_with_custom_name(
+        #[case] backend: DatabaseBackend,
+        #[case] index_name: &str,
+        #[case] columns: Vec<&str>,
+    ) {
+        // Test that custom index names follow ix_table__name pattern
+        let action = MigrationAction::AddConstraint {
+            table: "user".into(),
+            constraint: TableConstraint::Index {
+                name: Some(index_name.into()),
+                columns: columns.iter().map(|s| s.to_string()).collect(),
+            },
+        };
+        let result = build_action_queries(&backend, &action, &[]).unwrap();
+        let sql = result[0].build(backend);
+
+        // Should use ix_table__name pattern
+        let expected_name = format!("ix_user__{}", index_name);
+        assert!(
+            sql.contains(&expected_name),
+            "Expected index name '{}' in SQL: {}",
+            expected_name,
+            sql
+        );
+
+        with_settings!({ snapshot_suffix => format!("add_index_custom_{}_{:?}", index_name, backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::add_unnamed_index_single_column_postgres(
+        DatabaseBackend::Postgres,
+        vec!["email"]
+    )]
+    #[case::add_unnamed_index_single_column_mysql(
+        DatabaseBackend::MySql,
+        vec!["email"]
+    )]
+    #[case::add_unnamed_index_single_column_sqlite(
+        DatabaseBackend::Sqlite,
+        vec!["email"]
+    )]
+    #[case::add_unnamed_index_multiple_columns_postgres(
+        DatabaseBackend::Postgres,
+        vec!["email", "password"]
+    )]
+    #[case::add_unnamed_index_multiple_columns_mysql(
+        DatabaseBackend::MySql,
+        vec!["email", "password"]
+    )]
+    #[case::add_unnamed_index_multiple_columns_sqlite(
+        DatabaseBackend::Sqlite,
+        vec!["email", "password"]
+    )]
+    fn test_add_unnamed_index(#[case] backend: DatabaseBackend, #[case] columns: Vec<&str>) {
+        // Test that unnamed indexes follow ix_table__col1_col2 pattern
+        let action = MigrationAction::AddConstraint {
+            table: "user".into(),
+            constraint: TableConstraint::Index {
+                name: None,
+                columns: columns.iter().map(|s| s.to_string()).collect(),
+            },
+        };
+        let result = build_action_queries(&backend, &action, &[]).unwrap();
+        let sql = result[0].build(backend);
+
+        // Should use ix_table__col1_col2... pattern
+        let expected_name = format!("ix_user__{}", columns.join("_"));
+        assert!(
+            sql.contains(&expected_name),
+            "Expected index name '{}' in SQL: {}",
+            expected_name,
+            sql
+        );
+
+        with_settings!({ snapshot_suffix => format!("add_unnamed_index_{}_{:?}", columns.join("_"), backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::remove_index_with_custom_name_postgres(
+        DatabaseBackend::Postgres,
+        "hello",
+        vec!["email", "password"]
+    )]
+    #[case::remove_index_with_custom_name_mysql(
+        DatabaseBackend::MySql,
+        "hello",
+        vec!["email", "password"]
+    )]
+    #[case::remove_index_with_custom_name_sqlite(
+        DatabaseBackend::Sqlite,
+        "hello",
+        vec!["email", "password"]
+    )]
+    fn test_remove_index_with_custom_name(
+        #[case] backend: DatabaseBackend,
+        #[case] index_name: &str,
+        #[case] columns: Vec<&str>,
+    ) {
+        // Test that removing custom index uses ix_table__name pattern
+        let action = MigrationAction::RemoveConstraint {
+            table: "user".into(),
+            constraint: TableConstraint::Index {
+                name: Some(index_name.into()),
+                columns: columns.iter().map(|s| s.to_string()).collect(),
+            },
+        };
+        let result = build_action_queries(&backend, &action, &[]).unwrap();
+        let sql = result[0].build(backend);
+
+        // Should use ix_table__name pattern
+        let expected_name = format!("ix_user__{}", index_name);
+        assert!(
+            sql.contains(&expected_name),
+            "Expected index name '{}' in SQL: {}",
+            expected_name,
+            sql
+        );
+
+        with_settings!({ snapshot_suffix => format!("remove_index_custom_{}_{:?}", index_name, backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::remove_unnamed_index_single_column_postgres(
+        DatabaseBackend::Postgres,
+        vec!["email"]
+    )]
+    #[case::remove_unnamed_index_single_column_mysql(
+        DatabaseBackend::MySql,
+        vec!["email"]
+    )]
+    #[case::remove_unnamed_index_single_column_sqlite(
+        DatabaseBackend::Sqlite,
+        vec!["email"]
+    )]
+    #[case::remove_unnamed_index_multiple_columns_postgres(
+        DatabaseBackend::Postgres,
+        vec!["email", "password"]
+    )]
+    #[case::remove_unnamed_index_multiple_columns_mysql(
+        DatabaseBackend::MySql,
+        vec!["email", "password"]
+    )]
+    #[case::remove_unnamed_index_multiple_columns_sqlite(
+        DatabaseBackend::Sqlite,
+        vec!["email", "password"]
+    )]
+    fn test_remove_unnamed_index(#[case] backend: DatabaseBackend, #[case] columns: Vec<&str>) {
+        // Test that removing unnamed indexes uses ix_table__col1_col2 pattern
+        let action = MigrationAction::RemoveConstraint {
+            table: "user".into(),
+            constraint: TableConstraint::Index {
+                name: None,
+                columns: columns.iter().map(|s| s.to_string()).collect(),
+            },
+        };
+        let result = build_action_queries(&backend, &action, &[]).unwrap();
+        let sql = result[0].build(backend);
+
+        // Should use ix_table__col1_col2... pattern
+        let expected_name = format!("ix_user__{}", columns.join("_"));
+        assert!(
+            sql.contains(&expected_name),
+            "Expected index name '{}' in SQL: {}",
+            expected_name,
+            sql
+        );
+
+        with_settings!({ snapshot_suffix => format!("remove_unnamed_index_{}_{:?}", columns.join("_"), backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    // Comprehensive unique constraint naming tests
+    #[rstest]
+    #[case::add_unique_with_custom_name_postgres(
+        DatabaseBackend::Postgres,
+        "email_unique",
+        vec!["email"]
+    )]
+    #[case::add_unique_with_custom_name_mysql(
+        DatabaseBackend::MySql,
+        "email_unique",
+        vec!["email"]
+    )]
+    #[case::add_unique_with_custom_name_sqlite(
+        DatabaseBackend::Sqlite,
+        "email_unique",
+        vec!["email"]
+    )]
+    fn test_add_unique_with_custom_name(
+        #[case] backend: DatabaseBackend,
+        #[case] constraint_name: &str,
+        #[case] columns: Vec<&str>,
+    ) {
+        // Test that custom unique constraint names follow uq_table__name pattern
+        let action = MigrationAction::AddConstraint {
+            table: "user".into(),
+            constraint: TableConstraint::Unique {
+                name: Some(constraint_name.into()),
+                columns: columns.iter().map(|s| s.to_string()).collect(),
+            },
+        };
+
+        let current_schema = vec![TableDef {
+            name: "user".into(),
+            columns: vec![ColumnDef {
+                name: "email".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Text),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        }];
+
+        let result = build_action_queries(&backend, &action, &current_schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        // Should use uq_table__name pattern
+        let expected_name = format!("uq_user__{}", constraint_name);
+        assert!(
+            sql.contains(&expected_name),
+            "Expected unique constraint name '{}' in SQL: {}",
+            expected_name,
+            sql
+        );
+
+        with_settings!({ snapshot_suffix => format!("add_unique_custom_{}_{:?}", constraint_name, backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::add_unnamed_unique_single_column_postgres(
+        DatabaseBackend::Postgres,
+        vec!["email"]
+    )]
+    #[case::add_unnamed_unique_single_column_mysql(
+        DatabaseBackend::MySql,
+        vec!["email"]
+    )]
+    #[case::add_unnamed_unique_single_column_sqlite(
+        DatabaseBackend::Sqlite,
+        vec!["email"]
+    )]
+    #[case::add_unnamed_unique_multiple_columns_postgres(
+        DatabaseBackend::Postgres,
+        vec!["email", "username"]
+    )]
+    #[case::add_unnamed_unique_multiple_columns_mysql(
+        DatabaseBackend::MySql,
+        vec!["email", "username"]
+    )]
+    #[case::add_unnamed_unique_multiple_columns_sqlite(
+        DatabaseBackend::Sqlite,
+        vec!["email", "username"]
+    )]
+    fn test_add_unnamed_unique(#[case] backend: DatabaseBackend, #[case] columns: Vec<&str>) {
+        // Test that unnamed unique constraints follow uq_table__col1_col2 pattern
+        let action = MigrationAction::AddConstraint {
+            table: "user".into(),
+            constraint: TableConstraint::Unique {
+                name: None,
+                columns: columns.iter().map(|s| s.to_string()).collect(),
+            },
+        };
+
+        let schema_columns: Vec<ColumnDef> = columns
+            .iter()
+            .map(|col| ColumnDef {
+                name: col.to_string(),
+                r#type: ColumnType::Simple(SimpleColumnType::Text),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            })
+            .collect();
+
+        let current_schema = vec![TableDef {
+            name: "user".into(),
+            columns: schema_columns,
+            constraints: vec![],
+        }];
+
+        let result = build_action_queries(&backend, &action, &current_schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        // Should use uq_table__col1_col2... pattern
+        let expected_name = format!("uq_user__{}", columns.join("_"));
+        assert!(
+            sql.contains(&expected_name),
+            "Expected unique constraint name '{}' in SQL: {}",
+            expected_name,
+            sql
+        );
+
+        with_settings!({ snapshot_suffix => format!("add_unnamed_unique_{}_{:?}", columns.join("_"), backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::remove_unique_with_custom_name_postgres(
+        DatabaseBackend::Postgres,
+        "email_unique",
+        vec!["email"]
+    )]
+    #[case::remove_unique_with_custom_name_mysql(
+        DatabaseBackend::MySql,
+        "email_unique",
+        vec!["email"]
+    )]
+    #[case::remove_unique_with_custom_name_sqlite(
+        DatabaseBackend::Sqlite,
+        "email_unique",
+        vec!["email"]
+    )]
+    fn test_remove_unique_with_custom_name(
+        #[case] backend: DatabaseBackend,
+        #[case] constraint_name: &str,
+        #[case] columns: Vec<&str>,
+    ) {
+        // Test that removing custom unique constraint uses uq_table__name pattern
+        let constraint = TableConstraint::Unique {
+            name: Some(constraint_name.into()),
+            columns: columns.iter().map(|s| s.to_string()).collect(),
+        };
+
+        let current_schema = vec![TableDef {
+            name: "user".into(),
+            columns: vec![ColumnDef {
+                name: "email".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Text),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![constraint.clone()],
+        }];
+
+        let action = MigrationAction::RemoveConstraint {
+            table: "user".into(),
+            constraint,
+        };
+
+        let result = build_action_queries(&backend, &action, &current_schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        // Should use uq_table__name pattern (for Postgres/MySQL, not SQLite which rebuilds table)
+        if backend != DatabaseBackend::Sqlite {
+            let expected_name = format!("uq_user__{}", constraint_name);
+            assert!(
+                sql.contains(&expected_name),
+                "Expected unique constraint name '{}' in SQL: {}",
+                expected_name,
+                sql
+            );
+        }
+
+        with_settings!({ snapshot_suffix => format!("remove_unique_custom_{}_{:?}", constraint_name, backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::remove_unnamed_unique_single_column_postgres(
+        DatabaseBackend::Postgres,
+        vec!["email"]
+    )]
+    #[case::remove_unnamed_unique_single_column_mysql(
+        DatabaseBackend::MySql,
+        vec!["email"]
+    )]
+    #[case::remove_unnamed_unique_single_column_sqlite(
+        DatabaseBackend::Sqlite,
+        vec!["email"]
+    )]
+    #[case::remove_unnamed_unique_multiple_columns_postgres(
+        DatabaseBackend::Postgres,
+        vec!["email", "username"]
+    )]
+    #[case::remove_unnamed_unique_multiple_columns_mysql(
+        DatabaseBackend::MySql,
+        vec!["email", "username"]
+    )]
+    #[case::remove_unnamed_unique_multiple_columns_sqlite(
+        DatabaseBackend::Sqlite,
+        vec!["email", "username"]
+    )]
+    fn test_remove_unnamed_unique(#[case] backend: DatabaseBackend, #[case] columns: Vec<&str>) {
+        // Test that removing unnamed unique constraints uses uq_table__col1_col2 pattern
+        let constraint = TableConstraint::Unique {
+            name: None,
+            columns: columns.iter().map(|s| s.to_string()).collect(),
+        };
+
+        let schema_columns: Vec<ColumnDef> = columns
+            .iter()
+            .map(|col| ColumnDef {
+                name: col.to_string(),
+                r#type: ColumnType::Simple(SimpleColumnType::Text),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            })
+            .collect();
+
+        let current_schema = vec![TableDef {
+            name: "user".into(),
+            columns: schema_columns,
+            constraints: vec![constraint.clone()],
+        }];
+
+        let action = MigrationAction::RemoveConstraint {
+            table: "user".into(),
+            constraint,
+        };
+
+        let result = build_action_queries(&backend, &action, &current_schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        // Should use uq_table__col1_col2... pattern (for Postgres/MySQL, not SQLite which rebuilds table)
+        if backend != DatabaseBackend::Sqlite {
+            let expected_name = format!("uq_user__{}", columns.join("_"));
+            assert!(
+                sql.contains(&expected_name),
+                "Expected unique constraint name '{}' in SQL: {}",
+                expected_name,
+                sql
+            );
+        }
+
+        with_settings!({ snapshot_suffix => format!("remove_unnamed_unique_{}_{:?}", columns.join("_"), backend) }, {
             assert_snapshot!(sql);
         });
     }

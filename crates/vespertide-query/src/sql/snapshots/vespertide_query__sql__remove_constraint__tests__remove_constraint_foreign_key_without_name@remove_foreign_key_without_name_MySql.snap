@@ -2,4 +2,4 @@
 source: crates/vespertide-query/src/sql/remove_constraint.rs
 expression: sql
 ---
-ALTER TABLE `posts` DROP FOREIGN KEY `posts_user_id_fkey`
+ALTER TABLE `posts` DROP FOREIGN KEY `fk_posts__user_id`

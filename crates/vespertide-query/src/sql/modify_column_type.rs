@@ -79,19 +79,23 @@ pub fn build_modify_column_type(
         // 4. Rename temporary table to original name
         let rename_query = build_rename_table(&temp_table, table);
 
-        // 5. Recreate indexes (if any)
+        // 5. Recreate indexes from Index constraints
         let mut index_queries = Vec::new();
-        for index in &table_def.indexes {
-            let mut idx_stmt = sea_query::Index::create();
-            idx_stmt = idx_stmt.name(&index.name).to_owned();
-            for col_name in &index.columns {
-                idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
+        for constraint in &table_def.constraints {
+            if let vespertide_core::TableConstraint::Index { name, columns } = constraint {
+                let index_name = vespertide_naming::build_index_name(
+                    table,
+                    columns,
+                    name.as_deref(),
+                );
+                let mut idx_stmt = sea_query::Index::create();
+                idx_stmt = idx_stmt.name(&index_name).to_owned();
+                for col_name in columns {
+                    idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
+                }
+                idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
+                index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
             }
-            if index.unique {
-                idx_stmt = idx_stmt.unique().to_owned();
-            }
-            idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
-            index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
         }
 
         let mut queries = vec![create_query, insert_query, drop_query, rename_query];
@@ -290,7 +294,6 @@ mod tests {
                 },
             ],
             constraints: vec![],
-            indexes: vec![],
         }];
 
         let result = build_modify_column_type(
@@ -358,7 +361,6 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![],
-            indexes: vec![],
         }];
         let result = build_modify_column_type(
             &DatabaseBackend::Sqlite,
@@ -390,8 +392,8 @@ mod tests {
         DatabaseBackend::Sqlite
     )]
     fn test_modify_column_type_with_index(#[case] title: &str, #[case] backend: DatabaseBackend) {
-        // Test modify column type with indexes (lines 85-88, 90-91, 93-94)
-        use vespertide_core::IndexDef;
+        // Test modify column type with indexes
+        use vespertide_core::TableConstraint;
 
         let current_schema = vec![TableDef {
             name: "users".into(),
@@ -419,11 +421,9 @@ mod tests {
                     foreign_key: None,
                 },
             ],
-            constraints: vec![],
-            indexes: vec![IndexDef {
-                name: "idx_age".into(),
+            constraints: vec![TableConstraint::Index {
+                name: Some("idx_age".into()),
                 columns: vec!["age".into()],
-                unique: false,
             }],
         }];
 
@@ -454,24 +454,24 @@ mod tests {
     }
 
     #[rstest]
-    #[case::modify_column_type_with_unique_index_postgres(
-        "modify_column_type_with_unique_index_postgres",
+    #[case::modify_column_type_with_unique_constraint_postgres(
+        "modify_column_type_with_unique_constraint_postgres",
         DatabaseBackend::Postgres
     )]
-    #[case::modify_column_type_with_unique_index_mysql(
-        "modify_column_type_with_unique_index_mysql",
+    #[case::modify_column_type_with_unique_constraint_mysql(
+        "modify_column_type_with_unique_constraint_mysql",
         DatabaseBackend::MySql
     )]
-    #[case::modify_column_type_with_unique_index_sqlite(
-        "modify_column_type_with_unique_index_sqlite",
+    #[case::modify_column_type_with_unique_constraint_sqlite(
+        "modify_column_type_with_unique_constraint_sqlite",
         DatabaseBackend::Sqlite
     )]
-    fn test_modify_column_type_with_unique_index(
+    fn test_modify_column_type_with_unique_constraint(
         #[case] title: &str,
         #[case] backend: DatabaseBackend,
     ) {
-        // Test modify column type with unique index (lines 85-88, 90-91, 93-94)
-        use vespertide_core::IndexDef;
+        // Test modify column type with unique constraint
+        use vespertide_core::TableConstraint;
 
         let current_schema = vec![TableDef {
             name: "users".into(),
@@ -499,11 +499,9 @@ mod tests {
                     foreign_key: None,
                 },
             ],
-            constraints: vec![],
-            indexes: vec![IndexDef {
-                name: "idx_email".into(),
+            constraints: vec![TableConstraint::Unique {
+                name: Some("uq_email".into()),
                 columns: vec!["email".into()],
-                unique: true,
             }],
         }];
 
@@ -522,13 +520,12 @@ mod tests {
             .collect::<Vec<_>>()
             .join(";\n");
 
-        // For SQLite, should recreate unique index
+        // For SQLite, unique constraint should be in CREATE TABLE statement
         if matches!(backend, DatabaseBackend::Sqlite) {
-            assert!(sql.contains("CREATE UNIQUE INDEX"));
-            assert!(sql.contains("idx_email"));
+            assert!(sql.contains("CREATE TABLE"));
         }
 
-        with_settings!({ snapshot_suffix => format!("modify_column_type_with_unique_index_{}", title) }, {
+        with_settings!({ snapshot_suffix => format!("modify_column_type_with_unique_constraint_{}", title) }, {
             assert_snapshot!(sql);
         });
     }
@@ -716,7 +713,6 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![],
-            indexes: vec![],
         }];
 
         let result =

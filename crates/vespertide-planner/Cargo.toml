@@ -10,7 +10,9 @@ description = "Replays applied migrations to rebuild a baseline, then diffs agai
 
 [dependencies]
 vespertide-core = { workspace = true }
+vespertide-naming = { workspace = true }
 thiserror = "2"
 
 [dev-dependencies]
 rstest = "0.26"
+insta = "1.44"

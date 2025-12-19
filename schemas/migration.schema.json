@@ -280,28 +280,6 @@
         }
       ]
     },
-    "IndexDef": {
-      "type": "object",
-      "properties": {
-        "columns": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "name": {
-          "type": "string"
-        },
-        "unique": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "name",
-        "columns",
-        "unique"
-      ]
-    },
     "MigrationAction": {
       "oneOf": [
         {
@@ -443,46 +421,6 @@
             "table",
             "column",
             "new_type"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "index": {
-              "$ref": "#/$defs/IndexDef"
-            },
-            "table": {
-              "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "const": "add_index"
-            }
-          },
-          "required": [
-            "type",
-            "table",
-            "index"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "name": {
-              "type": "string"
-            },
-            "table": {
-              "type": "string"
-            },
-            "type": {
-              "type": "string",
-              "const": "remove_index"
-            }
-          },
-          "required": [
-            "type",
-            "table",
-            "name"
           ]
         },
         {
@@ -783,6 +721,31 @@
             "type",
             "name",
             "expr"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "columns": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "index"
+            }
+          },
+          "required": [
+            "type",
+            "columns"
           ]
         }
       ]

@@ -238,10 +238,15 @@ pub fn is_enum_type(column_type: &ColumnType) -> bool {
     )
 }
 
-/// Generate CHECK constraint name for SQLite enum column
-/// Format: chk_{table}_{column}
+// Re-export naming functions from vespertide-naming
+pub use vespertide_naming::{
+    build_check_constraint_name, build_foreign_key_name, build_index_name,
+    build_unique_constraint_name,
+};
+
+/// Alias for build_check_constraint_name for SQLite enum columns
 pub fn build_sqlite_enum_check_name(table: &str, column: &str) -> String {
-    format!("chk_{}_{}", table, column)
+    build_check_constraint_name(table, column)
 }
 
 /// Generate CHECK constraint expression for SQLite enum column

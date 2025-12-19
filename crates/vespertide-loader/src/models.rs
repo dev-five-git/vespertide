@@ -16,23 +16,22 @@ pub fn load_models(config: &VespertideConfig) -> Result<Vec<TableDef>> {
     let mut tables = Vec::new();
     load_models_recursive(models_dir, &mut tables)?;
 
-    // Normalize tables to convert inline constraints (primary_key, foreign_key, etc.) to table-level constraints
-    // This must happen before validation so that foreign key references can be checked
-    let normalized_tables: Vec<TableDef> = tables
-        .into_iter()
-        .map(|t| {
-            t.normalize()
-                .map_err(|e| anyhow::anyhow!("Failed to normalize table '{}': {}", t.name, e))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    // Validate schema integrity using normalized version
+    // But return the original tables to preserve inline constraints
+    if !tables.is_empty() {
+        let normalized_tables: Vec<TableDef> = tables
+            .iter()
+            .map(|t| {
+                t.normalize()
+                    .map_err(|e| anyhow::anyhow!("Failed to normalize table '{}': {}", t.name, e))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
-    // Validate schema integrity before returning
-    if !normalized_tables.is_empty() {
         validate_schema(&normalized_tables)
             .map_err(|e| anyhow::anyhow!("schema validation failed: {}", e))?;
     }
 
-    Ok(normalized_tables)
+    Ok(tables)
 }
 
 /// Recursively walk directory and load model files.
@@ -236,7 +235,6 @@ mod tests {
                 auto_increment: false,
                 columns: vec!["id".into()],
             }],
-            indexes: vec![],
         };
         fs::write("models/users.yaml", serde_yaml::to_string(&table).unwrap()).unwrap();
 
@@ -272,7 +270,6 @@ mod tests {
                 auto_increment: false,
                 columns: vec!["id".into()],
             }],
-            indexes: vec![],
         };
         let content = serde_json::to_string_pretty(&table).unwrap();
         fs::write("models/subdir/subtable.json", content).unwrap();
@@ -307,7 +304,6 @@ mod tests {
                 foreign_key: Some(ForeignKeySyntax::String("invalid_format".into())),
             }],
             constraints: vec![],
-            indexes: vec![],
         };
         fs::write(
             "models/orders.json",
@@ -342,7 +338,6 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![],
-            indexes: vec![],
         };
         fs::write(
             models_dir.join("users.json"),
@@ -411,7 +406,6 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![],
-            indexes: vec![],
         };
         fs::write(
             models_dir.join("users.yaml"),
@@ -447,7 +441,6 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![],
-            indexes: vec![],
         };
         fs::write(
             models_dir.join("users.yml"),
@@ -484,7 +477,6 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![],
-            indexes: vec![],
         };
         fs::write(
             subdir.join("subtable.json"),
@@ -551,7 +543,6 @@ mod tests {
                 foreign_key: Some(ForeignKeySyntax::String("invalid_format".into())),
             }],
             constraints: vec![],
-            indexes: vec![],
         };
         fs::write(
             models_dir.join("orders.json"),

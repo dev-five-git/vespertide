@@ -5,8 +5,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::schema::{
     StrOrBoolOrArray, column::ColumnDef, constraint::TableConstraint,
-    foreign_key::ForeignKeySyntax, index::IndexDef, names::TableName,
-    primary_key::PrimaryKeySyntax,
+    foreign_key::ForeignKeySyntax, names::TableName, primary_key::PrimaryKeySyntax,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,12 +52,11 @@ pub struct TableDef {
     pub name: TableName,
     pub columns: Vec<ColumnDef>,
     pub constraints: Vec<TableConstraint>,
-    pub indexes: Vec<IndexDef>,
 }
 
 impl TableDef {
     /// Normalizes inline column constraints (primary_key, unique, index, foreign_key)
-    /// into table-level constraints and indexes.
+    /// into table-level constraints.
     /// Returns a new TableDef with all inline constraints converted to table-level.
     ///
     /// # Errors
@@ -66,7 +64,6 @@ impl TableDef {
     /// Returns an error if the same index name is applied to the same column multiple times.
     pub fn normalize(&self) -> Result<Self, TableValidationError> {
         let mut constraints = self.constraints.clone();
-        let mut indexes = self.indexes.clone();
 
         // Collect columns with inline primary_key and check for auto_increment
         let mut pk_columns: Vec<String> = Vec::new();
@@ -269,31 +266,32 @@ impl TableDef {
                             .insert(col.name.clone());
                     }
                     StrOrBoolOrArray::Bool(true) => {
-                        // Auto-generated index name
-                        let index_name = format!("idx_{}_{}", self.name, col.name);
+                        // Use special marker for auto-generated indexes (without custom name)
+                        // We use the column name as a unique key to group, but will use None for the constraint name
+                        // This allows SQL generation to auto-generate the name based on naming conventions
+                        let group_key = format!("__auto_{}", col.name);
 
-                        // Check for duplicate (auto-generated names are unique per column, so this shouldn't happen)
-                        // But we check anyway for consistency - only check inline definitions
-                        if let Some(columns) = inline_index_column_tracker.get(index_name.as_str())
+                        // Check for duplicate - only check inline definitions
+                        if let Some(columns) = inline_index_column_tracker.get(group_key.as_str())
                             && columns.contains(col.name.as_str())
                         {
                             return Err(TableValidationError::DuplicateIndexColumn {
-                                index_name: index_name.clone(),
+                                index_name: group_key.clone(),
                                 column_name: col.name.clone(),
                             });
                         }
 
-                        if !index_groups.contains_key(&index_name) {
-                            index_order.push(index_name.clone());
+                        if !index_groups.contains_key(&group_key) {
+                            index_order.push(group_key.clone());
                         }
 
                         index_groups
-                            .entry(index_name.clone())
+                            .entry(group_key.clone())
                             .or_default()
                             .push(col.name.clone());
 
                         inline_index_column_tracker
-                            .entry(index_name)
+                            .entry(group_key)
                             .or_default()
                             .insert(col.name.clone());
                     }
@@ -348,15 +346,38 @@ impl TableDef {
         for index_name in index_order {
             let columns = index_groups.get(&index_name).unwrap().clone();
 
-            // Check if this index already exists (by name only, not by column match)
-            // Multiple indexes can have the same columns but different names
-            let exists = indexes.iter().any(|i| i.name == index_name);
+            // Determine if this is an auto-generated index (from index: true)
+            // or a named index (from index: "name")
+            let constraint_name = if index_name.starts_with("__auto_") {
+                // Auto-generated index - use None so SQL generation can create the name
+                None
+            } else {
+                // Named index - preserve the custom name
+                Some(index_name.clone())
+            };
+
+            // Check if this index already exists
+            let exists = constraints.iter().any(|c| {
+                if let TableConstraint::Index {
+                    name,
+                    columns: cols,
+                } = c
+                {
+                    // Match by name if both have names, otherwise match by columns
+                    match (&constraint_name, name) {
+                        (Some(n1), Some(n2)) => n1 == n2,
+                        (None, None) => cols == &columns,
+                        _ => false,
+                    }
+                } else {
+                    false
+                }
+            });
 
             if !exists {
-                indexes.push(IndexDef {
-                    name: index_name,
+                constraints.push(TableConstraint::Index {
+                    name: constraint_name,
                     columns,
-                    unique: false,
                 });
             }
         }
@@ -365,7 +386,6 @@ impl TableDef {
             name: self.name.clone(),
             columns: self.columns.clone(),
             constraints,
-            indexes,
         })
     }
 }
@@ -405,7 +425,6 @@ mod tests {
                 col("name", ColumnType::Simple(SimpleColumnType::Text)),
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
@@ -428,7 +447,6 @@ mod tests {
             name: "users".into(),
             columns: vec![id_col, tenant_col],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
@@ -451,7 +469,6 @@ mod tests {
                 auto_increment: false,
                 columns: vec!["id".into()],
             }],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
@@ -470,7 +487,6 @@ mod tests {
                 col("name", ColumnType::Simple(SimpleColumnType::Text)),
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
@@ -490,7 +506,6 @@ mod tests {
                 email_col,
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
@@ -513,7 +528,6 @@ mod tests {
                 email_col,
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
@@ -537,14 +551,23 @@ mod tests {
                 name_col,
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
-        assert_eq!(normalized.indexes.len(), 1);
-        assert_eq!(normalized.indexes[0].name, "idx_users_name");
-        assert_eq!(normalized.indexes[0].columns, vec!["name".to_string()]);
-        assert!(!normalized.indexes[0].unique);
+        // Count Index constraints
+        let indexes: Vec<_> = normalized
+            .constraints
+            .iter()
+            .filter(|c| matches!(c, TableConstraint::Index { .. }))
+            .collect();
+        assert_eq!(indexes.len(), 1);
+        // Auto-generated indexes (from index: true) should have name: None
+        // SQL generation will create the actual name based on naming conventions
+        assert!(matches!(
+            indexes[0],
+            TableConstraint::Index { name: None, columns }
+                if columns == &["name".to_string()]
+        ));
     }
 
     #[test]
@@ -559,12 +582,20 @@ mod tests {
                 name_col,
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
-        assert_eq!(normalized.indexes.len(), 1);
-        assert_eq!(normalized.indexes[0].name, "custom_idx_name");
+        let indexes: Vec<_> = normalized
+            .constraints
+            .iter()
+            .filter(|c| matches!(c, TableConstraint::Index { .. }))
+            .collect();
+        assert_eq!(indexes.len(), 1);
+        assert!(matches!(
+            indexes[0],
+            TableConstraint::Index { name: Some(n), .. }
+                if n == "custom_idx_name"
+        ));
     }
 
     #[test]
@@ -584,7 +615,6 @@ mod tests {
                 user_id_col,
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
@@ -627,14 +657,24 @@ mod tests {
             name: "users".into(),
             columns: vec![id_col, email_col, name_col, user_id_col],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
-        // Should have: PrimaryKey, Unique, ForeignKey
-        assert_eq!(normalized.constraints.len(), 3);
+        // Should have: PrimaryKey, Unique, ForeignKey, Index
+        // Count non-Index constraints
+        let non_index_constraints: Vec<_> = normalized
+            .constraints
+            .iter()
+            .filter(|c| !matches!(c, TableConstraint::Index { .. }))
+            .collect();
+        assert_eq!(non_index_constraints.len(), 3);
         // Should have: 1 index
-        assert_eq!(normalized.indexes.len(), 1);
+        let indexes: Vec<_> = normalized
+            .constraints
+            .iter()
+            .filter(|c| matches!(c, TableConstraint::Index { .. }))
+            .collect();
+        assert_eq!(indexes.len(), 1);
     }
 
     #[test]
@@ -656,17 +696,26 @@ mod tests {
                 user_id_col,
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
-        assert_eq!(normalized.indexes.len(), 1);
-        assert_eq!(normalized.indexes[0].name, "tuple");
+        let indexes: Vec<_> = normalized
+            .constraints
+            .iter()
+            .filter_map(|c| {
+                if let TableConstraint::Index { name, columns } = c {
+                    Some((name.clone(), columns.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(indexes.len(), 1);
+        assert_eq!(indexes[0].0, Some("tuple".to_string()));
         assert_eq!(
-            normalized.indexes[0].columns,
+            indexes[0].1,
             vec!["updated_at".to_string(), "user_id".to_string()]
         );
-        assert!(!normalized.indexes[0].unique);
     }
 
     #[test]
@@ -693,35 +742,39 @@ mod tests {
                 col4,
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
-        assert_eq!(normalized.indexes.len(), 3);
+        let indexes: Vec<_> = normalized
+            .constraints
+            .iter()
+            .filter_map(|c| {
+                if let TableConstraint::Index { name, columns } = c {
+                    Some((name.clone(), columns.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(indexes.len(), 3);
 
         // Check idx_a composite index
-        let idx_a = normalized
-            .indexes
+        let idx_a = indexes
             .iter()
-            .find(|i| i.name == "idx_a")
+            .find(|(n, _)| n == &Some("idx_a".to_string()))
             .unwrap();
-        assert_eq!(idx_a.columns, vec!["col1".to_string(), "col2".to_string()]);
+        assert_eq!(idx_a.1, vec!["col1".to_string(), "col2".to_string()]);
 
         // Check idx_b single column index
-        let idx_b = normalized
-            .indexes
+        let idx_b = indexes
             .iter()
-            .find(|i| i.name == "idx_b")
+            .find(|(n, _)| n == &Some("idx_b".to_string()))
             .unwrap();
-        assert_eq!(idx_b.columns, vec!["col3".to_string()]);
+        assert_eq!(idx_b.1, vec!["col3".to_string()]);
 
-        // Check auto-generated index for col4
-        let idx_col4 = normalized
-            .indexes
-            .iter()
-            .find(|i| i.name == "idx_test_col4")
-            .unwrap();
-        assert_eq!(idx_col4.columns, vec!["col4".to_string()]);
+        // Check auto-generated index for col4 (should have name: None)
+        let idx_col4 = indexes.iter().find(|(n, _)| n.is_none()).unwrap();
+        assert_eq!(idx_col4.1, vec!["col4".to_string()]);
     }
 
     #[test]
@@ -737,12 +790,10 @@ mod tests {
                 email_col,
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
         assert_eq!(normalized.constraints.len(), 0);
-        assert_eq!(normalized.indexes.len(), 0);
     }
 
     #[test]
@@ -756,13 +807,11 @@ mod tests {
                 col("email", ColumnType::Simple(SimpleColumnType::Text)),
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
         // Should not add any primary key constraint
         assert_eq!(normalized.constraints.len(), 0);
-        assert_eq!(normalized.indexes.len(), 0);
     }
 
     #[test]
@@ -791,31 +840,39 @@ mod tests {
                 user_id_col,
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
         // Should have: tuple (composite: updated_at, user_id), tuple2 (composite: updated_at, user_id)
-        assert_eq!(normalized.indexes.len(), 2);
-
-        let tuple_idx = normalized
-            .indexes
+        let indexes: Vec<_> = normalized
+            .constraints
             .iter()
-            .find(|i| i.name == "tuple")
+            .filter_map(|c| {
+                if let TableConstraint::Index { name, columns } = c {
+                    Some((name.clone(), columns.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(indexes.len(), 2);
+
+        let tuple_idx = indexes
+            .iter()
+            .find(|(n, _)| n == &Some("tuple".to_string()))
             .unwrap();
-        let mut sorted_cols = tuple_idx.columns.clone();
+        let mut sorted_cols = tuple_idx.1.clone();
         sorted_cols.sort();
         assert_eq!(
             sorted_cols,
             vec!["updated_at".to_string(), "user_id".to_string()]
         );
 
-        let tuple2_idx = normalized
-            .indexes
+        let tuple2_idx = indexes
             .iter()
-            .find(|i| i.name == "tuple2")
+            .find(|(n, _)| n == &Some("tuple2".to_string()))
             .unwrap();
-        let mut sorted_cols2 = tuple2_idx.columns.clone();
+        let mut sorted_cols2 = tuple2_idx.1.clone();
         sorted_cols2.sort();
         assert_eq!(
             sorted_cols2,
@@ -840,7 +897,6 @@ mod tests {
                 col2,
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
@@ -871,7 +927,6 @@ mod tests {
                 col1.clone(),
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let normalized1 = table.normalize().unwrap();
@@ -885,7 +940,6 @@ mod tests {
                 col1,
             ],
             constraints: normalized1.constraints.clone(),
-            indexes: vec![],
         };
 
         let normalized2 = table2.normalize().unwrap();
@@ -912,7 +966,6 @@ mod tests {
                 name: Some("uq_email".into()),
                 columns: vec!["email".into()],
             }],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
@@ -941,7 +994,6 @@ mod tests {
                 name: None,
                 columns: vec!["email".into()],
             }],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
@@ -979,7 +1031,6 @@ mod tests {
                 on_delete: None,
                 on_update: None,
             }],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
@@ -1012,7 +1063,6 @@ mod tests {
                 },
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let result = table.normalize();
@@ -1042,7 +1092,6 @@ mod tests {
                 col1,
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let result = table.normalize();
@@ -1077,7 +1126,6 @@ mod tests {
                 },
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let result = table.normalize();
@@ -1125,7 +1173,6 @@ mod tests {
                     columns: vec!["id".into()],
                 },
             ],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
@@ -1152,7 +1199,6 @@ mod tests {
                     columns: vec!["id".into()],
                 },
             ],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
@@ -1179,7 +1225,6 @@ mod tests {
                 },
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let result = table.normalize();
@@ -1189,7 +1234,8 @@ mod tests {
             column_name,
         }) = result
         {
-            assert!(index_name.contains("idx_test"));
+            // The group key for auto-generated indexes is "__auto_{column}"
+            assert!(index_name.contains("__auto_"));
             assert!(index_name.contains("col1"));
             assert_eq!(column_name, "col1");
         } else {
@@ -1210,7 +1256,6 @@ mod tests {
                 user_id_col,
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
@@ -1243,7 +1288,6 @@ mod tests {
                 user_id_col,
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let result = table.normalize();
@@ -1269,7 +1313,6 @@ mod tests {
                 user_id_col,
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let result = table.normalize();
@@ -1295,7 +1338,6 @@ mod tests {
                 user_id_col,
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let result = table.normalize();
@@ -1321,7 +1363,6 @@ mod tests {
                 user_id_col,
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let result = table.normalize();
@@ -1351,7 +1392,6 @@ mod tests {
                 col("name", ColumnType::Simple(SimpleColumnType::Text)),
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let normalized = table.normalize().unwrap();
@@ -1382,7 +1422,6 @@ mod tests {
                 email_col,
             ],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let result = table.normalize();

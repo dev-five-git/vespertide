@@ -57,7 +57,6 @@ fn test_enum_value_change_generates_correct_sql() {
             },
         ],
         constraints: vec![],
-        indexes: vec![],
     }];
 
     let queries = build_plan_queries(&plan, &baseline_schema).unwrap();

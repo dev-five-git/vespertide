@@ -58,36 +58,38 @@ pub fn cmd_log(backend: DatabaseBackend) -> Result<()> {
         }
 
         for (i, pq) in plan_queries.iter().enumerate() {
+            let queries = match backend {
+                DatabaseBackend::Postgres => &pq.postgres,
+                DatabaseBackend::MySql => &pq.mysql,
+                DatabaseBackend::Sqlite => &pq.sqlite,
+            };
+
+            // Build non-empty SQL statements
+            let sql_statements: Vec<String> = queries
+                .iter()
+                .map(|q| q.build(backend).trim().to_string())
+                .filter(|sql| !sql.is_empty())
+                .collect();
+
+            // Print action description
             println!(
                 "    {}. {}",
                 (i + 1).to_string().bright_magenta().bold(),
-                match backend {
-                    DatabaseBackend::Postgres => pq
-                        .postgres
-                        .iter()
-                        .map(|q| q.build(DatabaseBackend::Postgres))
-                        .collect::<Vec<_>>()
-                        .join(";\n")
-                        .trim()
-                        .bright_white(),
-                    DatabaseBackend::MySql => pq
-                        .mysql
-                        .iter()
-                        .map(|q| q.build(DatabaseBackend::MySql))
-                        .collect::<Vec<_>>()
-                        .join(";\n")
-                        .trim()
-                        .bright_white(),
-                    DatabaseBackend::Sqlite => pq
-                        .sqlite
-                        .iter()
-                        .map(|q| q.build(DatabaseBackend::Sqlite))
-                        .collect::<Vec<_>>()
-                        .join(";\n")
-                        .trim()
-                        .bright_white(),
-                }
+                pq.action.to_string().bright_cyan()
             );
+
+            // Print SQL statements with sub-numbering if multiple
+            for (j, sql) in sql_statements.iter().enumerate() {
+                let prefix = if sql_statements.len() > 1 {
+                    format!("    {}-{}.", i + 1, j + 1)
+                        .bright_magenta()
+                        .bold()
+                        .to_string()
+                } else {
+                    "      ".to_string()
+                };
+                println!("{} {}", prefix, sql.bright_white());
+            }
         }
 
         println!();
@@ -223,6 +225,56 @@ mod tests {
         write_config(&cfg);
         fs::create_dir_all(cfg.migrations_dir()).unwrap();
 
+        let result = cmd_log(DatabaseBackend::Sqlite);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn cmd_log_with_multiple_sql_statements() {
+        use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+        use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
+
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+
+        let cfg = VespertideConfig::default();
+        write_config(&cfg);
+        fs::create_dir_all(cfg.migrations_dir()).unwrap();
+
+        // Create a migration with ModifyColumnType for SQLite, which generates multiple SQL statements
+        let plan = MigrationPlan {
+            comment: Some("modify column type".into()),
+            created_at: Some("2024-01-01T00:00:00Z".into()),
+            version: 1,
+            actions: vec![
+                MigrationAction::CreateTable {
+                    table: "users".into(),
+                    columns: vec![ColumnDef {
+                        name: "id".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    }],
+                    constraints: vec![],
+                },
+                MigrationAction::ModifyColumnType {
+                    table: "users".into(),
+                    column: "id".into(),
+                    new_type: ColumnType::Simple(SimpleColumnType::BigInt),
+                },
+            ],
+        };
+        let path = cfg.migrations_dir().join("0001_modify_column_type.json");
+        fs::write(path, serde_json::to_string_pretty(&plan).unwrap()).unwrap();
+
+        // SQLite backend will generate multiple SQL statements for ModifyColumnType (table recreation)
+        // This exercises line 84 where sql_statements.len() > 1
         let result = cmd_log(DatabaseBackend::Sqlite);
         assert!(result.is_ok());
     }

@@ -117,18 +117,23 @@ pub fn build_add_column(
             BuiltQuery::DropTable(Box::new(Table::drop().table(Alias::new(table)).to_owned()));
         let rename_query = build_rename_table(&temp_table, table);
 
+        // Recreate indexes from Index constraints
         let mut index_queries = Vec::new();
-        for index in &table_def.indexes {
-            let mut idx_stmt = sea_query::Index::create();
-            idx_stmt = idx_stmt.name(&index.name).to_owned();
-            for col_name in &index.columns {
-                idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
+        for constraint in &table_def.constraints {
+            if let vespertide_core::TableConstraint::Index { name, columns } = constraint {
+                let index_name = vespertide_naming::build_index_name(
+                    table,
+                    columns,
+                    name.as_deref(),
+                );
+                let mut idx_stmt = sea_query::Index::create();
+                idx_stmt = idx_stmt.name(&index_name).to_owned();
+                for col_name in columns {
+                    idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
+                }
+                idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
+                index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
             }
-            if index.unique {
-                idx_stmt = idx_stmt.unique().to_owned();
-            }
-            idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
-            index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
         }
 
         let mut stmts = vec![create_query, insert_query, drop_query, rename_query];
@@ -279,7 +284,6 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![],
-            indexes: vec![],
         }];
         let result =
             build_add_column(&backend, "users", &column, fill_with, &current_schema).unwrap();
@@ -351,7 +355,6 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![],
-            indexes: vec![],
         }];
         let result = build_add_column(
             &DatabaseBackend::Sqlite,
@@ -398,7 +401,6 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![],
-            indexes: vec![],
         }];
         let result = build_add_column(
             &DatabaseBackend::Sqlite,
@@ -420,7 +422,7 @@ mod tests {
 
     #[test]
     fn test_add_column_sqlite_with_indexes() {
-        use vespertide_core::IndexDef;
+        use vespertide_core::TableConstraint;
 
         let column = ColumnDef {
             name: "nickname".into(),
@@ -446,11 +448,9 @@ mod tests {
                 index: None,
                 foreign_key: None,
             }],
-            constraints: vec![],
-            indexes: vec![IndexDef {
-                name: "idx_id".into(),
+            constraints: vec![TableConstraint::Index {
+                name: Some("idx_id".into()),
                 columns: vec!["id".into()],
-                unique: false,
             }],
         }];
         let result = build_add_column(
@@ -470,60 +470,6 @@ mod tests {
         // Should recreate index
         assert!(sql.contains("CREATE INDEX"));
         assert!(sql.contains("idx_id"));
-    }
-
-    #[test]
-    fn test_add_column_sqlite_with_unique_index() {
-        use vespertide_core::IndexDef;
-
-        let column = ColumnDef {
-            name: "nickname".into(),
-            r#type: ColumnType::Simple(SimpleColumnType::Text),
-            nullable: false,
-            default: None,
-            comment: None,
-            primary_key: None,
-            unique: None,
-            index: None,
-            foreign_key: None,
-        };
-        let current_schema = vec![TableDef {
-            name: "users".into(),
-            columns: vec![ColumnDef {
-                name: "id".into(),
-                r#type: ColumnType::Simple(SimpleColumnType::Integer),
-                nullable: false,
-                default: None,
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
-            }],
-            constraints: vec![],
-            indexes: vec![IndexDef {
-                name: "idx_email".into(),
-                columns: vec!["email".into()],
-                unique: true,
-            }],
-        }];
-        let result = build_add_column(
-            &DatabaseBackend::Sqlite,
-            "users",
-            &column,
-            None,
-            &current_schema,
-        );
-        assert!(result.is_ok());
-        let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(DatabaseBackend::Sqlite))
-            .collect::<Vec<String>>()
-            .join("\n");
-        // Should recreate unique index
-        assert!(sql.contains("CREATE UNIQUE INDEX"));
-        assert!(sql.contains("idx_email"));
     }
 
     #[rstest]
@@ -563,7 +509,6 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![],
-            indexes: vec![],
         }];
         let result = build_add_column(&backend, "users", &column, None, &current_schema);
         assert!(result.is_ok());

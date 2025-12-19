@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql/mod.rs
+expression: sql
+---
+DROP INDEX `ix_user__hello` ON `user`

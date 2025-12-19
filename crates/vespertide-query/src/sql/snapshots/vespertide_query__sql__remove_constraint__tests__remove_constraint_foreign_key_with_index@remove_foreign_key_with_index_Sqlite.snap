@@ -6,4 +6,4 @@ CREATE TABLE "posts_temp" ( "id" integer NOT NULL, "user_id" integer )
 INSERT INTO "posts_temp" ("id", "user_id") SELECT "id", "user_id" FROM "posts"
 DROP TABLE "posts"
 ALTER TABLE "posts_temp" RENAME TO "posts"
-CREATE INDEX "idx_user_id" ON "posts" ("user_id")
+CREATE INDEX "ix_posts__idx_user_id" ON "posts" ("user_id")

@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-planner/src/diff.rs
+expression: plan.actions
+---
+[
+    AddConstraint {
+        table: "users",
+        constraint: Index {
+            name: Some(
+                "hello",
+            ),
+            columns: [
+                "id",
+            ],
+        },
+    },
+]

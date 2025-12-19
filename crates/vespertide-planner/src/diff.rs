@@ -222,12 +222,12 @@ fn sort_delete_tables(actions: &mut [MigrationAction], all_tables: &BTreeMap<&st
 }
 
 /// Diff two schema snapshots into a migration plan.
-/// Both schemas are normalized to convert inline column constraints
-/// (primary_key, unique, index, foreign_key) to table-level constraints.
+/// Schemas are normalized for comparison purposes, but the original (non-normalized)
+/// tables are used in migration actions to preserve inline constraint definitions.
 pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan, PlannerError> {
     let mut actions: Vec<MigrationAction> = Vec::new();
 
-    // Normalize both schemas to ensure inline constraints are converted to table-level
+    // Normalize both schemas for comparison (to ensure inline and table-level constraints are treated equally)
     let from_normalized: Vec<TableDef> = from
         .iter()
         .map(|t| {
@@ -252,11 +252,15 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
         .collect::<Result<Vec<_>, _>>()?;
 
     // Use BTreeMap for consistent ordering
+    // Normalized versions for comparison
     let from_map: BTreeMap<_, _> = from_normalized
         .iter()
         .map(|t| (t.name.as_str(), t))
         .collect();
     let to_map: BTreeMap<_, _> = to_normalized.iter().map(|t| (t.name.as_str(), t)).collect();
+
+    // Original (non-normalized) versions for migration storage
+    let to_original_map: BTreeMap<_, _> = to.iter().map(|t| (t.name.as_str(), t)).collect();
 
     // Drop tables that disappeared.
     for name in from_map.keys() {
@@ -318,36 +322,7 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
                 }
             }
 
-            // Indexes - use BTreeMap for consistent ordering
-            let from_indexes: BTreeMap<_, _> = from_tbl
-                .indexes
-                .iter()
-                .map(|i| (i.name.as_str(), i))
-                .collect();
-            let to_indexes: BTreeMap<_, _> = to_tbl
-                .indexes
-                .iter()
-                .map(|i| (i.name.as_str(), i))
-                .collect();
-
-            for idx in from_indexes.keys() {
-                if !to_indexes.contains_key(idx) {
-                    actions.push(MigrationAction::RemoveIndex {
-                        table: (*name).to_string(),
-                        name: (*idx).to_string(),
-                    });
-                }
-            }
-            for (idx, def) in &to_indexes {
-                if !from_indexes.contains_key(idx) {
-                    actions.push(MigrationAction::AddIndex {
-                        table: (*name).to_string(),
-                        index: (*def).clone(),
-                    });
-                }
-            }
-
-            // Constraints - compare and detect additions/removals
+            // Constraints - compare and detect additions/removals (includes indexes)
             for from_constraint in &from_tbl.constraints {
                 if !to_tbl.constraints.contains(from_constraint) {
                     actions.push(MigrationAction::RemoveConstraint {
@@ -368,6 +343,7 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
     }
 
     // Create new tables (and their indexes).
+    // Use original (non-normalized) tables to preserve inline constraint definitions.
     // Collect new tables first, then topologically sort them by FK dependencies.
     let new_tables: Vec<&TableDef> = to_map
         .iter()
@@ -378,17 +354,13 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
     let sorted_new_tables = topological_sort_tables(&new_tables)?;
 
     for tbl in sorted_new_tables {
+        // Get the original (non-normalized) table to preserve inline constraints
+        let original_tbl = to_original_map.get(tbl.name.as_str()).unwrap();
         actions.push(MigrationAction::CreateTable {
-            table: tbl.name.clone(),
-            columns: tbl.columns.clone(),
-            constraints: tbl.constraints.clone(),
+            table: original_tbl.name.clone(),
+            columns: original_tbl.columns.clone(),
+            constraints: original_tbl.constraints.clone(),
         });
-        for idx in &tbl.indexes {
-            actions.push(MigrationAction::AddIndex {
-                table: tbl.name.clone(),
-                index: idx.clone(),
-            });
-        }
     }
 
     // Sort DeleteTable actions so tables with FK dependencies are deleted first
@@ -406,7 +378,10 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
 mod tests {
     use super::*;
     use rstest::rstest;
-    use vespertide_core::{ColumnDef, ColumnType, IndexDef, MigrationAction, SimpleColumnType};
+    use vespertide_core::{
+        ColumnDef, ColumnType, MigrationAction, SimpleColumnType,
+        schema::{primary_key::PrimaryKeySyntax, str_or_bool::StrOrBoolOrArray},
+    };
 
     fn col(name: &str, ty: ColumnType) -> ColumnDef {
         ColumnDef {
@@ -426,13 +401,18 @@ mod tests {
         name: &str,
         columns: Vec<ColumnDef>,
         constraints: Vec<vespertide_core::TableConstraint>,
-        indexes: Vec<IndexDef>,
     ) -> TableDef {
         TableDef {
             name: name.to_string(),
             columns,
             constraints,
-            indexes,
+        }
+    }
+
+    fn idx(name: &str, columns: Vec<&str>) -> TableConstraint {
+        TableConstraint::Index {
+            name: Some(name.to_string()),
+            columns: columns.into_iter().map(|s| s.to_string()).collect(),
         }
     }
 
@@ -442,7 +422,6 @@ mod tests {
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
-            vec![],
         )],
         vec![table(
             "users",
@@ -450,12 +429,7 @@ mod tests {
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 col("name", ColumnType::Simple(SimpleColumnType::Text)),
             ],
-            vec![],
-            vec![IndexDef {
-                name: "idx_users_name".into(),
-                columns: vec!["name".into()],
-                unique: false,
-            }],
+            vec![idx("ix_users__name", vec!["name"])],
         )],
         vec![
             MigrationAction::AddColumn {
@@ -463,13 +437,9 @@ mod tests {
                 column: Box::new(col("name", ColumnType::Simple(SimpleColumnType::Text))),
                 fill_with: None,
             },
-            MigrationAction::AddIndex {
+            MigrationAction::AddConstraint {
                 table: "users".into(),
-                index: IndexDef {
-                    name: "idx_users_name".into(),
-                    columns: vec!["name".into()],
-                    unique: false,
-                },
+                constraint: idx("ix_users__name", vec!["name"]),
             },
         ]
     )]
@@ -478,38 +448,24 @@ mod tests {
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
-            vec![],
         )],
         vec![],
         vec![MigrationAction::DeleteTable {
             table: "users".into()
         }]
     )]
-    #[case::add_table(
+    #[case::add_table_with_index(
         vec![],
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![],
-            vec![IndexDef {
-                name: "idx_users_id".into(),
-                columns: vec!["id".into()],
-                unique: true,
-            }],
+            vec![idx("idx_users_id", vec!["id"])],
         )],
         vec![
             MigrationAction::CreateTable {
                 table: "users".into(),
                 columns: vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-                constraints: vec![],
-            },
-            MigrationAction::AddIndex {
-                table: "users".into(),
-                index: IndexDef {
-                    name: "idx_users_id".into(),
-                    columns: vec!["id".into()],
-                    unique: true,
-                },
+                constraints: vec![idx("idx_users_id", vec!["id"])],
             },
         ]
     )]
@@ -518,12 +474,10 @@ mod tests {
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer)), col("name", ColumnType::Simple(SimpleColumnType::Text))],
             vec![],
-            vec![],
         )],
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![],
             vec![],
         )],
         vec![MigrationAction::DeleteColumn {
@@ -536,12 +490,10 @@ mod tests {
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
-            vec![],
         )],
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Text))],
-            vec![],
             vec![],
         )],
         vec![MigrationAction::ModifyColumnType {
@@ -554,22 +506,16 @@ mod tests {
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![],
-            vec![IndexDef {
-                name: "idx_users_id".into(),
-                columns: vec!["id".into()],
-                unique: false,
-            }],
+            vec![idx("idx_users_id", vec!["id"])],
         )],
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
-            vec![],
         )],
-        vec![MigrationAction::RemoveIndex {
+        vec![MigrationAction::RemoveConstraint {
             table: "users".into(),
-            name: "idx_users_id".into(),
+            constraint: idx("idx_users_id", vec!["id"]),
         }]
     )]
     #[case::add_index_existing_table(
@@ -577,25 +523,15 @@ mod tests {
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
-            vec![],
         )],
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![],
-            vec![IndexDef {
-                name: "idx_users_id".into(),
-                columns: vec!["id".into()],
-                unique: true,
-            }],
+            vec![idx("idx_users_id", vec!["id"])],
         )],
-        vec![MigrationAction::AddIndex {
+        vec![MigrationAction::AddConstraint {
             table: "users".into(),
-            index: IndexDef {
-                name: "idx_users_id".into(),
-                columns: vec!["id".into()],
-                unique: true,
-            },
+            constraint: idx("idx_users_id", vec!["id"]),
         }]
     )]
     fn diff_schemas_detects_additions(
@@ -634,7 +570,6 @@ mod tests {
                     }),
                 )],
                 vec![],
-                vec![],
             )];
 
             let to = vec![table(
@@ -664,7 +599,6 @@ mod tests {
                     }),
                 )],
                 vec![],
-                vec![],
             )];
 
             let plan = diff_schemas(&from, &to).unwrap();
@@ -688,7 +622,6 @@ mod tests {
                     }),
                 )],
                 vec![],
-                vec![],
             )];
 
             let to = vec![table(
@@ -704,7 +637,6 @@ mod tests {
                         ]),
                     }),
                 )],
-                vec![],
                 vec![],
             )];
 
@@ -798,18 +730,23 @@ mod tests {
                         col("name", ColumnType::Simple(SimpleColumnType::Text)),
                     ],
                     vec![],
-                    vec![],
                 )],
             )
             .unwrap();
 
+            // Inline PK should be preserved in column definition
             assert_eq!(plan.actions.len(), 1);
-            if let MigrationAction::CreateTable { constraints, .. } = &plan.actions[0] {
-                assert_eq!(constraints.len(), 1);
-                assert!(matches!(
-                    &constraints[0],
-                    TableConstraint::PrimaryKey { columns, .. } if columns == &["id".to_string()]
-                ));
+            if let MigrationAction::CreateTable {
+                columns,
+                constraints,
+                ..
+            } = &plan.actions[0]
+            {
+                // Constraints should be empty (inline PK not moved here)
+                assert_eq!(constraints.len(), 0);
+                // Check that the column has inline PK
+                let id_col = columns.iter().find(|c| c.name == "id").unwrap();
+                assert!(id_col.primary_key.is_some());
             } else {
                 panic!("Expected CreateTable action");
             }
@@ -826,17 +763,25 @@ mod tests {
                         col_with_unique("email", ColumnType::Simple(SimpleColumnType::Text)),
                     ],
                     vec![],
-                    vec![],
                 )],
             )
             .unwrap();
 
+            // Inline unique should be preserved in column definition
             assert_eq!(plan.actions.len(), 1);
-            if let MigrationAction::CreateTable { constraints, .. } = &plan.actions[0] {
-                assert_eq!(constraints.len(), 1);
+            if let MigrationAction::CreateTable {
+                columns,
+                constraints,
+                ..
+            } = &plan.actions[0]
+            {
+                // Constraints should be empty (inline unique not moved here)
+                assert_eq!(constraints.len(), 0);
+                // Check that the column has inline unique
+                let email_col = columns.iter().find(|c| c.name == "email").unwrap();
                 assert!(matches!(
-                    &constraints[0],
-                    TableConstraint::Unique { name: None, columns } if columns == &["email".to_string()]
+                    email_col.unique,
+                    Some(StrOrBoolOrArray::Bool(true))
                 ));
             } else {
                 panic!("Expected CreateTable action");
@@ -854,22 +799,25 @@ mod tests {
                         col_with_index("name", ColumnType::Simple(SimpleColumnType::Text)),
                     ],
                     vec![],
-                    vec![],
                 )],
             )
             .unwrap();
 
-            // Should have CreateTable + AddIndex
-            assert_eq!(plan.actions.len(), 2);
-            assert!(matches!(
-                &plan.actions[0],
-                MigrationAction::CreateTable { .. }
-            ));
-            if let MigrationAction::AddIndex { index, .. } = &plan.actions[1] {
-                assert_eq!(index.name, "idx_users_name");
-                assert_eq!(index.columns, vec!["name".to_string()]);
+            // Inline index should be preserved in column definition, not moved to constraints
+            assert_eq!(plan.actions.len(), 1);
+            if let MigrationAction::CreateTable {
+                columns,
+                constraints,
+                ..
+            } = &plan.actions[0]
+            {
+                // Constraints should be empty (inline index not moved here)
+                assert_eq!(constraints.len(), 0);
+                // Check that the column has inline index
+                let name_col = columns.iter().find(|c| c.name == "name").unwrap();
+                assert!(matches!(name_col.index, Some(StrOrBoolOrArray::Bool(true))));
             } else {
-                panic!("Expected AddIndex action");
+                panic!("Expected CreateTable action");
             }
         }
 
@@ -889,21 +837,23 @@ mod tests {
                         ),
                     ],
                     vec![],
-                    vec![],
                 )],
             )
             .unwrap();
 
+            // Inline FK should be preserved in column definition
             assert_eq!(plan.actions.len(), 1);
-            if let MigrationAction::CreateTable { constraints, .. } = &plan.actions[0] {
-                assert_eq!(constraints.len(), 1);
-                assert!(matches!(
-                    &constraints[0],
-                    TableConstraint::ForeignKey { columns, ref_table, ref_columns, .. }
-                        if columns == &["user_id".to_string()]
-                        && ref_table == "users"
-                        && ref_columns == &["id".to_string()]
-                ));
+            if let MigrationAction::CreateTable {
+                columns,
+                constraints,
+                ..
+            } = &plan.actions[0]
+            {
+                // Constraints should be empty (inline FK not moved here)
+                assert_eq!(constraints.len(), 0);
+                // Check that the column has inline FK
+                let user_id_col = columns.iter().find(|c| c.name == "user_id").unwrap();
+                assert!(user_id_col.foreign_key.is_some());
             } else {
                 panic!("Expected CreateTable action");
             }
@@ -912,6 +862,7 @@ mod tests {
         #[test]
         fn add_index_via_inline_constraint() {
             // Existing table without index -> table with inline index
+            // Inline index (Bool(true)) is normalized to a named table-level constraint
             let plan = diff_schemas(
                 &[table(
                     "users",
@@ -919,7 +870,6 @@ mod tests {
                         col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                         col("name", ColumnType::Simple(SimpleColumnType::Text)),
                     ],
-                    vec![],
                     vec![],
                 )],
                 &[table(
@@ -929,18 +879,22 @@ mod tests {
                         col_with_index("name", ColumnType::Simple(SimpleColumnType::Text)),
                     ],
                     vec![],
-                    vec![],
                 )],
             )
             .unwrap();
 
+            // Should generate AddConstraint with name: None (auto-generated indexes)
             assert_eq!(plan.actions.len(), 1);
-            if let MigrationAction::AddIndex { table, index } = &plan.actions[0] {
+            if let MigrationAction::AddConstraint { table, constraint } = &plan.actions[0] {
                 assert_eq!(table, "users");
-                assert_eq!(index.name, "idx_users_name");
-                assert_eq!(index.columns, vec!["name".to_string()]);
+                if let TableConstraint::Index { name, columns } = constraint {
+                    assert_eq!(name, &None); // Auto-generated indexes use None
+                    assert_eq!(columns, &vec!["name".to_string()]);
+                } else {
+                    panic!("Expected Index constraint, got {:?}", constraint);
+                }
             } else {
-                panic!("Expected AddIndex action, got {:?}", plan.actions[0]);
+                panic!("Expected AddConstraint action, got {:?}", plan.actions[0]);
             }
         }
 
@@ -970,23 +924,40 @@ mod tests {
                     "users",
                     vec![id_col, email_col, name_col, org_id_col],
                     vec![],
-                    vec![],
                 )],
             )
             .unwrap();
 
-            // Should have CreateTable + AddIndex
-            assert_eq!(plan.actions.len(), 2);
+            // All inline constraints should be preserved in column definitions
+            assert_eq!(plan.actions.len(), 1);
 
-            if let MigrationAction::CreateTable { constraints, .. } = &plan.actions[0] {
-                // Should have: PrimaryKey, Unique, ForeignKey (3 constraints)
-                assert_eq!(constraints.len(), 3);
+            if let MigrationAction::CreateTable {
+                columns,
+                constraints,
+                ..
+            } = &plan.actions[0]
+            {
+                // Constraints should be empty (all inline)
+                assert_eq!(constraints.len(), 0);
+
+                // Check each column has its inline constraint
+                let id_col = columns.iter().find(|c| c.name == "id").unwrap();
+                assert!(id_col.primary_key.is_some());
+
+                let email_col = columns.iter().find(|c| c.name == "email").unwrap();
+                assert!(matches!(
+                    email_col.unique,
+                    Some(StrOrBoolOrArray::Bool(true))
+                ));
+
+                let name_col = columns.iter().find(|c| c.name == "name").unwrap();
+                assert!(matches!(name_col.index, Some(StrOrBoolOrArray::Bool(true))));
+
+                let org_id_col = columns.iter().find(|c| c.name == "org_id").unwrap();
+                assert!(org_id_col.foreign_key.is_some());
             } else {
                 panic!("Expected CreateTable action");
             }
-
-            // Check for AddIndex action
-            assert!(matches!(&plan.actions[1], MigrationAction::AddIndex { .. }));
         }
 
         #[test]
@@ -998,7 +969,6 @@ mod tests {
                     col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                     col("email", ColumnType::Simple(SimpleColumnType::Text)),
                 ],
-                vec![],
                 vec![],
             )];
 
@@ -1012,7 +982,6 @@ mod tests {
                     name: Some("uq_users_email".into()),
                     columns: vec!["email".into()],
                 }],
-                vec![],
             )];
 
             let plan = diff_schemas(&from_schema, &to_schema).unwrap();
@@ -1042,7 +1011,6 @@ mod tests {
                     name: Some("uq_users_email".into()),
                     columns: vec!["email".into()],
                 }],
-                vec![],
             )];
 
             let to_schema = vec![table(
@@ -1051,7 +1019,6 @@ mod tests {
                     col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                     col("email", ColumnType::Simple(SimpleColumnType::Text)),
                 ],
-                vec![],
                 vec![],
             )];
 
@@ -1091,7 +1058,6 @@ mod tests {
                     },
                 ],
                 constraints: vec![],
-                indexes: vec![],
             };
 
             let result = diff_schemas(&[], &[table]);
@@ -1123,7 +1089,6 @@ mod tests {
                     },
                 ],
                 constraints: vec![],
-                indexes: vec![],
             };
 
             // 'from' schema has the invalid table
@@ -1163,7 +1128,6 @@ mod tests {
                     on_delete: None,
                     on_update: None,
                 }],
-                indexes: vec![],
             }
         }
 
@@ -1172,7 +1136,6 @@ mod tests {
                 name: name.to_string(),
                 columns: vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
                 constraints: vec![],
-                indexes: vec![],
             }
         }
 
@@ -1363,7 +1326,6 @@ mod tests {
                     on_delete: None,
                     on_update: None,
                 }],
-                indexes: vec![],
             };
 
             let table_b = TableDef {
@@ -1380,7 +1342,6 @@ mod tests {
                     on_delete: None,
                     on_update: None,
                 }],
-                indexes: vec![],
             };
 
             let result = diff_schemas(&[], &[table_a, table_b]);
@@ -1437,12 +1398,10 @@ mod tests {
                     "users",
                     vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
                     vec![],
-                    vec![],
                 ),
                 table(
                     "posts",
                     vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-                    vec![],
                     vec![],
                 ),
             ];
@@ -1455,7 +1414,6 @@ mod tests {
                         col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                         col("name", ColumnType::Simple(SimpleColumnType::Text)),
                     ],
-                    vec![],
                     vec![],
                 ),
             ];
@@ -1551,21 +1509,18 @@ mod tests {
                 name: "user".to_string(),
                 columns: vec![col_pk("id")],
                 constraints: vec![],
-                indexes: vec![],
             };
 
             let product = TableDef {
                 name: "product".to_string(),
                 columns: vec![col_pk("id")],
                 constraints: vec![],
-                indexes: vec![],
             };
 
             let project = TableDef {
                 name: "project".to_string(),
                 columns: vec![col_pk("id"), col_inline_fk("user_id", "user")],
                 constraints: vec![],
-                indexes: vec![],
             };
 
             let code = TableDef {
@@ -1577,7 +1532,6 @@ mod tests {
                     col_inline_fk("project_id", "project"),
                 ],
                 constraints: vec![],
-                indexes: vec![],
             };
 
             let order = TableDef {
@@ -1590,14 +1544,12 @@ mod tests {
                     col_inline_fk("code_id", "code"),
                 ],
                 constraints: vec![],
-                indexes: vec![],
             };
 
             let payment = TableDef {
                 name: "payment".to_string(),
                 columns: vec![col_pk("id"), col_inline_fk("order_id", "order")],
                 constraints: vec![],
-                indexes: vec![],
             };
 
             // Pass in arbitrary order - should NOT return circular dependency error
@@ -1691,7 +1643,6 @@ mod tests {
                 name: "user".to_string(),
                 columns: vec![col_pk("id")],
                 constraints: vec![],
-                indexes: vec![],
             };
 
             let code = TableDef {
@@ -1702,7 +1653,6 @@ mod tests {
                     col_inline_fk("used_by_user_id", "user"), // Second FK to same table
                 ],
                 constraints: vec![],
-                indexes: vec![],
             };
 
             // This should NOT return circular dependency error even with duplicate FK refs
@@ -1726,6 +1676,242 @@ mod tests {
             let user_pos = create_order.iter().position(|&t| t == "user").unwrap();
             let code_pos = create_order.iter().position(|&t| t == "code").unwrap();
             assert!(user_pos < code_pos, "user must come before code");
+        }
+    }
+
+    mod diff_tables {
+        use insta::assert_debug_snapshot;
+
+        use super::*;
+
+        #[test]
+        fn create_table_with_inline_index() {
+            let base = [table(
+                "users",
+                vec![
+                    ColumnDef {
+                        name: "id".to_string(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                        unique: None,
+                        index: Some(StrOrBoolOrArray::Bool(false)),
+                        foreign_key: None,
+                    },
+                    ColumnDef {
+                        name: "name".to_string(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Text),
+                        nullable: true,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: Some(StrOrBoolOrArray::Bool(true)),
+                        index: Some(StrOrBoolOrArray::Bool(true)),
+                        foreign_key: None,
+                    },
+                ],
+                vec![],
+            )];
+            let plan = diff_schemas(&[], &base).unwrap();
+
+            assert_eq!(plan.actions.len(), 1);
+            assert_debug_snapshot!(plan.actions);
+
+            let plan = diff_schemas(
+                &base,
+                &[table(
+                    "users",
+                    vec![
+                        ColumnDef {
+                            name: "id".to_string(),
+                            r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                            nullable: false,
+                            default: None,
+                            comment: None,
+                            primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                            unique: None,
+                            index: Some(StrOrBoolOrArray::Bool(false)),
+                            foreign_key: None,
+                        },
+                        ColumnDef {
+                            name: "name".to_string(),
+                            r#type: ColumnType::Simple(SimpleColumnType::Text),
+                            nullable: true,
+                            default: None,
+                            comment: None,
+                            primary_key: None,
+                            unique: Some(StrOrBoolOrArray::Bool(true)),
+                            index: Some(StrOrBoolOrArray::Bool(false)),
+                            foreign_key: None,
+                        },
+                    ],
+                    vec![],
+                )],
+            )
+            .unwrap();
+
+            assert_eq!(plan.actions.len(), 1);
+            assert_debug_snapshot!(plan.actions);
+        }
+
+        #[rstest]
+        #[case(
+            "add_index",
+            vec![table(
+                "users",
+                vec![
+                    ColumnDef {
+                        name: "id".to_string(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    },
+                ],
+                vec![],
+            )],
+            vec![table(
+                "users",
+                vec![
+                    ColumnDef {
+                        name: "id".to_string(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                        unique: None,
+                        index: Some(StrOrBoolOrArray::Bool(true)),
+                        foreign_key: None,
+                    },
+                ],
+                vec![],
+            )],
+        )]
+        #[case(
+            "remove_index",
+            vec![table(
+                "users",
+                vec![
+                    ColumnDef {
+                        name: "id".to_string(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                        unique: None,
+                        index: Some(StrOrBoolOrArray::Bool(true)),
+                        foreign_key: None,
+                    },
+                ],
+                vec![],
+            )],
+            vec![table(
+                "users",
+                vec![
+                    ColumnDef {
+                        name: "id".to_string(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                        unique: None,
+                        index: Some(StrOrBoolOrArray::Bool(false)),
+                        foreign_key: None,
+                    },
+                ],
+                vec![],
+            )],
+        )]
+        #[case(
+            "add_named_index",
+            vec![table(
+                "users",
+                vec![
+                    ColumnDef {
+                        name: "id".to_string(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    },
+                ],
+                vec![],
+            )],
+            vec![table(
+                "users",
+                vec![
+                    ColumnDef {
+                        name: "id".to_string(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                        unique: None,
+                        index: Some(StrOrBoolOrArray::Str("hello".to_string())),
+                        foreign_key: None,
+                    },
+                ],
+                vec![],
+            )],
+        )]
+        #[case(
+            "remove_named_index",
+            vec![table(
+                "users",
+                vec![
+                    ColumnDef {
+                        name: "id".to_string(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                        unique: None,
+                        index: Some(StrOrBoolOrArray::Str("hello".to_string())),
+                        foreign_key: None,
+                    },
+                ],
+                vec![],
+            )],
+            vec![table(
+                "users",
+                vec![
+                    ColumnDef {
+                        name: "id".to_string(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    },
+                ],
+                vec![],
+            )],
+        )]
+        fn diff_tables(#[case] name: &str, #[case] base: Vec<TableDef>, #[case] to: Vec<TableDef>) {
+            use insta::with_settings;
+
+            let plan = diff_schemas(&base, &to).unwrap();
+            with_settings!({ snapshot_suffix => name }, {
+                assert_debug_snapshot!(plan.actions);
+            });
         }
     }
 }

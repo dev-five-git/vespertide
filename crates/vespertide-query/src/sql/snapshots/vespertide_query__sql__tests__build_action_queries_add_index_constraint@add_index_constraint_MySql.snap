@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql/mod.rs
+expression: sql
+---
+CREATE INDEX `ix_users__idx_email` ON `users` (`email`)

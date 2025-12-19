@@ -44,6 +44,5 @@
       "default": "now()"
     }
   ],
-  "constraints": [],
-  "indexes": []
+  "constraints": []
 }

@@ -1,0 +1,54 @@
+---
+source: crates/vespertide-planner/src/diff.rs
+expression: plan.actions
+---
+[
+    CreateTable {
+        table: "users",
+        columns: [
+            ColumnDef {
+                name: "id",
+                type: Simple(
+                    Integer,
+                ),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: Some(
+                    Bool(
+                        true,
+                    ),
+                ),
+                unique: None,
+                index: Some(
+                    Bool(
+                        false,
+                    ),
+                ),
+                foreign_key: None,
+            },
+            ColumnDef {
+                name: "name",
+                type: Simple(
+                    Text,
+                ),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: Some(
+                    Bool(
+                        true,
+                    ),
+                ),
+                index: Some(
+                    Bool(
+                        true,
+                    ),
+                ),
+                foreign_key: None,
+            },
+        ],
+        constraints: [],
+    },
+]

@@ -15,10 +15,12 @@ pub enum TableConstraint {
         columns: Vec<ColumnName>,
     },
     Unique {
+        #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
         columns: Vec<ColumnName>,
     },
     ForeignKey {
+        #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
         columns: Vec<ColumnName>,
         ref_table: TableName,
@@ -29,5 +31,10 @@ pub enum TableConstraint {
     Check {
         name: String,
         expr: String,
+    },
+    Index {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        columns: Vec<ColumnName>,
     },
 }

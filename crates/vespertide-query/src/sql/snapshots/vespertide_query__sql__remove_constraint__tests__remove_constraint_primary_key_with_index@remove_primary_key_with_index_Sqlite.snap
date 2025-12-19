@@ -6,4 +6,4 @@ CREATE TABLE "users_temp" ( "id" integer NOT NULL )
 INSERT INTO "users_temp" ("id") SELECT "id" FROM "users"
 DROP TABLE "users"
 ALTER TABLE "users_temp" RENAME TO "users"
-CREATE INDEX "idx_id" ON "users" ("id")
+CREATE INDEX "ix_users__idx_id" ON "users" ("id")

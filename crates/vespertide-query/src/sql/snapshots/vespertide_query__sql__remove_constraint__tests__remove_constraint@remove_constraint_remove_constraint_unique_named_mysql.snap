@@ -2,4 +2,4 @@
 source: crates/vespertide-query/src/sql/remove_constraint.rs
 expression: "result.iter().map(|q| q.build(backend)).collect::<Vec<String>>().join(\"\\n\")"
 ---
-ALTER TABLE `users` DROP INDEX `uq_email`
+ALTER TABLE `users` DROP INDEX `uq_users__uq_email`

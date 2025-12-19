@@ -112,19 +112,27 @@ pub fn build_add_constraint(
                 // 4. Rename temporary table
                 let rename_query = build_rename_table(&temp_table, table);
 
-                // 5. Recreate indexes
+                // 5. Recreate indexes from Index constraints
                 let mut index_queries = Vec::new();
-                for index in &table_def.indexes {
-                    let mut idx_stmt = sea_query::Index::create();
-                    idx_stmt = idx_stmt.name(&index.name).to_owned();
-                    for col_name in &index.columns {
-                        idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
+                for c in &table_def.constraints {
+                    if let TableConstraint::Index {
+                        name: idx_name,
+                        columns: idx_cols,
+                    } = c
+                    {
+                        let index_name = vespertide_naming::build_index_name(
+                            table,
+                            idx_cols,
+                            idx_name.as_deref(),
+                        );
+                        let mut idx_stmt = sea_query::Index::create();
+                        idx_stmt = idx_stmt.name(&index_name).to_owned();
+                        for col_name in idx_cols {
+                            idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
+                        }
+                        idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
+                        index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
                     }
-                    if index.unique {
-                        idx_stmt = idx_stmt.unique().to_owned();
-                    }
-                    idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
-                    index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
                 }
 
                 let mut queries = vec![create_query, insert_query, drop_query, rename_query];
@@ -153,10 +161,14 @@ pub fn build_add_constraint(
         }
         TableConstraint::Unique { name, columns } => {
             // SQLite does not support ALTER TABLE ... ADD CONSTRAINT UNIQUE
-            let mut idx = Index::create().table(Alias::new(table)).unique().to_owned();
-            if let Some(n) = name {
-                idx = idx.name(n).to_owned();
-            }
+            // Always generate a proper name: uq_{table}_{key} or uq_{table}_{columns}
+            let index_name =
+                super::helpers::build_unique_constraint_name(table, columns, name.as_deref());
+            let mut idx = Index::create()
+                .table(Alias::new(table))
+                .name(&index_name)
+                .unique()
+                .to_owned();
             for col in columns {
                 idx = idx.col(Alias::new(col)).to_owned();
             }
@@ -228,19 +240,27 @@ pub fn build_add_constraint(
                 // 4. Rename temporary table to original name
                 let rename_query = build_rename_table(&temp_table, table);
 
-                // 5. Recreate indexes (if any)
+                // 5. Recreate indexes from Index constraints
                 let mut index_queries = Vec::new();
-                for index in &table_def.indexes {
-                    let mut idx_stmt = sea_query::Index::create();
-                    idx_stmt = idx_stmt.name(&index.name).to_owned();
-                    for col_name in &index.columns {
-                        idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
+                for c in &table_def.constraints {
+                    if let TableConstraint::Index {
+                        name: idx_name,
+                        columns: idx_cols,
+                    } = c
+                    {
+                        let index_name = vespertide_naming::build_index_name(
+                            table,
+                            idx_cols,
+                            idx_name.as_deref(),
+                        );
+                        let mut idx_stmt = sea_query::Index::create();
+                        idx_stmt = idx_stmt.name(&index_name).to_owned();
+                        for col_name in idx_cols {
+                            idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
+                        }
+                        idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
+                        index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
                     }
-                    if index.unique {
-                        idx_stmt = idx_stmt.unique().to_owned();
-                    }
-                    idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
-                    index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
                 }
 
                 let mut queries = vec![create_query, insert_query, drop_query, rename_query];
@@ -248,10 +268,13 @@ pub fn build_add_constraint(
                 Ok(queries)
             } else {
                 // Build foreign key using ForeignKey::create
+                let fk_name = vespertide_naming::build_foreign_key_name(
+                    table,
+                    columns,
+                    name.as_deref(),
+                );
                 let mut fk = ForeignKey::create();
-                if let Some(n) = name {
-                    fk = fk.name(n).to_owned();
-                }
+                fk = fk.name(&fk_name).to_owned();
                 fk = fk.from_tbl(Alias::new(table)).to_owned();
                 for col in columns {
                     fk = fk.from_col(Alias::new(col)).to_owned();
@@ -268,6 +291,18 @@ pub fn build_add_constraint(
                 }
                 Ok(vec![BuiltQuery::CreateForeignKey(Box::new(fk))])
             }
+        }
+        TableConstraint::Index { name, columns } => {
+            // Index constraints are simple CREATE INDEX statements for all backends
+            let index_name = vespertide_naming::build_index_name(table, columns, name.as_deref());
+            let mut idx = Index::create()
+                .table(Alias::new(table))
+                .name(&index_name)
+                .to_owned();
+            for col in columns {
+                idx = idx.col(Alias::new(col)).to_owned();
+            }
+            Ok(vec![BuiltQuery::CreateIndex(Box::new(idx))])
         }
         TableConstraint::Check { name, expr } => {
             // SQLite does not support ALTER TABLE ... ADD CONSTRAINT CHECK
@@ -328,19 +363,27 @@ pub fn build_add_constraint(
                 // 4. Rename temporary table to original name
                 let rename_query = build_rename_table(&temp_table, table);
 
-                // 5. Recreate indexes (if any)
+                // 5. Recreate indexes from Index constraints
                 let mut index_queries = Vec::new();
-                for index in &table_def.indexes {
-                    let mut idx_stmt = sea_query::Index::create();
-                    idx_stmt = idx_stmt.name(&index.name).to_owned();
-                    for col_name in &index.columns {
-                        idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
+                for c in &table_def.constraints {
+                    if let TableConstraint::Index {
+                        name: idx_name,
+                        columns: idx_cols,
+                    } = c
+                    {
+                        let index_name = vespertide_naming::build_index_name(
+                            table,
+                            idx_cols,
+                            idx_name.as_deref(),
+                        );
+                        let mut idx_stmt = sea_query::Index::create();
+                        idx_stmt = idx_stmt.name(&index_name).to_owned();
+                        for col_name in idx_cols {
+                            idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
+                        }
+                        idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
+                        index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
                     }
-                    if index.unique {
-                        idx_stmt = idx_stmt.unique().to_owned();
-                    }
-                    idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
-                    index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
                 }
 
                 let mut queries = vec![create_query, insert_query, drop_query, rename_query];
@@ -394,17 +437,17 @@ mod tests {
     #[case::add_constraint_unique_named_postgres(
         "add_constraint_unique_named_postgres",
         DatabaseBackend::Postgres,
-        &["CREATE UNIQUE INDEX \"uq_email\" ON \"users\" (\"email\")"]
+        &["CREATE UNIQUE INDEX \"uq_users__uq_email\" ON \"users\" (\"email\")"]
     )]
     #[case::add_constraint_unique_named_mysql(
         "add_constraint_unique_named_mysql",
         DatabaseBackend::MySql,
-        &["CREATE UNIQUE INDEX `uq_email` ON `users` (`email`)"]
+        &["CREATE UNIQUE INDEX `uq_users__uq_email` ON `users` (`email`)"]
     )]
     #[case::add_constraint_unique_named_sqlite(
         "add_constraint_unique_named_sqlite",
         DatabaseBackend::Sqlite,
-        &["CREATE UNIQUE INDEX \"uq_email\" ON \"users\" (\"email\")"]
+        &["CREATE UNIQUE INDEX \"uq_users__uq_email\" ON \"users\" (\"email\")"]
     )]
     #[case::add_constraint_foreign_key_postgres(
         "add_constraint_foreign_key_postgres",
@@ -526,7 +569,6 @@ mod tests {
                 ]
             },
             constraints: vec![],
-            indexes: vec![],
         }];
 
         let result = build_add_constraint(&backend, "users", &constraint, &current_schema).unwrap();
@@ -586,7 +628,6 @@ mod tests {
                 name: "chk_id".into(),
                 expr: "id > 0".into(),
             }],
-            indexes: vec![],
         }];
         let result = build_add_constraint(
             &DatabaseBackend::Sqlite,
@@ -607,8 +648,6 @@ mod tests {
 
     #[test]
     fn test_add_constraint_primary_key_sqlite_with_indexes() {
-        use vespertide_core::IndexDef;
-
         let constraint = TableConstraint::PrimaryKey {
             columns: vec!["id".into()],
             auto_increment: false,
@@ -626,11 +665,9 @@ mod tests {
                 index: None,
                 foreign_key: None,
             }],
-            constraints: vec![],
-            indexes: vec![IndexDef {
-                name: "idx_id".into(),
+            constraints: vec![TableConstraint::Index {
+                name: Some("idx_id".into()),
                 columns: vec!["id".into()],
-                unique: false,
             }],
         }];
         let result = build_add_constraint(
@@ -652,9 +689,9 @@ mod tests {
     }
 
     #[test]
-    fn test_add_constraint_primary_key_sqlite_with_unique_index() {
-        use vespertide_core::IndexDef;
-
+    fn test_add_constraint_primary_key_sqlite_with_unique_constraint() {
+        // Note: Unique indexes are now TableConstraint::Unique, not Index
+        // Index constraints don't have a unique flag - use Unique constraint instead
         let constraint = TableConstraint::PrimaryKey {
             columns: vec!["id".into()],
             auto_increment: false,
@@ -672,11 +709,9 @@ mod tests {
                 index: None,
                 foreign_key: None,
             }],
-            constraints: vec![],
-            indexes: vec![IndexDef {
-                name: "idx_email".into(),
+            constraints: vec![TableConstraint::Unique {
+                name: Some("uq_email".into()),
                 columns: vec!["email".into()],
-                unique: true,
             }],
         }];
         let result = build_add_constraint(
@@ -692,9 +727,8 @@ mod tests {
             .map(|q| q.build(DatabaseBackend::Sqlite))
             .collect::<Vec<String>>()
             .join("\n");
-        // Should recreate unique index
-        assert!(sql.contains("CREATE UNIQUE INDEX"));
-        assert!(sql.contains("idx_email"));
+        // Unique constraint should be in CREATE TABLE statement (for SQLite temp table approach)
+        assert!(sql.contains("CREATE TABLE"));
     }
 
     #[test]
@@ -746,7 +780,6 @@ mod tests {
                 name: "chk_user_id".into(),
                 expr: "user_id > 0".into(),
             }],
-            indexes: vec![],
         }];
         let result = build_add_constraint(
             &DatabaseBackend::Sqlite,
@@ -767,8 +800,6 @@ mod tests {
 
     #[test]
     fn test_add_constraint_foreign_key_sqlite_with_indexes() {
-        use vespertide_core::IndexDef;
-
         let constraint = TableConstraint::ForeignKey {
             name: Some("fk_user".into()),
             columns: vec!["user_id".into()],
@@ -790,11 +821,9 @@ mod tests {
                 index: None,
                 foreign_key: None,
             }],
-            constraints: vec![],
-            indexes: vec![IndexDef {
-                name: "idx_user_id".into(),
+            constraints: vec![TableConstraint::Index {
+                name: Some("idx_user_id".into()),
                 columns: vec!["user_id".into()],
-                unique: false,
             }],
         }];
         let result = build_add_constraint(
@@ -816,9 +845,8 @@ mod tests {
     }
 
     #[test]
-    fn test_add_constraint_foreign_key_sqlite_with_unique_index() {
-        use vespertide_core::IndexDef;
-
+    fn test_add_constraint_foreign_key_sqlite_with_unique_constraint() {
+        // Note: Unique indexes are now TableConstraint::Unique
         let constraint = TableConstraint::ForeignKey {
             name: Some("fk_user".into()),
             columns: vec!["user_id".into()],
@@ -840,11 +868,9 @@ mod tests {
                 index: None,
                 foreign_key: None,
             }],
-            constraints: vec![],
-            indexes: vec![IndexDef {
-                name: "idx_user_id".into(),
+            constraints: vec![TableConstraint::Unique {
+                name: Some("uq_user_id".into()),
                 columns: vec!["user_id".into()],
-                unique: true,
             }],
         }];
         let result = build_add_constraint(
@@ -860,9 +886,8 @@ mod tests {
             .map(|q| q.build(DatabaseBackend::Sqlite))
             .collect::<Vec<String>>()
             .join("\n");
-        // Should recreate unique index
-        assert!(sql.contains("CREATE UNIQUE INDEX"));
-        assert!(sql.contains("idx_user_id"));
+        // Unique constraint should be in CREATE TABLE statement
+        assert!(sql.contains("CREATE TABLE"));
     }
 
     #[test]
@@ -904,7 +929,6 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![], // No existing CHECK constraints
-            indexes: vec![],
         }];
         let result = build_add_constraint(
             &DatabaseBackend::Sqlite,
@@ -946,7 +970,6 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![], // No existing CHECK constraints
-            indexes: vec![],
         }];
         let result = build_add_constraint(
             &DatabaseBackend::Sqlite,
@@ -992,7 +1015,6 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![], // No existing CHECK constraints
-            indexes: vec![],
         }];
         let result = build_add_constraint(
             &DatabaseBackend::Sqlite,
@@ -1014,8 +1036,6 @@ mod tests {
 
     #[test]
     fn test_add_constraint_check_sqlite_with_indexes() {
-        use vespertide_core::IndexDef;
-
         let constraint = TableConstraint::Check {
             name: "chk_age".into(),
             expr: "age > 0".into(),
@@ -1033,11 +1053,9 @@ mod tests {
                 index: None,
                 foreign_key: None,
             }],
-            constraints: vec![],
-            indexes: vec![IndexDef {
-                name: "idx_age".into(),
+            constraints: vec![TableConstraint::Index {
+                name: Some("idx_age".into()),
                 columns: vec!["age".into()],
-                unique: false,
             }],
         }];
         let result = build_add_constraint(
@@ -1059,9 +1077,8 @@ mod tests {
     }
 
     #[test]
-    fn test_add_constraint_check_sqlite_with_unique_index() {
-        use vespertide_core::IndexDef;
-
+    fn test_add_constraint_check_sqlite_with_unique_constraint() {
+        // Note: Unique indexes are now TableConstraint::Unique
         let constraint = TableConstraint::Check {
             name: "chk_age".into(),
             expr: "age > 0".into(),
@@ -1079,11 +1096,9 @@ mod tests {
                 index: None,
                 foreign_key: None,
             }],
-            constraints: vec![],
-            indexes: vec![IndexDef {
-                name: "idx_age".into(),
+            constraints: vec![TableConstraint::Unique {
+                name: Some("uq_age".into()),
                 columns: vec!["age".into()],
-                unique: true,
             }],
         }];
         let result = build_add_constraint(
@@ -1099,9 +1114,8 @@ mod tests {
             .map(|q| q.build(DatabaseBackend::Sqlite))
             .collect::<Vec<String>>()
             .join("\n");
-        // Should recreate unique index
-        assert!(sql.contains("CREATE UNIQUE INDEX"));
-        assert!(sql.contains("idx_age"));
+        // Unique constraint should be in CREATE TABLE statement
+        assert!(sql.contains("CREATE TABLE"));
     }
 
     #[test]

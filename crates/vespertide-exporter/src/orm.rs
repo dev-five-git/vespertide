@@ -72,7 +72,6 @@ mod tests {
                 auto_increment: false,
                 columns: vec!["id".into()],
             }],
-            indexes: vec![],
         }
     }
 
