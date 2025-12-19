@@ -43,6 +43,6 @@ pub struct Model {
 
 
 // Index definitions (SeaORM uses Statement builders externally)
-// idx_article_status on [status] unique=false
-// idx_article_published_at on [published_at] unique=false
+// (unnamed) on [status]
+// (unnamed) on [published_at]
 impl ActiveModelBehavior for ActiveModel {}

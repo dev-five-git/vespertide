@@ -3,15 +3,16 @@
   "name": "article_user",
   "columns": [
     {
+      "name": "media_id",
+      "type": "uuid",
+      "nullable": false,
+      "primary_key": true
+    },
+    {
       "name": "article_id",
       "type": "big_int",
       "nullable": false,
-      "primary_key": true,
-      "foreign_key": {
-        "ref_table": "article",
-        "ref_columns": ["id"],
-        "on_delete": "cascade"
-      }
+      "primary_key": true
     },
     {
       "name": "user_id",
@@ -44,5 +45,14 @@
       "default": "now()"
     }
   ],
-  "constraints": []
+  "constraints": [
+    {
+      "type": "foreign_key",
+      "columns": ["media_id", "article_id"],
+      "ref_table": "article",
+      "ref_columns": ["media_id", "id"],
+      "on_delete": "cascade"
+    }
+  ],
+  "indexes": []
 }

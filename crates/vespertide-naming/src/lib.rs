@@ -44,6 +44,16 @@ pub fn build_check_constraint_name(table: &str, column: &str) -> String {
     format!("chk_{}__{}", table, column)
 }
 
+/// Generate enum type name with table prefix to avoid conflicts.
+/// Always includes table name to ensure uniqueness across tables.
+/// Format: {table}_{enum_name}
+///
+/// This prevents conflicts when multiple tables use the same enum name
+/// (e.g., "status" or "gender") with potentially different values.
+pub fn build_enum_type_name(table: &str, enum_name: &str) -> String {
+    format!("{}_{}", table, enum_name)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,6 +119,37 @@ mod tests {
         assert_eq!(
             build_check_constraint_name("users", "status"),
             "chk_users__status"
+        );
+    }
+
+    #[test]
+    fn test_build_enum_type_name() {
+        assert_eq!(build_enum_type_name("users", "status"), "users_status");
+    }
+
+    #[test]
+    fn test_build_enum_type_name_with_existing_prefix() {
+        // Even if enum_name already has table prefix, we add it
+        // User should provide clean enum name (e.g., "status" not "users_status")
+        assert_eq!(
+            build_enum_type_name("users", "user_status"),
+            "users_user_status"
+        );
+    }
+
+    #[test]
+    fn test_build_enum_type_name_prevents_conflicts() {
+        // Different tables can have same enum name without conflict
+        assert_eq!(build_enum_type_name("users", "gender"), "users_gender");
+        assert_eq!(
+            build_enum_type_name("employees", "gender"),
+            "employees_gender"
+        );
+
+        assert_eq!(build_enum_type_name("orders", "status"), "orders_status");
+        assert_eq!(
+            build_enum_type_name("shipments", "status"),
+            "shipments_status"
         );
     }
 }

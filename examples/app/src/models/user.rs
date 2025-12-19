@@ -29,5 +29,5 @@ pub struct Model {
 
 
 // Index definitions (SeaORM uses Statement builders externally)
-// idx_user_email on [email] unique=false
+// (unnamed) on [email]
 impl ActiveModelBehavior for ActiveModel {}

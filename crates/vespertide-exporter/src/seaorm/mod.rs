@@ -204,28 +204,30 @@ fn format_default_value(value: &str, column_type: &ColumnType) -> String {
         ColumnType::Complex(ComplexColumnType::Numeric { .. }) => {
             format!("default_value = {}", cleaned)
         }
-        // Enum type: use enum variant format
-        ColumnType::Complex(ComplexColumnType::Enum { name, values }) => {
-            let enum_name = to_pascal_case(name);
-            let variant = match values {
+        // Enum type: use the actual database value (string or number), not Rust enum variant
+        ColumnType::Complex(ComplexColumnType::Enum { values, .. }) => {
+            match values {
                 EnumValues::String(_) => {
-                    // String enum: cleaned is the string value, convert to PascalCase
-                    to_pascal_case(cleaned)
+                    // String enum: use the string value as-is with quotes
+                    format!("default_value = \"{}\"", cleaned)
                 }
                 EnumValues::Integer(int_values) => {
-                    // Integer enum: cleaned is a number, find the matching variant name
+                    // Integer enum: can be either a number or a variant name
+                    // Try to parse as number first
                     if let Ok(num) = cleaned.parse::<i32>() {
-                        int_values
-                            .iter()
-                            .find(|v| v.value == num)
-                            .map(|v| to_pascal_case(&v.name))
-                            .unwrap_or_else(|| to_pascal_case(cleaned))
+                        // Already a number, use as-is
+                        format!("default_value = {}", num)
                     } else {
-                        to_pascal_case(cleaned)
+                        // It's a variant name, find the corresponding numeric value
+                        let numeric_value = int_values
+                            .iter()
+                            .find(|v| v.name.eq_ignore_ascii_case(cleaned))
+                            .map(|v| v.value)
+                            .unwrap_or(0); // Default to 0 if not found
+                        format!("default_value = {}", numeric_value)
                     }
                 }
-            };
-            format!("default_value = {}::{}", enum_name, variant)
+            }
         }
         // All other types: use quotes
         _ => {

@@ -2,4 +2,4 @@
 source: crates/vespertide-query/src/sql/modify_column_type.rs
 expression: sql
 ---
-ALTER TABLE "users" ALTER COLUMN "status" TYPE status
+ALTER TABLE "users" ALTER COLUMN "status" TYPE users_status

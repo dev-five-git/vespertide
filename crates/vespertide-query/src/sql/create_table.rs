@@ -3,7 +3,7 @@ use sea_query::{Alias, ForeignKey, Index, Table, TableCreateStatement};
 use vespertide_core::{ColumnDef, ColumnType, ComplexColumnType, TableConstraint};
 
 use super::helpers::{
-    build_create_enum_type_sql, build_schema_statement, build_sea_column_def,
+    build_create_enum_type_sql, build_schema_statement, build_sea_column_def_with_table,
     collect_sqlite_enum_check_clauses, to_sea_fk_action,
 };
 use super::types::{BuiltQuery, DatabaseBackend, RawSql};
@@ -23,7 +23,7 @@ pub(crate) fn build_create_table_for_backend(
 
     // Add columns
     for column in columns {
-        let mut col = build_sea_column_def(backend, column);
+        let mut col = build_sea_column_def_with_table(backend, table, column);
 
         // Check for inline primary key
         if column.primary_key.is_some() && !has_table_primary_key {
@@ -145,7 +145,7 @@ pub fn build_create_table(
     for column in columns {
         if let ColumnType::Complex(ComplexColumnType::Enum { name, .. }) = &column.r#type
             && created_enums.insert(name.clone())
-            && let Some(create_type_sql) = build_create_enum_type_sql(&column.r#type)
+            && let Some(create_type_sql) = build_create_enum_type_sql(table, &column.r#type)
         {
             queries.push(BuiltQuery::Raw(create_type_sql));
         }

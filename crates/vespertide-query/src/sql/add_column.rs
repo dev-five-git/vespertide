@@ -4,7 +4,7 @@ use vespertide_core::{ColumnDef, TableDef};
 
 use super::create_table::build_create_table_for_backend;
 use super::helpers::{
-    build_create_enum_type_sql, build_schema_statement, build_sea_column_def,
+    build_create_enum_type_sql, build_schema_statement, build_sea_column_def_with_table,
     collect_sqlite_enum_check_clauses,
 };
 use super::rename_table::build_rename_table;
@@ -16,7 +16,7 @@ fn build_add_column_alter_for_backend(
     table: &str,
     column: &ColumnDef,
 ) -> TableAlterStatement {
-    let col_def = build_sea_column_def(backend, column);
+    let col_def = build_sea_column_def_with_table(backend, table, column);
     Table::alter()
         .table(Alias::new(table))
         .add_column(col_def)
@@ -121,11 +121,8 @@ pub fn build_add_column(
         let mut index_queries = Vec::new();
         for constraint in &table_def.constraints {
             if let vespertide_core::TableConstraint::Index { name, columns } = constraint {
-                let index_name = vespertide_naming::build_index_name(
-                    table,
-                    columns,
-                    name.as_deref(),
-                );
+                let index_name =
+                    vespertide_naming::build_index_name(table, columns, name.as_deref());
                 let mut idx_stmt = sea_query::Index::create();
                 idx_stmt = idx_stmt.name(&index_name).to_owned();
                 for col_name in columns {
@@ -144,7 +141,7 @@ pub fn build_add_column(
     let mut stmts: Vec<BuiltQuery> = Vec::new();
 
     // If column type is an enum, create the type first (PostgreSQL only)
-    if let Some(create_type_sql) = build_create_enum_type_sql(&column.r#type) {
+    if let Some(create_type_sql) = build_create_enum_type_sql(table, &column.r#type) {
         stmts.push(BuiltQuery::Raw(create_type_sql));
     }
 
@@ -170,7 +167,7 @@ pub fn build_add_column(
         }
 
         // Set NOT NULL
-        let not_null_col = build_sea_column_def(backend, column);
+        let not_null_col = build_sea_column_def_with_table(backend, table, column);
         let alter_not_null = Table::alter()
             .table(Alias::new(table))
             .modify_column(not_null_col)

@@ -82,10 +82,11 @@ fn test_enum_value_change_generates_correct_sql() {
     let sql2 = postgres_queries[2].build(DatabaseBackend::Postgres);
     let sql3 = postgres_queries[3].build(DatabaseBackend::Postgres);
 
-    // 1. CREATE TYPE status_new
+    // 1. CREATE TYPE user_status_new (table-prefixed)
     assert!(
-        sql0.contains("CREATE TYPE \"status_new\""),
-        "Step 1 should create temp type"
+        sql0.contains("CREATE TYPE \"user_status_new\""),
+        "Step 1 should create temp type with table prefix. Got: {}",
+        sql0
     );
     assert!(
         sql0.contains("'active', 'inactive', 'pending'"),
@@ -98,23 +99,27 @@ fn test_enum_value_change_generates_correct_sql() {
         "Step 2 should alter table"
     );
     assert!(
-        sql1.contains("ALTER COLUMN \"status\" TYPE \"status_new\""),
-        "Should change column type to temp"
+        sql1.contains("ALTER COLUMN \"status\" TYPE \"user_status_new\""),
+        "Should change column type to temp with table prefix. Got: {}",
+        sql1
     );
     assert!(
-        sql1.contains("USING \"status\"::text::\"status_new\""),
-        "Should use USING clause"
-    );
-
-    // 3. DROP TYPE status
-    assert!(
-        sql2.contains("DROP TYPE \"status\""),
-        "Step 3 should drop old type"
+        sql1.contains("USING \"status\"::text::\"user_status_new\""),
+        "Should use USING clause with table prefix. Got: {}",
+        sql1
     );
 
-    // 4. RENAME TYPE
+    // 3. DROP TYPE user_status (table-prefixed)
     assert!(
-        sql3.contains("ALTER TYPE \"status_new\" RENAME TO \"status\""),
-        "Step 4 should rename temp type back"
+        sql2.contains("DROP TYPE \"user_status\""),
+        "Step 3 should drop old type with table prefix. Got: {}",
+        sql2
+    );
+
+    // 4. RENAME TYPE user_status_new to user_status (table-prefixed)
+    assert!(
+        sql3.contains("ALTER TYPE \"user_status_new\" RENAME TO \"user_status\""),
+        "Step 4 should rename temp type back with table prefix. Got: {}",
+        sql3
     );
 }

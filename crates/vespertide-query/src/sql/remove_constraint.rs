@@ -345,11 +345,8 @@ pub fn build_remove_constraint(
                 Ok(queries)
             } else {
                 // Build foreign key drop using ForeignKey::drop()
-                let constraint_name = vespertide_naming::build_foreign_key_name(
-                    table,
-                    columns,
-                    name.as_deref(),
-                );
+                let constraint_name =
+                    vespertide_naming::build_foreign_key_name(table, columns, name.as_deref());
                 let fk_drop = ForeignKey::drop()
                     .name(&constraint_name)
                     .table(Alias::new(table))
