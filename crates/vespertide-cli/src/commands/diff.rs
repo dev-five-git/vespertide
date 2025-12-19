@@ -426,4 +426,24 @@ mod tests {
         let result = cmd_diff();
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn test_constraint_display_unnamed_index() {
+        let constraint = TableConstraint::Index {
+            name: None,
+            columns: vec!["email".into(), "username".into()],
+        };
+        let display = format_constraint_type(&constraint);
+        assert_eq!(display, "INDEX (email, username)");
+    }
+
+    #[test]
+    fn test_constraint_display_named_index() {
+        let constraint = TableConstraint::Index {
+            name: Some("ix_users_email".into()),
+            columns: vec!["email".into()],
+        };
+        let display = format_constraint_type(&constraint);
+        assert_eq!(display, "ix_users_email INDEX (email)");
+    }
 }

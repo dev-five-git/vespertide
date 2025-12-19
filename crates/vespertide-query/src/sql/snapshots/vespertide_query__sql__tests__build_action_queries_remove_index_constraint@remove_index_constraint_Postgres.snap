@@ -2,4 +2,4 @@
 source: crates/vespertide-query/src/sql/mod.rs
 expression: sql
 ---
-DROP INDEX "idx_email"
+DROP INDEX "ix_users__idx_email"

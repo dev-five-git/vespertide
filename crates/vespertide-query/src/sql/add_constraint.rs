@@ -120,9 +120,11 @@ pub fn build_add_constraint(
                         columns: idx_cols,
                     } = c
                     {
-                        let index_name = idx_name
-                            .clone()
-                            .unwrap_or_else(|| format!("ix_{}_{}", table, idx_cols.join("_")));
+                        let index_name = vespertide_naming::build_index_name(
+                            table,
+                            idx_cols,
+                            idx_name.as_deref(),
+                        );
                         let mut idx_stmt = sea_query::Index::create();
                         idx_stmt = idx_stmt.name(&index_name).to_owned();
                         for col_name in idx_cols {
@@ -246,9 +248,11 @@ pub fn build_add_constraint(
                         columns: idx_cols,
                     } = c
                     {
-                        let index_name = idx_name
-                            .clone()
-                            .unwrap_or_else(|| format!("ix_{}_{}", table, idx_cols.join("_")));
+                        let index_name = vespertide_naming::build_index_name(
+                            table,
+                            idx_cols,
+                            idx_name.as_deref(),
+                        );
                         let mut idx_stmt = sea_query::Index::create();
                         idx_stmt = idx_stmt.name(&index_name).to_owned();
                         for col_name in idx_cols {
@@ -287,9 +291,7 @@ pub fn build_add_constraint(
         }
         TableConstraint::Index { name, columns } => {
             // Index constraints are simple CREATE INDEX statements for all backends
-            let index_name = name
-                .clone()
-                .unwrap_or_else(|| format!("ix_{}_{}", table, columns.join("_")));
+            let index_name = vespertide_naming::build_index_name(table, columns, name.as_deref());
             let mut idx = Index::create()
                 .table(Alias::new(table))
                 .name(&index_name)
@@ -366,9 +368,11 @@ pub fn build_add_constraint(
                         columns: idx_cols,
                     } = c
                     {
-                        let index_name = idx_name
-                            .clone()
-                            .unwrap_or_else(|| format!("ix_{}_{}", table, idx_cols.join("_")));
+                        let index_name = vespertide_naming::build_index_name(
+                            table,
+                            idx_cols,
+                            idx_name.as_deref(),
+                        );
                         let mut idx_stmt = sea_query::Index::create();
                         idx_stmt = idx_stmt.name(&index_name).to_owned();
                         for col_name in idx_cols {

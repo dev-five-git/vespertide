@@ -15,12 +15,6 @@
         "$ref": "#/$defs/TableConstraint"
       }
     },
-    "indexes": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/IndexDef"
-      }
-    },
     "name": {
       "type": "string"
     }
@@ -28,8 +22,7 @@
   "required": [
     "name",
     "columns",
-    "constraints",
-    "indexes"
+    "constraints"
   ],
   "$defs": {
     "ColumnDef": {
@@ -279,28 +272,6 @@
         }
       ]
     },
-    "IndexDef": {
-      "type": "object",
-      "properties": {
-        "columns": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "name": {
-          "type": "string"
-        },
-        "unique": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "name",
-        "columns",
-        "unique"
-      ]
-    },
     "NumValue": {
       "description": "Integer enum variant with name and numeric value",
       "type": "object",
@@ -521,6 +492,31 @@
             "type",
             "name",
             "expr"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "columns": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "index"
+            }
+          },
+          "required": [
+            "type",
+            "columns"
           ]
         }
       ]

@@ -2,4 +2,4 @@
 source: crates/vespertide-query/src/sql/mod.rs
 expression: sql
 ---
-ALTER TABLE `users` DROP INDEX `uq_email`
+ALTER TABLE `users` DROP INDEX `uq_users__uq_email`

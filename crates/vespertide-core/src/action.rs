@@ -228,6 +228,16 @@ mod tests {
         },
         "AddConstraint: users.ix_users__email (INDEX)"
     )]
+    #[case::add_constraint_index_without_name(
+        MigrationAction::AddConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Index {
+                name: None,
+                columns: vec!["email".into()],
+            },
+        },
+        "AddConstraint: users.INDEX"
+    )]
     #[case::remove_constraint_index_with_name(
         MigrationAction::RemoveConstraint {
             table: "users".into(),
@@ -237,6 +247,16 @@ mod tests {
             },
         },
         "RemoveConstraint: users.ix_users__email (INDEX)"
+    )]
+    #[case::remove_constraint_index_without_name(
+        MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: TableConstraint::Index {
+                name: None,
+                columns: vec!["email".into()],
+            },
+        },
+        "RemoveConstraint: users.INDEX"
     )]
     #[case::rename_table(
         MigrationAction::RenameTable {

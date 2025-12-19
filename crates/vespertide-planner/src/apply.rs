@@ -869,4 +869,222 @@ mod tests {
             Some(vespertide_core::StrOrBoolOrArray::Bool(true))
         );
     }
+
+    #[test]
+    fn remove_unique_constraint_clears_inline_unique_array() {
+        // Column with inline unique: ["uq_email", "uq_users_email"]
+        let mut col_with_unique = col("email", ColumnType::Simple(SimpleColumnType::Text));
+        col_with_unique.unique = Some(vespertide_core::StrOrBoolOrArray::Array(vec![
+            "uq_email".to_string(),
+            "uq_users_email".to_string(),
+        ]));
+
+        let mut schema = vec![table(
+            "users",
+            vec![col_with_unique],
+            vec![TableConstraint::Unique {
+                name: Some("uq_email".into()),
+                columns: vec!["email".into()],
+            }],
+        )];
+
+        apply_action(
+            &mut schema,
+            &MigrationAction::RemoveConstraint {
+                table: "users".into(),
+                constraint: TableConstraint::Unique {
+                    name: Some("uq_email".into()),
+                    columns: vec!["email".into()],
+                },
+            },
+        )
+        .unwrap();
+
+        // Constraint removed
+        assert!(schema[0].constraints.is_empty());
+        // "uq_email" removed from array, "uq_users_email" remains
+        assert_eq!(
+            schema[0].columns[0].unique,
+            Some(vespertide_core::StrOrBoolOrArray::Array(vec![
+                "uq_users_email".to_string()
+            ]))
+        );
+    }
+
+    #[test]
+    fn remove_unique_constraint_clears_inline_unique_array_last_item() {
+        // Column with inline unique: ["uq_email"] (only one item in array)
+        let mut col_with_unique = col("email", ColumnType::Simple(SimpleColumnType::Text));
+        col_with_unique.unique = Some(vespertide_core::StrOrBoolOrArray::Array(vec![
+            "uq_email".to_string(),
+        ]));
+
+        let mut schema = vec![table(
+            "users",
+            vec![col_with_unique],
+            vec![TableConstraint::Unique {
+                name: Some("uq_email".into()),
+                columns: vec!["email".into()],
+            }],
+        )];
+
+        apply_action(
+            &mut schema,
+            &MigrationAction::RemoveConstraint {
+                table: "users".into(),
+                constraint: TableConstraint::Unique {
+                    name: Some("uq_email".into()),
+                    columns: vec!["email".into()],
+                },
+            },
+        )
+        .unwrap();
+
+        // Constraint removed
+        assert!(schema[0].constraints.is_empty());
+        // Array becomes empty, so unique should be None
+        assert!(schema[0].columns[0].unique.is_none());
+    }
+
+    #[test]
+    fn remove_unique_constraint_clears_inline_unique_str() {
+        // Column with inline unique: "uq_email"
+        let mut col_with_unique = col("email", ColumnType::Simple(SimpleColumnType::Text));
+        col_with_unique.unique = Some(vespertide_core::StrOrBoolOrArray::Str(
+            "uq_email".to_string(),
+        ));
+
+        let mut schema = vec![table(
+            "users",
+            vec![col_with_unique],
+            vec![TableConstraint::Unique {
+                name: Some("uq_email".into()),
+                columns: vec!["email".into()],
+            }],
+        )];
+
+        apply_action(
+            &mut schema,
+            &MigrationAction::RemoveConstraint {
+                table: "users".into(),
+                constraint: TableConstraint::Unique {
+                    name: Some("uq_email".into()),
+                    columns: vec!["email".into()],
+                },
+            },
+        )
+        .unwrap();
+
+        // Constraint removed
+        assert!(schema[0].constraints.is_empty());
+        // Inline unique cleared
+        assert!(schema[0].columns[0].unique.is_none());
+    }
+
+    #[test]
+    fn remove_foreign_key_constraint_clears_inline_fk() {
+        use vespertide_core::schema::foreign_key::{ForeignKeyDef, ForeignKeySyntax};
+        // Column with inline foreign_key
+        let mut col_with_fk = col("user_id", ColumnType::Simple(SimpleColumnType::Integer));
+        col_with_fk.foreign_key = Some(ForeignKeySyntax::Object(ForeignKeyDef {
+            ref_table: "users".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: None,
+        }));
+
+        let mut schema = vec![table(
+            "posts",
+            vec![col_with_fk],
+            vec![TableConstraint::ForeignKey {
+                name: Some("fk_posts_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            }],
+        )];
+
+        apply_action(
+            &mut schema,
+            &MigrationAction::RemoveConstraint {
+                table: "posts".into(),
+                constraint: TableConstraint::ForeignKey {
+                    name: Some("fk_posts_user".into()),
+                    columns: vec!["user_id".into()],
+                    ref_table: "users".into(),
+                    ref_columns: vec!["id".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+            },
+        )
+        .unwrap();
+
+        // Constraint removed
+        assert!(schema[0].constraints.is_empty());
+        // Inline foreign_key cleared
+        assert!(schema[0].columns[0].foreign_key.is_none());
+    }
+
+    #[test]
+    fn remove_check_constraint() {
+        let mut schema = vec![table(
+            "users",
+            vec![col("age", ColumnType::Simple(SimpleColumnType::Integer))],
+            vec![TableConstraint::Check {
+                name: "check_age".into(),
+                expr: "age >= 18".into(),
+            }],
+        )];
+
+        apply_action(
+            &mut schema,
+            &MigrationAction::RemoveConstraint {
+                table: "users".into(),
+                constraint: TableConstraint::Check {
+                    name: "check_age".into(),
+                    expr: "age >= 18".into(),
+                },
+            },
+        )
+        .unwrap();
+
+        // Constraint removed
+        assert!(schema[0].constraints.is_empty());
+    }
+
+    #[test]
+    fn remove_unnamed_index_single_column() {
+        // Column with inline index: true
+        let mut col_with_index = col("email", ColumnType::Simple(SimpleColumnType::Text));
+        col_with_index.index = Some(vespertide_core::StrOrBoolOrArray::Bool(true));
+
+        let mut schema = vec![table(
+            "users",
+            vec![col_with_index],
+            vec![TableConstraint::Index {
+                name: None,
+                columns: vec!["email".into()],
+            }],
+        )];
+
+        apply_action(
+            &mut schema,
+            &MigrationAction::RemoveConstraint {
+                table: "users".into(),
+                constraint: TableConstraint::Index {
+                    name: None,
+                    columns: vec!["email".into()],
+                },
+            },
+        )
+        .unwrap();
+
+        // Constraint removed
+        assert!(schema[0].constraints.is_empty());
+        // Inline index cleared
+        assert!(schema[0].columns[0].index.is_none());
+    }
 }

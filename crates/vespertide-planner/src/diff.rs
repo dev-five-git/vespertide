@@ -1679,7 +1679,7 @@ mod tests {
         }
     }
 
-    mod index {
+    mod diff_tables {
         use insta::assert_debug_snapshot;
 
         use super::*;
@@ -1754,6 +1754,164 @@ mod tests {
 
             assert_eq!(plan.actions.len(), 1);
             assert_debug_snapshot!(plan.actions);
+        }
+
+        #[rstest]
+        #[case(
+            "add_index",
+            vec![table(
+                "users",
+                vec![
+                    ColumnDef {
+                        name: "id".to_string(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    },
+                ],
+                vec![],
+            )],
+            vec![table(
+                "users",
+                vec![
+                    ColumnDef {
+                        name: "id".to_string(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                        unique: None,
+                        index: Some(StrOrBoolOrArray::Bool(true)),
+                        foreign_key: None,
+                    },
+                ],
+                vec![],
+            )],
+        )]
+        #[case(
+            "remove_index",
+            vec![table(
+                "users",
+                vec![
+                    ColumnDef {
+                        name: "id".to_string(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                        unique: None,
+                        index: Some(StrOrBoolOrArray::Bool(true)),
+                        foreign_key: None,
+                    },
+                ],
+                vec![],
+            )],
+            vec![table(
+                "users",
+                vec![
+                    ColumnDef {
+                        name: "id".to_string(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                        unique: None,
+                        index: Some(StrOrBoolOrArray::Bool(false)),
+                        foreign_key: None,
+                    },
+                ],
+                vec![],
+            )],
+        )]
+        #[case(
+            "add_named_index",
+            vec![table(
+                "users",
+                vec![
+                    ColumnDef {
+                        name: "id".to_string(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    },
+                ],
+                vec![],
+            )],
+            vec![table(
+                "users",
+                vec![
+                    ColumnDef {
+                        name: "id".to_string(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                        unique: None,
+                        index: Some(StrOrBoolOrArray::Str("hello".to_string())),
+                        foreign_key: None,
+                    },
+                ],
+                vec![],
+            )],
+        )]
+        #[case(
+            "remove_named_index",
+            vec![table(
+                "users",
+                vec![
+                    ColumnDef {
+                        name: "id".to_string(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                        unique: None,
+                        index: Some(StrOrBoolOrArray::Str("hello".to_string())),
+                        foreign_key: None,
+                    },
+                ],
+                vec![],
+            )],
+            vec![table(
+                "users",
+                vec![
+                    ColumnDef {
+                        name: "id".to_string(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    },
+                ],
+                vec![],
+            )],
+        )]
+        fn diff_tables(#[case] name: &str, #[case] base: Vec<TableDef>, #[case] to: Vec<TableDef>) {
+            use insta::with_settings;
+
+            let plan = diff_schemas(&base, &to).unwrap();
+            with_settings!({ snapshot_suffix => name }, {
+                assert_debug_snapshot!(plan.actions);
+            });
         }
     }
 }

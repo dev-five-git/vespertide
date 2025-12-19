@@ -228,4 +228,54 @@ mod tests {
         let result = cmd_log(DatabaseBackend::Sqlite);
         assert!(result.is_ok());
     }
+
+    #[test]
+    #[serial_test::serial]
+    fn cmd_log_with_multiple_sql_statements() {
+        use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+        use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
+
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+
+        let cfg = VespertideConfig::default();
+        write_config(&cfg);
+        fs::create_dir_all(cfg.migrations_dir()).unwrap();
+
+        // Create a migration with ModifyColumnType for SQLite, which generates multiple SQL statements
+        let plan = MigrationPlan {
+            comment: Some("modify column type".into()),
+            created_at: Some("2024-01-01T00:00:00Z".into()),
+            version: 1,
+            actions: vec![
+                MigrationAction::CreateTable {
+                    table: "users".into(),
+                    columns: vec![ColumnDef {
+                        name: "id".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    }],
+                    constraints: vec![],
+                },
+                MigrationAction::ModifyColumnType {
+                    table: "users".into(),
+                    column: "id".into(),
+                    new_type: ColumnType::Simple(SimpleColumnType::BigInt),
+                },
+            ],
+        };
+        let path = cfg.migrations_dir().join("0001_modify_column_type.json");
+        fs::write(path, serde_json::to_string_pretty(&plan).unwrap()).unwrap();
+
+        // SQLite backend will generate multiple SQL statements for ModifyColumnType (table recreation)
+        // This exercises line 84 where sql_statements.len() > 1
+        let result = cmd_log(DatabaseBackend::Sqlite);
+        assert!(result.is_ok());
+    }
 }

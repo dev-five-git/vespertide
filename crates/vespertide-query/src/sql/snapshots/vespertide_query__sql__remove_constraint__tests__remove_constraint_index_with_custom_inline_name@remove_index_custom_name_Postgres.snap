@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql/remove_constraint.rs
+expression: sql
+---
+DROP INDEX "ix_users__custom_idx_email"

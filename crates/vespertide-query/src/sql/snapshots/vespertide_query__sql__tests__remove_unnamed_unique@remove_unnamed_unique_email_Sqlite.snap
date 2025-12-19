@@ -1,0 +1,8 @@
+---
+source: crates/vespertide-query/src/sql/mod.rs
+expression: sql
+---
+CREATE TABLE "user_temp" ( "email" text )
+INSERT INTO "user_temp" ("email") SELECT "email" FROM "user"
+DROP TABLE "user"
+ALTER TABLE "user_temp" RENAME TO "user"

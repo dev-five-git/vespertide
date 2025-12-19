@@ -191,9 +191,11 @@ pub fn build_remove_constraint(
                         columns: idx_cols,
                     } = c
                     {
-                        let index_name = idx_name
-                            .clone()
-                            .unwrap_or_else(|| format!("ix_{}_{}", table, idx_cols.join("_")));
+                        let index_name = vespertide_naming::build_index_name(
+                            table,
+                            idx_cols,
+                            idx_name.as_deref(),
+                        );
                         let mut idx_stmt = sea_query::Index::create();
                         idx_stmt = idx_stmt.name(&index_name).to_owned();
                         for col_name in idx_cols {
@@ -214,11 +216,11 @@ pub fn build_remove_constraint(
                 // However, PostgreSQL expects DROP CONSTRAINT, so we need to use Table::alter()
                 // Since drop_constraint() doesn't exist, we'll use Index::drop() for now
                 // Note: This may not match PostgreSQL's DROP CONSTRAINT syntax
-                let constraint_name = if let Some(n) = name {
-                    n.clone()
-                } else {
-                    format!("{}_{}_key", table, columns.join("_"))
-                };
+                let constraint_name = vespertide_naming::build_unique_constraint_name(
+                    table,
+                    columns,
+                    name.as_deref(),
+                );
                 // Try using Table::alter() with drop_constraint if available
                 // If not, use Index::drop() as fallback
                 // For PostgreSQL, we need DROP CONSTRAINT, but sea_query doesn't support this
@@ -321,9 +323,11 @@ pub fn build_remove_constraint(
                         columns: idx_cols,
                     } = c
                     {
-                        let index_name = idx_name
-                            .clone()
-                            .unwrap_or_else(|| format!("ix_{}_{}", table, idx_cols.join("_")));
+                        let index_name = vespertide_naming::build_index_name(
+                            table,
+                            idx_cols,
+                            idx_name.as_deref(),
+                        );
                         let mut idx_stmt = sea_query::Index::create();
                         idx_stmt = idx_stmt.name(&index_name).to_owned();
                         for col_name in idx_cols {
@@ -351,13 +355,14 @@ pub fn build_remove_constraint(
                 Ok(vec![BuiltQuery::DropForeignKey(Box::new(fk_drop))])
             }
         }
-        TableConstraint::Index { name, .. } => {
+        TableConstraint::Index { name, columns } => {
             // Index constraints are simple DROP INDEX statements for all backends
             let index_name = if let Some(n) = name {
-                n.clone()
+                // Use naming convention for named indexes
+                vespertide_naming::build_index_name(table, columns, Some(n))
             } else {
-                // Should not happen in practice, but provide fallback
-                format!("ix_{}__unnamed", table)
+                // Generate name from table and columns for unnamed indexes
+                vespertide_naming::build_index_name(table, columns, None)
             };
             let idx_drop = sea_query::Index::drop()
                 .table(Alias::new(table))
@@ -434,9 +439,11 @@ pub fn build_remove_constraint(
                         columns: idx_cols,
                     } = c
                     {
-                        let index_name = idx_name
-                            .clone()
-                            .unwrap_or_else(|| format!("ix_{}_{}", table, idx_cols.join("_")));
+                        let index_name = vespertide_naming::build_index_name(
+                            table,
+                            idx_cols,
+                            idx_name.as_deref(),
+                        );
                         let mut idx_stmt = sea_query::Index::create();
                         idx_stmt = idx_stmt.name(&index_name).to_owned();
                         for col_name in idx_cols {
@@ -490,12 +497,12 @@ mod tests {
     #[case::remove_constraint_unique_named_postgres(
         "remove_constraint_unique_named_postgres",
         DatabaseBackend::Postgres,
-        &["DROP CONSTRAINT \"uq_email\""]
+        &["DROP CONSTRAINT \"uq_users__uq_email\""]
     )]
     #[case::remove_constraint_unique_named_mysql(
         "remove_constraint_unique_named_mysql",
         DatabaseBackend::MySql,
-        &["DROP INDEX `uq_email`"]
+        &["DROP INDEX `uq_users__uq_email`"]
     )]
     #[case::remove_constraint_unique_named_sqlite(
         "remove_constraint_unique_named_sqlite",
@@ -1531,6 +1538,53 @@ mod tests {
         assert!(sql.contains("DROP") || sql.contains("CREATE TABLE"));
 
         with_settings!({ snapshot_suffix => format!("remove_check_with_other_constraints_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::remove_index_with_custom_inline_name_postgres(DatabaseBackend::Postgres)]
+    #[case::remove_index_with_custom_inline_name_mysql(DatabaseBackend::MySql)]
+    #[case::remove_index_with_custom_inline_name_sqlite(DatabaseBackend::Sqlite)]
+    fn test_remove_constraint_index_with_custom_inline_name(#[case] backend: DatabaseBackend) {
+        // Test Index removal with a custom name from inline index field
+        // This tests the scenario where index: "custom_idx_name" is used
+        let constraint = TableConstraint::Index {
+            name: Some("custom_idx_email".into()),
+            columns: vec!["email".into()],
+        };
+
+        let schema = vec![TableDef {
+            name: "users".to_string(),
+            columns: vec![ColumnDef {
+                name: "email".to_string(),
+                r#type: ColumnType::Simple(SimpleColumnType::Text),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: Some(vespertide_core::StrOrBoolOrArray::Str(
+                    "custom_idx_email".into(),
+                )),
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        }];
+
+        let result = build_remove_constraint(&backend, "users", &constraint, &schema);
+        assert!(result.is_ok());
+        let sql = result
+            .unwrap()
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        // Should use the custom index name
+        assert!(sql.contains("custom_idx_email"));
+
+        with_settings!({ snapshot_suffix => format!("remove_index_custom_name_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }
