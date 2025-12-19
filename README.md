@@ -64,12 +64,11 @@ Models are JSON files in the `models/` directory:
   "name": "user",
   "columns": [
     { "name": "id", "type": "integer", "nullable": false, "primary_key": true },
-    { "name": "email", "type": "text", "nullable": false, "unique": true },
+    { "name": "email", "type": "text", "nullable": false, "unique": true, "index": true },
     { "name": "name", "type": "text", "nullable": false },
     { "name": "created_at", "type": "timestamptz", "nullable": false, "default": "NOW()" }
   ],
-  "constraints": [],
-  "indexes": []
+  "constraints": []
 }
 ```
 
