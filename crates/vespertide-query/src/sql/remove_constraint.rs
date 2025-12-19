@@ -345,11 +345,11 @@ pub fn build_remove_constraint(
                 Ok(queries)
             } else {
                 // Build foreign key drop using ForeignKey::drop()
-                let constraint_name = if let Some(n) = name {
-                    n.clone()
-                } else {
-                    format!("{}_{}_fkey", table, columns.join("_"))
-                };
+                let constraint_name = vespertide_naming::build_foreign_key_name(
+                    table,
+                    columns,
+                    name.as_deref(),
+                );
                 let fk_drop = ForeignKey::drop()
                     .name(&constraint_name)
                     .table(Alias::new(table))
@@ -514,12 +514,12 @@ mod tests {
     #[case::remove_constraint_foreign_key_named_postgres(
         "remove_constraint_foreign_key_named_postgres",
         DatabaseBackend::Postgres,
-        &["DROP CONSTRAINT \"fk_user\""]
+        &["DROP CONSTRAINT \"fk_users__fk_user\""]
     )]
     #[case::remove_constraint_foreign_key_named_mysql(
         "remove_constraint_foreign_key_named_mysql",
         DatabaseBackend::MySql,
-        &["DROP FOREIGN KEY `fk_user`"]
+        &["DROP FOREIGN KEY `fk_users__fk_user`"]
     )]
     #[case::remove_constraint_foreign_key_named_sqlite(
         "remove_constraint_foreign_key_named_sqlite",

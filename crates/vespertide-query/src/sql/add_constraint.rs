@@ -268,10 +268,13 @@ pub fn build_add_constraint(
                 Ok(queries)
             } else {
                 // Build foreign key using ForeignKey::create
+                let fk_name = vespertide_naming::build_foreign_key_name(
+                    table,
+                    columns,
+                    name.as_deref(),
+                );
                 let mut fk = ForeignKey::create();
-                if let Some(n) = name {
-                    fk = fk.name(n).to_owned();
-                }
+                fk = fk.name(&fk_name).to_owned();
                 fk = fk.from_tbl(Alias::new(table)).to_owned();
                 for col in columns {
                     fk = fk.from_col(Alias::new(col)).to_owned();
