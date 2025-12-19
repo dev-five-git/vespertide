@@ -1,4 +1,4 @@
-use vespertide_core::{IndexDef, MigrationAction, TableConstraint, TableDef};
+use vespertide_core::{MigrationAction, TableConstraint, TableDef};
 
 use crate::error::PlannerError;
 
@@ -20,7 +20,6 @@ pub fn apply_action(
                 name: table.clone(),
                 columns: columns.clone(),
                 constraints: constraints.clone(),
-                indexes: Vec::new(),
             });
             Ok(())
         }
@@ -64,7 +63,6 @@ pub fn apply_action(
                 .ok_or_else(|| PlannerError::ColumnNotFound(table.clone(), from.clone()))?;
             col.name = to.clone();
             rename_column_in_constraints(&mut tbl.constraints, from, to);
-            rename_column_in_indexes(&mut tbl.indexes, from, to);
             Ok(())
         }
         MigrationAction::DeleteColumn { table, column } => {
@@ -78,7 +76,6 @@ pub fn apply_action(
                 Err(PlannerError::ColumnNotFound(table.clone(), column.clone()))
             } else {
                 drop_column_from_constraints(&mut tbl.constraints, column);
-                drop_column_from_indexes(&mut tbl.indexes, column);
                 Ok(())
             }
         }
@@ -98,69 +95,6 @@ pub fn apply_action(
                 .ok_or_else(|| PlannerError::ColumnNotFound(table.clone(), column.clone()))?;
             col.r#type = new_type.clone();
             Ok(())
-        }
-        MigrationAction::AddIndex { table, index } => {
-            let tbl = schema
-                .iter_mut()
-                .find(|t| t.name == *table)
-                .ok_or_else(|| PlannerError::TableNotFound(table.clone()))?;
-            tbl.indexes.push(index.clone());
-            Ok(())
-        }
-        MigrationAction::RemoveIndex { table, name } => {
-            let tbl = schema
-                .iter_mut()
-                .find(|t| t.name == *table)
-                .ok_or_else(|| PlannerError::TableNotFound(table.clone()))?;
-            let before = tbl.indexes.len();
-            tbl.indexes.retain(|i| i.name != *name);
-
-            // Also clear inline index on column if index name matches the auto-generated pattern
-            // Pattern: ix_{table}__{column} for Bool(true) or the name itself for Str(name)
-            // Check if this index name was auto-generated for a single column
-            for col in &mut tbl.columns {
-                let auto_name =
-                    vespertide_naming::build_index_name(table, &[col.name.clone()], None);
-                if *name == auto_name {
-                    col.index = None;
-                    break;
-                }
-            }
-            // Legacy prefix check for backwards compatibility
-            let prefix = format!("ix_{}__", table);
-            if let Some(col_name) = name.strip_prefix(&prefix) {
-                // This is an auto-generated index name - clear the inline index on that column
-                if let Some(col) = tbl.columns.iter_mut().find(|c| c.name == col_name) {
-                    col.index = None;
-                }
-            }
-            // Also check if any column has a named index matching this name
-            for col in &mut tbl.columns {
-                if let Some(ref idx_val) = col.index {
-                    match idx_val {
-                        vespertide_core::StrOrBoolOrArray::Str(idx_name) if idx_name == name => {
-                            col.index = None;
-                        }
-                        vespertide_core::StrOrBoolOrArray::Array(names) => {
-                            let filtered: Vec<_> =
-                                names.iter().filter(|n| *n != name).cloned().collect();
-                            if filtered.is_empty() {
-                                col.index = None;
-                            } else if filtered.len() < names.len() {
-                                col.index =
-                                    Some(vespertide_core::StrOrBoolOrArray::Array(filtered));
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-
-            if tbl.indexes.len() == before {
-                Err(PlannerError::IndexNotFound(table.clone(), name.clone()))
-            } else {
-                Ok(())
-            }
         }
         MigrationAction::RenameTable { from, to } => {
             if schema.iter().any(|t| t.name == *to) {
@@ -239,6 +173,54 @@ pub fn apply_action(
                 TableConstraint::Check { .. } => {
                     // Check constraints don't have inline representation
                 }
+                TableConstraint::Index { name, columns } => {
+                    // Clear inline index on columns when removing an index constraint
+                    // Check if this index name was auto-generated for a single column
+                    for col in &mut tbl.columns {
+                        let auto_name =
+                            vespertide_naming::build_index_name(table, &[col.name.clone()], None);
+                        if name.as_ref() == Some(&auto_name) {
+                            col.index = None;
+                            break;
+                        }
+                    }
+                    // Also check for single-column unnamed indexes
+                    if name.is_none()
+                        && columns.len() == 1
+                        && let Some(col) = tbl.columns.iter_mut().find(|c| c.name == columns[0])
+                    {
+                        col.index = None;
+                    }
+                    // Check for named index matching inline field
+                    if let Some(constraint_name) = name {
+                        for col in &mut tbl.columns {
+                            if let Some(ref idx_val) = col.index {
+                                match idx_val {
+                                    vespertide_core::StrOrBoolOrArray::Str(idx_name)
+                                        if idx_name == constraint_name =>
+                                    {
+                                        col.index = None;
+                                    }
+                                    vespertide_core::StrOrBoolOrArray::Array(names) => {
+                                        let filtered: Vec<_> = names
+                                            .iter()
+                                            .filter(|n| *n != constraint_name)
+                                            .cloned()
+                                            .collect();
+                                        if filtered.is_empty() {
+                                            col.index = None;
+                                        } else if filtered.len() < names.len() {
+                                            col.index = Some(
+                                                vespertide_core::StrOrBoolOrArray::Array(filtered),
+                                            );
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
             }
             Ok(())
         }
@@ -279,15 +261,12 @@ fn rename_column_in_constraints(constraints: &mut [TableConstraint], from: &str,
                 }
             }
             TableConstraint::Check { .. } => {}
-        }
-    }
-}
-
-fn rename_column_in_indexes(indexes: &mut [IndexDef], from: &str, to: &str) {
-    for idx in indexes {
-        for c in idx.columns.iter_mut() {
-            if c == from {
-                *c = to.to_string();
+            TableConstraint::Index { columns, .. } => {
+                for c in columns.iter_mut() {
+                    if c == from {
+                        *c = to.to_string();
+                    }
+                }
             }
         }
     }
@@ -313,11 +292,11 @@ fn drop_column_from_constraints(constraints: &mut Vec<TableConstraint>, column: 
             !columns.is_empty() && !ref_columns.is_empty()
         }
         TableConstraint::Check { .. } => true,
+        TableConstraint::Index { columns, .. } => {
+            columns.retain(|c| c != column);
+            !columns.is_empty()
+        }
     });
-}
-
-fn drop_column_from_indexes(indexes: &mut Vec<IndexDef>, column: &str) {
-    indexes.retain(|idx| !idx.columns.iter().any(|c| c == column));
 }
 
 #[cfg(test)]
@@ -340,17 +319,11 @@ mod tests {
         }
     }
 
-    fn table(
-        name: &str,
-        columns: Vec<ColumnDef>,
-        constraints: Vec<TableConstraint>,
-        indexes: Vec<IndexDef>,
-    ) -> TableDef {
+    fn table(name: &str, columns: Vec<ColumnDef>, constraints: Vec<TableConstraint>) -> TableDef {
         TableDef {
             name: name.to_string(),
             columns,
             constraints,
-            indexes,
         }
     }
 
@@ -360,7 +333,6 @@ mod tests {
         TableNotFound,
         ColumnExists,
         ColumnNotFound,
-        IndexNotFound,
     }
 
     fn assert_err_kind(err: crate::error::PlannerError, kind: ErrKind) {
@@ -369,14 +341,13 @@ mod tests {
             (crate::error::PlannerError::TableNotFound(_), ErrKind::TableNotFound) => {}
             (crate::error::PlannerError::ColumnExists(_, _), ErrKind::ColumnExists) => {}
             (crate::error::PlannerError::ColumnNotFound(_, _), ErrKind::ColumnNotFound) => {}
-            (crate::error::PlannerError::IndexNotFound(_, _), ErrKind::IndexNotFound) => {}
             (other, expected) => panic!("unexpected error {other:?}, expected {:?}", expected),
         }
     }
 
     #[rstest]
     #[case(
-        vec![table("users", vec![], vec![], vec![])],
+        vec![table("users", vec![], vec![])],
         MigrationAction::CreateTable {
             table: "users".into(),
             columns: vec![],
@@ -395,7 +366,6 @@ mod tests {
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![],
             vec![]
         )],
         MigrationAction::AddColumn {
@@ -409,7 +379,6 @@ mod tests {
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![],
             vec![]
         )],
         MigrationAction::DeleteColumn {
@@ -419,22 +388,9 @@ mod tests {
         ErrKind::ColumnNotFound
     )]
     #[case(
-        vec![table(
-            "users",
-            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![],
-            vec![]
-        )],
-        MigrationAction::RemoveIndex {
-            table: "users".into(),
-            name: "idx".into()
-        },
-        ErrKind::IndexNotFound
-    )]
-    #[case(
         vec![
-            table("old", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![], vec![]),
-            table("new", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![], vec![]),
+            table("old", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![]),
+            table("new", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![]),
         ],
         MigrationAction::RenameTable {
             from: "old".into(),
@@ -451,11 +407,10 @@ mod tests {
         assert_err_kind(err, expected);
     }
 
-    fn idx(name: &str, columns: Vec<&str>, unique: bool) -> IndexDef {
-        IndexDef {
-            name: name.to_string(),
+    fn idx(name: &str, columns: Vec<&str>) -> TableConstraint {
+        TableConstraint::Index {
+            name: Some(name.to_string()),
             columns: columns.into_iter().map(|s| s.to_string()).collect(),
-            unique,
         }
     }
 
@@ -507,10 +462,8 @@ mod tests {
                     name: "ck_old".into(),
                     expr: "old IS NOT NULL".into(),
                 },
-            ],
-            vec![
-                idx("idx_old", vec!["old"], false),
-                idx("idx_ref", vec!["ref_id"], false),
+                idx("idx_old", vec!["old"]),
+                idx("idx_ref", vec!["ref_id"]),
             ],
         )],
         actions: vec![
@@ -551,10 +504,8 @@ mod tests {
                     name: "ck_old".into(),
                     expr: "old IS NOT NULL".into(),
                 },
-            ],
-            vec![
-                idx("idx_old", vec!["old"], false),
-                idx("idx_ref", vec!["renamed"], false),
+                idx("idx_old", vec!["old"]),
+                idx("idx_ref", vec!["renamed"]),
             ],
         )],
     })]
@@ -580,8 +531,8 @@ mod tests {
                     name: "ck_old".into(),
                     expr: "old IS NOT NULL".into(),
                 },
+                idx("idx_old", vec!["old"]),
             ],
-            vec![idx("idx_old", vec!["old"], false)],
         )],
         actions: vec![MigrationAction::DeleteColumn {
             table: "users".into(),
@@ -597,14 +548,12 @@ mod tests {
                     expr: "old IS NOT NULL".into(),
                 },
             ],
-            vec![],
         )],
     })]
     #[case(SuccessCase {
         initial: vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![],
             vec![],
         )],
         actions: vec![
@@ -613,19 +562,18 @@ mod tests {
                 column: "id".into(),
                 new_type: ColumnType::Simple(SimpleColumnType::Text),
             },
-            MigrationAction::AddIndex {
+            MigrationAction::AddConstraint {
                 table: "users".into(),
-                index: idx("idx_id", vec!["id"], true),
+                constraint: idx("idx_id", vec!["id"]),
             },
-            MigrationAction::RemoveIndex {
+            MigrationAction::RemoveConstraint {
                 table: "users".into(),
-                name: "idx_id".into(),
+                constraint: idx("idx_id", vec!["id"]),
             },
         ],
         expected: vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Text))],
-            vec![],
             vec![],
         )],
     })]
@@ -633,7 +581,6 @@ mod tests {
         initial: vec![table(
             "old",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![],
             vec![],
         )],
         actions: vec![MigrationAction::RenameTable {
@@ -644,11 +591,10 @@ mod tests {
             "new",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![],
-            vec![],
         )],
     })]
     #[case(SuccessCase {
-        initial: vec![table("users", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![], vec![])],
+        initial: vec![table("users", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![])],
         actions: vec![MigrationAction::AddConstraint {
             table: "users".into(),
             constraint: TableConstraint::PrimaryKey {
@@ -663,7 +609,6 @@ mod tests {
                 auto_increment: false,
                 columns: vec!["id".into()],
             }],
-            vec![],
         )],
     })]
     #[case(SuccessCase {
@@ -674,7 +619,6 @@ mod tests {
                 auto_increment: false,
                 columns: vec!["id".into()],
             }],
-            vec![],
         )],
         actions: vec![MigrationAction::RemoveConstraint {
             table: "users".into(),
@@ -683,14 +627,14 @@ mod tests {
                 columns: vec!["id".into()],
             },
         }],
-        expected: vec![table("users", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![], vec![])],
+        expected: vec![table("users", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![])],
     })]
     #[case(SuccessCase {
-        initial: vec![table("users", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![], vec![])],
+        initial: vec![table("users", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![])],
         actions: vec![MigrationAction::RawSql {
             sql: "SELECT 1;".to_string(),
         }],
-        expected: vec![table("users", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![], vec![])],
+        expected: vec![table("users", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![])],
     })]
     fn apply_action_success_cases(#[case] case: SuccessCase) {
         let mut schema = case.initial;
@@ -720,8 +664,8 @@ mod tests {
                 name: "ck_old".into(),
                 expr: "old > 0".into(),
             },
+            idx("idx_old", vec!["old", "keep"]),
         ],
-        vec![idx("idx_old", vec!["old", "keep"], false)],
         "old",
         "new",
         vec![
@@ -742,8 +686,8 @@ mod tests {
                 name: "ck_old".into(),
                 expr: "old > 0".into(),
             },
-        ],
-        vec![idx("idx_old", vec!["new", "keep"], false)]
+            idx("idx_old", vec!["new", "keep"]),
+        ]
     )]
     #[case(
         vec![
@@ -752,8 +696,8 @@ mod tests {
                 name: "ck_id".into(),
                 expr: "id > 0".into(),
             },
+            idx("idx_id", vec!["id"]),
         ],
-        vec![idx("idx_id", vec!["id"], false)],
         "missing",
         "new",
         vec![
@@ -762,26 +706,22 @@ mod tests {
                 name: "ck_id".into(),
                 expr: "id > 0".into(),
             },
-        ],
-        vec![idx("idx_id", vec!["id"], false)]
+            idx("idx_id", vec!["id"]),
+        ]
     )]
-    fn rename_helpers_update_constraints_and_indexes(
+    fn rename_helpers_update_constraints(
         #[case] mut constraints: Vec<TableConstraint>,
-        #[case] mut indexes: Vec<IndexDef>,
         #[case] from: &str,
         #[case] to: &str,
         #[case] expected_constraints: Vec<TableConstraint>,
-        #[case] expected_indexes: Vec<IndexDef>,
     ) {
         rename_column_in_constraints(&mut constraints, from, to);
-        rename_column_in_indexes(&mut indexes, from, to);
         assert_eq!(constraints, expected_constraints);
-        assert_eq!(indexes, expected_indexes);
     }
 
-    // Tests for RemoveIndex clearing inline index on columns
+    // Tests for RemoveConstraint (Index) clearing inline index on columns
     #[test]
-    fn remove_index_clears_inline_index_bool() {
+    fn remove_index_constraint_clears_inline_index_bool() {
         // Column with inline index: true creates ix_{table}__{column} pattern
         let mut col_with_index = col("email", ColumnType::Simple(SimpleColumnType::Text));
         col_with_index.index = Some(vespertide_core::StrOrBoolOrArray::Bool(true));
@@ -789,27 +729,26 @@ mod tests {
         let mut schema = vec![table(
             "users",
             vec![col_with_index],
-            vec![],
-            vec![idx("ix_users__email", vec!["email"], false)],
+            vec![idx("ix_users__email", vec!["email"])],
         )];
 
         apply_action(
             &mut schema,
-            &MigrationAction::RemoveIndex {
+            &MigrationAction::RemoveConstraint {
                 table: "users".into(),
-                name: "ix_users__email".into(),
+                constraint: idx("ix_users__email", vec!["email"]),
             },
         )
         .unwrap();
 
-        // Index should be removed from indexes array
-        assert!(schema[0].indexes.is_empty());
+        // Index should be removed from constraints
+        assert!(schema[0].constraints.is_empty());
         // Inline index on column should also be cleared
         assert!(schema[0].columns[0].index.is_none());
     }
 
     #[test]
-    fn remove_index_clears_inline_index_str() {
+    fn remove_index_constraint_clears_inline_index_str() {
         // Column with inline index: "custom_idx_name"
         let mut col_with_index = col("email", ColumnType::Simple(SimpleColumnType::Text));
         col_with_index.index = Some(vespertide_core::StrOrBoolOrArray::Str(
@@ -819,25 +758,24 @@ mod tests {
         let mut schema = vec![table(
             "users",
             vec![col_with_index],
-            vec![],
-            vec![idx("custom_idx_name", vec!["email"], false)],
+            vec![idx("custom_idx_name", vec!["email"])],
         )];
 
         apply_action(
             &mut schema,
-            &MigrationAction::RemoveIndex {
+            &MigrationAction::RemoveConstraint {
                 table: "users".into(),
-                name: "custom_idx_name".into(),
+                constraint: idx("custom_idx_name", vec!["email"]),
             },
         )
         .unwrap();
 
-        assert!(schema[0].indexes.is_empty());
+        assert!(schema[0].constraints.is_empty());
         assert!(schema[0].columns[0].index.is_none());
     }
 
     #[test]
-    fn remove_index_clears_inline_index_array_partial() {
+    fn remove_index_constraint_clears_inline_index_array_partial() {
         // Column with inline index: ["idx_a", "idx_b"]
         let mut col_with_index = col("email", ColumnType::Simple(SimpleColumnType::Text));
         col_with_index.index = Some(vespertide_core::StrOrBoolOrArray::Array(vec![
@@ -848,25 +786,20 @@ mod tests {
         let mut schema = vec![table(
             "users",
             vec![col_with_index],
-            vec![],
-            vec![
-                idx("idx_a", vec!["email"], false),
-                idx("idx_b", vec!["email"], false),
-            ],
+            vec![idx("idx_a", vec!["email"]), idx("idx_b", vec!["email"])],
         )];
 
         // Remove only idx_a
         apply_action(
             &mut schema,
-            &MigrationAction::RemoveIndex {
+            &MigrationAction::RemoveConstraint {
                 table: "users".into(),
-                name: "idx_a".into(),
+                constraint: idx("idx_a", vec!["email"]),
             },
         )
         .unwrap();
 
-        assert_eq!(schema[0].indexes.len(), 1);
-        assert_eq!(schema[0].indexes[0].name, "idx_b");
+        assert_eq!(schema[0].constraints.len(), 1);
         // inline index should only have idx_b remaining
         assert_eq!(
             schema[0].columns[0].index,
@@ -877,7 +810,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_index_clears_inline_index_array_all() {
+    fn remove_index_constraint_clears_inline_index_array_all() {
         // Column with inline index: ["idx_single"]
         let mut col_with_index = col("email", ColumnType::Simple(SimpleColumnType::Text));
         col_with_index.index = Some(vespertide_core::StrOrBoolOrArray::Array(vec![
@@ -887,50 +820,47 @@ mod tests {
         let mut schema = vec![table(
             "users",
             vec![col_with_index],
-            vec![],
-            vec![idx("idx_single", vec!["email"], false)],
+            vec![idx("idx_single", vec!["email"])],
         )];
 
         apply_action(
             &mut schema,
-            &MigrationAction::RemoveIndex {
+            &MigrationAction::RemoveConstraint {
                 table: "users".into(),
-                name: "idx_single".into(),
+                constraint: idx("idx_single", vec!["email"]),
             },
         )
         .unwrap();
 
-        assert!(schema[0].indexes.is_empty());
+        assert!(schema[0].constraints.is_empty());
         // When array becomes empty, inline index should be None
         assert!(schema[0].columns[0].index.is_none());
     }
 
     #[test]
-    fn remove_index_with_inline_bool_non_matching_name() {
-        // Column with inline index: true, but index name doesn't match idx_{table}_{column} pattern
-        // This tests the `_ => {}` branch (line 144) where Bool(true) doesn't match Str or Array
+    fn remove_index_constraint_with_inline_bool_non_matching_name() {
+        // Column with inline index: true, but index name doesn't match ix_{table}__{column} pattern
         let mut col_with_index = col("email", ColumnType::Simple(SimpleColumnType::Text));
         col_with_index.index = Some(vespertide_core::StrOrBoolOrArray::Bool(true));
 
         let mut schema = vec![table(
             "users",
             vec![col_with_index],
-            vec![],
-            vec![idx("custom_email_idx", vec!["email"], false)], // not idx_users_email
+            vec![idx("custom_email_idx", vec!["email"])],
         )];
 
         apply_action(
             &mut schema,
-            &MigrationAction::RemoveIndex {
+            &MigrationAction::RemoveConstraint {
                 table: "users".into(),
-                name: "custom_email_idx".into(),
+                constraint: idx("custom_email_idx", vec!["email"]),
             },
         )
         .unwrap();
 
-        // Index removed from array
-        assert!(schema[0].indexes.is_empty());
-        // Inline index NOT cleared because name didn't match pattern and Bool(true) hits _ branch
+        // Index removed from constraints
+        assert!(schema[0].constraints.is_empty());
+        // Inline index NOT cleared because name didn't match pattern
         assert_eq!(
             schema[0].columns[0].index,
             Some(vespertide_core::StrOrBoolOrArray::Bool(true))

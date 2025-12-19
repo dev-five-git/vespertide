@@ -1,0 +1,16 @@
+---
+source: crates/vespertide-planner/src/diff.rs
+assertion_line: 1723
+expression: plan.actions
+---
+[
+    RemoveConstraint {
+        table: "users",
+        constraint: Index {
+            name: None,
+            columns: [
+                "name",
+            ],
+        },
+    },
+]

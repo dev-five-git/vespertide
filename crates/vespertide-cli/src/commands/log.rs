@@ -58,36 +58,38 @@ pub fn cmd_log(backend: DatabaseBackend) -> Result<()> {
         }
 
         for (i, pq) in plan_queries.iter().enumerate() {
+            let queries = match backend {
+                DatabaseBackend::Postgres => &pq.postgres,
+                DatabaseBackend::MySql => &pq.mysql,
+                DatabaseBackend::Sqlite => &pq.sqlite,
+            };
+
+            // Build non-empty SQL statements
+            let sql_statements: Vec<String> = queries
+                .iter()
+                .map(|q| q.build(backend).trim().to_string())
+                .filter(|sql| !sql.is_empty())
+                .collect();
+
+            // Print action description
             println!(
                 "    {}. {}",
                 (i + 1).to_string().bright_magenta().bold(),
-                match backend {
-                    DatabaseBackend::Postgres => pq
-                        .postgres
-                        .iter()
-                        .map(|q| q.build(DatabaseBackend::Postgres))
-                        .collect::<Vec<_>>()
-                        .join(";\n")
-                        .trim()
-                        .bright_white(),
-                    DatabaseBackend::MySql => pq
-                        .mysql
-                        .iter()
-                        .map(|q| q.build(DatabaseBackend::MySql))
-                        .collect::<Vec<_>>()
-                        .join(";\n")
-                        .trim()
-                        .bright_white(),
-                    DatabaseBackend::Sqlite => pq
-                        .sqlite
-                        .iter()
-                        .map(|q| q.build(DatabaseBackend::Sqlite))
-                        .collect::<Vec<_>>()
-                        .join(";\n")
-                        .trim()
-                        .bright_white(),
-                }
+                pq.action.to_string().bright_cyan()
             );
+
+            // Print SQL statements with sub-numbering if multiple
+            for (j, sql) in sql_statements.iter().enumerate() {
+                let prefix = if sql_statements.len() > 1 {
+                    format!("    {}-{}.", i + 1, j + 1)
+                        .bright_magenta()
+                        .bold()
+                        .to_string()
+                } else {
+                    "      ".to_string()
+                };
+                println!("{} {}", prefix, sql.bright_white());
+            }
         }
 
         println!();

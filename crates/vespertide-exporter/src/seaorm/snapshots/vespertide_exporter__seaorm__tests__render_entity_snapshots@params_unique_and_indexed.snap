@@ -23,5 +23,5 @@ pub struct Model {
 
 
 // Index definitions (SeaORM uses Statement builders externally)
-// idx_department on [department] unique=false
+// idx_department on [department]
 impl ActiveModelBehavior for ActiveModel {}

@@ -3048,6 +3048,7 @@ version = "0.1.14"
 name = "vespertide-planner"
 version = "0.1.14"
 dependencies = [
+ "insta",
  "rstest",
  "thiserror",
  "vespertide-core",

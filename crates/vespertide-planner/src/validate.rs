@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use vespertide_core::{
-    ColumnDef, ColumnType, ComplexColumnType, EnumValues, IndexDef, MigrationAction, MigrationPlan,
+    ColumnDef, ColumnType, ComplexColumnType, EnumValues, MigrationAction, MigrationPlan,
     TableConstraint, TableDef,
 };
 
@@ -66,14 +66,9 @@ fn validate_table(
         validate_column(column, &table.name)?;
     }
 
-    // Validate constraints
+    // Validate constraints (including indexes)
     for constraint in &table.constraints {
         validate_constraint(constraint, &table.name, &table_columns, table_map)?;
-    }
-
-    // Validate indexes
-    for index in &table.indexes {
-        validate_index(index, &table.name, &table_columns)?;
     }
 
     Ok(())
@@ -236,30 +231,25 @@ fn validate_constraint(
         TableConstraint::Check { .. } => {
             // Check constraints are just expressions, no validation needed
         }
-    }
+        TableConstraint::Index { name, columns } => {
+            if columns.is_empty() {
+                let index_name = name.clone().unwrap_or_else(|| "(unnamed)".to_string());
+                return Err(PlannerError::EmptyConstraintColumns(
+                    table_name.to_string(),
+                    format!("Index({})", index_name),
+                ));
+            }
 
-    Ok(())
-}
-
-fn validate_index(
-    index: &IndexDef,
-    table_name: &str,
-    table_columns: &HashSet<&str>,
-) -> Result<(), PlannerError> {
-    if index.columns.is_empty() {
-        return Err(PlannerError::EmptyConstraintColumns(
-            table_name.to_string(),
-            format!("Index({})", index.name),
-        ));
-    }
-
-    for col in &index.columns {
-        if !table_columns.contains(col.as_str()) {
-            return Err(PlannerError::IndexColumnNotFound(
-                table_name.to_string(),
-                index.name.clone(),
-                col.clone(),
-            ));
+            for col in columns {
+                if !table_columns.contains(col.as_str()) {
+                    let index_name = name.clone().unwrap_or_else(|| "(unnamed)".to_string());
+                    return Err(PlannerError::IndexColumnNotFound(
+                        table_name.to_string(),
+                        index_name,
+                        col.clone(),
+                    ));
+                }
+            }
         }
     }
 
@@ -294,7 +284,7 @@ mod tests {
     use super::*;
     use rstest::rstest;
     use vespertide_core::{
-        ColumnDef, ColumnType, ComplexColumnType, EnumValues, IndexDef, NumValue, SimpleColumnType,
+        ColumnDef, ColumnType, ComplexColumnType, EnumValues, NumValue, SimpleColumnType,
         TableConstraint,
     };
 
@@ -312,17 +302,18 @@ mod tests {
         }
     }
 
-    fn table(
-        name: &str,
-        columns: Vec<ColumnDef>,
-        constraints: Vec<TableConstraint>,
-        indexes: Vec<IndexDef>,
-    ) -> TableDef {
+    fn table(name: &str, columns: Vec<ColumnDef>, constraints: Vec<TableConstraint>) -> TableDef {
         TableDef {
             name: name.to_string(),
             columns,
             constraints,
-            indexes,
+        }
+    }
+
+    fn idx(name: &str, columns: Vec<&str>) -> TableConstraint {
+        TableConstraint::Index {
+            name: Some(name.to_string()),
+            columns: columns.into_iter().map(|s| s.to_string()).collect(),
         }
     }
 
@@ -367,14 +358,13 @@ mod tests {
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] }],
-            vec![],
         )],
         None
     )]
     #[case::duplicate_table(
         vec![
-            table("users", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![], vec![]),
-            table("users", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![], vec![]),
+            table("users", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![]),
+            table("users", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![]),
         ],
         Some(is_duplicate as fn(&PlannerError) -> bool)
     )]
@@ -390,13 +380,12 @@ mod tests {
                 on_delete: None,
                 on_update: None,
             }],
-            vec![],
         )],
         Some(is_fk_table as fn(&PlannerError) -> bool)
     )]
     #[case::fk_missing_column(
         vec![
-            table("posts", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![pk(vec!["id"])], vec![]),
+            table("posts", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![pk(vec!["id"])]),
             table(
                 "users",
                 vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
@@ -408,14 +397,13 @@ mod tests {
                     on_delete: None,
                     on_update: None,
                 }],
-                vec![],
             ),
         ],
         Some(is_fk_column as fn(&PlannerError) -> bool)
     )]
     #[case::fk_local_missing_column(
         vec![
-            table("posts", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![pk(vec!["id"])], vec![]),
+            table("posts", vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))], vec![pk(vec!["id"])]),
             table(
                 "users",
                 vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
@@ -427,7 +415,6 @@ mod tests {
                     on_delete: None,
                     on_update: None,
                 }],
-                vec![],
             ),
         ],
         Some(is_constraint_column as fn(&PlannerError) -> bool)
@@ -438,7 +425,6 @@ mod tests {
                 "posts",
                 vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
                 vec![pk(vec!["id"])],
-                vec![],
             ),
             table(
                 "users",
@@ -451,7 +437,6 @@ mod tests {
                     on_delete: None,
                     on_update: None,
                 }],
-                vec![],
             ),
         ],
         None
@@ -460,12 +445,7 @@ mod tests {
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![pk(vec!["id"])],
-            vec![IndexDef {
-                name: "idx_name".into(),
-                columns: vec!["nonexistent".into()],
-                unique: false,
-            }],
+            vec![pk(vec!["id"]), idx("idx_name", vec!["nonexistent"])],
         )],
         Some(is_index_column as fn(&PlannerError) -> bool)
     )]
@@ -474,7 +454,6 @@ mod tests {
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["nonexistent".into()] }],
-            vec![],
         )],
         Some(is_constraint_column as fn(&PlannerError) -> bool)
     )]
@@ -486,7 +465,6 @@ mod tests {
                 name: Some("u".into()),
                 columns: vec![],
             }],
-            vec![],
         )],
         Some(is_empty_columns as fn(&PlannerError) -> bool)
     )]
@@ -498,7 +476,6 @@ mod tests {
                 name: None,
                 columns: vec!["missing".into()],
             }],
-            vec![],
         )],
         Some(is_constraint_column as fn(&PlannerError) -> bool)
     )]
@@ -507,7 +484,6 @@ mod tests {
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![TableConstraint::PrimaryKey{ auto_increment: false, columns: vec![] }],
-            vec![],
         )],
         Some(is_empty_columns as fn(&PlannerError) -> bool)
     )]
@@ -517,7 +493,6 @@ mod tests {
                 "posts",
                 vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
                 vec![pk(vec!["id"])],
-                vec![],
             ),
             table(
                 "users",
@@ -530,7 +505,6 @@ mod tests {
                     on_delete: None,
                     on_update: None,
                 }],
-                vec![],
             ),
         ],
         Some(is_fk_column as fn(&PlannerError) -> bool)
@@ -547,7 +521,6 @@ mod tests {
                 on_delete: None,
                 on_update: None,
             }],
-            vec![],
         )],
         Some(is_empty_columns as fn(&PlannerError) -> bool)
     )]
@@ -557,7 +530,6 @@ mod tests {
                 "posts",
                 vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
                 vec![pk(vec!["id"])],
-                vec![],
             ),
             table(
                 "users",
@@ -570,7 +542,6 @@ mod tests {
                     on_delete: None,
                     on_update: None,
                 }],
-                vec![],
             ),
         ],
         Some(is_empty_columns as fn(&PlannerError) -> bool)
@@ -579,11 +550,9 @@ mod tests {
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![pk(vec!["id"])],
-            vec![IndexDef {
-                name: "idx".into(),
+            vec![pk(vec!["id"]), TableConstraint::Index {
+                name: Some("idx".into()),
                 columns: vec![],
-                unique: false,
             }],
         )],
         Some(is_empty_columns as fn(&PlannerError) -> bool)
@@ -592,12 +561,7 @@ mod tests {
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer)), col("name", ColumnType::Simple(SimpleColumnType::Text))],
-            vec![pk(vec!["id"])],
-            vec![IndexDef {
-                name: "idx_name".into(),
-                columns: vec!["name".into()],
-                unique: false,
-            }],
+            vec![pk(vec!["id"]), idx("idx_name", vec!["name"])],
         )],
         None
     )]
@@ -609,7 +573,6 @@ mod tests {
                 name: "ck".into(),
                 expr: "id > 0".into(),
             }],
-            vec![],
         )],
         None
     )]
@@ -617,7 +580,6 @@ mod tests {
         vec![table(
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
-            vec![],
             vec![],
         )],
         Some(is_missing_pk as fn(&PlannerError) -> bool)
@@ -781,7 +743,6 @@ mod tests {
                 auto_increment: false,
                 columns: vec!["id".into()],
             }],
-            vec![],
         )];
 
         let result = validate_schema(&schema);
@@ -828,7 +789,6 @@ mod tests {
                 auto_increment: false,
                 columns: vec!["id".into()],
             }],
-            vec![],
         )];
 
         let result = validate_schema(&schema);
@@ -875,7 +835,6 @@ mod tests {
                 auto_increment: false,
                 columns: vec!["id".into()],
             }],
-            vec![],
         )];
 
         let result = validate_schema(&schema);
@@ -933,7 +892,6 @@ mod tests {
                 auto_increment: false,
                 columns: vec!["id".into()],
             }],
-            vec![],
         )];
 
         let result = validate_schema(&schema);

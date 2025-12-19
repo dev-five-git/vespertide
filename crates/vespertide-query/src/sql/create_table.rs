@@ -30,10 +30,9 @@ pub(crate) fn build_create_table_for_backend(
             col.primary_key();
         }
 
-        // Check for inline unique constraint
-        if column.unique.is_some() {
-            col.unique_key();
-        }
+        // NOTE: We do NOT add inline unique constraints here.
+        // All unique constraints are handled as separate CREATE UNIQUE INDEX statements
+        // so they have proper names and can be dropped later.
 
         stmt = stmt.col(col).to_owned();
     }
@@ -107,6 +106,10 @@ pub(crate) fn build_create_table_for_backend(
                 // This would need to be handled as raw SQL or post-creation ALTER
                 let _ = (name, expr);
             }
+            TableConstraint::Index { .. } => {
+                // Indexes are added separately after CREATE TABLE as CREATE INDEX statements
+                // They will be handled in build_create_table
+            }
         }
     }
 
@@ -119,6 +122,21 @@ pub fn build_create_table(
     columns: &[ColumnDef],
     constraints: &[TableConstraint],
 ) -> Result<Vec<BuiltQuery>, QueryError> {
+    // Normalize the table to convert inline constraints to table-level
+    // This ensures we don't have duplicate constraints if both inline and table-level are defined
+    let table_def = vespertide_core::TableDef {
+        name: table.to_string(),
+        columns: columns.to_vec(),
+        constraints: constraints.to_vec(),
+    };
+    let normalized = table_def
+        .normalize()
+        .map_err(|e| QueryError::Other(format!("Failed to normalize table '{}': {}", table, e)))?;
+
+    // Use normalized columns and constraints for SQL generation
+    let columns = &normalized.columns;
+    let constraints = &normalized.constraints;
+
     let mut queries = Vec::new();
 
     // Create enum types first (PostgreSQL only)
@@ -202,6 +220,26 @@ pub fn build_create_table(
         }
     }
 
+    // Add Index constraints as CREATE INDEX statements (for all backends)
+    for constraint in constraints {
+        if let TableConstraint::Index {
+            name,
+            columns: index_cols,
+        } = constraint
+        {
+            // Always generate a proper name: ix_{table}_{key} or ix_{table}_{columns}
+            let index_name = super::helpers::build_index_name(table, &index_cols, name.as_deref());
+            let mut idx = Index::create()
+                .table(Alias::new(table))
+                .name(&index_name)
+                .to_owned();
+            for col in index_cols {
+                idx = idx.col(Alias::new(col)).to_owned();
+            }
+            queries.push(BuiltQuery::CreateIndex(Box::new(idx)));
+        }
+    }
+
     Ok(queries)
 }
 
@@ -278,7 +316,8 @@ mod tests {
     #[case::inline_unique_mysql(DatabaseBackend::MySql)]
     #[case::inline_unique_sqlite(DatabaseBackend::Sqlite)]
     fn test_create_table_with_inline_unique(#[case] backend: DatabaseBackend) {
-        // Test inline unique constraint (line 32)
+        // Test that inline unique constraint is converted to table-level during normalization.
+        // build_create_table now normalizes the table, so inline unique becomes a CREATE UNIQUE INDEX.
         use vespertide_core::schema::str_or_bool::StrOrBoolOrArray;
 
         let mut email_col = col("email", ColumnType::Simple(SimpleColumnType::Text));
@@ -291,6 +330,7 @@ mod tests {
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 email_col,
             ],
+            // No explicit table-level unique constraint passed, but normalize will create one from inline
             &[],
         )
         .unwrap();
@@ -299,7 +339,13 @@ mod tests {
             .map(|q| q.build(backend))
             .collect::<Vec<String>>()
             .join("\n");
-        assert!(sql.contains("UNIQUE"));
+
+        // After normalization, inline unique should produce UNIQUE constraint in SQL
+        assert!(
+            sql.contains("UNIQUE") || sql.to_uppercase().contains("UNIQUE"),
+            "Normalized unique constraint should be in SQL, but not found: {}",
+            sql
+        );
         with_settings!({ snapshot_suffix => format!("create_table_with_inline_unique_{:?}", backend) }, {
             assert_snapshot!(sql);
         });

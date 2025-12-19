@@ -89,24 +89,6 @@ fn format_action(action: &MigrationAction) -> String {
                 column.bright_cyan().bold()
             )
         }
-        MigrationAction::AddIndex { table, index } => {
-            format!(
-                "{} {} {} {}",
-                "Add index:".bright_green(),
-                index.name.bright_cyan().bold(),
-                "on".bright_white(),
-                table.bright_cyan()
-            )
-        }
-        MigrationAction::RemoveIndex { table, name } => {
-            format!(
-                "{} {} {} {}",
-                "Remove index:".bright_red(),
-                name.bright_cyan().bold(),
-                "from".bright_white(),
-                table.bright_cyan()
-            )
-        }
         MigrationAction::RenameTable { from, to } => {
             format!(
                 "{} {} {} {}",
@@ -171,6 +153,13 @@ fn format_constraint_type(constraint: &vespertide_core::TableConstraint) -> Stri
         vespertide_core::TableConstraint::Check { name, expr } => {
             format!("{} CHECK ({})", name, expr)
         }
+        vespertide_core::TableConstraint::Index { name, columns } => {
+            if let Some(n) = name {
+                format!("{} INDEX ({})", n, columns.join(", "))
+            } else {
+                format!("INDEX ({})", columns.join(", "))
+            }
+        }
     }
 }
 
@@ -230,7 +219,6 @@ mod tests {
                 auto_increment: false,
                 columns: vec!["id".into()],
             }],
-            indexes: vec![],
         };
         let path = models_dir.join(format!("{name}.json"));
         fs::write(path, serde_json::to_string_pretty(&table).unwrap()).unwrap();
@@ -284,19 +272,24 @@ mod tests {
         format!("{} {}.{}", "Modify column type:".bright_yellow(), "users".bright_cyan(), "id".bright_cyan().bold())
     )]
     #[case(
-        MigrationAction::AddIndex {
+        MigrationAction::AddConstraint {
             table: "users".into(),
-            index: vespertide_core::IndexDef {
-                name: "idx".into(),
+            constraint: vespertide_core::TableConstraint::Index {
+                name: Some("idx".into()),
                 columns: vec!["id".into()],
-                unique: false,
             },
         },
-        format!("{} {} {} {}", "Add index:".bright_green(), "idx".bright_cyan().bold(), "on".bright_white(), "users".bright_cyan())
+        format!("{} {} {} {}", "Add constraint:".bright_green(), "idx INDEX (id)".bright_cyan().bold(), "on".bright_white(), "users".bright_cyan())
     )]
     #[case(
-        MigrationAction::RemoveIndex { table: "users".into(), name: "idx".into() },
-        format!("{} {} {} {}", "Remove index:".bright_red(), "idx".bright_cyan().bold(), "from".bright_white(), "users".bright_cyan())
+        MigrationAction::RemoveConstraint {
+            table: "users".into(),
+            constraint: vespertide_core::TableConstraint::Index {
+                name: Some("idx".into()),
+                columns: vec!["id".into()],
+            },
+        },
+        format!("{} {} {} {}", "Remove constraint:".bright_red(), "idx INDEX (id)".bright_cyan().bold(), "from".bright_white(), "users".bright_cyan())
     )]
     #[case(
         MigrationAction::RenameTable { from: "users".into(), to: "accounts".into() },

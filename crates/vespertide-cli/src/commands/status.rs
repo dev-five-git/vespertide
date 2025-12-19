@@ -75,13 +75,19 @@ pub fn cmd_status() -> Result<()> {
         current_models.len().to_string().bright_yellow()
     );
     for model in &current_models {
+        // Count Index constraints
+        let index_count = model
+            .constraints
+            .iter()
+            .filter(|c| matches!(c, vespertide_core::TableConstraint::Index { .. }))
+            .count();
         println!(
             "  {} {} ({} {}, {} {})",
             "-".bright_white(),
             model.name.bright_green(),
             model.columns.len().to_string().bright_blue(),
             "columns".bright_white(),
-            model.indexes.len().to_string().bright_blue(),
+            index_count.to_string().bright_blue(),
             "indexes".bright_white()
         );
     }
@@ -193,7 +199,6 @@ mod tests {
                 auto_increment: false,
                 columns: vec!["id".into()],
             }],
-            indexes: vec![],
         };
         let path = models_dir.join(format!("{name}.json"));
         fs::write(path, serde_json::to_string_pretty(&table).unwrap()).unwrap();

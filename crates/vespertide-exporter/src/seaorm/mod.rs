@@ -2,8 +2,7 @@ use std::collections::HashSet;
 
 use crate::orm::OrmExporter;
 use vespertide_core::{
-    ColumnDef, ColumnType, ComplexColumnType, EnumValues, IndexDef, NumValue, TableConstraint,
-    TableDef,
+    ColumnDef, ColumnType, ComplexColumnType, EnumValues, NumValue, TableConstraint, TableDef,
 };
 
 pub struct SeaOrmExporter;
@@ -34,12 +33,11 @@ pub fn render_entity(table: &TableDef) -> String {
 pub fn render_entity_with_schema(table: &TableDef, schema: &[TableDef]) -> String {
     let primary_keys = primary_key_columns(table);
     let composite_pk = primary_keys.len() > 1;
-    let indexes = &table.indexes;
     let relation_fields = relation_field_defs_with_schema(table, schema);
 
     // Build sets of columns with single-column unique constraints and indexes
     let unique_columns = single_column_unique_set(&table.constraints);
-    let indexed_columns = single_column_index_set(indexes);
+    let indexed_columns = single_column_index_set(&table.constraints);
 
     let mut lines: Vec<String> = Vec::new();
     lines.push("use sea_orm::entity::prelude::*;".into());
@@ -83,7 +81,7 @@ pub fn render_entity_with_schema(table: &TableDef, schema: &[TableDef]) -> Strin
 
     // Indexes (relations expressed as belongs_to fields above)
     lines.push(String::new());
-    render_indexes(&mut lines, indexes);
+    render_indexes(&mut lines, &table.constraints);
 
     lines.push("impl ActiveModelBehavior for ActiveModel {}".into());
 
@@ -105,12 +103,14 @@ fn single_column_unique_set(constraints: &[TableConstraint]) -> HashSet<String> 
     unique_cols
 }
 
-/// Build a set of column names that have single-column indexes.
-fn single_column_index_set(indexes: &[IndexDef]) -> HashSet<String> {
+/// Build a set of column names that have single-column indexes from constraints.
+fn single_column_index_set(constraints: &[TableConstraint]) -> HashSet<String> {
     let mut indexed_cols = HashSet::new();
-    for index in indexes {
-        if index.columns.len() == 1 {
-            indexed_cols.insert(index.columns[0].clone());
+    for constraint in constraints {
+        if let TableConstraint::Index { columns, .. } = constraint {
+            if columns.len() == 1 {
+                indexed_cols.insert(columns[0].clone());
+            }
         }
     }
     indexed_cols
@@ -549,18 +549,27 @@ fn fk_attr_value(cols: &[String]) -> String {
     }
 }
 
-fn render_indexes(lines: &mut Vec<String>, indexes: &[IndexDef]) {
-    if indexes.is_empty() {
+fn render_indexes(lines: &mut Vec<String>, constraints: &[TableConstraint]) {
+    let index_constraints: Vec<_> = constraints
+        .iter()
+        .filter_map(|c| {
+            if let TableConstraint::Index { name, columns } = c {
+                Some((name, columns))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if index_constraints.is_empty() {
         return;
     }
     lines.push(String::new());
     lines.push("// Index definitions (SeaORM uses Statement builders externally)".into());
-    for idx in indexes {
-        let cols = idx.columns.join(", ");
-        lines.push(format!(
-            "// {} on [{}] unique={}",
-            idx.name, cols, idx.unique
-        ));
+    for (name, columns) in index_constraints {
+        let cols = columns.join(", ");
+        let idx_name = name.clone().unwrap_or_else(|| "(unnamed)".to_string());
+        lines.push(format!("// {} on [{}]", idx_name, cols));
     }
 }
 
@@ -690,24 +699,22 @@ fn to_pascal_case(s: &str) -> String {
 mod helper_tests {
     use super::*;
     use rstest::rstest;
-    use vespertide_core::{ColumnType, ComplexColumnType, IndexDef, SimpleColumnType};
+    use vespertide_core::{ColumnType, ComplexColumnType, SimpleColumnType};
 
     #[test]
     fn test_render_indexes() {
         let mut lines = Vec::new();
-        let indexes = vec![
-            IndexDef {
-                name: "idx_users_email".into(),
+        let constraints = vec![
+            TableConstraint::Index {
+                name: Some("idx_users_email".into()),
                 columns: vec!["email".into()],
-                unique: false,
             },
-            IndexDef {
-                name: "idx_users_name_email".into(),
+            TableConstraint::Index {
+                name: Some("idx_users_name_email".into()),
                 columns: vec!["name".into(), "email".into()],
-                unique: true,
             },
         ];
-        render_indexes(&mut lines, &indexes);
+        render_indexes(&mut lines, &constraints);
         assert!(!lines.is_empty());
         assert!(lines.iter().any(|l| l.contains("idx_users_email")));
         assert!(lines.iter().any(|l| l.contains("idx_users_name_email")));
@@ -926,7 +933,6 @@ mod helper_tests {
                 auto_increment: false,
                 columns: vec!["id".into()],
             }],
-            indexes: vec![],
         };
 
         let schema = vec![media];
@@ -956,7 +962,6 @@ mod helper_tests {
                 auto_increment: false,
                 columns: vec!["id".into()],
             }],
-            indexes: vec![],
         };
 
         // article table with FK to media
@@ -1000,7 +1005,6 @@ mod helper_tests {
                     on_update: None,
                 },
             ],
-            indexes: vec![],
         };
 
         let schema = vec![media, article];
@@ -1027,7 +1031,6 @@ mod helper_tests {
                 foreign_key: None,
             }],
             constraints: vec![],
-            indexes: vec![],
         };
 
         let schema = vec![media];
@@ -1067,7 +1070,6 @@ mod helper_tests {
                 auto_increment: false,
                 columns: vec!["id".into()],
             }],
-            indexes: vec![],
         };
 
         // article table with FK to media
@@ -1111,7 +1113,6 @@ mod helper_tests {
                     on_update: None,
                 },
             ],
-            indexes: vec![],
         };
 
         // article_user table with FK to article.media_id
@@ -1155,7 +1156,6 @@ mod helper_tests {
                     on_update: None,
                 },
             ],
-            indexes: vec![],
         };
 
         let schema = vec![media, article.clone(), article_user.clone()];
@@ -1205,7 +1205,6 @@ mod helper_tests {
                 auto_increment: false,
                 columns: vec!["id".into()],
             }],
-            indexes: vec![],
         };
 
         // level_b with FK to level_a
@@ -1236,7 +1235,6 @@ mod helper_tests {
                     on_update: None,
                 },
             ],
-            indexes: vec![],
         };
 
         // level_c with FK to level_b
@@ -1267,7 +1265,6 @@ mod helper_tests {
                     on_update: None,
                 },
             ],
-            indexes: vec![],
         };
 
         let schema = vec![level_a, level_b, level_c];
@@ -1299,7 +1296,6 @@ mod helper_tests {
                 auto_increment: false,
                 columns: vec!["id".into()],
             }],
-            indexes: vec![],
         };
 
         // post table with FK to user (not PK, so has_many)
@@ -1343,7 +1339,6 @@ mod helper_tests {
                     on_update: None,
                 },
             ],
-            indexes: vec![],
         };
 
         let schema = vec![user.clone(), post];
@@ -1380,7 +1375,6 @@ mod helper_tests {
                 auto_increment: false,
                 columns: vec!["id".into()],
             }],
-            indexes: vec![],
         };
 
         // profile table with FK to user that is also the PK (one-to-one)
@@ -1424,7 +1418,6 @@ mod helper_tests {
                     on_update: None,
                 },
             ],
-            indexes: vec![],
         };
 
         let schema = vec![user.clone(), profile];
@@ -1461,7 +1454,6 @@ mod helper_tests {
                 auto_increment: false,
                 columns: vec!["id".into()],
             }],
-            indexes: vec![],
         };
 
         // settings table with unique FK to user (one-to-one via UNIQUE constraint)
@@ -1509,7 +1501,6 @@ mod helper_tests {
                     columns: vec!["user_id".into()],
                 },
             ],
-            indexes: vec![],
         };
 
         let schema = vec![user.clone(), settings];
@@ -1541,7 +1532,6 @@ mod tests {
             ColumnDef { name: "display_name".into(), r#type: ColumnType::Simple(SimpleColumnType::Text), nullable: true, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
         ],
         constraints: vec![TableConstraint::PrimaryKey { auto_increment: false, columns: vec!["id".into()] }],
-        indexes: vec![],
     })]
     #[case("composite_pk", TableDef {
         name: "accounts".into(),
@@ -1550,7 +1540,6 @@ mod tests {
             ColumnDef { name: "tenant_id".into(), r#type: ColumnType::Simple(SimpleColumnType::BigInt), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
         ],
         constraints: vec![TableConstraint::PrimaryKey { auto_increment: false, columns: vec!["id".into(), "tenant_id".into()] }],
-        indexes: vec![],
     })]
     #[case("fk_single", TableDef {
         name: "posts".into(),
@@ -1570,7 +1559,6 @@ mod tests {
                 on_update: None,
             },
         ],
-        indexes: vec![],
     })]
     #[case("fk_composite", TableDef {
         name: "invoices".into(),
@@ -1590,7 +1578,6 @@ mod tests {
                 on_update: None,
             },
         ],
-        indexes: vec![],
     })]
     #[case("inline_pk", TableDef {
         name: "users".into(),
@@ -1599,7 +1586,6 @@ mod tests {
             ColumnDef { name: "email".into(), r#type: ColumnType::Simple(SimpleColumnType::Text), nullable: false, default: None, comment: None, primary_key: None, unique: Some(vespertide_core::StrOrBoolOrArray::Bool(true)), index: None, foreign_key: None },
         ],
         constraints: vec![],
-        indexes: vec![],
     })]
     #[case("pk_and_fk_together", {
         use vespertide_core::schema::foreign_key::{ForeignKeyDef, ForeignKeySyntax};
@@ -1685,7 +1671,6 @@ mod tests {
                 },
             ],
             constraints: vec![],
-            indexes: vec![],
         };
         // Normalize to convert inline constraints to table-level
         table = table.normalize().unwrap();
@@ -1711,7 +1696,6 @@ mod tests {
             },
         ],
         constraints: vec![],
-        indexes: vec![],
     })]
     #[case("enum_nullable", TableDef {
         name: "tasks".into(),
@@ -1733,7 +1717,6 @@ mod tests {
             },
         ],
         constraints: vec![],
-        indexes: vec![],
     })]
     #[case("enum_multiple_columns", TableDef {
         name: "products".into(),
@@ -1769,7 +1752,6 @@ mod tests {
             },
         ],
         constraints: vec![],
-        indexes: vec![],
     })]
     #[case("enum_shared", TableDef {
         name: "documents".into(),
@@ -1805,7 +1787,6 @@ mod tests {
             },
         ],
         constraints: vec![],
-        indexes: vec![],
     })]
     #[case("enum_special_values", TableDef {
         name: "events".into(),
@@ -1827,7 +1808,6 @@ mod tests {
             },
         ],
         constraints: vec![],
-        indexes: vec![],
     })]
     #[case("unique_and_indexed", TableDef {
         name: "users".into(),
@@ -1841,9 +1821,7 @@ mod tests {
         constraints: vec![
             TableConstraint::Unique { name: None, columns: vec!["email".into()] },
             TableConstraint::Unique { name: Some("uq_username".into()), columns: vec!["username".into()] },
-        ],
-        indexes: vec![
-            IndexDef { name: "idx_department".into(), columns: vec!["department".into()], unique: false },
+            TableConstraint::Index { name: Some("idx_department".into()), columns: vec!["department".into()] },
         ],
     })]
     #[case("enum_with_default", TableDef {
@@ -1868,7 +1846,6 @@ mod tests {
             ColumnDef { name: "is_archived".into(), r#type: ColumnType::Simple(SimpleColumnType::Boolean), nullable: false, default: Some("false".into()), comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
         ],
         constraints: vec![],
-        indexes: vec![],
     })]
     fn render_entity_snapshots(#[case] name: &str, #[case] table: TableDef) {
         let rendered = render_entity(&table);
@@ -1900,7 +1877,6 @@ mod tests {
                 auto_increment: false,
                 columns: pk_cols.into_iter().map(String::from).collect(),
             }],
-            indexes: vec![],
         }
     }
 
@@ -1928,7 +1904,6 @@ mod tests {
             name: name.into(),
             columns,
             constraints,
-            indexes: vec![],
         }
     }
 
@@ -2156,7 +2131,6 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![],
-            indexes: vec![],
         };
         let rendered = render_entity(&table);
         assert!(rendered.contains("default_value = 0.00"));
@@ -2225,7 +2199,6 @@ mod tests {
                 },
             ],
             constraints: vec![],
-            indexes: vec![],
         }
     }
 

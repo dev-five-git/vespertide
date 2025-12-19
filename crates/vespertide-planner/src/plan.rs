@@ -58,13 +58,11 @@ mod tests {
         name: &str,
         columns: Vec<ColumnDef>,
         constraints: Vec<vespertide_core::TableConstraint>,
-        indexes: Vec<vespertide_core::IndexDef>,
     ) -> TableDef {
         TableDef {
             name: name.to_string(),
             columns,
             constraints,
-            indexes,
         }
     }
 
@@ -87,7 +85,6 @@ mod tests {
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 col("name", ColumnType::Simple(SimpleColumnType::Text)),
             ],
-            vec![],
             vec![],
         )];
 

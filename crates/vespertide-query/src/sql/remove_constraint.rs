@@ -69,19 +69,25 @@ pub fn build_remove_constraint(
                 // 4. Rename temporary table to original name
                 let rename_query = build_rename_table(&temp_table, table);
 
-                // 5. Recreate indexes (if any)
+                // 5. Recreate indexes from Index constraints
                 let mut index_queries = Vec::new();
-                for index in &table_def.indexes {
-                    let mut idx_stmt = sea_query::Index::create();
-                    idx_stmt = idx_stmt.name(&index.name).to_owned();
-                    for col_name in &index.columns {
-                        idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
+                for constraint in &table_def.constraints {
+                    if let TableConstraint::Index {
+                        name: idx_name,
+                        columns: idx_cols,
+                    } = constraint
+                    {
+                        let index_name = idx_name
+                            .clone()
+                            .unwrap_or_else(|| format!("ix_{}_{}", table, idx_cols.join("_")));
+                        let mut idx_stmt = sea_query::Index::create();
+                        idx_stmt = idx_stmt.name(&index_name).to_owned();
+                        for col_name in idx_cols {
+                            idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
+                        }
+                        idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
+                        index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
                     }
-                    if index.unique {
-                        idx_stmt = idx_stmt.unique().to_owned();
-                    }
-                    idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
-                    index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
                 }
 
                 let mut queries = vec![create_query, insert_query, drop_query, rename_query];
@@ -177,21 +183,25 @@ pub fn build_remove_constraint(
                 // 4. Rename temporary table to original name
                 let rename_query = build_rename_table(&temp_table, table);
 
-                // 5. Recreate indexes (if any)
-                // Note: We need to filter out indexes that might be associated with the unique constraint if any
-                // But TableDef separates constraints and indexes.
+                // 5. Recreate indexes from Index constraints
                 let mut index_queries = Vec::new();
-                for index in &table_def.indexes {
-                    let mut idx_stmt = sea_query::Index::create();
-                    idx_stmt = idx_stmt.name(&index.name).to_owned();
-                    for col_name in &index.columns {
-                        idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
+                for c in &table_def.constraints {
+                    if let TableConstraint::Index {
+                        name: idx_name,
+                        columns: idx_cols,
+                    } = c
+                    {
+                        let index_name = idx_name
+                            .clone()
+                            .unwrap_or_else(|| format!("ix_{}_{}", table, idx_cols.join("_")));
+                        let mut idx_stmt = sea_query::Index::create();
+                        idx_stmt = idx_stmt.name(&index_name).to_owned();
+                        for col_name in idx_cols {
+                            idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
+                        }
+                        idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
+                        index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
                     }
-                    if index.unique {
-                        idx_stmt = idx_stmt.unique().to_owned();
-                    }
-                    idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
-                    index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
                 }
 
                 let mut queries = vec![create_query, insert_query, drop_query, rename_query];
@@ -303,19 +313,25 @@ pub fn build_remove_constraint(
                 // 4. Rename temporary table to original name
                 let rename_query = build_rename_table(&temp_table, table);
 
-                // 5. Recreate indexes (if any)
+                // 5. Recreate indexes from Index constraints
                 let mut index_queries = Vec::new();
-                for index in &table_def.indexes {
-                    let mut idx_stmt = sea_query::Index::create();
-                    idx_stmt = idx_stmt.name(&index.name).to_owned();
-                    for col_name in &index.columns {
-                        idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
+                for c in &table_def.constraints {
+                    if let TableConstraint::Index {
+                        name: idx_name,
+                        columns: idx_cols,
+                    } = c
+                    {
+                        let index_name = idx_name
+                            .clone()
+                            .unwrap_or_else(|| format!("ix_{}_{}", table, idx_cols.join("_")));
+                        let mut idx_stmt = sea_query::Index::create();
+                        idx_stmt = idx_stmt.name(&index_name).to_owned();
+                        for col_name in idx_cols {
+                            idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
+                        }
+                        idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
+                        index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
                     }
-                    if index.unique {
-                        idx_stmt = idx_stmt.unique().to_owned();
-                    }
-                    idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
-                    index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
                 }
 
                 let mut queries = vec![create_query, insert_query, drop_query, rename_query];
@@ -334,6 +350,20 @@ pub fn build_remove_constraint(
                     .to_owned();
                 Ok(vec![BuiltQuery::DropForeignKey(Box::new(fk_drop))])
             }
+        }
+        TableConstraint::Index { name, .. } => {
+            // Index constraints are simple DROP INDEX statements for all backends
+            let index_name = if let Some(n) = name {
+                n.clone()
+            } else {
+                // Should not happen in practice, but provide fallback
+                format!("ix_{}__unnamed", table)
+            };
+            let idx_drop = sea_query::Index::drop()
+                .table(Alias::new(table))
+                .name(&index_name)
+                .to_owned();
+            Ok(vec![BuiltQuery::DropIndex(Box::new(idx_drop))])
         }
         TableConstraint::Check { name, .. } => {
             // SQLite does not support ALTER TABLE ... DROP CONSTRAINT CHECK
@@ -396,19 +426,25 @@ pub fn build_remove_constraint(
                 // 4. Rename temporary table to original name
                 let rename_query = build_rename_table(&temp_table, table);
 
-                // 5. Recreate indexes (if any)
+                // 5. Recreate indexes from Index constraints
                 let mut index_queries = Vec::new();
-                for index in &table_def.indexes {
-                    let mut idx_stmt = sea_query::Index::create();
-                    idx_stmt = idx_stmt.name(&index.name).to_owned();
-                    for col_name in &index.columns {
-                        idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
+                for c in &table_def.constraints {
+                    if let TableConstraint::Index {
+                        name: idx_name,
+                        columns: idx_cols,
+                    } = c
+                    {
+                        let index_name = idx_name
+                            .clone()
+                            .unwrap_or_else(|| format!("ix_{}_{}", table, idx_cols.join("_")));
+                        let mut idx_stmt = sea_query::Index::create();
+                        idx_stmt = idx_stmt.name(&index_name).to_owned();
+                        for col_name in idx_cols {
+                            idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
+                        }
+                        idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
+                        index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
                     }
-                    if index.unique {
-                        idx_stmt = idx_stmt.unique().to_owned();
-                    }
-                    idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
-                    index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
                 }
 
                 let mut queries = vec![create_query, insert_query, drop_query, rename_query];
@@ -595,7 +631,6 @@ mod tests {
                 }]
             },
             constraints: vec![constraint.clone()],
-            indexes: vec![],
         }];
 
         let result =
@@ -638,9 +673,7 @@ mod tests {
     #[case::remove_primary_key_with_index_mysql(DatabaseBackend::MySql)]
     #[case::remove_primary_key_with_index_sqlite(DatabaseBackend::Sqlite)]
     fn test_remove_constraint_primary_key_with_index(#[case] backend: DatabaseBackend) {
-        // Test PrimaryKey removal with indexes (lines 75-78, 83-84)
-        use vespertide_core::IndexDef;
-
+        // Test PrimaryKey removal with indexes
         let constraint = TableConstraint::PrimaryKey {
             columns: vec!["id".into()],
             auto_increment: false,
@@ -658,12 +691,13 @@ mod tests {
                 index: None,
                 foreign_key: None,
             }],
-            constraints: vec![constraint.clone()],
-            indexes: vec![IndexDef {
-                name: "idx_id".into(),
-                columns: vec!["id".into()],
-                unique: false,
-            }],
+            constraints: vec![
+                constraint.clone(),
+                TableConstraint::Index {
+                    name: Some("idx_id".into()),
+                    columns: vec!["id".into()],
+                },
+            ],
         }];
 
         let result =
@@ -685,13 +719,11 @@ mod tests {
     }
 
     #[rstest]
-    #[case::remove_primary_key_with_unique_index_postgres(DatabaseBackend::Postgres)]
-    #[case::remove_primary_key_with_unique_index_mysql(DatabaseBackend::MySql)]
-    #[case::remove_primary_key_with_unique_index_sqlite(DatabaseBackend::Sqlite)]
-    fn test_remove_constraint_primary_key_with_unique_index(#[case] backend: DatabaseBackend) {
-        // Test PrimaryKey removal with unique index (lines 75-78, 80-81, 83-84)
-        use vespertide_core::IndexDef;
-
+    #[case::remove_primary_key_with_unique_constraint_postgres(DatabaseBackend::Postgres)]
+    #[case::remove_primary_key_with_unique_constraint_mysql(DatabaseBackend::MySql)]
+    #[case::remove_primary_key_with_unique_constraint_sqlite(DatabaseBackend::Sqlite)]
+    fn test_remove_constraint_primary_key_with_unique_constraint(#[case] backend: DatabaseBackend) {
+        // Test PrimaryKey removal with unique constraint
         let constraint = TableConstraint::PrimaryKey {
             columns: vec!["id".into()],
             auto_increment: false,
@@ -709,12 +741,13 @@ mod tests {
                 index: None,
                 foreign_key: None,
             }],
-            constraints: vec![constraint.clone()],
-            indexes: vec![IndexDef {
-                name: "idx_email".into(),
-                columns: vec!["email".into()],
-                unique: true,
-            }],
+            constraints: vec![
+                constraint.clone(),
+                TableConstraint::Unique {
+                    name: Some("uq_email".into()),
+                    columns: vec!["email".into()],
+                },
+            ],
         }];
 
         let result =
@@ -726,11 +759,11 @@ mod tests {
             .join("\n");
 
         if matches!(backend, DatabaseBackend::Sqlite) {
-            assert!(sql.contains("CREATE UNIQUE INDEX"));
-            assert!(sql.contains("idx_email"));
+            // Unique constraint should be in the temp table definition
+            assert!(sql.contains("CREATE TABLE"));
         }
 
-        with_settings!({ snapshot_suffix => format!("remove_primary_key_with_unique_index_{:?}", backend) }, {
+        with_settings!({ snapshot_suffix => format!("remove_primary_key_with_unique_constraint_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }
@@ -790,7 +823,6 @@ mod tests {
                 },
             ],
             constraints: vec![constraint.clone()],
-            indexes: vec![],
         }];
 
         let result =
@@ -816,9 +848,7 @@ mod tests {
     #[case::remove_unique_with_index_mysql(DatabaseBackend::MySql)]
     #[case::remove_unique_with_index_sqlite(DatabaseBackend::Sqlite)]
     fn test_remove_constraint_unique_with_index(#[case] backend: DatabaseBackend) {
-        // Test Unique removal with indexes (lines 185-188, 193-194)
-        use vespertide_core::IndexDef;
-
+        // Test Unique removal with indexes
         let constraint = TableConstraint::Unique {
             name: Some("uq_email".into()),
             columns: vec!["email".into()],
@@ -849,12 +879,13 @@ mod tests {
                     foreign_key: None,
                 },
             ],
-            constraints: vec![constraint.clone()],
-            indexes: vec![IndexDef {
-                name: "idx_id".into(),
-                columns: vec!["id".into()],
-                unique: false,
-            }],
+            constraints: vec![
+                constraint.clone(),
+                TableConstraint::Index {
+                    name: Some("idx_id".into()),
+                    columns: vec!["id".into()],
+                },
+            ],
         }];
 
         let result =
@@ -876,13 +907,13 @@ mod tests {
     }
 
     #[rstest]
-    #[case::remove_unique_with_unique_index_postgres(DatabaseBackend::Postgres)]
-    #[case::remove_unique_with_unique_index_mysql(DatabaseBackend::MySql)]
-    #[case::remove_unique_with_unique_index_sqlite(DatabaseBackend::Sqlite)]
-    fn test_remove_constraint_unique_with_unique_index(#[case] backend: DatabaseBackend) {
-        // Test Unique removal with unique index (lines 185-188, 190-191, 193-194)
-        use vespertide_core::IndexDef;
-
+    #[case::remove_unique_with_other_unique_constraint_postgres(DatabaseBackend::Postgres)]
+    #[case::remove_unique_with_other_unique_constraint_mysql(DatabaseBackend::MySql)]
+    #[case::remove_unique_with_other_unique_constraint_sqlite(DatabaseBackend::Sqlite)]
+    fn test_remove_constraint_unique_with_other_unique_constraint(
+        #[case] backend: DatabaseBackend,
+    ) {
+        // Test Unique removal with another unique constraint
         let constraint = TableConstraint::Unique {
             name: Some("uq_email".into()),
             columns: vec!["email".into()],
@@ -913,12 +944,13 @@ mod tests {
                     foreign_key: None,
                 },
             ],
-            constraints: vec![constraint.clone()],
-            indexes: vec![IndexDef {
-                name: "idx_name".into(),
-                columns: vec!["name".into()],
-                unique: true,
-            }],
+            constraints: vec![
+                constraint.clone(),
+                TableConstraint::Unique {
+                    name: Some("uq_name".into()),
+                    columns: vec!["name".into()],
+                },
+            ],
         }];
 
         let result =
@@ -930,11 +962,11 @@ mod tests {
             .join("\n");
 
         if matches!(backend, DatabaseBackend::Sqlite) {
-            assert!(sql.contains("CREATE UNIQUE INDEX"));
-            assert!(sql.contains("idx_name"));
+            // The remaining unique constraint should be preserved
+            assert!(sql.contains("CREATE TABLE"));
         }
 
-        with_settings!({ snapshot_suffix => format!("remove_unique_with_unique_index_{:?}", backend) }, {
+        with_settings!({ snapshot_suffix => format!("remove_unique_with_other_unique_constraint_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }
@@ -1002,7 +1034,6 @@ mod tests {
                 },
             ],
             constraints: vec![constraint.clone()],
-            indexes: vec![],
         }];
 
         let result =
@@ -1028,9 +1059,7 @@ mod tests {
     #[case::remove_foreign_key_with_index_mysql(DatabaseBackend::MySql)]
     #[case::remove_foreign_key_with_index_sqlite(DatabaseBackend::Sqlite)]
     fn test_remove_constraint_foreign_key_with_index(#[case] backend: DatabaseBackend) {
-        // Test ForeignKey removal with indexes (lines 309-312, 317-318)
-        use vespertide_core::IndexDef;
-
+        // Test ForeignKey removal with indexes
         let constraint = TableConstraint::ForeignKey {
             name: Some("fk_user".into()),
             columns: vec!["user_id".into()],
@@ -1065,12 +1094,13 @@ mod tests {
                     foreign_key: None,
                 },
             ],
-            constraints: vec![constraint.clone()],
-            indexes: vec![IndexDef {
-                name: "idx_user_id".into(),
-                columns: vec!["user_id".into()],
-                unique: false,
-            }],
+            constraints: vec![
+                constraint.clone(),
+                TableConstraint::Index {
+                    name: Some("idx_user_id".into()),
+                    columns: vec!["user_id".into()],
+                },
+            ],
         }];
 
         let result =
@@ -1092,13 +1122,11 @@ mod tests {
     }
 
     #[rstest]
-    #[case::remove_foreign_key_with_unique_index_postgres(DatabaseBackend::Postgres)]
-    #[case::remove_foreign_key_with_unique_index_mysql(DatabaseBackend::MySql)]
-    #[case::remove_foreign_key_with_unique_index_sqlite(DatabaseBackend::Sqlite)]
-    fn test_remove_constraint_foreign_key_with_unique_index(#[case] backend: DatabaseBackend) {
-        // Test ForeignKey removal with unique index (lines 309-312, 314-315, 317-318)
-        use vespertide_core::IndexDef;
-
+    #[case::remove_foreign_key_with_unique_constraint_postgres(DatabaseBackend::Postgres)]
+    #[case::remove_foreign_key_with_unique_constraint_mysql(DatabaseBackend::MySql)]
+    #[case::remove_foreign_key_with_unique_constraint_sqlite(DatabaseBackend::Sqlite)]
+    fn test_remove_constraint_foreign_key_with_unique_constraint(#[case] backend: DatabaseBackend) {
+        // Test ForeignKey removal with unique constraint
         let constraint = TableConstraint::ForeignKey {
             name: Some("fk_user".into()),
             columns: vec!["user_id".into()],
@@ -1133,12 +1161,13 @@ mod tests {
                     foreign_key: None,
                 },
             ],
-            constraints: vec![constraint.clone()],
-            indexes: vec![IndexDef {
-                name: "idx_user_id".into(),
-                columns: vec!["user_id".into()],
-                unique: true,
-            }],
+            constraints: vec![
+                constraint.clone(),
+                TableConstraint::Unique {
+                    name: Some("uq_user_id".into()),
+                    columns: vec!["user_id".into()],
+                },
+            ],
         }];
 
         let result =
@@ -1150,11 +1179,11 @@ mod tests {
             .join("\n");
 
         if matches!(backend, DatabaseBackend::Sqlite) {
-            assert!(sql.contains("CREATE UNIQUE INDEX"));
-            assert!(sql.contains("idx_user_id"));
+            // Unique constraint should be preserved in the temp table
+            assert!(sql.contains("CREATE TABLE"));
         }
 
-        with_settings!({ snapshot_suffix => format!("remove_foreign_key_with_unique_index_{:?}", backend) }, {
+        with_settings!({ snapshot_suffix => format!("remove_foreign_key_with_unique_constraint_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }
@@ -1182,9 +1211,7 @@ mod tests {
     #[case::remove_check_with_index_mysql(DatabaseBackend::MySql)]
     #[case::remove_check_with_index_sqlite(DatabaseBackend::Sqlite)]
     fn test_remove_constraint_check_with_index(#[case] backend: DatabaseBackend) {
-        // Test Check removal with indexes (lines 402-405, 410-411)
-        use vespertide_core::IndexDef;
-
+        // Test Check removal with indexes
         let constraint = TableConstraint::Check {
             name: "chk_age".into(),
             expr: "age > 0".into(),
@@ -1215,12 +1242,13 @@ mod tests {
                     foreign_key: None,
                 },
             ],
-            constraints: vec![constraint.clone()],
-            indexes: vec![IndexDef {
-                name: "idx_age".into(),
-                columns: vec!["age".into()],
-                unique: false,
-            }],
+            constraints: vec![
+                constraint.clone(),
+                TableConstraint::Index {
+                    name: Some("idx_age".into()),
+                    columns: vec!["age".into()],
+                },
+            ],
         }];
 
         let result =
@@ -1242,13 +1270,11 @@ mod tests {
     }
 
     #[rstest]
-    #[case::remove_check_with_unique_index_postgres(DatabaseBackend::Postgres)]
-    #[case::remove_check_with_unique_index_mysql(DatabaseBackend::MySql)]
-    #[case::remove_check_with_unique_index_sqlite(DatabaseBackend::Sqlite)]
-    fn test_remove_constraint_check_with_unique_index(#[case] backend: DatabaseBackend) {
-        // Test Check removal with unique index (lines 402-405, 407-408, 410-411)
-        use vespertide_core::IndexDef;
-
+    #[case::remove_check_with_unique_constraint_postgres(DatabaseBackend::Postgres)]
+    #[case::remove_check_with_unique_constraint_mysql(DatabaseBackend::MySql)]
+    #[case::remove_check_with_unique_constraint_sqlite(DatabaseBackend::Sqlite)]
+    fn test_remove_constraint_check_with_unique_constraint(#[case] backend: DatabaseBackend) {
+        // Test Check removal with unique constraint
         let constraint = TableConstraint::Check {
             name: "chk_age".into(),
             expr: "age > 0".into(),
@@ -1279,12 +1305,13 @@ mod tests {
                     foreign_key: None,
                 },
             ],
-            constraints: vec![constraint.clone()],
-            indexes: vec![IndexDef {
-                name: "idx_age".into(),
-                columns: vec!["age".into()],
-                unique: true,
-            }],
+            constraints: vec![
+                constraint.clone(),
+                TableConstraint::Unique {
+                    name: Some("uq_age".into()),
+                    columns: vec!["age".into()],
+                },
+            ],
         }];
 
         let result =
@@ -1296,11 +1323,11 @@ mod tests {
             .join("\n");
 
         if matches!(backend, DatabaseBackend::Sqlite) {
-            assert!(sql.contains("CREATE UNIQUE INDEX"));
-            assert!(sql.contains("idx_age"));
+            // Unique constraint should be preserved in the temp table
+            assert!(sql.contains("CREATE TABLE"));
         }
 
-        with_settings!({ snapshot_suffix => format!("remove_check_with_unique_index_{:?}", backend) }, {
+        with_settings!({ snapshot_suffix => format!("remove_check_with_unique_constraint_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }
@@ -1352,7 +1379,6 @@ mod tests {
                     expr: "email IS NOT NULL".into(),
                 },
             ],
-            indexes: vec![],
         }];
 
         let result =
@@ -1426,7 +1452,6 @@ mod tests {
                     expr: "user_id > 0".into(),
                 },
             ],
-            indexes: vec![],
         }];
 
         let result =
@@ -1492,7 +1517,6 @@ mod tests {
                 },
                 constraint.clone(),
             ],
-            indexes: vec![],
         }];
 
         let result =

@@ -171,7 +171,6 @@ mod tests {
                 auto_increment: false,
                 columns: vec!["id".into()],
             }],
-            indexes: vec![],
         };
         fs::write("models/users.yaml", serde_yaml::to_string(&table).unwrap()).unwrap();
 
@@ -207,7 +206,6 @@ mod tests {
                 auto_increment: false,
                 columns: vec!["id".into()],
             }],
-            indexes: vec![],
         };
         let content = serde_json::to_string_pretty(&table).unwrap();
         fs::write("models/subdir/subtable.json", content).unwrap();
@@ -301,7 +299,6 @@ mod tests {
                 foreign_key: Some(ForeignKeySyntax::String("invalid_format".into())),
             }],
             constraints: vec![],
-            indexes: vec![],
         };
         fs::write(
             "models/orders.json",

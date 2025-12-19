@@ -1,6 +1,5 @@
 pub mod add_column;
 pub mod add_constraint;
-pub mod add_index;
 pub mod create_table;
 pub mod delete_column;
 pub mod delete_table;
@@ -8,7 +7,6 @@ pub mod helpers;
 pub mod modify_column_type;
 pub mod raw_sql;
 pub mod remove_constraint;
-pub mod remove_index;
 pub mod rename_column;
 pub mod rename_table;
 pub mod types;
@@ -20,12 +18,11 @@ use crate::error::QueryError;
 use vespertide_core::{MigrationAction, TableDef};
 
 use self::{
-    add_column::build_add_column, add_constraint::build_add_constraint, add_index::build_add_index,
+    add_column::build_add_column, add_constraint::build_add_constraint,
     create_table::build_create_table, delete_column::build_delete_column,
     delete_table::build_delete_table, modify_column_type::build_modify_column_type,
     raw_sql::build_raw_sql, remove_constraint::build_remove_constraint,
-    remove_index::build_remove_index, rename_column::build_rename_column,
-    rename_table::build_rename_table,
+    rename_column::build_rename_column, rename_table::build_rename_table,
 };
 
 pub fn build_action_queries(
@@ -67,10 +64,6 @@ pub fn build_action_queries(
             column,
             new_type,
         } => build_modify_column_type(backend, table, column, new_type, current_schema),
-
-        MigrationAction::AddIndex { table, index } => Ok(vec![build_add_index(table, index)]),
-
-        MigrationAction::RemoveIndex { table, name } => Ok(vec![build_remove_index(table, name)]),
 
         MigrationAction::RenameTable { from, to } => Ok(vec![build_rename_table(from, to)]),
 
@@ -404,7 +397,6 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![],
-            indexes: vec![],
         }];
         let result = build_action_queries(&backend, &action, &current_schema).unwrap();
         assert!(!result.is_empty());
@@ -421,14 +413,17 @@ mod tests {
     }
 
     #[rstest]
-    #[case::remove_index_postgres(DatabaseBackend::Postgres)]
-    #[case::remove_index_mysql(DatabaseBackend::MySql)]
-    #[case::remove_index_sqlite(DatabaseBackend::Sqlite)]
-    fn test_build_action_queries_remove_index(#[case] backend: DatabaseBackend) {
-        // Test MigrationAction::RemoveIndex (line 67)
-        let action = MigrationAction::RemoveIndex {
+    #[case::remove_index_constraint_postgres(DatabaseBackend::Postgres)]
+    #[case::remove_index_constraint_mysql(DatabaseBackend::MySql)]
+    #[case::remove_index_constraint_sqlite(DatabaseBackend::Sqlite)]
+    fn test_build_action_queries_remove_index_constraint(#[case] backend: DatabaseBackend) {
+        // Test MigrationAction::RemoveConstraint with Index variant
+        let action = MigrationAction::RemoveConstraint {
             table: "users".into(),
-            name: "idx_email".into(),
+            constraint: TableConstraint::Index {
+                name: Some("idx_email".into()),
+                columns: vec!["email".into()],
+            },
         };
         let result = build_action_queries(&backend, &action, &[]).unwrap();
         assert_eq!(result.len(), 1);
@@ -436,7 +431,7 @@ mod tests {
         assert!(sql.contains("DROP INDEX"));
         assert!(sql.contains("idx_email"));
 
-        with_settings!({ snapshot_suffix => format!("remove_index_{:?}", backend) }, {
+        with_settings!({ snapshot_suffix => format!("remove_index_constraint_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }
@@ -503,7 +498,6 @@ mod tests {
                 },
             ],
             constraints: vec![],
-            indexes: vec![],
         }];
         let result = build_action_queries(&backend, &action, &current_schema).unwrap();
         assert!(!result.is_empty());
@@ -562,7 +556,6 @@ mod tests {
                 name: Some("uq_email".into()),
                 columns: vec!["email".into()],
             }],
-            indexes: vec![],
         }];
         let result = build_action_queries(&backend, &action, &current_schema).unwrap();
         assert!(!result.is_empty());
@@ -613,7 +606,6 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![],
-            indexes: vec![],
         }];
         let result = build_action_queries(&backend, &action, &current_schema).unwrap();
         assert!(!result.is_empty());
@@ -631,17 +623,16 @@ mod tests {
     }
 
     #[rstest]
-    #[case::add_index_postgres(DatabaseBackend::Postgres)]
-    #[case::add_index_mysql(DatabaseBackend::MySql)]
-    #[case::add_index_sqlite(DatabaseBackend::Sqlite)]
-    fn test_build_action_queries_add_index(#[case] backend: DatabaseBackend) {
-        // Test MigrationAction::AddIndex (line 65)
-        let action = MigrationAction::AddIndex {
+    #[case::add_index_constraint_postgres(DatabaseBackend::Postgres)]
+    #[case::add_index_constraint_mysql(DatabaseBackend::MySql)]
+    #[case::add_index_constraint_sqlite(DatabaseBackend::Sqlite)]
+    fn test_build_action_queries_add_index_constraint(#[case] backend: DatabaseBackend) {
+        // Test MigrationAction::AddConstraint with Index variant
+        let action = MigrationAction::AddConstraint {
             table: "users".into(),
-            index: vespertide_core::IndexDef {
-                name: "idx_email".into(),
+            constraint: TableConstraint::Index {
+                name: Some("idx_email".into()),
                 columns: vec!["email".into()],
-                unique: false,
             },
         };
         let result = build_action_queries(&backend, &action, &[]).unwrap();
@@ -650,7 +641,7 @@ mod tests {
         assert!(sql.contains("CREATE INDEX"));
         assert!(sql.contains("idx_email"));
 
-        with_settings!({ snapshot_suffix => format!("add_index_{:?}", backend) }, {
+        with_settings!({ snapshot_suffix => format!("add_index_constraint_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }

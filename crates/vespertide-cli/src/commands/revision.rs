@@ -178,7 +178,6 @@ mod tests {
                 auto_increment: false,
                 columns: vec!["id".into()],
             }],
-            indexes: vec![],
         };
         let path = models_dir.join(format!("{name}.json"));
         fs::write(path, serde_json::to_string_pretty(&table).unwrap()).unwrap();

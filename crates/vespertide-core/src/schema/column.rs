@@ -12,11 +12,17 @@ pub struct ColumnDef {
     pub name: ColumnName,
     pub r#type: ColumnType,
     pub nullable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub default: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub comment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub primary_key: Option<PrimaryKeySyntax>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub unique: Option<StrOrBoolOrArray>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub index: Option<StrOrBoolOrArray>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub foreign_key: Option<ForeignKeySyntax>,
 }
 

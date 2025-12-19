@@ -1,6 +1,4 @@
-use crate::schema::{
-    ColumnDef, ColumnName, ColumnType, IndexDef, IndexName, TableConstraint, TableName,
-};
+use crate::schema::{ColumnDef, ColumnName, ColumnType, TableConstraint, TableName};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -46,14 +44,6 @@ pub enum MigrationAction {
         column: ColumnName,
         new_type: ColumnType,
     },
-    AddIndex {
-        table: TableName,
-        index: IndexDef,
-    },
-    RemoveIndex {
-        table: TableName,
-        name: IndexName,
-    },
     AddConstraint {
         table: TableName,
         constraint: TableConstraint,
@@ -92,12 +82,6 @@ impl fmt::Display for MigrationAction {
             MigrationAction::ModifyColumnType { table, column, .. } => {
                 write!(f, "ModifyColumnType: {}.{}", table, column)
             }
-            MigrationAction::AddIndex { table, index } => {
-                write!(f, "AddIndex: {}.{}", table, index.name)
-            }
-            MigrationAction::RemoveIndex { name, .. } => {
-                write!(f, "RemoveIndex: {}", name)
-            }
             MigrationAction::AddConstraint { table, constraint } => {
                 let constraint_name = match constraint {
                     TableConstraint::PrimaryKey { .. } => "PRIMARY KEY",
@@ -115,6 +99,12 @@ impl fmt::Display for MigrationAction {
                     }
                     TableConstraint::Check { name, .. } => {
                         return write!(f, "AddConstraint: {}.{} (CHECK)", table, name);
+                    }
+                    TableConstraint::Index { name, .. } => {
+                        if let Some(n) = name {
+                            return write!(f, "AddConstraint: {}.{} (INDEX)", table, n);
+                        }
+                        "INDEX"
                     }
                 };
                 write!(f, "AddConstraint: {}.{}", table, constraint_name)
@@ -136,6 +126,12 @@ impl fmt::Display for MigrationAction {
                     }
                     TableConstraint::Check { name, .. } => {
                         return write!(f, "RemoveConstraint: {}.{} (CHECK)", table, name);
+                    }
+                    TableConstraint::Index { name, .. } => {
+                        if let Some(n) = name {
+                            return write!(f, "RemoveConstraint: {}.{} (INDEX)", table, n);
+                        }
+                        "INDEX"
                     }
                 };
                 write!(f, "RemoveConstraint: {}.{}", table, constraint_name)
@@ -159,7 +155,7 @@ impl fmt::Display for MigrationAction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schema::{IndexDef, ReferenceAction, SimpleColumnType};
+    use crate::schema::{ReferenceAction, SimpleColumnType};
     use rstest::rstest;
 
     fn default_column() -> ColumnDef {
@@ -222,23 +218,25 @@ mod tests {
         },
         "ModifyColumnType: users.age"
     )]
-    #[case::add_index(
-        MigrationAction::AddIndex {
+    #[case::add_constraint_index_with_name(
+        MigrationAction::AddConstraint {
             table: "users".into(),
-            index: IndexDef {
-                name: "idx_email".into(),
+            constraint: TableConstraint::Index {
+                name: Some("ix_users__email".into()),
                 columns: vec!["email".into()],
-                unique: false,
             },
         },
-        "AddIndex: users.idx_email"
+        "AddConstraint: users.ix_users__email (INDEX)"
     )]
-    #[case::remove_index(
-        MigrationAction::RemoveIndex {
+    #[case::remove_constraint_index_with_name(
+        MigrationAction::RemoveConstraint {
             table: "users".into(),
-            name: "idx_email".into(),
+            constraint: TableConstraint::Index {
+                name: Some("ix_users__email".into()),
+                columns: vec!["email".into()],
+            },
         },
-        "RemoveIndex: idx_email"
+        "RemoveConstraint: users.ix_users__email (INDEX)"
     )]
     #[case::rename_table(
         MigrationAction::RenameTable {

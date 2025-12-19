@@ -4,24 +4,16 @@
     {
       "columns": [
         {
-          "comment": null,
           "default": "gen_random_uuid()",
-          "foreign_key": null,
-          "index": null,
           "name": "id",
           "nullable": false,
           "primary_key": true,
-          "type": "uuid",
-          "unique": null
+          "type": "uuid"
         },
         {
-          "comment": null,
-          "default": null,
-          "foreign_key": null,
           "index": true,
           "name": "email",
           "nullable": false,
-          "primary_key": null,
           "type": {
             "kind": "varchar",
             "length": 255
@@ -29,149 +21,70 @@
           "unique": true
         },
         {
-          "comment": null,
-          "default": null,
-          "foreign_key": null,
-          "index": null,
           "name": "password",
           "nullable": false,
-          "primary_key": null,
           "type": {
             "kind": "varchar",
             "length": 255
-          },
-          "unique": null
+          }
         },
         {
-          "comment": null,
-          "default": null,
-          "foreign_key": null,
-          "index": null,
           "name": "name",
           "nullable": false,
-          "primary_key": null,
           "type": {
             "kind": "varchar",
             "length": 100
-          },
-          "unique": null
+          }
         },
         {
-          "comment": null,
-          "default": null,
-          "foreign_key": null,
-          "index": null,
           "name": "profile_image",
           "nullable": true,
-          "primary_key": null,
-          "type": "text",
-          "unique": null
+          "type": "text"
         },
         {
-          "comment": null,
           "default": "now()",
-          "foreign_key": null,
-          "index": null,
           "name": "created_at",
           "nullable": false,
-          "primary_key": null,
-          "type": "timestamptz",
-          "unique": null
+          "type": "timestamptz"
         },
         {
-          "comment": null,
-          "default": null,
-          "foreign_key": null,
-          "index": null,
           "name": "updated_at",
           "nullable": true,
-          "primary_key": null,
-          "type": "timestamptz",
-          "unique": null
+          "type": "timestamptz"
         }
       ],
-      "constraints": [
-        {
-          "auto_increment": false,
-          "columns": [
-            "id"
-          ],
-          "type": "primary_key"
-        },
-        {
-          "columns": [
-            "email"
-          ],
-          "name": null,
-          "type": "unique"
-        }
-      ],
+      "constraints": [],
       "table": "user",
       "type": "create_table"
     },
     {
-      "index": {
-        "columns": [
-          "email"
-        ],
-        "name": "ix_user__email",
-        "unique": false
-      },
-      "table": "user",
-      "type": "add_index"
-    },
-    {
       "columns": [
         {
-          "comment": null,
           "default": "gen_random_uuid()",
-          "foreign_key": null,
-          "index": null,
           "name": "id",
           "nullable": false,
           "primary_key": true,
-          "type": "uuid",
-          "unique": null
+          "type": "uuid"
         },
         {
-          "comment": null,
-          "default": null,
-          "foreign_key": null,
-          "index": null,
           "name": "name",
           "nullable": false,
-          "primary_key": null,
           "type": {
             "kind": "varchar",
             "length": 100
-          },
-          "unique": null
+          }
         },
         {
-          "comment": null,
-          "default": null,
-          "foreign_key": null,
-          "index": null,
           "name": "description",
           "nullable": true,
-          "primary_key": null,
-          "type": "text",
-          "unique": null
+          "type": "text"
         },
         {
-          "comment": null,
-          "default": null,
-          "foreign_key": null,
-          "index": null,
           "name": "logo",
           "nullable": true,
-          "primary_key": null,
-          "type": "text",
-          "unique": null
+          "type": "text"
         },
         {
-          "comment": null,
-          "default": null,
           "foreign_key": {
             "on_delete": "cascade",
             "on_update": null,
@@ -183,74 +96,27 @@
           "index": true,
           "name": "owner_id",
           "nullable": false,
-          "primary_key": null,
-          "type": "uuid",
-          "unique": null
+          "type": "uuid"
         },
         {
-          "comment": null,
           "default": "now()",
-          "foreign_key": null,
-          "index": null,
           "name": "created_at",
           "nullable": false,
-          "primary_key": null,
-          "type": "timestamptz",
-          "unique": null
+          "type": "timestamptz"
         },
         {
-          "comment": null,
-          "default": null,
-          "foreign_key": null,
-          "index": null,
           "name": "updated_at",
           "nullable": true,
-          "primary_key": null,
-          "type": "timestamptz",
-          "unique": null
+          "type": "timestamptz"
         }
       ],
-      "constraints": [
-        {
-          "auto_increment": false,
-          "columns": [
-            "id"
-          ],
-          "type": "primary_key"
-        },
-        {
-          "columns": [
-            "owner_id"
-          ],
-          "name": null,
-          "on_delete": "cascade",
-          "on_update": null,
-          "ref_columns": [
-            "id"
-          ],
-          "ref_table": "user",
-          "type": "foreign_key"
-        }
-      ],
+      "constraints": [],
       "table": "media",
       "type": "create_table"
     },
     {
-      "index": {
-        "columns": [
-          "owner_id"
-        ],
-        "name": "ix_media__owner_id",
-        "unique": false
-      },
-      "table": "media",
-      "type": "add_index"
-    },
-    {
       "columns": [
         {
-          "comment": null,
-          "default": null,
           "foreign_key": {
             "on_delete": "cascade",
             "on_update": null,
@@ -259,79 +125,45 @@
             ],
             "ref_table": "media"
           },
-          "index": null,
           "name": "media_id",
           "nullable": false,
           "primary_key": true,
-          "type": "uuid",
-          "unique": null
+          "type": "uuid"
         },
         {
-          "comment": null,
-          "default": null,
-          "foreign_key": null,
-          "index": null,
           "name": "id",
           "nullable": false,
           "primary_key": true,
-          "type": "big_int",
-          "unique": null
+          "type": "big_int"
         },
         {
-          "comment": null,
-          "default": null,
-          "foreign_key": null,
-          "index": null,
           "name": "title",
           "nullable": false,
-          "primary_key": null,
           "type": {
             "kind": "varchar",
             "length": 500
-          },
-          "unique": null
+          }
         },
         {
-          "comment": null,
-          "default": null,
-          "foreign_key": null,
-          "index": null,
           "name": "content",
           "nullable": false,
-          "primary_key": null,
-          "type": "text",
-          "unique": null
+          "type": "text"
         },
         {
-          "comment": null,
-          "default": null,
-          "foreign_key": null,
-          "index": null,
           "name": "summary",
           "nullable": true,
-          "primary_key": null,
-          "type": "text",
-          "unique": null
+          "type": "text"
         },
         {
-          "comment": null,
-          "default": null,
-          "foreign_key": null,
-          "index": null,
           "name": "thumbnail",
           "nullable": true,
-          "primary_key": null,
-          "type": "text",
-          "unique": null
+          "type": "text"
         },
         {
-          "comment": null,
           "default": "'draft'",
-          "foreign_key": null,
           "index": true,
           "name": "status",
           "nullable": false,
-          "primary_key": null,
           "type": {
             "kind": "enum",
             "name": "article_status",
@@ -341,96 +173,33 @@
               "published",
               "archived"
             ]
-          },
-          "unique": null
+          }
         },
         {
-          "comment": null,
-          "default": null,
-          "foreign_key": null,
           "index": true,
           "name": "published_at",
           "nullable": true,
-          "primary_key": null,
-          "type": "timestamptz",
-          "unique": null
+          "type": "timestamptz"
         },
         {
-          "comment": null,
           "default": "now()",
-          "foreign_key": null,
-          "index": null,
           "name": "created_at",
           "nullable": false,
-          "primary_key": null,
-          "type": "timestamptz",
-          "unique": null
+          "type": "timestamptz"
         },
         {
-          "comment": null,
-          "default": null,
-          "foreign_key": null,
-          "index": null,
           "name": "updated_at",
           "nullable": true,
-          "primary_key": null,
-          "type": "timestamptz",
-          "unique": null
+          "type": "timestamptz"
         }
       ],
-      "constraints": [
-        {
-          "auto_increment": false,
-          "columns": [
-            "media_id",
-            "id"
-          ],
-          "type": "primary_key"
-        },
-        {
-          "columns": [
-            "media_id"
-          ],
-          "name": null,
-          "on_delete": "cascade",
-          "on_update": null,
-          "ref_columns": [
-            "id"
-          ],
-          "ref_table": "media",
-          "type": "foreign_key"
-        }
-      ],
+      "constraints": [],
       "table": "article",
       "type": "create_table"
     },
     {
-      "index": {
-        "columns": [
-          "status"
-        ],
-        "name": "ix_article__status",
-        "unique": false
-      },
-      "table": "article",
-      "type": "add_index"
-    },
-    {
-      "index": {
-        "columns": [
-          "published_at"
-        ],
-        "name": "ix_article__published_at",
-        "unique": false
-      },
-      "table": "article",
-      "type": "add_index"
-    },
-    {
       "columns": [
         {
-          "comment": null,
-          "default": null,
           "foreign_key": {
             "on_delete": "cascade",
             "on_update": null,
@@ -443,12 +212,9 @@
           "name": "user_id",
           "nullable": false,
           "primary_key": true,
-          "type": "uuid",
-          "unique": null
+          "type": "uuid"
         },
         {
-          "comment": null,
-          "default": null,
           "foreign_key": {
             "on_delete": "cascade",
             "on_update": null,
@@ -461,17 +227,12 @@
           "name": "media_id",
           "nullable": false,
           "primary_key": true,
-          "type": "uuid",
-          "unique": null
+          "type": "uuid"
         },
         {
-          "comment": null,
-          "default": null,
-          "foreign_key": null,
           "index": true,
           "name": "role",
           "nullable": false,
-          "primary_key": null,
           "type": {
             "kind": "enum",
             "name": "media_role",
@@ -480,98 +241,22 @@
               "editor",
               "reporter"
             ]
-          },
-          "unique": null
+          }
         },
         {
-          "comment": null,
           "default": "now()",
-          "foreign_key": null,
-          "index": null,
           "name": "created_at",
           "nullable": false,
-          "primary_key": null,
-          "type": "timestamptz",
-          "unique": null
+          "type": "timestamptz"
         }
       ],
-      "constraints": [
-        {
-          "auto_increment": false,
-          "columns": [
-            "user_id",
-            "media_id"
-          ],
-          "type": "primary_key"
-        },
-        {
-          "columns": [
-            "user_id"
-          ],
-          "name": null,
-          "on_delete": "cascade",
-          "on_update": null,
-          "ref_columns": [
-            "id"
-          ],
-          "ref_table": "user",
-          "type": "foreign_key"
-        },
-        {
-          "columns": [
-            "media_id"
-          ],
-          "name": null,
-          "on_delete": "cascade",
-          "on_update": null,
-          "ref_columns": [
-            "id"
-          ],
-          "ref_table": "media",
-          "type": "foreign_key"
-        }
-      ],
+      "constraints": [],
       "table": "user_media_role",
       "type": "create_table"
     },
     {
-      "index": {
-        "columns": [
-          "user_id"
-        ],
-        "name": "ix_user_media_role__user_id",
-        "unique": false
-      },
-      "table": "user_media_role",
-      "type": "add_index"
-    },
-    {
-      "index": {
-        "columns": [
-          "media_id"
-        ],
-        "name": "ix_user_media_role__media_id",
-        "unique": false
-      },
-      "table": "user_media_role",
-      "type": "add_index"
-    },
-    {
-      "index": {
-        "columns": [
-          "role"
-        ],
-        "name": "ix_user_media_role__role",
-        "unique": false
-      },
-      "table": "user_media_role",
-      "type": "add_index"
-    },
-    {
       "columns": [
         {
-          "comment": null,
-          "default": null,
           "foreign_key": {
             "on_delete": "cascade",
             "on_update": null,
@@ -580,16 +265,12 @@
             ],
             "ref_table": "article"
           },
-          "index": null,
           "name": "article_id",
           "nullable": false,
           "primary_key": true,
-          "type": "big_int",
-          "unique": null
+          "type": "big_int"
         },
         {
-          "comment": null,
-          "default": null,
           "foreign_key": {
             "on_delete": "cascade",
             "on_update": null,
@@ -602,28 +283,18 @@
           "name": "user_id",
           "nullable": false,
           "primary_key": true,
-          "type": "uuid",
-          "unique": null
+          "type": "uuid"
         },
         {
-          "comment": null,
           "default": "1",
-          "foreign_key": null,
-          "index": null,
           "name": "author_order",
           "nullable": false,
-          "primary_key": null,
-          "type": "integer",
-          "unique": null
+          "type": "integer"
         },
         {
-          "comment": null,
           "default": "'contributor'",
-          "foreign_key": null,
-          "index": null,
           "name": "role",
           "nullable": false,
-          "primary_key": null,
           "type": {
             "kind": "enum",
             "name": "article_user_role",
@@ -631,73 +302,21 @@
               "lead",
               "contributor"
             ]
-          },
-          "unique": null
+          }
         },
         {
-          "comment": null,
           "default": "now()",
-          "foreign_key": null,
-          "index": null,
           "name": "created_at",
           "nullable": false,
-          "primary_key": null,
-          "type": "timestamptz",
-          "unique": null
+          "type": "timestamptz"
         }
       ],
-      "constraints": [
-        {
-          "auto_increment": false,
-          "columns": [
-            "article_id",
-            "user_id"
-          ],
-          "type": "primary_key"
-        },
-        {
-          "columns": [
-            "article_id"
-          ],
-          "name": null,
-          "on_delete": "cascade",
-          "on_update": null,
-          "ref_columns": [
-            "id"
-          ],
-          "ref_table": "article",
-          "type": "foreign_key"
-        },
-        {
-          "columns": [
-            "user_id"
-          ],
-          "name": null,
-          "on_delete": "cascade",
-          "on_update": null,
-          "ref_columns": [
-            "id"
-          ],
-          "ref_table": "user",
-          "type": "foreign_key"
-        }
-      ],
+      "constraints": [],
       "table": "article_user",
       "type": "create_table"
-    },
-    {
-      "index": {
-        "columns": [
-          "user_id"
-        ],
-        "name": "ix_article_user__user_id",
-        "unique": false
-      },
-      "table": "article_user",
-      "type": "add_index"
     }
   ],
   "comment": "Init",
-  "created_at": "2025-12-18T17:35:37Z",
+  "created_at": "2025-12-19T04:26:58Z",
   "version": 1
 }

@@ -19,7 +19,7 @@ mod tests {
     use super::*;
     use rstest::rstest;
     use vespertide_core::{
-        ColumnDef, ColumnType, IndexDef, MigrationAction, SimpleColumnType, TableConstraint,
+        ColumnDef, ColumnType, MigrationAction, SimpleColumnType, TableConstraint,
     };
 
     fn col(name: &str, ty: ColumnType) -> ColumnDef {
@@ -36,17 +36,11 @@ mod tests {
         }
     }
 
-    fn table(
-        name: &str,
-        columns: Vec<ColumnDef>,
-        constraints: Vec<TableConstraint>,
-        indexes: Vec<IndexDef>,
-    ) -> TableDef {
+    fn table(name: &str, columns: Vec<ColumnDef>, constraints: Vec<TableConstraint>) -> TableDef {
         TableDef {
             name: name.to_string(),
             columns,
             constraints,
-            indexes,
         }
     }
 
@@ -66,7 +60,6 @@ mod tests {
             "users",
             vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             vec![TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] }],
-            vec![],
         )
     )]
     #[case::create_and_add_column(
@@ -99,7 +92,6 @@ mod tests {
                 col("name", ColumnType::Simple(SimpleColumnType::Text)),
             ],
             vec![TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] }],
-            vec![],
         )
     )]
     #[case::create_add_column_and_index(
@@ -128,12 +120,11 @@ mod tests {
                 comment: None,
                 created_at: None,
                 version: 3,
-                actions: vec![MigrationAction::AddIndex {
+                actions: vec![MigrationAction::AddConstraint {
                     table: "users".into(),
-                    index: IndexDef {
-                        name: "ix_users__name".into(),
+                    constraint: TableConstraint::Index {
+                        name: Some("ix_users__name".into()),
                         columns: vec!["name".into()],
-                        unique: false,
                     },
                 }],
             },
@@ -144,12 +135,13 @@ mod tests {
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 col("name", ColumnType::Simple(SimpleColumnType::Text)),
             ],
-            vec![TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] }],
-            vec![IndexDef {
-                name: "ix_users__name".into(),
-                columns: vec!["name".into()],
-                unique: false,
-            }],
+            vec![
+                TableConstraint::PrimaryKey{ auto_increment: false, columns: vec!["id".into()] },
+                TableConstraint::Index {
+                    name: Some("ix_users__name".into()),
+                    columns: vec!["name".into()],
+                },
+            ],
         )
     )]
     fn schema_from_plans_applies_actions(

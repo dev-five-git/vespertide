@@ -32,7 +32,6 @@ pub fn cmd_new(name: String, format: Option<FileFormat>) -> Result<()> {
         name: name.clone(),
         columns: Vec::new(),
         constraints: Vec::new(),
-        indexes: Vec::new(),
     };
 
     match format {
