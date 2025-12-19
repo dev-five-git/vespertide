@@ -1,6 +1,6 @@
 ---
 name: vespertide
-description: Define database schemas in JSON and generate migration plans. Use this skill when creating or modifying database models, defining tables with columns, constraints, indexes, and foreign keys for Vespertide-based projects.
+description: Define database schemas in JSON and generate migration plans. Use this skill when creating or modifying database models, defining tables with columns and inline constraints (primary_key, unique, index, foreign_key) for Vespertide-based projects.
 ---
 
 # Vespertide Database Schema Definition
@@ -34,8 +34,7 @@ Models are JSON files in the `models/` directory:
   "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
   "name": "table_name",
   "columns": [],
-  "constraints": [],
-  "indexes": []
+  "constraints": []
 }
 ```
 
@@ -46,7 +45,8 @@ Models are JSON files in the `models/` directory:
 | `name` | string | Table name (snake_case) |
 | `columns` | array | Column definitions |
 | `constraints` | array | Table-level constraints (can be empty `[]`) |
-| `indexes` | array | Index definitions (can be empty `[]`) |
+
+**Note**: The `indexes` field has been removed. Use inline `index` fields on columns instead (see Inline Constraints below).
 
 ## Column Definition
 
@@ -188,13 +188,24 @@ Reference actions: `"Cascade"`, `"Restrict"`, `"SetNull"`, `"SetDefault"`, `"NoA
 ]
 ```
 
-## Table-Level Indexes
+## Indexes
+
+**Prefer inline indexes** on column definitions instead of table-level indexes:
 
 ```json
-"indexes": [
-  { "name": "idx_user_email", "columns": ["email"], "unique": false },
-  { "name": "idx_composite", "columns": ["user_id", "created_at"], "unique": false }
-]
+{
+  "name": "email",
+  "type": "text",
+  "nullable": false,
+  "index": true
+}
+```
+
+For composite indexes, use the same index name on multiple columns:
+
+```json
+{ "name": "user_id", "type": "integer", "nullable": false, "index": ["idx_user_date"] },
+{ "name": "created_at", "type": "timestamp", "nullable": false, "index": ["idx_user_date"] }
 ```
 
 ## Examples
@@ -211,8 +222,7 @@ Reference actions: `"Cascade"`, `"Restrict"`, `"SetNull"`, `"SetDefault"`, `"NoA
     { "name": "name", "type": "text", "nullable": false },
     { "name": "created_at", "type": "timestamptz", "nullable": false, "default": "NOW()" }
   ],
-  "constraints": [],
-  "indexes": []
+  "constraints": []
 }
 ```
 
@@ -230,8 +240,7 @@ Reference actions: `"Cascade"`, `"Restrict"`, `"SetNull"`, `"SetDefault"`, `"NoA
     { "name": "published", "type": "boolean", "nullable": false, "default": "false" },
     { "name": "created_at", "type": "timestamptz", "nullable": false, "default": "NOW()" }
   ],
-  "constraints": [],
-  "indexes": []
+  "constraints": []
 }
 ```
 
@@ -251,8 +260,7 @@ Reference actions: `"Cascade"`, `"Restrict"`, `"SetNull"`, `"SetDefault"`, `"NoA
   ],
   "constraints": [
     { "type": "check", "name": "check_total_positive", "expr": "total_amount >= 0" }
-  ],
-  "indexes": []
+  ]
 }
 ```
 
@@ -264,13 +272,10 @@ Reference actions: `"Cascade"`, `"Restrict"`, `"SetNull"`, `"SetDefault"`, `"NoA
   "name": "user_role",
   "columns": [
     { "name": "user_id", "type": "integer", "nullable": false, "primary_key": true, "foreign_key": { "ref_table": "user", "ref_columns": ["id"], "on_delete": "Cascade" } },
-    { "name": "role_id", "type": "integer", "nullable": false, "primary_key": true, "foreign_key": { "ref_table": "role", "ref_columns": ["id"], "on_delete": "Cascade" } },
+    { "name": "role_id", "type": "integer", "nullable": false, "primary_key": true, "foreign_key": { "ref_table": "role", "ref_columns": ["id"], "on_delete": "Cascade" }, "index": true },
     { "name": "assigned_at", "type": "timestamptz", "nullable": false, "default": "NOW()" }
   ],
-  "constraints": [],
-  "indexes": [
-    { "name": "idx_user_role_role", "columns": ["role_id"], "unique": false }
-  ]
+  "constraints": []
 }
 ```
 
@@ -278,18 +283,19 @@ Reference actions: `"Cascade"`, `"Restrict"`, `"SetNull"`, `"SetDefault"`, `"NoA
 
 1. **Always include `$schema`** for IDE validation and autocompletion
 2. **Always specify `nullable`** on every column
-3. **Always include empty arrays** for `constraints` and `indexes` even if unused
-4. **Add indexes on foreign key columns** for query performance
-5. **Use named constraints** (especially CHECK) for easier management
-6. **Naming conventions**:
+3. **Always include empty array** for `constraints` even if unused
+4. **Prefer inline constraints** (`primary_key`, `unique`, `index`, `foreign_key`) over table-level definitions
+5. **Use inline `index` on foreign key columns** for query performance (e.g., `"index": true`)
+6. **Use named constraints** (especially CHECK) for easier management
+7. **Naming conventions**:
    - Tables: `snake_case` (e.g., `user_role`)
    - Columns: `snake_case` (e.g., `created_at`)
    - Indexes: `idx_{table}_{columns}`
    - Unique constraints: `uq_{table}_{columns}`
    - Foreign keys: `fk_{table}_{ref_table}`
    - Check constraints: `check_{description}`
-7. **Timestamp columns**:
+8. **Timestamp columns**:
    - `created_at`: `"default": "NOW()"`, `nullable: false`
    - `updated_at`: `nullable: true` (managed by application)
-8. **Boolean defaults**: Use string format `"true"` or `"false"`
-9. **Adding NOT NULL columns** to existing tables requires either a `default` value or `fill_with` in migration
+9. **Boolean defaults**: Use string format `"true"` or `"false"`
+10. **Adding NOT NULL columns** to existing tables requires either a `default` value or `fill_with` in migration
