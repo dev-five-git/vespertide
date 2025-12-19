@@ -77,9 +77,11 @@ pub fn build_remove_constraint(
                         columns: idx_cols,
                     } = constraint
                     {
-                        let index_name = idx_name
-                            .clone()
-                            .unwrap_or_else(|| format!("ix_{}_{}", table, idx_cols.join("_")));
+                        let index_name = vespertide_naming::build_index_name(
+                            table,
+                            idx_cols,
+                            idx_name.as_deref(),
+                        );
                         let mut idx_stmt = sea_query::Index::create();
                         idx_stmt = idx_stmt.name(&index_name).to_owned();
                         for col_name in idx_cols {
@@ -717,7 +719,7 @@ mod tests {
 
         if matches!(backend, DatabaseBackend::Sqlite) {
             assert!(sql.contains("CREATE INDEX"));
-            assert!(sql.contains("idx_id"));
+            assert!(sql.contains("ix_users__idx_id"));
         }
 
         with_settings!({ snapshot_suffix => format!("remove_primary_key_with_index_{:?}", backend) }, {
@@ -905,7 +907,7 @@ mod tests {
 
         if matches!(backend, DatabaseBackend::Sqlite) {
             assert!(sql.contains("CREATE INDEX"));
-            assert!(sql.contains("idx_id"));
+            assert!(sql.contains("ix_users__idx_id"));
         }
 
         with_settings!({ snapshot_suffix => format!("remove_unique_with_index_{:?}", backend) }, {

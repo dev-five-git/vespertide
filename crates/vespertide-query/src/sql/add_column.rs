@@ -121,9 +121,11 @@ pub fn build_add_column(
         let mut index_queries = Vec::new();
         for constraint in &table_def.constraints {
             if let vespertide_core::TableConstraint::Index { name, columns } = constraint {
-                let index_name = name
-                    .clone()
-                    .unwrap_or_else(|| format!("ix_{}_{}", table, columns.join("_")));
+                let index_name = vespertide_naming::build_index_name(
+                    table,
+                    columns,
+                    name.as_deref(),
+                );
                 let mut idx_stmt = sea_query::Index::create();
                 idx_stmt = idx_stmt.name(&index_name).to_owned();
                 for col_name in columns {
