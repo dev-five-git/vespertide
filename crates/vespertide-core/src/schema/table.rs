@@ -620,12 +620,12 @@ mod tests {
         );
 
         // Verify we have one named and one unnamed
-        let has_named = unique_constraints.iter().any(|c| {
-            matches!(c, TableConstraint::Unique { name: Some(n), .. } if n == "named_unique")
-        });
-        let has_unnamed = unique_constraints.iter().any(|c| {
-            matches!(c, TableConstraint::Unique { name: None, .. })
-        });
+        let has_named = unique_constraints.iter().any(
+            |c| matches!(c, TableConstraint::Unique { name: Some(n), .. } if n == "named_unique"),
+        );
+        let has_unnamed = unique_constraints
+            .iter()
+            .any(|c| matches!(c, TableConstraint::Unique { name: None, .. }));
 
         assert!(has_named, "Should have named unique constraint");
         assert!(has_unnamed, "Should have unnamed unique constraint");
