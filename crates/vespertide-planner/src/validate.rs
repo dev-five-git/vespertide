@@ -381,6 +381,68 @@ pub fn validate_migration_plan(plan: &MigrationPlan) -> Result<(), PlannerError>
     Ok(())
 }
 
+/// Information about an action that requires a fill_with value.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FillWithRequired {
+    /// Index of the action in the migration plan.
+    pub action_index: usize,
+    /// Table name.
+    pub table: String,
+    /// Column name.
+    pub column: String,
+    /// Type of action: "AddColumn" or "ModifyColumnNullable".
+    pub action_type: &'static str,
+    /// Column type (for display purposes).
+    pub column_type: Option<String>,
+}
+
+/// Find all actions in a migration plan that require fill_with values.
+/// Returns a list of actions that need fill_with but don't have one.
+pub fn find_missing_fill_with(plan: &MigrationPlan) -> Vec<FillWithRequired> {
+    let mut missing = Vec::new();
+
+    for (idx, action) in plan.actions.iter().enumerate() {
+        match action {
+            MigrationAction::AddColumn {
+                table,
+                column,
+                fill_with,
+            } => {
+                // If column is NOT NULL and has no default, fill_with is required
+                if !column.nullable && column.default.is_none() && fill_with.is_none() {
+                    missing.push(FillWithRequired {
+                        action_index: idx,
+                        table: table.clone(),
+                        column: column.name.clone(),
+                        action_type: "AddColumn",
+                        column_type: Some(format!("{:?}", column.r#type)),
+                    });
+                }
+            }
+            MigrationAction::ModifyColumnNullable {
+                table,
+                column,
+                nullable,
+                fill_with,
+            } => {
+                // If changing from nullable to non-nullable, fill_with is required
+                if !nullable && fill_with.is_none() {
+                    missing.push(FillWithRequired {
+                        action_index: idx,
+                        table: table.clone(),
+                        column: column.clone(),
+                        action_type: "ModifyColumnNullable",
+                        column_type: None,
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+
+    missing
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1490,5 +1552,255 @@ mod tests {
 
         let result = validate_migration_plan(&plan);
         assert!(result.is_ok());
+    }
+
+    // Tests for find_missing_fill_with function
+    #[test]
+    fn find_missing_fill_with_add_column_not_null_no_default() {
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "users".into(),
+                column: Box::new(ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }),
+                fill_with: None,
+            }],
+        };
+
+        let missing = find_missing_fill_with(&plan);
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].table, "users");
+        assert_eq!(missing[0].column, "email");
+        assert_eq!(missing[0].action_type, "AddColumn");
+        assert!(missing[0].column_type.is_some());
+    }
+
+    #[test]
+    fn find_missing_fill_with_add_column_with_default() {
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "users".into(),
+                column: Box::new(ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: false,
+                    default: Some("'default@example.com'".into()),
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }),
+                fill_with: None,
+            }],
+        };
+
+        let missing = find_missing_fill_with(&plan);
+        assert!(missing.is_empty());
+    }
+
+    #[test]
+    fn find_missing_fill_with_add_column_nullable() {
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "users".into(),
+                column: Box::new(ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }),
+                fill_with: None,
+            }],
+        };
+
+        let missing = find_missing_fill_with(&plan);
+        assert!(missing.is_empty());
+    }
+
+    #[test]
+    fn find_missing_fill_with_add_column_with_fill_with() {
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "users".into(),
+                column: Box::new(ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }),
+                fill_with: Some("'default@example.com'".into()),
+            }],
+        };
+
+        let missing = find_missing_fill_with(&plan);
+        assert!(missing.is_empty());
+    }
+
+    #[test]
+    fn find_missing_fill_with_modify_nullable_to_not_null() {
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::ModifyColumnNullable {
+                table: "users".into(),
+                column: "email".into(),
+                nullable: false,
+                fill_with: None,
+            }],
+        };
+
+        let missing = find_missing_fill_with(&plan);
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].table, "users");
+        assert_eq!(missing[0].column, "email");
+        assert_eq!(missing[0].action_type, "ModifyColumnNullable");
+        assert!(missing[0].column_type.is_none());
+    }
+
+    #[test]
+    fn find_missing_fill_with_modify_to_nullable() {
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::ModifyColumnNullable {
+                table: "users".into(),
+                column: "email".into(),
+                nullable: true,
+                fill_with: None,
+            }],
+        };
+
+        let missing = find_missing_fill_with(&plan);
+        assert!(missing.is_empty());
+    }
+
+    #[test]
+    fn find_missing_fill_with_modify_not_null_with_fill_with() {
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::ModifyColumnNullable {
+                table: "users".into(),
+                column: "email".into(),
+                nullable: false,
+                fill_with: Some("'default'".into()),
+            }],
+        };
+
+        let missing = find_missing_fill_with(&plan);
+        assert!(missing.is_empty());
+    }
+
+    #[test]
+    fn find_missing_fill_with_multiple_actions() {
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![
+                MigrationAction::AddColumn {
+                    table: "users".into(),
+                    column: Box::new(ColumnDef {
+                        name: "email".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Text),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    }),
+                    fill_with: None,
+                },
+                MigrationAction::ModifyColumnNullable {
+                    table: "orders".into(),
+                    column: "status".into(),
+                    nullable: false,
+                    fill_with: None,
+                },
+                MigrationAction::AddColumn {
+                    table: "users".into(),
+                    column: Box::new(ColumnDef {
+                        name: "name".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Text),
+                        nullable: true, // nullable, so not missing
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    }),
+                    fill_with: None,
+                },
+            ],
+        };
+
+        let missing = find_missing_fill_with(&plan);
+        assert_eq!(missing.len(), 2);
+        assert_eq!(missing[0].action_index, 0);
+        assert_eq!(missing[0].table, "users");
+        assert_eq!(missing[0].column, "email");
+        assert_eq!(missing[1].action_index, 1);
+        assert_eq!(missing[1].table, "orders");
+        assert_eq!(missing[1].column, "status");
+    }
+
+    #[test]
+    fn find_missing_fill_with_other_actions_ignored() {
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![
+                MigrationAction::CreateTable {
+                    table: "users".into(),
+                    columns: vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+                    constraints: vec![pk(vec!["id"])],
+                },
+                MigrationAction::DeleteColumn {
+                    table: "orders".into(),
+                    column: "old_column".into(),
+                },
+            ],
+        };
+
+        let missing = find_missing_fill_with(&plan);
+        assert!(missing.is_empty());
     }
 }

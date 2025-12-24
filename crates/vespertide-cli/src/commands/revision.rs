@@ -1,18 +1,69 @@
+use std::collections::HashMap;
 use std::fs;
 
 use anyhow::{Context, Result};
 use chrono::Utc;
 use colored::Colorize;
+use dialoguer::Input;
 use serde_json::Value;
 use vespertide_config::FileFormat;
-use vespertide_core::MigrationPlan;
-use vespertide_planner::plan_next_migration;
+use vespertide_core::{MigrationAction, MigrationPlan};
+use vespertide_planner::{find_missing_fill_with, plan_next_migration};
 
 use crate::utils::{
     load_config, load_migrations, load_models, migration_filename_with_format_and_pattern,
 };
 
-pub fn cmd_revision(message: String) -> Result<()> {
+/// Parse fill_with arguments from CLI.
+/// Format: table.column=value
+fn parse_fill_with_args(args: &[String]) -> HashMap<(String, String), String> {
+    let mut map = HashMap::new();
+    for arg in args {
+        if let Some((key, value)) = arg.split_once('=')
+            && let Some((table, column)) = key.split_once('.')
+        {
+            map.insert((table.to_string(), column.to_string()), value.to_string());
+        }
+    }
+    map
+}
+
+/// Apply fill_with values to a migration plan.
+fn apply_fill_with_to_plan(
+    plan: &mut MigrationPlan,
+    fill_values: &HashMap<(String, String), String>,
+) {
+    for action in &mut plan.actions {
+        match action {
+            MigrationAction::AddColumn {
+                table,
+                column,
+                fill_with,
+            } => {
+                if fill_with.is_none()
+                    && let Some(value) = fill_values.get(&(table.clone(), column.name.clone()))
+                {
+                    *fill_with = Some(value.clone());
+                }
+            }
+            MigrationAction::ModifyColumnNullable {
+                table,
+                column,
+                fill_with,
+                ..
+            } => {
+                if fill_with.is_none()
+                    && let Some(value) = fill_values.get(&(table.clone(), column.clone()))
+                {
+                    *fill_with = Some(value.clone());
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+pub fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Result<()> {
     let config = load_config()?;
     let current_models = load_models(&config)?;
     let applied_plans = load_migrations(&config)?;
@@ -27,6 +78,64 @@ pub fn cmd_revision(message: String) -> Result<()> {
             "Nothing to migrate.".bright_white()
         );
         return Ok(());
+    }
+
+    // Parse CLI fill_with arguments
+    let mut fill_values = parse_fill_with_args(&fill_with_args);
+
+    // Apply any CLI-provided fill_with values first
+    apply_fill_with_to_plan(&mut plan, &fill_values);
+
+    // Check for missing fill_with values
+    let missing = find_missing_fill_with(&plan);
+
+    if !missing.is_empty() {
+        println!(
+            "\n{} {}",
+            "⚠".bright_yellow(),
+            "The following columns require fill_with values:".bright_yellow()
+        );
+        println!("{}", "─".repeat(60).bright_black());
+
+        for item in &missing {
+            let type_info = item
+                .column_type
+                .as_ref()
+                .map(|t| format!(" ({})", t))
+                .unwrap_or_default();
+
+            println!(
+                "  {} {}.{}{}",
+                "•".bright_cyan(),
+                item.table.bright_white(),
+                item.column.bright_green(),
+                type_info.bright_black()
+            );
+            println!(
+                "    {} {}",
+                "Action:".bright_black(),
+                item.action_type.bright_magenta()
+            );
+
+            // Prompt for value
+            let prompt = format!(
+                "  Enter fill value for {}.{}",
+                item.table.bright_white(),
+                item.column.bright_green()
+            );
+
+            let value: String = Input::new()
+                .with_prompt(&prompt)
+                .interact_text()
+                .context("failed to read input")?;
+
+            fill_values.insert((item.table.clone(), item.column.clone()), value);
+        }
+
+        println!("{}", "─".repeat(60).bright_black());
+
+        // Apply the collected fill_with values
+        apply_fill_with_to_plan(&mut plan, &fill_values);
     }
 
     plan.comment = Some(message);
@@ -193,7 +302,7 @@ mod tests {
         write_model("users");
         fs::create_dir_all(cfg.migrations_dir()).unwrap();
 
-        cmd_revision("init".into()).unwrap();
+        cmd_revision("init".into(), vec![]).unwrap();
 
         let entries: Vec<_> = fs::read_dir(cfg.migrations_dir()).unwrap().collect();
         assert!(!entries.is_empty());
@@ -207,7 +316,7 @@ mod tests {
 
         let cfg = write_config();
         // no models, no migrations -> plan with no actions -> early return
-        assert!(cmd_revision("noop".into()).is_ok());
+        assert!(cmd_revision("noop".into(), vec![]).is_ok());
         // migrations dir should not be created
         assert!(!cfg.migrations_dir().exists());
     }
@@ -225,7 +334,7 @@ mod tests {
             fs::remove_dir_all(cfg.migrations_dir()).unwrap();
         }
 
-        cmd_revision("yaml".into()).unwrap();
+        cmd_revision("yaml".into(), vec![]).unwrap();
 
         let entries: Vec<_> = fs::read_dir(cfg.migrations_dir()).unwrap().collect();
         assert!(!entries.is_empty());
@@ -238,5 +347,290 @@ mod tests {
                 .unwrap_or(false)
         });
         assert!(has_yaml);
+    }
+
+    #[test]
+    fn test_parse_fill_with_args() {
+        let args = vec![
+            "users.email=default@example.com".to_string(),
+            "orders.status=pending".to_string(),
+        ];
+        let result = parse_fill_with_args(&args);
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(
+            result.get(&("users".to_string(), "email".to_string())),
+            Some(&"default@example.com".to_string())
+        );
+        assert_eq!(
+            result.get(&("orders".to_string(), "status".to_string())),
+            Some(&"pending".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_fill_with_args_invalid_format() {
+        let args = vec![
+            "invalid_format".to_string(),
+            "no_equals_sign".to_string(),
+            "users.email=valid".to_string(),
+        ];
+        let result = parse_fill_with_args(&args);
+
+        // Only the valid one should be parsed
+        assert_eq!(result.len(), 1);
+        assert_eq!(
+            result.get(&("users".to_string(), "email".to_string())),
+            Some(&"valid".to_string())
+        );
+    }
+
+    #[test]
+    fn test_apply_fill_with_to_plan_add_column() {
+        use vespertide_core::MigrationPlan;
+
+        let mut plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "users".into(),
+                column: Box::new(ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }),
+                fill_with: None,
+            }],
+        };
+
+        let mut fill_values = HashMap::new();
+        fill_values.insert(
+            ("users".to_string(), "email".to_string()),
+            "'default@example.com'".to_string(),
+        );
+
+        apply_fill_with_to_plan(&mut plan, &fill_values);
+
+        match &plan.actions[0] {
+            MigrationAction::AddColumn { fill_with, .. } => {
+                assert_eq!(fill_with, &Some("'default@example.com'".to_string()));
+            }
+            _ => panic!("Expected AddColumn action"),
+        }
+    }
+
+    #[test]
+    fn test_apply_fill_with_to_plan_modify_column_nullable() {
+        use vespertide_core::MigrationPlan;
+
+        let mut plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::ModifyColumnNullable {
+                table: "users".into(),
+                column: "status".into(),
+                nullable: false,
+                fill_with: None,
+            }],
+        };
+
+        let mut fill_values = HashMap::new();
+        fill_values.insert(
+            ("users".to_string(), "status".to_string()),
+            "'active'".to_string(),
+        );
+
+        apply_fill_with_to_plan(&mut plan, &fill_values);
+
+        match &plan.actions[0] {
+            MigrationAction::ModifyColumnNullable { fill_with, .. } => {
+                assert_eq!(fill_with, &Some("'active'".to_string()));
+            }
+            _ => panic!("Expected ModifyColumnNullable action"),
+        }
+    }
+
+    #[test]
+    fn test_apply_fill_with_to_plan_skips_existing_fill_with() {
+        use vespertide_core::MigrationPlan;
+
+        let mut plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "users".into(),
+                column: Box::new(ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }),
+                fill_with: Some("'existing@example.com'".to_string()),
+            }],
+        };
+
+        let mut fill_values = HashMap::new();
+        fill_values.insert(
+            ("users".to_string(), "email".to_string()),
+            "'new@example.com'".to_string(),
+        );
+
+        apply_fill_with_to_plan(&mut plan, &fill_values);
+
+        // Should keep existing value, not replace with new
+        match &plan.actions[0] {
+            MigrationAction::AddColumn { fill_with, .. } => {
+                assert_eq!(fill_with, &Some("'existing@example.com'".to_string()));
+            }
+            _ => panic!("Expected AddColumn action"),
+        }
+    }
+
+    #[test]
+    fn test_apply_fill_with_to_plan_no_match() {
+        use vespertide_core::MigrationPlan;
+
+        let mut plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "users".into(),
+                column: Box::new(ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }),
+                fill_with: None,
+            }],
+        };
+
+        let mut fill_values = HashMap::new();
+        fill_values.insert(
+            ("orders".to_string(), "status".to_string()),
+            "'pending'".to_string(),
+        );
+
+        apply_fill_with_to_plan(&mut plan, &fill_values);
+
+        // Should remain None since no match
+        match &plan.actions[0] {
+            MigrationAction::AddColumn { fill_with, .. } => {
+                assert_eq!(fill_with, &None);
+            }
+            _ => panic!("Expected AddColumn action"),
+        }
+    }
+
+    #[test]
+    fn test_apply_fill_with_to_plan_multiple_actions() {
+        use vespertide_core::MigrationPlan;
+
+        let mut plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![
+                MigrationAction::AddColumn {
+                    table: "users".into(),
+                    column: Box::new(ColumnDef {
+                        name: "email".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Text),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    }),
+                    fill_with: None,
+                },
+                MigrationAction::ModifyColumnNullable {
+                    table: "orders".into(),
+                    column: "status".into(),
+                    nullable: false,
+                    fill_with: None,
+                },
+            ],
+        };
+
+        let mut fill_values = HashMap::new();
+        fill_values.insert(
+            ("users".to_string(), "email".to_string()),
+            "'user@example.com'".to_string(),
+        );
+        fill_values.insert(
+            ("orders".to_string(), "status".to_string()),
+            "'pending'".to_string(),
+        );
+
+        apply_fill_with_to_plan(&mut plan, &fill_values);
+
+        match &plan.actions[0] {
+            MigrationAction::AddColumn { fill_with, .. } => {
+                assert_eq!(fill_with, &Some("'user@example.com'".to_string()));
+            }
+            _ => panic!("Expected AddColumn action"),
+        }
+
+        match &plan.actions[1] {
+            MigrationAction::ModifyColumnNullable { fill_with, .. } => {
+                assert_eq!(fill_with, &Some("'pending'".to_string()));
+            }
+            _ => panic!("Expected ModifyColumnNullable action"),
+        }
+    }
+
+    #[test]
+    fn test_apply_fill_with_to_plan_other_actions_ignored() {
+        use vespertide_core::MigrationPlan;
+
+        let mut plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::DeleteColumn {
+                table: "users".into(),
+                column: "old_column".into(),
+            }],
+        };
+
+        let mut fill_values = HashMap::new();
+        fill_values.insert(
+            ("users".to_string(), "old_column".to_string()),
+            "'value'".to_string(),
+        );
+
+        // Should not panic or modify anything
+        apply_fill_with_to_plan(&mut plan, &fill_values);
+
+        match &plan.actions[0] {
+            MigrationAction::DeleteColumn { table, column } => {
+                assert_eq!(table, "users");
+                assert_eq!(column, "old_column");
+            }
+            _ => panic!("Expected DeleteColumn action"),
+        }
     }
 }

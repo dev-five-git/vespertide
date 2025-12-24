@@ -65,6 +65,10 @@ enum Commands {
     Revision {
         #[arg(short = 'm', long = "message")]
         message: String,
+        /// Fill values for NOT NULL columns without defaults.
+        /// Format: table.column=value (can be specified multiple times)
+        #[arg(long = "fill-with")]
+        fill_with: Vec<String>,
     },
     /// Initialize vespertide.json with defaults.
     Init,
@@ -87,7 +91,7 @@ fn main() -> Result<()> {
         Some(Commands::Log { backend }) => cmd_log(backend.into()),
         Some(Commands::New { name, format }) => cmd_new(name, format),
         Some(Commands::Status) => cmd_status(),
-        Some(Commands::Revision { message }) => cmd_revision(message),
+        Some(Commands::Revision { message, fill_with }) => cmd_revision(message, fill_with),
         Some(Commands::Init) => cmd_init(),
         Some(Commands::Export { orm, export_dir }) => cmd_export(orm, export_dir),
         None => {
