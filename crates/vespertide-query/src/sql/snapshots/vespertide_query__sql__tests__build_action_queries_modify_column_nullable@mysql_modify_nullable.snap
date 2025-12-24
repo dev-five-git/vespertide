@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/mod.rs
+expression: sql
+---
+UPDATE `users` SET `email` = 'unknown' WHERE `email` IS NULL
+ALTER TABLE `users` MODIFY COLUMN `email` text NOT NULL

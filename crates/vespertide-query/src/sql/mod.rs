@@ -1196,4 +1196,160 @@ mod tests {
             assert_snapshot!(sql);
         });
     }
+
+    /// Test build_action_queries for ModifyColumnNullable
+    #[rstest]
+    #[case::postgres_modify_nullable(DatabaseBackend::Postgres)]
+    #[case::mysql_modify_nullable(DatabaseBackend::MySql)]
+    #[case::sqlite_modify_nullable(DatabaseBackend::Sqlite)]
+    fn test_build_action_queries_modify_column_nullable(#[case] backend: DatabaseBackend) {
+        let action = MigrationAction::ModifyColumnNullable {
+            table: "users".into(),
+            column: "email".into(),
+            nullable: false,
+            fill_with: Some("'unknown'".into()),
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "email".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Text),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        }];
+        let result = build_action_queries(&backend, &action, &current_schema).unwrap();
+        assert!(!result.is_empty());
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        // Should contain UPDATE for fill_with and ALTER for nullable change
+        assert!(sql.contains("UPDATE"));
+        assert!(sql.contains("unknown"));
+
+        let suffix = format!(
+            "{}_modify_nullable",
+            match backend {
+                DatabaseBackend::Postgres => "postgres",
+                DatabaseBackend::MySql => "mysql",
+                DatabaseBackend::Sqlite => "sqlite",
+            }
+        );
+
+        with_settings!({ snapshot_suffix => suffix }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    /// Test build_action_queries for ModifyColumnDefault
+    #[rstest]
+    #[case::postgres_modify_default(DatabaseBackend::Postgres)]
+    #[case::mysql_modify_default(DatabaseBackend::MySql)]
+    #[case::sqlite_modify_default(DatabaseBackend::Sqlite)]
+    fn test_build_action_queries_modify_column_default(#[case] backend: DatabaseBackend) {
+        let action = MigrationAction::ModifyColumnDefault {
+            table: "users".into(),
+            column: "status".into(),
+            new_default: Some("'active'".into()),
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "status".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Text),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        }];
+        let result = build_action_queries(&backend, &action, &current_schema).unwrap();
+        assert!(!result.is_empty());
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        // Should contain DEFAULT and 'active'
+        assert!(sql.contains("DEFAULT") || sql.contains("active"));
+
+        let suffix = format!(
+            "{}_modify_default",
+            match backend {
+                DatabaseBackend::Postgres => "postgres",
+                DatabaseBackend::MySql => "mysql",
+                DatabaseBackend::Sqlite => "sqlite",
+            }
+        );
+
+        with_settings!({ snapshot_suffix => suffix }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    /// Test build_action_queries for ModifyColumnComment
+    #[rstest]
+    #[case::postgres_modify_comment(DatabaseBackend::Postgres)]
+    #[case::mysql_modify_comment(DatabaseBackend::MySql)]
+    #[case::sqlite_modify_comment(DatabaseBackend::Sqlite)]
+    fn test_build_action_queries_modify_column_comment(#[case] backend: DatabaseBackend) {
+        let action = MigrationAction::ModifyColumnComment {
+            table: "users".into(),
+            column: "email".into(),
+            new_comment: Some("User email address".into()),
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "email".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Text),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        }];
+        let result = build_action_queries(&backend, &action, &current_schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        // Postgres and MySQL should have comment, SQLite returns empty
+        if backend != DatabaseBackend::Sqlite {
+            assert!(sql.contains("COMMENT") || sql.contains("User email address"));
+        }
+
+        let suffix = format!(
+            "{}_modify_comment",
+            match backend {
+                DatabaseBackend::Postgres => "postgres",
+                DatabaseBackend::MySql => "mysql",
+                DatabaseBackend::Sqlite => "sqlite",
+            }
+        );
+
+        with_settings!({ snapshot_suffix => suffix }, {
+            assert_snapshot!(sql);
+        });
+    }
 }

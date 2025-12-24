@@ -1139,4 +1139,242 @@ mod tests {
         // Inline index cleared
         assert!(schema[0].columns[0].index.is_none());
     }
+
+    // Tests for ModifyColumnNullable
+    #[test]
+    fn apply_modify_column_nullable_success() {
+        let mut schema = vec![table(
+            "users",
+            vec![col("email", ColumnType::Simple(SimpleColumnType::Text))],
+            vec![],
+        )];
+
+        // Initially nullable: true (from col helper)
+        assert!(schema[0].columns[0].nullable);
+
+        apply_action(
+            &mut schema,
+            &MigrationAction::ModifyColumnNullable {
+                table: "users".into(),
+                column: "email".into(),
+                nullable: false,
+                fill_with: None,
+            },
+        )
+        .unwrap();
+
+        assert!(!schema[0].columns[0].nullable);
+    }
+
+    #[test]
+    fn apply_modify_column_nullable_table_not_found() {
+        let mut schema = vec![];
+
+        let err = apply_action(
+            &mut schema,
+            &MigrationAction::ModifyColumnNullable {
+                table: "users".into(),
+                column: "email".into(),
+                nullable: false,
+                fill_with: None,
+            },
+        )
+        .unwrap_err();
+
+        assert_err_kind(err, ErrKind::TableNotFound);
+    }
+
+    #[test]
+    fn apply_modify_column_nullable_column_not_found() {
+        let mut schema = vec![table(
+            "users",
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+            vec![],
+        )];
+
+        let err = apply_action(
+            &mut schema,
+            &MigrationAction::ModifyColumnNullable {
+                table: "users".into(),
+                column: "email".into(),
+                nullable: false,
+                fill_with: None,
+            },
+        )
+        .unwrap_err();
+
+        assert_err_kind(err, ErrKind::ColumnNotFound);
+    }
+
+    // Tests for ModifyColumnDefault
+    #[test]
+    fn apply_modify_column_default_set() {
+        let mut schema = vec![table(
+            "users",
+            vec![col("status", ColumnType::Simple(SimpleColumnType::Text))],
+            vec![],
+        )];
+
+        // Initially no default
+        assert!(schema[0].columns[0].default.is_none());
+
+        apply_action(
+            &mut schema,
+            &MigrationAction::ModifyColumnDefault {
+                table: "users".into(),
+                column: "status".into(),
+                new_default: Some("'active'".into()),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            schema[0].columns[0].default,
+            Some(vespertide_core::StringOrBool::String("'active'".into()))
+        );
+    }
+
+    #[test]
+    fn apply_modify_column_default_drop() {
+        let mut col_with_default = col("status", ColumnType::Simple(SimpleColumnType::Text));
+        col_with_default.default = Some(vespertide_core::StringOrBool::String("'active'".into()));
+
+        let mut schema = vec![table("users", vec![col_with_default], vec![])];
+
+        apply_action(
+            &mut schema,
+            &MigrationAction::ModifyColumnDefault {
+                table: "users".into(),
+                column: "status".into(),
+                new_default: None,
+            },
+        )
+        .unwrap();
+
+        assert!(schema[0].columns[0].default.is_none());
+    }
+
+    #[test]
+    fn apply_modify_column_default_table_not_found() {
+        let mut schema = vec![];
+
+        let err = apply_action(
+            &mut schema,
+            &MigrationAction::ModifyColumnDefault {
+                table: "users".into(),
+                column: "status".into(),
+                new_default: Some("'active'".into()),
+            },
+        )
+        .unwrap_err();
+
+        assert_err_kind(err, ErrKind::TableNotFound);
+    }
+
+    #[test]
+    fn apply_modify_column_default_column_not_found() {
+        let mut schema = vec![table(
+            "users",
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+            vec![],
+        )];
+
+        let err = apply_action(
+            &mut schema,
+            &MigrationAction::ModifyColumnDefault {
+                table: "users".into(),
+                column: "status".into(),
+                new_default: Some("'active'".into()),
+            },
+        )
+        .unwrap_err();
+
+        assert_err_kind(err, ErrKind::ColumnNotFound);
+    }
+
+    // Tests for ModifyColumnComment
+    #[test]
+    fn apply_modify_column_comment_set() {
+        let mut schema = vec![table(
+            "users",
+            vec![col("email", ColumnType::Simple(SimpleColumnType::Text))],
+            vec![],
+        )];
+
+        // Initially no comment
+        assert!(schema[0].columns[0].comment.is_none());
+
+        apply_action(
+            &mut schema,
+            &MigrationAction::ModifyColumnComment {
+                table: "users".into(),
+                column: "email".into(),
+                new_comment: Some("User email address".into()),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            schema[0].columns[0].comment,
+            Some("User email address".into())
+        );
+    }
+
+    #[test]
+    fn apply_modify_column_comment_drop() {
+        let mut col_with_comment = col("email", ColumnType::Simple(SimpleColumnType::Text));
+        col_with_comment.comment = Some("User email address".into());
+
+        let mut schema = vec![table("users", vec![col_with_comment], vec![])];
+
+        apply_action(
+            &mut schema,
+            &MigrationAction::ModifyColumnComment {
+                table: "users".into(),
+                column: "email".into(),
+                new_comment: None,
+            },
+        )
+        .unwrap();
+
+        assert!(schema[0].columns[0].comment.is_none());
+    }
+
+    #[test]
+    fn apply_modify_column_comment_table_not_found() {
+        let mut schema = vec![];
+
+        let err = apply_action(
+            &mut schema,
+            &MigrationAction::ModifyColumnComment {
+                table: "users".into(),
+                column: "email".into(),
+                new_comment: Some("User email".into()),
+            },
+        )
+        .unwrap_err();
+
+        assert_err_kind(err, ErrKind::TableNotFound);
+    }
+
+    #[test]
+    fn apply_modify_column_comment_column_not_found() {
+        let mut schema = vec![table(
+            "users",
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+            vec![],
+        )];
+
+        let err = apply_action(
+            &mut schema,
+            &MigrationAction::ModifyColumnComment {
+                table: "users".into(),
+                column: "email".into(),
+                new_comment: Some("User email".into()),
+            },
+        )
+        .unwrap_err();
+
+        assert_err_kind(err, ErrKind::ColumnNotFound);
+    }
 }

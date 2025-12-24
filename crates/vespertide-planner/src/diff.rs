@@ -266,7 +266,7 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
     for name in from_map.keys() {
         if !to_map.contains_key(name) {
             actions.push(MigrationAction::DeleteTable {
-                table: (*name).to_string(),
+                table: name.to_string(),
             });
         }
     }
@@ -290,8 +290,8 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
             for col in from_cols.keys() {
                 if !to_cols.contains_key(col) {
                     actions.push(MigrationAction::DeleteColumn {
-                        table: (*name).to_string(),
-                        column: (*col).to_string(),
+                        table: name.to_string(),
+                        column: col.to_string(),
                     });
                 }
             }
@@ -302,8 +302,8 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
                     && from_def.r#type.requires_migration(&to_def.r#type)
                 {
                     actions.push(MigrationAction::ModifyColumnType {
-                        table: (*name).to_string(),
-                        column: (*col).to_string(),
+                        table: name.to_string(),
+                        column: col.to_string(),
                         new_type: to_def.r#type.clone(),
                     });
                 }
@@ -315,8 +315,8 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
                     && from_def.nullable != to_def.nullable
                 {
                     actions.push(MigrationAction::ModifyColumnNullable {
-                        table: (*name).to_string(),
-                        column: (*col).to_string(),
+                        table: name.to_string(),
+                        column: col.to_string(),
                         nullable: to_def.nullable,
                         fill_with: None,
                     });
@@ -330,8 +330,8 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
                     let to_default = to_def.default.as_ref().map(|d| d.to_sql());
                     if from_default != to_default {
                         actions.push(MigrationAction::ModifyColumnDefault {
-                            table: (*name).to_string(),
-                            column: (*col).to_string(),
+                            table: name.to_string(),
+                            column: col.to_string(),
                             new_default: to_default,
                         });
                     }
@@ -344,8 +344,8 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
                     && from_def.comment != to_def.comment
                 {
                     actions.push(MigrationAction::ModifyColumnComment {
-                        table: (*name).to_string(),
-                        column: (*col).to_string(),
+                        table: name.to_string(),
+                        column: col.to_string(),
                         new_comment: to_def.comment.clone(),
                     });
                 }
@@ -357,7 +357,7 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
             for (col, def) in &to_cols {
                 if !from_cols.contains_key(col) {
                     actions.push(MigrationAction::AddColumn {
-                        table: (*name).to_string(),
+                        table: name.to_string(),
                         column: Box::new((*def).clone()),
                         fill_with: None,
                     });
@@ -368,7 +368,7 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
             for from_constraint in &from_tbl.constraints {
                 if !to_tbl.constraints.contains(from_constraint) {
                     actions.push(MigrationAction::RemoveConstraint {
-                        table: (*name).to_string(),
+                        table: name.to_string(),
                         constraint: from_constraint.clone(),
                     });
                 }
@@ -376,7 +376,7 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
             for to_constraint in &to_tbl.constraints {
                 if !from_tbl.constraints.contains(to_constraint) {
                     actions.push(MigrationAction::AddConstraint {
-                        table: (*name).to_string(),
+                        table: name.to_string(),
                         constraint: to_constraint.clone(),
                     });
                 }

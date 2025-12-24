@@ -493,4 +493,95 @@ mod tests {
         assert!(result.ends_with("..."));
         assert!(result.len() > 10);
     }
+
+    #[rstest]
+    #[case::modify_column_nullable_to_not_null(
+        MigrationAction::ModifyColumnNullable {
+            table: "users".into(),
+            column: "email".into(),
+            nullable: false,
+            fill_with: None,
+        },
+        "ModifyColumnNullable: users.email -> NOT NULL"
+    )]
+    #[case::modify_column_nullable_to_null(
+        MigrationAction::ModifyColumnNullable {
+            table: "users".into(),
+            column: "email".into(),
+            nullable: true,
+            fill_with: None,
+        },
+        "ModifyColumnNullable: users.email -> NULL"
+    )]
+    fn test_display_modify_column_nullable(
+        #[case] action: MigrationAction,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(action.to_string(), expected);
+    }
+
+    #[rstest]
+    #[case::modify_column_default_set(
+        MigrationAction::ModifyColumnDefault {
+            table: "users".into(),
+            column: "status".into(),
+            new_default: Some("'active'".into()),
+        },
+        "ModifyColumnDefault: users.status -> 'active'"
+    )]
+    #[case::modify_column_default_drop(
+        MigrationAction::ModifyColumnDefault {
+            table: "users".into(),
+            column: "status".into(),
+            new_default: None,
+        },
+        "ModifyColumnDefault: users.status -> (none)"
+    )]
+    fn test_display_modify_column_default(
+        #[case] action: MigrationAction,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(action.to_string(), expected);
+    }
+
+    #[rstest]
+    #[case::modify_column_comment_set(
+        MigrationAction::ModifyColumnComment {
+            table: "users".into(),
+            column: "email".into(),
+            new_comment: Some("User email address".into()),
+        },
+        "ModifyColumnComment: users.email -> 'User email address'"
+    )]
+    #[case::modify_column_comment_drop(
+        MigrationAction::ModifyColumnComment {
+            table: "users".into(),
+            column: "email".into(),
+            new_comment: None,
+        },
+        "ModifyColumnComment: users.email -> (none)"
+    )]
+    fn test_display_modify_column_comment(
+        #[case] action: MigrationAction,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(action.to_string(), expected);
+    }
+
+    #[test]
+    fn test_display_modify_column_comment_long() {
+        // Test truncation for long comments (> 30 chars)
+        let action = MigrationAction::ModifyColumnComment {
+            table: "users".into(),
+            column: "email".into(),
+            new_comment: Some(
+                "This is a very long comment that should be truncated in display".into(),
+            ),
+        };
+        let result = action.to_string();
+        assert!(result.contains("..."));
+        assert!(result.contains("This is a very long comment"));
+        // Should be truncated at 27 chars + "..."
+        assert!(!result.contains("truncated in display"));
+    }
 }
