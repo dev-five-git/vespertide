@@ -3066,4 +3066,111 @@ mod tests {
             });
         }
     }
+
+    // Explicit coverage tests for lines that tarpaulin might miss in rstest
+    mod coverage_explicit {
+        use super::*;
+
+        #[test]
+        fn delete_column_explicit() {
+            // Covers lines 292-294: DeleteColumn action inside modified table loop
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("name", ColumnType::Simple(SimpleColumnType::Text)),
+                ],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+            assert_eq!(plan.actions.len(), 1);
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::DeleteColumn { table, column }
+                if table == "users" && column == "name"
+            ));
+        }
+
+        #[test]
+        fn add_column_explicit() {
+            // Covers lines 359-362: AddColumn action inside modified table loop
+            let from = vec![table(
+                "users",
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("email", ColumnType::Simple(SimpleColumnType::Text)),
+                ],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+            assert_eq!(plan.actions.len(), 1);
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::AddColumn { table, column, .. }
+                if table == "users" && column.name == "email"
+            ));
+        }
+
+        #[test]
+        fn remove_constraint_explicit() {
+            // Covers lines 370-372: RemoveConstraint action inside modified table loop
+            let from = vec![table(
+                "users",
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+                vec![idx("idx_users_id", vec!["id"])],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+            assert_eq!(plan.actions.len(), 1);
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::RemoveConstraint { table, constraint }
+                if table == "users" && matches!(constraint, TableConstraint::Index { name: Some(n), .. } if n == "idx_users_id")
+            ));
+        }
+
+        #[test]
+        fn add_constraint_explicit() {
+            // Covers lines 378-380: AddConstraint action inside modified table loop
+            let from = vec![table(
+                "users",
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+                vec![idx("idx_users_id", vec!["id"])],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+            assert_eq!(plan.actions.len(), 1);
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::AddConstraint { table, constraint }
+                if table == "users" && matches!(constraint, TableConstraint::Index { name: Some(n), .. } if n == "idx_users_id")
+            ));
+        }
+    }
 }
