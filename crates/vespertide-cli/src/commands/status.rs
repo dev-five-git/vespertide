@@ -81,14 +81,22 @@ pub fn cmd_status() -> Result<()> {
             .iter()
             .filter(|c| matches!(c, vespertide_core::TableConstraint::Index { .. }))
             .count();
+        // Count Unique constraints
+        let unique_count = model
+            .constraints
+            .iter()
+            .filter(|c| matches!(c, vespertide_core::TableConstraint::Unique { .. }))
+            .count();
         println!(
-            "  {} {} ({} {}, {} {})",
+            "  {} {} ({} {}, {} {}, {} {})",
             "-".bright_white(),
             model.name.bright_green(),
             model.columns.len().to_string().bright_blue(),
             "columns".bright_white(),
             index_count.to_string().bright_blue(),
-            "indexes".bright_white()
+            "indexes".bright_white(),
+            unique_count.to_string().bright_blue(),
+            "uniques".bright_white()
         );
     }
     println!();
