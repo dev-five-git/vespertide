@@ -91,13 +91,11 @@ fn extract_enum_value(value: &str) -> Option<&str> {
         return None;
     }
     // Strip quotes if present
-    if (trimmed.starts_with('\'') && trimmed.ends_with('\''))
-        || (trimmed.starts_with('"') && trimmed.ends_with('"'))
-    {
-        if trimmed.len() >= 2 {
+    if ((trimmed.starts_with('\'') && trimmed.ends_with('\''))
+        || (trimmed.starts_with('"') && trimmed.ends_with('"')))
+        && trimmed.len() >= 2 {
             return Some(&trimmed[1..trimmed.len() - 1]);
         }
-    }
     // Unquoted value
     Some(trimmed)
 }
