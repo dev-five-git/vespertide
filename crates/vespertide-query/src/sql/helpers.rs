@@ -254,7 +254,9 @@ pub fn build_sea_column_def_with_table(
                 converted
             };
 
-        col.default(Into::<SimpleExpr>::into(sea_query::Expr::cust(final_default)));
+        col.default(Into::<SimpleExpr>::into(sea_query::Expr::cust(
+            final_default,
+        )));
     }
 
     col

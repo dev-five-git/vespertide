@@ -27,10 +27,7 @@ pub fn build_modify_column_comment(
                     table, column, escaped
                 )
             } else {
-                format!(
-                    "COMMENT ON COLUMN \"{}\".\"{}\" IS NULL",
-                    table, column
-                )
+                format!("COMMENT ON COLUMN \"{}\".\"{}\" IS NULL", table, column)
             };
             queries.push(BuiltQuery::Raw(RawSql::uniform(comment_sql)));
         }
@@ -40,10 +37,7 @@ pub fn build_modify_column_comment(
                 .iter()
                 .find(|t| t.name == table)
                 .ok_or_else(|| {
-                    QueryError::Other(format!(
-                        "Table '{}' not found in current schema.",
-                        table
-                    ))
+                    QueryError::Other(format!("Table '{}' not found in current schema.", table))
                 })?;
 
             let column_def = table_def
@@ -117,7 +111,11 @@ mod tests {
         }
     }
 
-    fn table_def(name: &str, columns: Vec<ColumnDef>, constraints: Vec<TableConstraint>) -> TableDef {
+    fn table_def(
+        name: &str,
+        columns: Vec<ColumnDef>,
+        constraints: Vec<TableConstraint>,
+    ) -> TableDef {
         TableDef {
             name: name.to_string(),
             columns,
@@ -145,13 +143,7 @@ mod tests {
             vec![],
         )];
 
-        let result = build_modify_column_comment(
-            &backend,
-            "users",
-            "email",
-            new_comment,
-            &schema,
-        );
+        let result = build_modify_column_comment(&backend, "users", "email", new_comment, &schema);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -167,7 +159,11 @@ mod tests {
                 DatabaseBackend::MySql => "mysql",
                 DatabaseBackend::Sqlite => "sqlite",
             },
-            if new_comment.is_some() { "set_comment" } else { "drop_comment" }
+            if new_comment.is_some() {
+                "set_comment"
+            } else {
+                "drop_comment"
+            }
         );
 
         with_settings!({ snapshot_suffix => suffix }, {
@@ -183,7 +179,11 @@ mod tests {
     fn test_comment_with_quotes(#[case] backend: DatabaseBackend) {
         let schema = vec![table_def(
             "users",
-            vec![col("email", ColumnType::Simple(SimpleColumnType::Text), true)],
+            vec![col(
+                "email",
+                ColumnType::Simple(SimpleColumnType::Text),
+                true,
+            )],
             vec![],
         )];
 
@@ -204,7 +204,10 @@ mod tests {
 
         // Postgres and MySQL should escape quotes, SQLite returns empty
         if backend != DatabaseBackend::Sqlite {
-            assert!(sql.contains("User''s email address"), "Should escape single quotes");
+            assert!(
+                sql.contains("User''s email address"),
+                "Should escape single quotes"
+            );
         }
 
         let suffix = format!(
@@ -232,13 +235,7 @@ mod tests {
             return;
         }
 
-        let result = build_modify_column_comment(
-            &backend,
-            "users",
-            "email",
-            Some("comment"),
-            &[],
-        );
+        let result = build_modify_column_comment(&backend, "users", "email", Some("comment"), &[]);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Table 'users' not found"));
@@ -257,17 +254,16 @@ mod tests {
 
         let schema = vec![table_def(
             "users",
-            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer), false)],
+            vec![col(
+                "id",
+                ColumnType::Simple(SimpleColumnType::Integer),
+                false,
+            )],
             vec![],
         )];
 
-        let result = build_modify_column_comment(
-            &backend,
-            "users",
-            "email",
-            Some("comment"),
-            &schema,
-        );
+        let result =
+            build_modify_column_comment(&backend, "users", "email", Some("comment"), &schema);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Column 'email' not found"));
@@ -287,13 +283,8 @@ mod tests {
 
         let long_comment = "This is a very long comment that describes the bio field in great detail. It contains multiple sentences and provides thorough documentation for this column.";
 
-        let result = build_modify_column_comment(
-            &backend,
-            "users",
-            "bio",
-            Some(long_comment),
-            &schema,
-        );
+        let result =
+            build_modify_column_comment(&backend, "users", "bio", Some(long_comment), &schema);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -386,13 +377,8 @@ mod tests {
             vec![],
         )];
 
-        let result = build_modify_column_comment(
-            &backend,
-            "users",
-            "email",
-            Some("New comment"),
-            &schema,
-        );
+        let result =
+            build_modify_column_comment(&backend, "users", "email", Some("New comment"), &schema);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -434,10 +420,7 @@ mod tests {
         )];
 
         let result = build_modify_column_comment(
-            &backend,
-            "users",
-            "email",
-            None, // Drop comment
+            &backend, "users", "email", None, // Drop comment
             &schema,
         );
         assert!(result.is_ok());
@@ -464,15 +447,51 @@ mod tests {
 
     /// Test with different column types
     #[rstest]
-    #[case::postgres_integer_column(DatabaseBackend::Postgres, SimpleColumnType::Integer, "Auto-increment ID")]
-    #[case::mysql_integer_column(DatabaseBackend::MySql, SimpleColumnType::Integer, "Auto-increment ID")]
-    #[case::sqlite_integer_column(DatabaseBackend::Sqlite, SimpleColumnType::Integer, "Auto-increment ID")]
-    #[case::postgres_boolean_column(DatabaseBackend::Postgres, SimpleColumnType::Boolean, "Is user active")]
-    #[case::mysql_boolean_column(DatabaseBackend::MySql, SimpleColumnType::Boolean, "Is user active")]
-    #[case::sqlite_boolean_column(DatabaseBackend::Sqlite, SimpleColumnType::Boolean, "Is user active")]
-    #[case::postgres_timestamp_column(DatabaseBackend::Postgres, SimpleColumnType::Timestamp, "Creation timestamp")]
-    #[case::mysql_timestamp_column(DatabaseBackend::MySql, SimpleColumnType::Timestamp, "Creation timestamp")]
-    #[case::sqlite_timestamp_column(DatabaseBackend::Sqlite, SimpleColumnType::Timestamp, "Creation timestamp")]
+    #[case::postgres_integer_column(
+        DatabaseBackend::Postgres,
+        SimpleColumnType::Integer,
+        "Auto-increment ID"
+    )]
+    #[case::mysql_integer_column(
+        DatabaseBackend::MySql,
+        SimpleColumnType::Integer,
+        "Auto-increment ID"
+    )]
+    #[case::sqlite_integer_column(
+        DatabaseBackend::Sqlite,
+        SimpleColumnType::Integer,
+        "Auto-increment ID"
+    )]
+    #[case::postgres_boolean_column(
+        DatabaseBackend::Postgres,
+        SimpleColumnType::Boolean,
+        "Is user active"
+    )]
+    #[case::mysql_boolean_column(
+        DatabaseBackend::MySql,
+        SimpleColumnType::Boolean,
+        "Is user active"
+    )]
+    #[case::sqlite_boolean_column(
+        DatabaseBackend::Sqlite,
+        SimpleColumnType::Boolean,
+        "Is user active"
+    )]
+    #[case::postgres_timestamp_column(
+        DatabaseBackend::Postgres,
+        SimpleColumnType::Timestamp,
+        "Creation timestamp"
+    )]
+    #[case::mysql_timestamp_column(
+        DatabaseBackend::MySql,
+        SimpleColumnType::Timestamp,
+        "Creation timestamp"
+    )]
+    #[case::sqlite_timestamp_column(
+        DatabaseBackend::Sqlite,
+        SimpleColumnType::Timestamp,
+        "Creation timestamp"
+    )]
     fn test_comment_on_different_types(
         #[case] backend: DatabaseBackend,
         #[case] column_type: SimpleColumnType,
@@ -484,13 +503,7 @@ mod tests {
             vec![],
         )];
 
-        let result = build_modify_column_comment(
-            &backend,
-            "data",
-            "field",
-            Some(comment),
-            &schema,
-        );
+        let result = build_modify_column_comment(&backend, "data", "field", Some(comment), &schema);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -523,7 +536,11 @@ mod tests {
     fn test_comment_on_not_null_column(#[case] backend: DatabaseBackend) {
         let schema = vec![table_def(
             "users",
-            vec![col("username", ColumnType::Simple(SimpleColumnType::Text), false)],
+            vec![col(
+                "username",
+                ColumnType::Simple(SimpleColumnType::Text),
+                false,
+            )],
             vec![],
         )];
 

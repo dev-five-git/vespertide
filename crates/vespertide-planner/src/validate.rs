@@ -93,9 +93,10 @@ fn extract_enum_value(value: &str) -> Option<&str> {
     // Strip quotes if present
     if ((trimmed.starts_with('\'') && trimmed.ends_with('\''))
         || (trimmed.starts_with('"') && trimmed.ends_with('"')))
-        && trimmed.len() >= 2 {
-            return Some(&trimmed[1..trimmed.len() - 1]);
-        }
+        && trimmed.len() >= 2
+    {
+        return Some(&trimmed[1..trimmed.len() - 1]);
+    }
     // Unquoted value
     Some(trimmed)
 }
@@ -183,7 +184,14 @@ fn validate_column(column: &ColumnDef, table_name: &str) -> Result<(), PlannerEr
         // Validate default value is in enum values
         if let Some(default) = &column.default {
             let default_str = default.to_sql();
-            validate_enum_value(&default_str, name, values, table_name, &column.name, "default")?;
+            validate_enum_value(
+                &default_str,
+                name,
+                values,
+                table_name,
+                &column.name,
+                "default",
+            )?;
         }
     }
     Ok(())
@@ -1319,23 +1327,17 @@ mod tests {
         // Test that schema validation also catches invalid enum defaults
         let schema = vec![table(
             "users",
-            vec![
-                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
-                {
-                    let mut c = col(
-                        "status",
-                        ColumnType::Complex(ComplexColumnType::Enum {
-                            name: "user_status".into(),
-                            values: EnumValues::String(vec![
-                                "active".into(),
-                                "inactive".into(),
-                            ]),
-                        }),
-                    );
-                    c.default = Some("invalid".into());
-                    c
-                },
-            ],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer)), {
+                let mut c = col(
+                    "status",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "user_status".into(),
+                        values: EnumValues::String(vec!["active".into(), "inactive".into()]),
+                    }),
+                );
+                c.default = Some("invalid".into());
+                c
+            }],
             vec![pk(vec!["id"])],
         )];
 
@@ -1357,23 +1359,17 @@ mod tests {
     fn validate_enum_schema_valid_default() {
         let schema = vec![table(
             "users",
-            vec![
-                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
-                {
-                    let mut c = col(
-                        "status",
-                        ColumnType::Complex(ComplexColumnType::Enum {
-                            name: "user_status".into(),
-                            values: EnumValues::String(vec![
-                                "active".into(),
-                                "inactive".into(),
-                            ]),
-                        }),
-                    );
-                    c.default = Some("'active'".into());
-                    c
-                },
-            ],
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer)), {
+                let mut c = col(
+                    "status",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "user_status".into(),
+                        values: EnumValues::String(vec!["active".into(), "inactive".into()]),
+                    }),
+                );
+                c.default = Some("'active'".into());
+                c
+            }],
             vec![pk(vec!["id"])],
         )];
 
@@ -1394,9 +1390,18 @@ mod tests {
                     r#type: ColumnType::Complex(ComplexColumnType::Enum {
                         name: "priority_level".into(),
                         values: EnumValues::Integer(vec![
-                            NumValue { name: "Low".into(), value: 0 },
-                            NumValue { name: "Medium".into(), value: 50 },
-                            NumValue { name: "High".into(), value: 100 },
+                            NumValue {
+                                name: "Low".into(),
+                                value: 0,
+                            },
+                            NumValue {
+                                name: "Medium".into(),
+                                value: 50,
+                            },
+                            NumValue {
+                                name: "High".into(),
+                                value: 100,
+                            },
                         ]),
                     }),
                     nullable: false,
@@ -1428,9 +1433,18 @@ mod tests {
                     r#type: ColumnType::Complex(ComplexColumnType::Enum {
                         name: "priority_level".into(),
                         values: EnumValues::Integer(vec![
-                            NumValue { name: "Low".into(), value: 0 },
-                            NumValue { name: "Medium".into(), value: 50 },
-                            NumValue { name: "High".into(), value: 100 },
+                            NumValue {
+                                name: "Low".into(),
+                                value: 0,
+                            },
+                            NumValue {
+                                name: "Medium".into(),
+                                value: 50,
+                            },
+                            NumValue {
+                                name: "High".into(),
+                                value: 100,
+                            },
                         ]),
                     }),
                     nullable: false,

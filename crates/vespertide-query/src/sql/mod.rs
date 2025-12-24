@@ -76,19 +76,38 @@ pub fn build_action_queries(
             column,
             nullable,
             fill_with,
-        } => build_modify_column_nullable(backend, table, column, *nullable, fill_with.as_deref(), current_schema),
+        } => build_modify_column_nullable(
+            backend,
+            table,
+            column,
+            *nullable,
+            fill_with.as_deref(),
+            current_schema,
+        ),
 
         MigrationAction::ModifyColumnDefault {
             table,
             column,
             new_default,
-        } => build_modify_column_default(backend, table, column, new_default.as_deref(), current_schema),
+        } => build_modify_column_default(
+            backend,
+            table,
+            column,
+            new_default.as_deref(),
+            current_schema,
+        ),
 
         MigrationAction::ModifyColumnComment {
             table,
             column,
             new_comment,
-        } => build_modify_column_comment(backend, table, column, new_comment.as_deref(), current_schema),
+        } => build_modify_column_comment(
+            backend,
+            table,
+            column,
+            new_comment.as_deref(),
+            current_schema,
+        ),
 
         MigrationAction::RenameTable { from, to } => Ok(vec![build_rename_table(from, to)]),
 

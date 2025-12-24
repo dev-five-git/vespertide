@@ -39,7 +39,9 @@ pub enum PlannerError {
 }
 
 #[derive(Debug, Error)]
-#[error("enum '{enum_name}' in column '{table_name}.{column_name}' has invalid {value_type} value '{value}': not in allowed values [{allowed}]")]
+#[error(
+    "enum '{enum_name}' in column '{table_name}.{column_name}' has invalid {value_type} value '{value}': not in allowed values [{allowed}]"
+)]
 pub struct InvalidEnumDefaultError {
     pub enum_name: String,
     pub table_name: String,

@@ -30,9 +30,7 @@ fn parse_fill_with_args(args: &[String]) -> HashMap<(String, String), String> {
 
 /// Format the type info string for display.
 fn format_type_info(column_type: Option<&String>) -> String {
-    column_type
-        .map(|t| format!(" ({})", t))
-        .unwrap_or_default()
+    column_type.map(|t| format!(" ({})", t)).unwrap_or_default()
 }
 
 /// Format a single fill_with item for display.
@@ -757,12 +755,8 @@ mod tests {
 
     #[test]
     fn test_print_fill_with_item_and_get_prompt_no_type() {
-        let prompt = print_fill_with_item_and_get_prompt(
-            "orders",
-            "status",
-            None,
-            "ModifyColumnNullable",
-        );
+        let prompt =
+            print_fill_with_item_and_get_prompt("orders", "status", None, "ModifyColumnNullable");
         assert!(prompt.contains("Enter fill value for"));
         assert!(prompt.contains("orders"));
         assert!(prompt.contains("status"));
@@ -795,7 +789,8 @@ mod tests {
         let mut fill_values = HashMap::new();
 
         // Mock prompt function that returns a fixed value
-        let mock_prompt = |_prompt: &str| -> Result<String> { Ok("'test@example.com'".to_string()) };
+        let mock_prompt =
+            |_prompt: &str| -> Result<String> { Ok("'test@example.com'".to_string()) };
 
         let result = collect_fill_with_values(&missing, &mut fill_values, mock_prompt);
         assert!(result.is_ok());
@@ -932,7 +927,8 @@ mod tests {
         let mut fill_values = HashMap::new();
 
         // Mock prompt function
-        let mock_prompt = |_prompt: &str| -> Result<String> { Ok("'test@example.com'".to_string()) };
+        let mock_prompt =
+            |_prompt: &str| -> Result<String> { Ok("'test@example.com'".to_string()) };
 
         let result = handle_missing_fill_with(&mut plan, &mut fill_values, mock_prompt);
         assert!(result.is_ok());
@@ -1018,7 +1014,8 @@ mod tests {
         let mut fill_values = HashMap::new();
 
         // Mock prompt that returns an error
-        let mock_prompt = |_prompt: &str| -> Result<String> { Err(anyhow::anyhow!("user cancelled")) };
+        let mock_prompt =
+            |_prompt: &str| -> Result<String> { Err(anyhow::anyhow!("user cancelled")) };
 
         let result = handle_missing_fill_with(&mut plan, &mut fill_values, mock_prompt);
         assert!(result.is_err());

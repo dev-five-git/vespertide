@@ -39,10 +39,7 @@ pub fn build_modify_column_default(
                 .iter()
                 .find(|t| t.name == table)
                 .ok_or_else(|| {
-                    QueryError::Other(format!(
-                        "Table '{}' not found in current schema.",
-                        table
-                    ))
+                    QueryError::Other(format!("Table '{}' not found in current schema.", table))
                 })?;
 
             let column_def = table_def
@@ -77,10 +74,7 @@ pub fn build_modify_column_default(
                 .iter()
                 .find(|t| t.name == table)
                 .ok_or_else(|| {
-                    QueryError::Other(format!(
-                        "Table '{}' not found in current schema.",
-                        table
-                    ))
+                    QueryError::Other(format!("Table '{}' not found in current schema.", table))
                 })?;
 
             // Create modified columns with the new default
@@ -135,11 +129,8 @@ pub fn build_modify_column_default(
                     columns: idx_cols,
                 } = constraint
                 {
-                    let index_name = vespertide_naming::build_index_name(
-                        table,
-                        idx_cols,
-                        idx_name.as_deref(),
-                    );
+                    let index_name =
+                        vespertide_naming::build_index_name(table, idx_cols, idx_name.as_deref());
                     let mut idx_stmt = sea_query::Index::create();
                     idx_stmt = idx_stmt.name(&index_name).to_owned();
                     for col_name in idx_cols {
@@ -176,7 +167,11 @@ mod tests {
         }
     }
 
-    fn table_def(name: &str, columns: Vec<ColumnDef>, constraints: Vec<TableConstraint>) -> TableDef {
+    fn table_def(
+        name: &str,
+        columns: Vec<ColumnDef>,
+        constraints: Vec<TableConstraint>,
+    ) -> TableDef {
         TableDef {
             name: name.to_string(),
             columns,
@@ -204,13 +199,7 @@ mod tests {
             vec![],
         )];
 
-        let result = build_modify_column_default(
-            &backend,
-            "users",
-            "email",
-            new_default,
-            &schema,
-        );
+        let result = build_modify_column_default(&backend, "users", "email", new_default, &schema);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -226,7 +215,11 @@ mod tests {
                 DatabaseBackend::MySql => "mysql",
                 DatabaseBackend::Sqlite => "sqlite",
             },
-            if new_default.is_some() { "set_default" } else { "drop_default" }
+            if new_default.is_some() {
+                "set_default"
+            } else {
+                "drop_default"
+            }
         );
 
         with_settings!({ snapshot_suffix => suffix }, {
@@ -245,13 +238,8 @@ mod tests {
             return;
         }
 
-        let result = build_modify_column_default(
-            &backend,
-            "users",
-            "email",
-            Some("'default'"),
-            &[],
-        );
+        let result =
+            build_modify_column_default(&backend, "users", "email", Some("'default'"), &[]);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Table 'users' not found"));
@@ -271,17 +259,16 @@ mod tests {
 
         let schema = vec![table_def(
             "users",
-            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer), false)],
+            vec![col(
+                "id",
+                ColumnType::Simple(SimpleColumnType::Integer),
+                false,
+            )],
             vec![],
         )];
 
-        let result = build_modify_column_default(
-            &backend,
-            "users",
-            "email",
-            Some("'default'"),
-            &schema,
-        );
+        let result =
+            build_modify_column_default(&backend, "users", "email", Some("'default'"), &schema);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Column 'email' not found"));
@@ -397,18 +384,17 @@ mod tests {
             "products",
             vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer), false),
-                col("quantity", ColumnType::Simple(SimpleColumnType::Integer), false),
+                col(
+                    "quantity",
+                    ColumnType::Simple(SimpleColumnType::Integer),
+                    false,
+                ),
             ],
             vec![],
         )];
 
-        let result = build_modify_column_default(
-            &backend,
-            "products",
-            "quantity",
-            Some("0"),
-            &schema,
-        );
+        let result =
+            build_modify_column_default(&backend, "products", "quantity", Some("0"), &schema);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -441,18 +427,17 @@ mod tests {
             "users",
             vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer), false),
-                col("is_active", ColumnType::Simple(SimpleColumnType::Boolean), false),
+                col(
+                    "is_active",
+                    ColumnType::Simple(SimpleColumnType::Boolean),
+                    false,
+                ),
             ],
             vec![],
         )];
 
-        let result = build_modify_column_default(
-            &backend,
-            "users",
-            "is_active",
-            Some("true"),
-            &schema,
-        );
+        let result =
+            build_modify_column_default(&backend, "users", "is_active", Some("true"), &schema);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -485,7 +470,11 @@ mod tests {
             "events",
             vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer), false),
-                col("created_at", ColumnType::Simple(SimpleColumnType::Timestamp), false),
+                col(
+                    "created_at",
+                    ColumnType::Simple(SimpleColumnType::Timestamp),
+                    false,
+                ),
             ],
             vec![],
         )];
@@ -544,10 +533,7 @@ mod tests {
         )];
 
         let result = build_modify_column_default(
-            &backend,
-            "orders",
-            "status",
-            None, // Drop default
+            &backend, "orders", "status", None, // Drop default
             &schema,
         );
         assert!(result.is_ok());

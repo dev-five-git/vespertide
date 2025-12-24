@@ -1815,7 +1815,10 @@ mod tests {
                     } if table == "users" && columns == &vec!["id".to_string(), "tenant_id".to_string()]
                 )
             });
-            assert!(has_remove, "Should have RemoveConstraint for old composite PK");
+            assert!(
+                has_remove,
+                "Should have RemoveConstraint for old composite PK"
+            );
 
             let has_add = plan.actions.iter().any(|a| {
                 matches!(
@@ -1826,7 +1829,10 @@ mod tests {
                     } if table == "users" && columns == &vec!["id".to_string()]
                 )
             });
-            assert!(has_add, "Should have AddConstraint for new single-column PK");
+            assert!(
+                has_add,
+                "Should have AddConstraint for new single-column PK"
+            );
         }
 
         #[test]
@@ -1913,7 +1919,10 @@ mod tests {
                     } if table == "users" && columns == &vec!["id".to_string()]
                 )
             });
-            assert!(has_remove, "Should have RemoveConstraint for old single-column PK");
+            assert!(
+                has_remove,
+                "Should have RemoveConstraint for old single-column PK"
+            );
 
             let has_add = plan.actions.iter().any(|a| {
                 matches!(
@@ -1928,7 +1937,10 @@ mod tests {
                     ]
                 )
             });
-            assert!(has_add, "Should have AddConstraint for new 3-column composite PK");
+            assert!(
+                has_add,
+                "Should have AddConstraint for new 3-column composite PK"
+            );
         }
 
         #[test]
@@ -1971,7 +1983,10 @@ mod tests {
                     ]
                 )
             });
-            assert!(has_remove, "Should have RemoveConstraint for old 3-column composite PK");
+            assert!(
+                has_remove,
+                "Should have RemoveConstraint for old 3-column composite PK"
+            );
 
             let has_add = plan.actions.iter().any(|a| {
                 matches!(
@@ -1982,7 +1997,10 @@ mod tests {
                     } if table == "users" && columns == &vec!["id".to_string()]
                 )
             });
-            assert!(has_add, "Should have AddConstraint for new single-column PK");
+            assert!(
+                has_add,
+                "Should have AddConstraint for new single-column PK"
+            );
         }
 
         #[test]
@@ -2022,7 +2040,10 @@ mod tests {
                     } if table == "users" && columns == &vec!["id".to_string(), "tenant_id".to_string()]
                 )
             });
-            assert!(has_remove, "Should have RemoveConstraint for old PK with tenant_id");
+            assert!(
+                has_remove,
+                "Should have RemoveConstraint for old PK with tenant_id"
+            );
 
             let has_add = plan.actions.iter().any(|a| {
                 matches!(
@@ -2033,7 +2054,10 @@ mod tests {
                     } if table == "users" && columns == &vec!["id".to_string(), "region_id".to_string()]
                 )
             });
-            assert!(has_add, "Should have AddConstraint for new PK with region_id");
+            assert!(
+                has_add,
+                "Should have AddConstraint for new PK with region_id"
+            );
         }
     }
 
@@ -2577,32 +2601,26 @@ mod tests {
             // Column changing both nullable and comment
             let from = vec![table(
                 "users",
-                vec![
-                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
-                    {
-                        let mut c =
-                            col_with_comment("email", ColumnType::Simple(SimpleColumnType::Text), None);
-                        c.nullable = true;
-                        c
-                    },
-                ],
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer)), {
+                    let mut c =
+                        col_with_comment("email", ColumnType::Simple(SimpleColumnType::Text), None);
+                    c.nullable = true;
+                    c
+                }],
                 vec![],
             )];
 
             let to = vec![table(
                 "users",
-                vec![
-                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
-                    {
-                        let mut c = col_with_comment(
-                            "email",
-                            ColumnType::Simple(SimpleColumnType::Text),
-                            Some("Required email"),
-                        );
-                        c.nullable = false;
-                        c
-                    },
-                ],
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer)), {
+                    let mut c = col_with_comment(
+                        "email",
+                        ColumnType::Simple(SimpleColumnType::Text),
+                        Some("Required email"),
+                    );
+                    c.nullable = false;
+                    c
+                }],
                 vec![],
             )];
 
@@ -2744,8 +2762,8 @@ mod tests {
                 vec![
                     col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                     col_nullable("email", ColumnType::Simple(SimpleColumnType::Text), false), // nullable -> non-nullable
-                    col_nullable("name", ColumnType::Simple(SimpleColumnType::Text), true),   // non-nullable -> nullable
-                    col_nullable("phone", ColumnType::Simple(SimpleColumnType::Text), true),  // no change
+                    col_nullable("name", ColumnType::Simple(SimpleColumnType::Text), true), // non-nullable -> nullable
+                    col_nullable("phone", ColumnType::Simple(SimpleColumnType::Text), true), // no change
                 ],
                 vec![],
             )];
@@ -2765,7 +2783,10 @@ mod tests {
                     } if table == "users" && column == "email"
                 )
             });
-            assert!(has_email_change, "Should detect email nullable -> non-nullable");
+            assert!(
+                has_email_change,
+                "Should detect email nullable -> non-nullable"
+            );
 
             let has_name_change = plan.actions.iter().any(|a| {
                 matches!(
@@ -2778,7 +2799,10 @@ mod tests {
                     } if table == "users" && column == "name"
                 )
             });
-            assert!(has_name_change, "Should detect name non-nullable -> nullable");
+            assert!(
+                has_name_change,
+                "Should detect name non-nullable -> nullable"
+            );
         }
 
         #[test]
