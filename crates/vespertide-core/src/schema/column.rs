@@ -2,8 +2,10 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::schema::{
-    foreign_key::ForeignKeySyntax, names::ColumnName, primary_key::PrimaryKeySyntax,
-    str_or_bool::StrOrBoolOrArray,
+    foreign_key::ForeignKeySyntax,
+    names::ColumnName,
+    primary_key::PrimaryKeySyntax,
+    str_or_bool::{StrOrBoolOrArray, StringOrBool},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -13,7 +15,7 @@ pub struct ColumnDef {
     pub r#type: ColumnType,
     pub nullable: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub default: Option<String>,
+    pub default: Option<StringOrBool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub comment: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

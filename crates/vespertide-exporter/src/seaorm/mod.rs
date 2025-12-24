@@ -2,7 +2,8 @@ use std::collections::HashSet;
 
 use crate::orm::OrmExporter;
 use vespertide_core::{
-    ColumnDef, ColumnType, ComplexColumnType, EnumValues, NumValue, TableConstraint, TableDef,
+    ColumnDef, ColumnType, ComplexColumnType, EnumValues, NumValue, StringOrBool, TableConstraint,
+    TableDef,
 };
 
 pub struct SeaOrmExporter;
@@ -180,8 +181,15 @@ fn render_column(
 
 /// Format default value for SeaORM attribute.
 /// Returns the full attribute string like `default_value = "..."` or `default_value = 0`.
-fn format_default_value(value: &str, column_type: &ColumnType) -> String {
-    let trimmed = value.trim();
+fn format_default_value(value: &StringOrBool, column_type: &ColumnType) -> String {
+    // Handle boolean values directly
+    if let StringOrBool::Bool(b) = value {
+        return format!("default_value = {}", b);
+    }
+
+    // For string values, process as before
+    let value_str = value.to_sql();
+    let trimmed = value_str.trim();
 
     // Remove surrounding single quotes if present (SQL string literals)
     let cleaned = if trimmed.starts_with('\'') && trimmed.ends_with('\'') && trimmed.len() >= 2 {
@@ -2213,5 +2221,52 @@ mod tests {
         with_settings!({ snapshot_suffix => default_value }, {
             assert_snapshot!(rendered);
         });
+    }
+
+    #[test]
+    fn test_boolean_default_value_with_bool_type() {
+        use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+        let table = TableDef {
+            name: "settings".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "is_active".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Boolean),
+                    nullable: false,
+                    default: Some(StringOrBool::Bool(true)),
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "is_deleted".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Boolean),
+                    nullable: false,
+                    default: Some(StringOrBool::Bool(false)),
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![],
+        };
+        let rendered = render_entity(&table);
+        assert!(rendered.contains("default_value = true"));
+        assert!(rendered.contains("default_value = false"));
     }
 }

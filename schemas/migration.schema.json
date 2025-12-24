@@ -43,9 +43,13 @@
           ]
         },
         "default": {
-          "type": [
-            "string",
-            "null"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StringOrBool"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "foreign_key": {
@@ -594,6 +598,17 @@
         },
         {
           "type": "boolean"
+        }
+      ]
+    },
+    "StringOrBool": {
+      "description": "A value that can be either a string or a boolean.\nThis is used for default values where boolean columns can use `true`/`false` directly.",
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "string"
         }
       ]
     },
