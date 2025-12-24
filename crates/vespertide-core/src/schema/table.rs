@@ -1474,7 +1474,6 @@ mod tests {
         let mut id_col = col("id", ColumnType::Simple(SimpleColumnType::Integer));
         id_col.primary_key = Some(PrimaryKeySyntax::Object(PrimaryKeyDef {
             auto_increment: true,
-            columns: vec![], // columns is ignored for inline definition
         }));
 
         let table = TableDef {
