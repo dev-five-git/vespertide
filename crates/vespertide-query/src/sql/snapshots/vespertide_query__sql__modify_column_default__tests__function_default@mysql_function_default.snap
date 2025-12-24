@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql/modify_column_default.rs
+expression: sql
+---
+ALTER TABLE `events` MODIFY COLUMN `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP

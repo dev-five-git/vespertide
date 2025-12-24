@@ -1,0 +1,8 @@
+---
+source: crates/vespertide-query/src/sql/modify_column_default.rs
+expression: sql
+---
+CREATE TABLE "orders_temp" ( "id" integer NOT NULL, "status" text NOT NULL )
+INSERT INTO "orders_temp" ("id", "status") SELECT "id", "status" FROM "orders"
+DROP TABLE "orders"
+ALTER TABLE "orders_temp" RENAME TO "orders"

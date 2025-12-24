@@ -96,6 +96,58 @@ pub fn apply_action(
             col.r#type = new_type.clone();
             Ok(())
         }
+        MigrationAction::ModifyColumnNullable {
+            table,
+            column,
+            nullable,
+            fill_with: _,
+        } => {
+            let tbl = schema
+                .iter_mut()
+                .find(|t| t.name == *table)
+                .ok_or_else(|| PlannerError::TableNotFound(table.clone()))?;
+            let col = tbl
+                .columns
+                .iter_mut()
+                .find(|c| c.name == *column)
+                .ok_or_else(|| PlannerError::ColumnNotFound(table.clone(), column.clone()))?;
+            col.nullable = *nullable;
+            Ok(())
+        }
+        MigrationAction::ModifyColumnDefault {
+            table,
+            column,
+            new_default,
+        } => {
+            let tbl = schema
+                .iter_mut()
+                .find(|t| t.name == *table)
+                .ok_or_else(|| PlannerError::TableNotFound(table.clone()))?;
+            let col = tbl
+                .columns
+                .iter_mut()
+                .find(|c| c.name == *column)
+                .ok_or_else(|| PlannerError::ColumnNotFound(table.clone(), column.clone()))?;
+            col.default = new_default.as_ref().map(|s| s.as_str().into());
+            Ok(())
+        }
+        MigrationAction::ModifyColumnComment {
+            table,
+            column,
+            new_comment,
+        } => {
+            let tbl = schema
+                .iter_mut()
+                .find(|t| t.name == *table)
+                .ok_or_else(|| PlannerError::TableNotFound(table.clone()))?;
+            let col = tbl
+                .columns
+                .iter_mut()
+                .find(|c| c.name == *column)
+                .ok_or_else(|| PlannerError::ColumnNotFound(table.clone(), column.clone()))?;
+            col.comment = new_comment.clone();
+            Ok(())
+        }
         MigrationAction::RenameTable { from, to } => {
             if schema.iter().any(|t| t.name == *to) {
                 Err(PlannerError::TableExists(to.clone()))

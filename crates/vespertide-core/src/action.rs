@@ -44,6 +44,25 @@ pub enum MigrationAction {
         column: ColumnName,
         new_type: ColumnType,
     },
+    ModifyColumnNullable {
+        table: TableName,
+        column: ColumnName,
+        nullable: bool,
+        /// Required when changing from nullable to non-nullable to backfill existing NULL values.
+        fill_with: Option<String>,
+    },
+    ModifyColumnDefault {
+        table: TableName,
+        column: ColumnName,
+        /// The new default value, or None to remove the default.
+        new_default: Option<String>,
+    },
+    ModifyColumnComment {
+        table: TableName,
+        column: ColumnName,
+        /// The new comment, or None to remove the comment.
+        new_comment: Option<String>,
+    },
     AddConstraint {
         table: TableName,
         constraint: TableConstraint,
@@ -81,6 +100,42 @@ impl fmt::Display for MigrationAction {
             }
             MigrationAction::ModifyColumnType { table, column, .. } => {
                 write!(f, "ModifyColumnType: {}.{}", table, column)
+            }
+            MigrationAction::ModifyColumnNullable {
+                table,
+                column,
+                nullable,
+                ..
+            } => {
+                let nullability = if *nullable { "NULL" } else { "NOT NULL" };
+                write!(f, "ModifyColumnNullable: {}.{} -> {}", table, column, nullability)
+            }
+            MigrationAction::ModifyColumnDefault {
+                table,
+                column,
+                new_default,
+            } => {
+                if let Some(default) = new_default {
+                    write!(f, "ModifyColumnDefault: {}.{} -> {}", table, column, default)
+                } else {
+                    write!(f, "ModifyColumnDefault: {}.{} -> (none)", table, column)
+                }
+            }
+            MigrationAction::ModifyColumnComment {
+                table,
+                column,
+                new_comment,
+            } => {
+                if let Some(comment) = new_comment {
+                    let display = if comment.len() > 30 {
+                        format!("{}...", &comment[..27])
+                    } else {
+                        comment.clone()
+                    };
+                    write!(f, "ModifyColumnComment: {}.{} -> '{}'", table, column, display)
+                } else {
+                    write!(f, "ModifyColumnComment: {}.{} -> (none)", table, column)
+                }
             }
             MigrationAction::AddConstraint { table, constraint } => {
                 let constraint_name = match constraint {

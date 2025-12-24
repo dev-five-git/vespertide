@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/modify_column_nullable.rs
+expression: sql
+---
+UPDATE "users" SET "email" = 'unknown' WHERE "email" IS NULL
+ALTER TABLE "users" ALTER COLUMN "email" SET NOT NULL

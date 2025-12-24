@@ -89,6 +89,57 @@ fn format_action(action: &MigrationAction) -> String {
                 column.bright_cyan().bold()
             )
         }
+        MigrationAction::ModifyColumnNullable {
+            table,
+            column,
+            nullable,
+            ..
+        } => {
+            let nullability = if *nullable { "NULL" } else { "NOT NULL" };
+            format!(
+                "{} {}.{} {} {}",
+                "Modify column nullability:".bright_yellow(),
+                table.bright_cyan(),
+                column.bright_cyan().bold(),
+                "->".bright_white(),
+                nullability.bright_cyan().bold()
+            )
+        }
+        MigrationAction::ModifyColumnDefault {
+            table,
+            column,
+            new_default,
+        } => {
+            let default_display = new_default.as_deref().unwrap_or("(none)");
+            format!(
+                "{} {}.{} {} {}",
+                "Modify column default:".bright_yellow(),
+                table.bright_cyan(),
+                column.bright_cyan().bold(),
+                "->".bright_white(),
+                default_display.bright_cyan().bold()
+            )
+        }
+        MigrationAction::ModifyColumnComment {
+            table,
+            column,
+            new_comment,
+        } => {
+            let comment_display = new_comment.as_deref().unwrap_or("(none)");
+            let truncated = if comment_display.len() > 30 {
+                format!("{}...", &comment_display[..27])
+            } else {
+                comment_display.to_string()
+            };
+            format!(
+                "{} {}.{} {} '{}'",
+                "Modify column comment:".bright_yellow(),
+                table.bright_cyan(),
+                column.bright_cyan().bold(),
+                "->".bright_white(),
+                truncated.bright_cyan().bold()
+            )
+        }
         MigrationAction::RenameTable { from, to } => {
             format!(
                 "{} {} {} {}",

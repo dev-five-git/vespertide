@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql/modify_column_comment.rs
+expression: sql
+---
+ALTER TABLE `users` MODIFY COLUMN `bio` text COMMENT 'This is a very long comment that describes the bio field in great detail. It contains multiple sentences and provides thorough documentation for this column.'
