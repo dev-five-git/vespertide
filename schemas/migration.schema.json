@@ -528,17 +528,8 @@
         "auto_increment": {
           "type": "boolean",
           "default": false
-        },
-        "columns": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
         }
-      },
-      "required": [
-        "columns"
-      ]
+      }
     },
     "PrimaryKeySyntax": {
       "anyOf": [
