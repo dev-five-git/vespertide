@@ -51,7 +51,7 @@ pub fn render_entity_with_schema(table: &TableDef, schema: &[TableDef]) -> Strin
         if let ColumnType::Complex(ComplexColumnType::Enum { name, values }) = &column.r#type {
             // Avoid duplicate enum definitions if multiple columns use the same enum
             if !processed_enums.contains(name) {
-                render_enum(&mut lines, name, values);
+                render_enum(&mut lines, &table.name, name, values);
                 processed_enums.insert(name.clone());
             }
         }
@@ -615,8 +615,10 @@ fn unique_name(base: &str, used: &mut HashSet<String>) -> String {
     name
 }
 
-fn render_enum(lines: &mut Vec<String>, name: &str, values: &EnumValues) {
+fn render_enum(lines: &mut Vec<String>, table_name: &str, name: &str, values: &EnumValues) {
     let enum_name = to_pascal_case(name);
+    // Construct the full enum name with table prefix for database
+    let db_enum_name = format!("{}_{}", table_name, name);
 
     lines.push(
         "#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]"
@@ -632,7 +634,7 @@ fn render_enum(lines: &mut Vec<String>, name: &str, values: &EnumValues) {
             // String enum: #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "...")]
             lines.push(format!(
                 "#[sea_orm(rs_type = \"String\", db_type = \"Enum\", enum_name = \"{}\")]",
-                name
+                db_enum_name
             ));
         }
     }
@@ -897,16 +899,20 @@ mod helper_tests {
     }
 
     #[rstest]
-    #[case::string_enum("string_order_status", string_enum_order_status())]
-    #[case::string_numeric_prefix("string_numeric_prefix", string_enum_numeric_prefix())]
-    #[case::integer_color("integer_color", integer_enum_color())]
-    #[case::integer_status("integer_status", integer_enum_status())]
-    fn test_render_enum_snapshots(#[case] name: &str, #[case] input: (&str, EnumValues)) {
+    #[case::string_enum("string_order_status", "orders", string_enum_order_status())]
+    #[case::string_numeric_prefix("string_numeric_prefix", "tasks", string_enum_numeric_prefix())]
+    #[case::integer_color("integer_color", "products", integer_enum_color())]
+    #[case::integer_status("integer_status", "tasks", integer_enum_status())]
+    fn test_render_enum_snapshots(
+        #[case] name: &str,
+        #[case] table_name: &str,
+        #[case] input: (&str, EnumValues),
+    ) {
         use insta::with_settings;
 
         let (enum_name, values) = input;
         let mut lines = Vec::new();
-        render_enum(&mut lines, enum_name, &values);
+        render_enum(&mut lines, table_name, enum_name, &values);
         let result = lines.join("\n");
 
         with_settings!({ snapshot_suffix => name }, {
