@@ -588,4 +588,34 @@ mod tests {
         // Integer enums should return None (no CREATE TYPE needed)
         assert!(build_create_enum_type_sql("test_table", &integer_enum).is_none());
     }
+
+    #[rstest]
+    // Empty strings need quoting
+    #[case::empty("", true)]
+    #[case::whitespace_only("   ", true)]
+    // Function calls should not be quoted
+    #[case::now_func("now()", false)]
+    #[case::coalesce_func("COALESCE(old_value, 'default')", false)]
+    #[case::uuid_func("gen_random_uuid()", false)]
+    // NULL keyword should not be quoted
+    #[case::null_upper("NULL", false)]
+    #[case::null_lower("null", false)]
+    #[case::null_mixed("Null", false)]
+    // SQL date/time keywords should not be quoted
+    #[case::current_timestamp_upper("CURRENT_TIMESTAMP", false)]
+    #[case::current_timestamp_lower("current_timestamp", false)]
+    #[case::current_date_upper("CURRENT_DATE", false)]
+    #[case::current_date_lower("current_date", false)]
+    #[case::current_time_upper("CURRENT_TIME", false)]
+    #[case::current_time_lower("current_time", false)]
+    // Already quoted strings should not be re-quoted
+    #[case::single_quoted("'active'", false)]
+    #[case::double_quoted("\"active\"", false)]
+    // Plain strings need quoting
+    #[case::plain_active("active", true)]
+    #[case::plain_pending("pending", true)]
+    #[case::plain_underscore("some_value", true)]
+    fn test_needs_quoting(#[case] input: &str, #[case] expected: bool) {
+        assert_eq!(needs_quoting(input), expected);
+    }
 }

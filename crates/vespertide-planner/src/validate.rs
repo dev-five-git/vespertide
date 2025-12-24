@@ -1457,4 +1457,37 @@ mod tests {
         let result = validate_migration_plan(&plan);
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn validate_enum_empty_string_fill_with_skipped() {
+        // Empty string fill_with should be skipped during enum validation
+        // (converted to '' by to_sql, which is empty after trimming)
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "users".into(),
+                column: Box::new(ColumnDef {
+                    name: "status".into(),
+                    r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "user_status".into(),
+                        values: EnumValues::String(vec!["active".into(), "inactive".into()]),
+                    }),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }),
+                // Empty string - extract_enum_value returns None for empty trimmed values
+                fill_with: Some("   ".into()),
+            }],
+        };
+
+        let result = validate_migration_plan(&plan);
+        assert!(result.is_ok());
+    }
 }
