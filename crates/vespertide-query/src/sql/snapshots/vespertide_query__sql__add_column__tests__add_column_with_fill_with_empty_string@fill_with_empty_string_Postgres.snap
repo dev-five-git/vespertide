@@ -1,0 +1,7 @@
+---
+source: crates/vespertide-query/src/sql/add_column.rs
+expression: sql
+---
+ALTER TABLE "users" ADD COLUMN "nickname" text;
+UPDATE "users" SET "nickname" = '';
+ALTER TABLE "users" ALTER COLUMN "nickname" TYPE text, ALTER COLUMN "nickname" SET NOT NULL

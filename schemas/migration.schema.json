@@ -45,7 +45,7 @@
         "default": {
           "anyOf": [
             {
-              "$ref": "#/$defs/StringOrBool"
+              "$ref": "#/$defs/DefaultValue"
             },
             {
               "type": "null"
@@ -215,6 +215,25 @@
             "name",
             "values"
           ]
+        }
+      ]
+    },
+    "DefaultValue": {
+      "description": "A value that can be a string, boolean, or number.\nThis is used for default values where columns can use literal values directly.",
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "integer",
+          "format": "int64"
+        },
+        {
+          "type": "number",
+          "format": "double"
+        },
+        {
+          "type": "string"
         }
       ]
     },
@@ -430,6 +449,91 @@
         {
           "type": "object",
           "properties": {
+            "column": {
+              "type": "string"
+            },
+            "fill_with": {
+              "description": "Required when changing from nullable to non-nullable to backfill existing NULL values.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "nullable": {
+              "type": "boolean"
+            },
+            "table": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "modify_column_nullable"
+            }
+          },
+          "required": [
+            "type",
+            "table",
+            "column",
+            "nullable"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "column": {
+              "type": "string"
+            },
+            "new_default": {
+              "description": "The new default value, or None to remove the default.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "table": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "modify_column_default"
+            }
+          },
+          "required": [
+            "type",
+            "table",
+            "column"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "column": {
+              "type": "string"
+            },
+            "new_comment": {
+              "description": "The new comment, or None to remove the comment.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "table": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "modify_column_comment"
+            }
+          },
+          "required": [
+            "type",
+            "table",
+            "column"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
             "constraint": {
               "$ref": "#/$defs/TableConstraint"
             },
@@ -589,17 +693,6 @@
         },
         {
           "type": "boolean"
-        }
-      ]
-    },
-    "StringOrBool": {
-      "description": "A value that can be either a string or a boolean.\nThis is used for default values where boolean columns can use `true`/`false` directly.",
-      "anyOf": [
-        {
-          "type": "boolean"
-        },
-        {
-          "type": "string"
         }
       ]
     },

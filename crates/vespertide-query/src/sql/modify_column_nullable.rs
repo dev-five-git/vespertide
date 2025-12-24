@@ -3,7 +3,7 @@ use sea_query::{Alias, Query, Table};
 use vespertide_core::{ColumnDef, TableDef};
 
 use super::create_table::build_create_table_for_backend;
-use super::helpers::build_sea_column_def_with_table;
+use super::helpers::{build_sea_column_def_with_table, normalize_fill_with};
 use super::rename_table::build_rename_table;
 use super::types::{BuiltQuery, DatabaseBackend, RawSql};
 use crate::error::QueryError;
@@ -21,9 +21,7 @@ pub fn build_modify_column_nullable(
     let mut queries = Vec::new();
 
     // If changing to NOT NULL, first update existing NULL values if fill_with is provided
-    if !nullable
-        && let Some(fill_value) = fill_with
-    {
+    if !nullable && let Some(fill_value) = normalize_fill_with(fill_with) {
         let update_sql = match backend {
             DatabaseBackend::Postgres | DatabaseBackend::Sqlite => format!(
                 "UPDATE \"{}\" SET \"{}\" = {} WHERE \"{}\" IS NULL",
@@ -157,11 +155,8 @@ pub fn build_modify_column_nullable(
                     columns: idx_cols,
                 } = constraint
                 {
-                    let index_name = vespertide_naming::build_index_name(
-                        table,
-                        idx_cols,
-                        idx_name.as_deref(),
-                    );
+                    let index_name =
+                        vespertide_naming::build_index_name(table, idx_cols, idx_name.as_deref());
                     let mut idx_stmt = sea_query::Index::create();
                     idx_stmt = idx_stmt.name(&index_name).to_owned();
                     for col_name in idx_cols {
@@ -198,7 +193,11 @@ mod tests {
         }
     }
 
-    fn table_def(name: &str, columns: Vec<ColumnDef>, constraints: Vec<TableConstraint>) -> TableDef {
+    fn table_def(
+        name: &str,
+        columns: Vec<ColumnDef>,
+        constraints: Vec<TableConstraint>,
+    ) -> TableDef {
         TableDef {
             name: name.to_string(),
             columns,
@@ -225,19 +224,17 @@ mod tests {
             "users",
             vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer), false),
-                col("email", ColumnType::Simple(SimpleColumnType::Text), !nullable),
+                col(
+                    "email",
+                    ColumnType::Simple(SimpleColumnType::Text),
+                    !nullable,
+                ),
             ],
             vec![],
         )];
 
-        let result = build_modify_column_nullable(
-            &backend,
-            "users",
-            "email",
-            nullable,
-            fill_with,
-            &schema,
-        );
+        let result =
+            build_modify_column_nullable(&backend, "users", "email", nullable, fill_with, &schema);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -254,7 +251,11 @@ mod tests {
                 DatabaseBackend::Sqlite => "sqlite",
             },
             if nullable { "nullable" } else { "not_null" },
-            if fill_with.is_some() { "_with_fill" } else { "" }
+            if fill_with.is_some() {
+                "_with_fill"
+            } else {
+                ""
+            }
         );
 
         with_settings!({ snapshot_suffix => suffix }, {
@@ -273,14 +274,7 @@ mod tests {
             return;
         }
 
-        let result = build_modify_column_nullable(
-            &backend,
-            "users",
-            "email",
-            false,
-            None,
-            &[],
-        );
+        let result = build_modify_column_nullable(&backend, "users", "email", false, None, &[]);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Table 'users' not found"));
@@ -300,18 +294,15 @@ mod tests {
 
         let schema = vec![table_def(
             "users",
-            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer), false)],
+            vec![col(
+                "id",
+                ColumnType::Simple(SimpleColumnType::Integer),
+                false,
+            )],
             vec![],
         )];
 
-        let result = build_modify_column_nullable(
-            &backend,
-            "users",
-            "email",
-            false,
-            None,
-            &schema,
-        );
+        let result = build_modify_column_nullable(&backend, "users", "email", false, None, &schema);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Column 'email' not found"));
@@ -335,14 +326,7 @@ mod tests {
             }],
         )];
 
-        let result = build_modify_column_nullable(
-            &backend,
-            "users",
-            "email",
-            false,
-            None,
-            &schema,
-        );
+        let result = build_modify_column_nullable(&backend, "users", "email", false, None, &schema);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -389,14 +373,7 @@ mod tests {
             vec![],
         )];
 
-        let result = build_modify_column_nullable(
-            &backend,
-            "users",
-            "email",
-            false,
-            None,
-            &schema,
-        );
+        let result = build_modify_column_nullable(&backend, "users", "email", false, None, &schema);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries

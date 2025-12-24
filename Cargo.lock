@@ -415,6 +415,7 @@ dependencies = [
  "encode_unicode",
  "libc",
  "once_cell",
+ "unicode-width",
  "windows-sys 0.59.0",
 ]
 
@@ -564,6 +565,19 @@ dependencies = [
  "rustc_version",
  "syn 2.0.111",
  "unicode-xid",
+]
+
+[[package]]
+name = "dialoguer"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "658bce805d770f407bc62102fca7c2c64ceef2fbcb2b8bd19d2765ce093980de"
+dependencies = [
+ "console",
+ "shell-words",
+ "tempfile",
+ "thiserror 1.0.69",
+ "zeroize",
 ]
 
 [[package]]
@@ -2011,7 +2025,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "strum",
- "thiserror",
+ "thiserror 2.0.17",
  "time",
  "tracing",
  "url",
@@ -2071,7 +2085,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.111",
- "thiserror",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -2085,7 +2099,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.111",
- "thiserror",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -2291,6 +2305,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "shell-words"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc6fe69c597f9c37bfeeeeeb33da3530379845f10be461a66d16d03eca2ded77"
+
+[[package]]
 name = "shlex"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2415,7 +2435,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "smallvec",
- "thiserror",
+ "thiserror 2.0.17",
  "time",
  "tokio",
  "tokio-stream",
@@ -2502,7 +2522,7 @@ dependencies = [
  "smallvec",
  "sqlx-core",
  "stringprep",
- "thiserror",
+ "thiserror 2.0.17",
  "time",
  "tracing",
  "uuid",
@@ -2545,7 +2565,7 @@ dependencies = [
  "smallvec",
  "sqlx-core",
  "stringprep",
- "thiserror",
+ "thiserror 2.0.17",
  "time",
  "tracing",
  "uuid",
@@ -2572,7 +2592,7 @@ dependencies = [
  "serde",
  "serde_urlencoded",
  "sqlx-core",
- "thiserror",
+ "thiserror 2.0.17",
  "time",
  "tracing",
  "url",
@@ -2680,11 +2700,31 @@ checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
 
 [[package]]
 name = "thiserror"
+version = "1.0.69"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6aaf5339b578ea85b50e080feb250a3e8ae8cfcdff9a461c9ec2904bc923f52"
+dependencies = [
+ "thiserror-impl 1.0.69",
+]
+
+[[package]]
+name = "thiserror"
 version = "2.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f63587ca0f12b72a0600bcba1d40081f830876000bb46dd2337a3051618f4fc8"
 dependencies = [
- "thiserror-impl",
+ "thiserror-impl 2.0.17",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "1.0.69"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.111",
 ]
 
 [[package]]
@@ -2889,6 +2929,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7df058c713841ad818f1dc5d3fd88063241cc61f49f5fbea4b951e8cf5a8d71d"
 
 [[package]]
+name = "unicode-width"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
+
+[[package]]
 name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2949,7 +2995,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vespertide"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "vespertide-core",
  "vespertide-macro",
@@ -2957,13 +3003,14 @@ dependencies = [
 
 [[package]]
 name = "vespertide-cli"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "assert_cmd",
  "chrono",
  "clap",
  "colored",
+ "dialoguer",
  "predicates",
  "rstest",
  "schemars",
@@ -2981,7 +3028,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-config"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "clap",
  "serde",
@@ -2989,28 +3036,28 @@ dependencies = [
 
 [[package]]
 name = "vespertide-core"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "rstest",
  "schemars",
  "serde",
- "thiserror",
+ "thiserror 2.0.17",
  "vespertide-naming",
 ]
 
 [[package]]
 name = "vespertide-exporter"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "insta",
  "rstest",
- "thiserror",
+ "thiserror 2.0.17",
  "vespertide-core",
 ]
 
 [[package]]
 name = "vespertide-loader"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "rstest",
@@ -3025,14 +3072,14 @@ dependencies = [
 
 [[package]]
 name = "vespertide-macro"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "proc-macro2",
  "quote",
  "runtime-macros",
  "syn 2.0.111",
  "tempfile",
- "thiserror",
+ "thiserror 2.0.17",
  "vespertide-config",
  "vespertide-core",
  "vespertide-loader",
@@ -3042,27 +3089,27 @@ dependencies = [
 
 [[package]]
 name = "vespertide-naming"
-version = "0.1.16"
+version = "0.1.17"
 
 [[package]]
 name = "vespertide-planner"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "insta",
  "rstest",
- "thiserror",
+ "thiserror 2.0.17",
  "vespertide-core",
  "vespertide-naming",
 ]
 
 [[package]]
 name = "vespertide-query"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "insta",
  "rstest",
  "sea-query 0.32.7",
- "thiserror",
+ "thiserror 2.0.17",
  "vespertide-core",
  "vespertide-naming",
  "vespertide-planner",

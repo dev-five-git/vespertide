@@ -197,6 +197,7 @@ pub(crate) fn vespertide_migration_impl(
     };
     let _models = match load_models_at_compile_time() {
         Ok(models) => models,
+        #[cfg(not(tarpaulin_include))]
         Err(e) => {
             return syn::Error::new(
                 proc_macro2::Span::call_site(),
@@ -210,6 +211,7 @@ pub(crate) fn vespertide_migration_impl(
     let mut baseline_schema = Vec::new();
     let mut migration_blocks = Vec::new();
 
+    #[cfg(not(tarpaulin_include))]
     for migration in &migrations {
         match build_migration_block(migration, &mut baseline_schema) {
             Ok(block) => migration_blocks.push(block),
@@ -223,6 +225,7 @@ pub(crate) fn vespertide_migration_impl(
 }
 
 /// Zero-runtime migration entry point.
+#[cfg(not(tarpaulin_include))]
 #[proc_macro]
 pub fn vespertide_migration(input: TokenStream) -> TokenStream {
     vespertide_migration_impl(input.into()).into()

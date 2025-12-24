@@ -9,6 +9,17 @@ use vespertide_core::{
 
 use super::types::DatabaseBackend;
 
+/// Normalize fill_with value - empty string becomes '' (SQL empty string literal)
+pub fn normalize_fill_with(fill_with: Option<&str>) -> Option<String> {
+    fill_with.map(|s| {
+        if s.is_empty() {
+            "''".to_string()
+        } else {
+            s.to_string()
+        }
+    })
+}
+
 /// Helper function to convert a schema statement to SQL for a specific backend
 pub fn build_schema_statement<T: SchemaStatementBuilder>(
     stmt: &T,
@@ -171,6 +182,53 @@ pub fn convert_default_for_backend(default: &str, backend: &DatabaseBackend) -> 
     }
 }
 
+/// Check if the column type is an enum type
+fn is_enum_type(column_type: &ColumnType) -> bool {
+    matches!(
+        column_type,
+        ColumnType::Complex(ComplexColumnType::Enum { .. })
+    )
+}
+
+/// Normalize a default value for enum columns - add quotes if needed
+/// This is used for SQL expressions (INSERT, UPDATE) where enum values need quoting
+pub fn normalize_enum_default(column_type: &ColumnType, value: &str) -> String {
+    if is_enum_type(column_type) && needs_quoting(value) {
+        format!("'{}'", value)
+    } else {
+        value.to_string()
+    }
+}
+
+/// Check if a string default value needs quoting (is a plain string literal without quotes/parens)
+fn needs_quoting(default_str: &str) -> bool {
+    let trimmed = default_str.trim();
+    // Empty string always needs quoting to become ''
+    if trimmed.is_empty() {
+        return true;
+    }
+    // Don't quote if already quoted
+    if trimmed.starts_with('\'') || trimmed.starts_with('"') {
+        return false;
+    }
+    // Don't quote if it's a function call
+    if trimmed.contains('(') || trimmed.contains(')') {
+        return false;
+    }
+    // Don't quote NULL
+    if trimmed.eq_ignore_ascii_case("null") {
+        return false;
+    }
+    // Don't quote special SQL keywords
+    if trimmed.eq_ignore_ascii_case("current_timestamp")
+        || trimmed.eq_ignore_ascii_case("current_date")
+        || trimmed.eq_ignore_ascii_case("current_time")
+    {
+        return false;
+    }
+    true
+}
+
 /// Build sea_query ColumnDef from vespertide ColumnDef for a specific backend with table-aware enum naming
 pub fn build_sea_column_def_with_table(
     backend: &DatabaseBackend,
@@ -187,7 +245,18 @@ pub fn build_sea_column_def_with_table(
     if let Some(default) = &column.default {
         let default_str = default.to_sql();
         let converted = convert_default_for_backend(&default_str, backend);
-        col.default(Into::<SimpleExpr>::into(sea_query::Expr::cust(converted)));
+
+        // Auto-quote enum default values if the value is a string and needs quoting
+        let final_default =
+            if is_enum_type(&column.r#type) && default.is_string() && needs_quoting(&converted) {
+                format!("'{}'", converted)
+            } else {
+                converted
+            };
+
+        col.default(Into::<SimpleExpr>::into(sea_query::Expr::cust(
+            final_default,
+        )));
     }
 
     col
@@ -252,14 +321,6 @@ pub fn build_drop_enum_type_sql(
     } else {
         None
     }
-}
-
-/// Check if a column type is an enum
-pub fn is_enum_type(column_type: &ColumnType) -> bool {
-    matches!(
-        column_type,
-        ColumnType::Complex(ComplexColumnType::Enum { .. })
-    )
 }
 
 // Re-export naming functions from vespertide-naming
@@ -528,5 +589,35 @@ mod tests {
         });
         // Integer enums should return None (no CREATE TYPE needed)
         assert!(build_create_enum_type_sql("test_table", &integer_enum).is_none());
+    }
+
+    #[rstest]
+    // Empty strings need quoting
+    #[case::empty("", true)]
+    #[case::whitespace_only("   ", true)]
+    // Function calls should not be quoted
+    #[case::now_func("now()", false)]
+    #[case::coalesce_func("COALESCE(old_value, 'default')", false)]
+    #[case::uuid_func("gen_random_uuid()", false)]
+    // NULL keyword should not be quoted
+    #[case::null_upper("NULL", false)]
+    #[case::null_lower("null", false)]
+    #[case::null_mixed("Null", false)]
+    // SQL date/time keywords should not be quoted
+    #[case::current_timestamp_upper("CURRENT_TIMESTAMP", false)]
+    #[case::current_timestamp_lower("current_timestamp", false)]
+    #[case::current_date_upper("CURRENT_DATE", false)]
+    #[case::current_date_lower("current_date", false)]
+    #[case::current_time_upper("CURRENT_TIME", false)]
+    #[case::current_time_lower("current_time", false)]
+    // Already quoted strings should not be re-quoted
+    #[case::single_quoted("'active'", false)]
+    #[case::double_quoted("\"active\"", false)]
+    // Plain strings need quoting
+    #[case::plain_active("active", true)]
+    #[case::plain_pending("pending", true)]
+    #[case::plain_underscore("some_value", true)]
+    fn test_needs_quoting(#[case] input: &str, #[case] expected: bool) {
+        assert_eq!(needs_quoting(input), expected);
     }
 }

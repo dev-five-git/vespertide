@@ -16,5 +16,5 @@ pub use index::IndexDef;
 pub use names::{ColumnName, IndexName, TableName};
 pub use primary_key::PrimaryKeyDef;
 pub use reference::ReferenceAction;
-pub use str_or_bool::{StrOrBoolOrArray, StringOrBool};
+pub use str_or_bool::{DefaultValue, StrOrBoolOrArray, StringOrBool};
 pub use table::{TableDef, TableValidationError};

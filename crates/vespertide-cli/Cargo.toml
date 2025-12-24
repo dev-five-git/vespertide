@@ -14,6 +14,7 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 colored = "3"
+dialoguer = "0.11"
 serde_json = "1"
 serde_yaml = "0.9"
 schemars = "1.1"
@@ -34,3 +35,6 @@ predicates = "3"
 [[bin]]
 name = "vespertide"
 path = "src/main.rs"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }

@@ -37,7 +37,7 @@
         "default": {
           "anyOf": [
             {
-              "$ref": "#/$defs/StringOrBool"
+              "$ref": "#/$defs/DefaultValue"
             },
             {
               "type": "null"
@@ -210,6 +210,25 @@
         }
       ]
     },
+    "DefaultValue": {
+      "description": "A value that can be a string, boolean, or number.\nThis is used for default values where columns can use literal values directly.",
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "integer",
+          "format": "int64"
+        },
+        {
+          "type": "number",
+          "format": "double"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
     "EnumValues": {
       "description": "Enum values definition - either all string or all integer",
       "anyOf": [
@@ -360,17 +379,6 @@
         },
         {
           "type": "boolean"
-        }
-      ]
-    },
-    "StringOrBool": {
-      "description": "A value that can be either a string or a boolean.\nThis is used for default values where boolean columns can use `true`/`false` directly.",
-      "anyOf": [
-        {
-          "type": "boolean"
-        },
-        {
-          "type": "string"
         }
       ]
     },

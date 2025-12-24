@@ -108,7 +108,11 @@ impl fmt::Display for MigrationAction {
                 ..
             } => {
                 let nullability = if *nullable { "NULL" } else { "NOT NULL" };
-                write!(f, "ModifyColumnNullable: {}.{} -> {}", table, column, nullability)
+                write!(
+                    f,
+                    "ModifyColumnNullable: {}.{} -> {}",
+                    table, column, nullability
+                )
             }
             MigrationAction::ModifyColumnDefault {
                 table,
@@ -116,7 +120,11 @@ impl fmt::Display for MigrationAction {
                 new_default,
             } => {
                 if let Some(default) = new_default {
-                    write!(f, "ModifyColumnDefault: {}.{} -> {}", table, column, default)
+                    write!(
+                        f,
+                        "ModifyColumnDefault: {}.{} -> {}",
+                        table, column, default
+                    )
                 } else {
                     write!(f, "ModifyColumnDefault: {}.{} -> (none)", table, column)
                 }
@@ -132,7 +140,11 @@ impl fmt::Display for MigrationAction {
                     } else {
                         comment.clone()
                     };
-                    write!(f, "ModifyColumnComment: {}.{} -> '{}'", table, column, display)
+                    write!(
+                        f,
+                        "ModifyColumnComment: {}.{} -> '{}'",
+                        table, column, display
+                    )
                 } else {
                     write!(f, "ModifyColumnComment: {}.{} -> (none)", table, column)
                 }
@@ -537,10 +549,7 @@ mod tests {
         },
         "ModifyColumnDefault: users.status -> (none)"
     )]
-    fn test_display_modify_column_default(
-        #[case] action: MigrationAction,
-        #[case] expected: &str,
-    ) {
+    fn test_display_modify_column_default(#[case] action: MigrationAction, #[case] expected: &str) {
         assert_eq!(action.to_string(), expected);
     }
 
@@ -561,10 +570,7 @@ mod tests {
         },
         "ModifyColumnComment: users.email -> (none)"
     )]
-    fn test_display_modify_column_comment(
-        #[case] action: MigrationAction,
-        #[case] expected: &str,
-    ) {
+    fn test_display_modify_column_comment(#[case] action: MigrationAction, #[case] expected: &str) {
         assert_eq!(action.to_string(), expected);
     }
 
