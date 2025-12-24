@@ -157,10 +157,10 @@ pub fn reference_action_sql(action: &ReferenceAction) -> &'static str {
 /// Convert a default value string to the appropriate backend-specific expression
 pub fn convert_default_for_backend(default: &str, backend: &DatabaseBackend) -> String {
     match default {
-        "gen_random_uuid()" => match backend {
+        "gen_random_uuid()" | "UUID()" | "lower(hex(randomblob(16)))" => match backend {
             DatabaseBackend::Postgres => "gen_random_uuid()".to_string(),
             DatabaseBackend::MySql => "(UUID())".to_string(),
-            DatabaseBackend::Sqlite => "(lower(hex(randomblob(16))))".to_string(),
+            DatabaseBackend::Sqlite => "lower(hex(randomblob(16)))".to_string(),
         },
         "current_timestamp()" | "now()" | "CURRENT_TIMESTAMP" => match backend {
             DatabaseBackend::Postgres => "CURRENT_TIMESTAMP".to_string(),
@@ -411,7 +411,7 @@ mod tests {
     #[case::gen_random_uuid_sqlite(
         "gen_random_uuid()",
         DatabaseBackend::Sqlite,
-        "(lower(hex(randomblob(16))))"
+        "lower(hex(randomblob(16)))"
     )]
     #[case::current_timestamp_postgres(
         "current_timestamp()",

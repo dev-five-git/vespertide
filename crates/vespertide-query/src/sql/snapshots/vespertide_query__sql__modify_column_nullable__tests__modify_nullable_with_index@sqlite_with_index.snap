@@ -1,0 +1,9 @@
+---
+source: crates/vespertide-query/src/sql/modify_column_nullable.rs
+expression: sql
+---
+CREATE TABLE "users_temp" ( "id" integer NOT NULL, "email" text NOT NULL )
+INSERT INTO "users_temp" ("id", "email") SELECT "id", "email" FROM "users"
+DROP TABLE "users"
+ALTER TABLE "users_temp" RENAME TO "users"
+CREATE INDEX "ix_users__idx_email" ON "users" ("email")

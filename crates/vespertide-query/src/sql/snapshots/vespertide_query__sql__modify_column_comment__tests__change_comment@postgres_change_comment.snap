@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql/modify_column_comment.rs
+expression: sql
+---
+COMMENT ON COLUMN "users"."email" IS 'New comment'

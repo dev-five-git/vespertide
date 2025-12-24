@@ -266,7 +266,7 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
     for name in from_map.keys() {
         if !to_map.contains_key(name) {
             actions.push(MigrationAction::DeleteTable {
-                table: (*name).to_string(),
+                table: name.to_string(),
             });
         }
     }
@@ -290,21 +290,63 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
             for col in from_cols.keys() {
                 if !to_cols.contains_key(col) {
                     actions.push(MigrationAction::DeleteColumn {
-                        table: (*name).to_string(),
-                        column: (*col).to_string(),
+                        table: name.to_string(),
+                        column: col.to_string(),
                     });
                 }
             }
 
-            // Modified columns
+            // Modified columns - type changes
             for (col, to_def) in &to_cols {
                 if let Some(from_def) = from_cols.get(col)
                     && from_def.r#type.requires_migration(&to_def.r#type)
                 {
                     actions.push(MigrationAction::ModifyColumnType {
-                        table: (*name).to_string(),
-                        column: (*col).to_string(),
+                        table: name.to_string(),
+                        column: col.to_string(),
                         new_type: to_def.r#type.clone(),
+                    });
+                }
+            }
+
+            // Modified columns - nullable changes
+            for (col, to_def) in &to_cols {
+                if let Some(from_def) = from_cols.get(col)
+                    && from_def.nullable != to_def.nullable
+                {
+                    actions.push(MigrationAction::ModifyColumnNullable {
+                        table: name.to_string(),
+                        column: col.to_string(),
+                        nullable: to_def.nullable,
+                        fill_with: None,
+                    });
+                }
+            }
+
+            // Modified columns - default value changes
+            for (col, to_def) in &to_cols {
+                if let Some(from_def) = from_cols.get(col) {
+                    let from_default = from_def.default.as_ref().map(|d| d.to_sql());
+                    let to_default = to_def.default.as_ref().map(|d| d.to_sql());
+                    if from_default != to_default {
+                        actions.push(MigrationAction::ModifyColumnDefault {
+                            table: name.to_string(),
+                            column: col.to_string(),
+                            new_default: to_default,
+                        });
+                    }
+                }
+            }
+
+            // Modified columns - comment changes
+            for (col, to_def) in &to_cols {
+                if let Some(from_def) = from_cols.get(col)
+                    && from_def.comment != to_def.comment
+                {
+                    actions.push(MigrationAction::ModifyColumnComment {
+                        table: name.to_string(),
+                        column: col.to_string(),
+                        new_comment: to_def.comment.clone(),
                     });
                 }
             }
@@ -315,7 +357,7 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
             for (col, def) in &to_cols {
                 if !from_cols.contains_key(col) {
                     actions.push(MigrationAction::AddColumn {
-                        table: (*name).to_string(),
+                        table: name.to_string(),
                         column: Box::new((*def).clone()),
                         fill_with: None,
                     });
@@ -326,7 +368,7 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
             for from_constraint in &from_tbl.constraints {
                 if !to_tbl.constraints.contains(from_constraint) {
                     actions.push(MigrationAction::RemoveConstraint {
-                        table: (*name).to_string(),
+                        table: name.to_string(),
                         constraint: from_constraint.clone(),
                     });
                 }
@@ -334,7 +376,7 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
             for to_constraint in &to_tbl.constraints {
                 if !from_tbl.constraints.contains(to_constraint) {
                     actions.push(MigrationAction::AddConstraint {
-                        table: (*name).to_string(),
+                        table: name.to_string(),
                         constraint: to_constraint.clone(),
                     });
                 }
@@ -1679,6 +1721,1116 @@ mod tests {
         }
     }
 
+    mod primary_key_changes {
+        use super::*;
+
+        fn pk(columns: Vec<&str>) -> TableConstraint {
+            TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: columns.into_iter().map(|s| s.to_string()).collect(),
+            }
+        }
+
+        #[test]
+        fn add_column_to_composite_pk() {
+            // Primary key: [id] -> [id, tenant_id]
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("tenant_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ],
+                vec![pk(vec!["id"])],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("tenant_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ],
+                vec![pk(vec!["id", "tenant_id"])],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            // Should remove old PK and add new composite PK
+            assert_eq!(plan.actions.len(), 2);
+
+            let has_remove = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::RemoveConstraint {
+                        table,
+                        constraint: TableConstraint::PrimaryKey { columns, .. }
+                    } if table == "users" && columns == &vec!["id".to_string()]
+                )
+            });
+            assert!(has_remove, "Should have RemoveConstraint for old PK");
+
+            let has_add = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::AddConstraint {
+                        table,
+                        constraint: TableConstraint::PrimaryKey { columns, .. }
+                    } if table == "users" && columns == &vec!["id".to_string(), "tenant_id".to_string()]
+                )
+            });
+            assert!(has_add, "Should have AddConstraint for new composite PK");
+        }
+
+        #[test]
+        fn remove_column_from_composite_pk() {
+            // Primary key: [id, tenant_id] -> [id]
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("tenant_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ],
+                vec![pk(vec!["id", "tenant_id"])],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("tenant_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ],
+                vec![pk(vec!["id"])],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            // Should remove old composite PK and add new single-column PK
+            assert_eq!(plan.actions.len(), 2);
+
+            let has_remove = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::RemoveConstraint {
+                        table,
+                        constraint: TableConstraint::PrimaryKey { columns, .. }
+                    } if table == "users" && columns == &vec!["id".to_string(), "tenant_id".to_string()]
+                )
+            });
+            assert!(has_remove, "Should have RemoveConstraint for old composite PK");
+
+            let has_add = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::AddConstraint {
+                        table,
+                        constraint: TableConstraint::PrimaryKey { columns, .. }
+                    } if table == "users" && columns == &vec!["id".to_string()]
+                )
+            });
+            assert!(has_add, "Should have AddConstraint for new single-column PK");
+        }
+
+        #[test]
+        fn change_pk_columns_entirely() {
+            // Primary key: [id] -> [uuid]
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("uuid", ColumnType::Simple(SimpleColumnType::Text)),
+                ],
+                vec![pk(vec!["id"])],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("uuid", ColumnType::Simple(SimpleColumnType::Text)),
+                ],
+                vec![pk(vec!["uuid"])],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            assert_eq!(plan.actions.len(), 2);
+
+            let has_remove = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::RemoveConstraint {
+                        table,
+                        constraint: TableConstraint::PrimaryKey { columns, .. }
+                    } if table == "users" && columns == &vec!["id".to_string()]
+                )
+            });
+            assert!(has_remove, "Should have RemoveConstraint for old PK");
+
+            let has_add = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::AddConstraint {
+                        table,
+                        constraint: TableConstraint::PrimaryKey { columns, .. }
+                    } if table == "users" && columns == &vec!["uuid".to_string()]
+                )
+            });
+            assert!(has_add, "Should have AddConstraint for new PK");
+        }
+
+        #[test]
+        fn add_multiple_columns_to_composite_pk() {
+            // Primary key: [id] -> [id, tenant_id, region_id]
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("tenant_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("region_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ],
+                vec![pk(vec!["id"])],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("tenant_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("region_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ],
+                vec![pk(vec!["id", "tenant_id", "region_id"])],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            assert_eq!(plan.actions.len(), 2);
+
+            let has_remove = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::RemoveConstraint {
+                        table,
+                        constraint: TableConstraint::PrimaryKey { columns, .. }
+                    } if table == "users" && columns == &vec!["id".to_string()]
+                )
+            });
+            assert!(has_remove, "Should have RemoveConstraint for old single-column PK");
+
+            let has_add = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::AddConstraint {
+                        table,
+                        constraint: TableConstraint::PrimaryKey { columns, .. }
+                    } if table == "users" && columns == &vec![
+                        "id".to_string(),
+                        "tenant_id".to_string(),
+                        "region_id".to_string()
+                    ]
+                )
+            });
+            assert!(has_add, "Should have AddConstraint for new 3-column composite PK");
+        }
+
+        #[test]
+        fn remove_multiple_columns_from_composite_pk() {
+            // Primary key: [id, tenant_id, region_id] -> [id]
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("tenant_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("region_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ],
+                vec![pk(vec!["id", "tenant_id", "region_id"])],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("tenant_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("region_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ],
+                vec![pk(vec!["id"])],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            assert_eq!(plan.actions.len(), 2);
+
+            let has_remove = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::RemoveConstraint {
+                        table,
+                        constraint: TableConstraint::PrimaryKey { columns, .. }
+                    } if table == "users" && columns == &vec![
+                        "id".to_string(),
+                        "tenant_id".to_string(),
+                        "region_id".to_string()
+                    ]
+                )
+            });
+            assert!(has_remove, "Should have RemoveConstraint for old 3-column composite PK");
+
+            let has_add = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::AddConstraint {
+                        table,
+                        constraint: TableConstraint::PrimaryKey { columns, .. }
+                    } if table == "users" && columns == &vec!["id".to_string()]
+                )
+            });
+            assert!(has_add, "Should have AddConstraint for new single-column PK");
+        }
+
+        #[test]
+        fn change_composite_pk_columns_partially() {
+            // Primary key: [id, tenant_id] -> [id, region_id]
+            // One column kept, one removed, one added
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("tenant_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("region_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ],
+                vec![pk(vec!["id", "tenant_id"])],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("tenant_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("region_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ],
+                vec![pk(vec!["id", "region_id"])],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            assert_eq!(plan.actions.len(), 2);
+
+            let has_remove = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::RemoveConstraint {
+                        table,
+                        constraint: TableConstraint::PrimaryKey { columns, .. }
+                    } if table == "users" && columns == &vec!["id".to_string(), "tenant_id".to_string()]
+                )
+            });
+            assert!(has_remove, "Should have RemoveConstraint for old PK with tenant_id");
+
+            let has_add = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::AddConstraint {
+                        table,
+                        constraint: TableConstraint::PrimaryKey { columns, .. }
+                    } if table == "users" && columns == &vec!["id".to_string(), "region_id".to_string()]
+                )
+            });
+            assert!(has_add, "Should have AddConstraint for new PK with region_id");
+        }
+    }
+
+    mod default_changes {
+        use super::*;
+
+        fn col_with_default(name: &str, ty: ColumnType, default: Option<&str>) -> ColumnDef {
+            ColumnDef {
+                name: name.to_string(),
+                r#type: ty,
+                nullable: true,
+                default: default.map(|s| s.into()),
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }
+        }
+
+        #[test]
+        fn add_default_value() {
+            // Column: no default -> has default
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_with_default("status", ColumnType::Simple(SimpleColumnType::Text), None),
+                ],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_with_default(
+                        "status",
+                        ColumnType::Simple(SimpleColumnType::Text),
+                        Some("'active'"),
+                    ),
+                ],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            assert_eq!(plan.actions.len(), 1);
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::ModifyColumnDefault {
+                    table,
+                    column,
+                    new_default: Some(default),
+                } if table == "users" && column == "status" && default == "'active'"
+            ));
+        }
+
+        #[test]
+        fn remove_default_value() {
+            // Column: has default -> no default
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_with_default(
+                        "status",
+                        ColumnType::Simple(SimpleColumnType::Text),
+                        Some("'active'"),
+                    ),
+                ],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_with_default("status", ColumnType::Simple(SimpleColumnType::Text), None),
+                ],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            assert_eq!(plan.actions.len(), 1);
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::ModifyColumnDefault {
+                    table,
+                    column,
+                    new_default: None,
+                } if table == "users" && column == "status"
+            ));
+        }
+
+        #[test]
+        fn change_default_value() {
+            // Column: 'active' -> 'pending'
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_with_default(
+                        "status",
+                        ColumnType::Simple(SimpleColumnType::Text),
+                        Some("'active'"),
+                    ),
+                ],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_with_default(
+                        "status",
+                        ColumnType::Simple(SimpleColumnType::Text),
+                        Some("'pending'"),
+                    ),
+                ],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            assert_eq!(plan.actions.len(), 1);
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::ModifyColumnDefault {
+                    table,
+                    column,
+                    new_default: Some(default),
+                } if table == "users" && column == "status" && default == "'pending'"
+            ));
+        }
+
+        #[test]
+        fn no_change_same_default() {
+            // Column: same default -> no action
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_with_default(
+                        "status",
+                        ColumnType::Simple(SimpleColumnType::Text),
+                        Some("'active'"),
+                    ),
+                ],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_with_default(
+                        "status",
+                        ColumnType::Simple(SimpleColumnType::Text),
+                        Some("'active'"),
+                    ),
+                ],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            assert!(plan.actions.is_empty());
+        }
+
+        #[test]
+        fn multiple_columns_default_changes() {
+            // Multiple columns with default changes
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_with_default("status", ColumnType::Simple(SimpleColumnType::Text), None),
+                    col_with_default(
+                        "role",
+                        ColumnType::Simple(SimpleColumnType::Text),
+                        Some("'user'"),
+                    ),
+                    col_with_default(
+                        "active",
+                        ColumnType::Simple(SimpleColumnType::Boolean),
+                        Some("true"),
+                    ),
+                ],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_with_default(
+                        "status",
+                        ColumnType::Simple(SimpleColumnType::Text),
+                        Some("'pending'"),
+                    ), // None -> 'pending'
+                    col_with_default("role", ColumnType::Simple(SimpleColumnType::Text), None), // 'user' -> None
+                    col_with_default(
+                        "active",
+                        ColumnType::Simple(SimpleColumnType::Boolean),
+                        Some("true"),
+                    ), // no change
+                ],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            assert_eq!(plan.actions.len(), 2);
+
+            let has_status_change = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::ModifyColumnDefault {
+                        table,
+                        column,
+                        new_default: Some(default),
+                    } if table == "users" && column == "status" && default == "'pending'"
+                )
+            });
+            assert!(has_status_change, "Should detect status default added");
+
+            let has_role_change = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::ModifyColumnDefault {
+                        table,
+                        column,
+                        new_default: None,
+                    } if table == "users" && column == "role"
+                )
+            });
+            assert!(has_role_change, "Should detect role default removed");
+        }
+
+        #[test]
+        fn default_change_with_type_change() {
+            // Column changing both type and default
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_with_default(
+                        "count",
+                        ColumnType::Simple(SimpleColumnType::Integer),
+                        Some("0"),
+                    ),
+                ],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_with_default(
+                        "count",
+                        ColumnType::Simple(SimpleColumnType::Text),
+                        Some("'0'"),
+                    ),
+                ],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            // Should generate both ModifyColumnType and ModifyColumnDefault
+            assert_eq!(plan.actions.len(), 2);
+
+            let has_type_change = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::ModifyColumnType { table, column, .. }
+                    if table == "users" && column == "count"
+                )
+            });
+            assert!(has_type_change, "Should detect type change");
+
+            let has_default_change = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::ModifyColumnDefault {
+                        table,
+                        column,
+                        new_default: Some(default),
+                    } if table == "users" && column == "count" && default == "'0'"
+                )
+            });
+            assert!(has_default_change, "Should detect default change");
+        }
+    }
+
+    mod comment_changes {
+        use super::*;
+
+        fn col_with_comment(name: &str, ty: ColumnType, comment: Option<&str>) -> ColumnDef {
+            ColumnDef {
+                name: name.to_string(),
+                r#type: ty,
+                nullable: true,
+                default: None,
+                comment: comment.map(|s| s.to_string()),
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }
+        }
+
+        #[test]
+        fn add_comment() {
+            // Column: no comment -> has comment
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_with_comment("email", ColumnType::Simple(SimpleColumnType::Text), None),
+                ],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_with_comment(
+                        "email",
+                        ColumnType::Simple(SimpleColumnType::Text),
+                        Some("User's email address"),
+                    ),
+                ],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            assert_eq!(plan.actions.len(), 1);
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::ModifyColumnComment {
+                    table,
+                    column,
+                    new_comment: Some(comment),
+                } if table == "users" && column == "email" && comment == "User's email address"
+            ));
+        }
+
+        #[test]
+        fn remove_comment() {
+            // Column: has comment -> no comment
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_with_comment(
+                        "email",
+                        ColumnType::Simple(SimpleColumnType::Text),
+                        Some("User's email address"),
+                    ),
+                ],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_with_comment("email", ColumnType::Simple(SimpleColumnType::Text), None),
+                ],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            assert_eq!(plan.actions.len(), 1);
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::ModifyColumnComment {
+                    table,
+                    column,
+                    new_comment: None,
+                } if table == "users" && column == "email"
+            ));
+        }
+
+        #[test]
+        fn change_comment() {
+            // Column: 'old comment' -> 'new comment'
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_with_comment(
+                        "email",
+                        ColumnType::Simple(SimpleColumnType::Text),
+                        Some("Old comment"),
+                    ),
+                ],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_with_comment(
+                        "email",
+                        ColumnType::Simple(SimpleColumnType::Text),
+                        Some("New comment"),
+                    ),
+                ],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            assert_eq!(plan.actions.len(), 1);
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::ModifyColumnComment {
+                    table,
+                    column,
+                    new_comment: Some(comment),
+                } if table == "users" && column == "email" && comment == "New comment"
+            ));
+        }
+
+        #[test]
+        fn no_change_same_comment() {
+            // Column: same comment -> no action
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_with_comment(
+                        "email",
+                        ColumnType::Simple(SimpleColumnType::Text),
+                        Some("Same comment"),
+                    ),
+                ],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_with_comment(
+                        "email",
+                        ColumnType::Simple(SimpleColumnType::Text),
+                        Some("Same comment"),
+                    ),
+                ],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            assert!(plan.actions.is_empty());
+        }
+
+        #[test]
+        fn multiple_columns_comment_changes() {
+            // Multiple columns with comment changes
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_with_comment("email", ColumnType::Simple(SimpleColumnType::Text), None),
+                    col_with_comment(
+                        "name",
+                        ColumnType::Simple(SimpleColumnType::Text),
+                        Some("User name"),
+                    ),
+                    col_with_comment(
+                        "phone",
+                        ColumnType::Simple(SimpleColumnType::Text),
+                        Some("Phone number"),
+                    ),
+                ],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_with_comment(
+                        "email",
+                        ColumnType::Simple(SimpleColumnType::Text),
+                        Some("Email address"),
+                    ), // None -> "Email address"
+                    col_with_comment("name", ColumnType::Simple(SimpleColumnType::Text), None), // "User name" -> None
+                    col_with_comment(
+                        "phone",
+                        ColumnType::Simple(SimpleColumnType::Text),
+                        Some("Phone number"),
+                    ), // no change
+                ],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            assert_eq!(plan.actions.len(), 2);
+
+            let has_email_change = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::ModifyColumnComment {
+                        table,
+                        column,
+                        new_comment: Some(comment),
+                    } if table == "users" && column == "email" && comment == "Email address"
+                )
+            });
+            assert!(has_email_change, "Should detect email comment added");
+
+            let has_name_change = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::ModifyColumnComment {
+                        table,
+                        column,
+                        new_comment: None,
+                    } if table == "users" && column == "name"
+                )
+            });
+            assert!(has_name_change, "Should detect name comment removed");
+        }
+
+        #[test]
+        fn comment_change_with_nullable_change() {
+            // Column changing both nullable and comment
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    {
+                        let mut c =
+                            col_with_comment("email", ColumnType::Simple(SimpleColumnType::Text), None);
+                        c.nullable = true;
+                        c
+                    },
+                ],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    {
+                        let mut c = col_with_comment(
+                            "email",
+                            ColumnType::Simple(SimpleColumnType::Text),
+                            Some("Required email"),
+                        );
+                        c.nullable = false;
+                        c
+                    },
+                ],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            // Should generate both ModifyColumnNullable and ModifyColumnComment
+            assert_eq!(plan.actions.len(), 2);
+
+            let has_nullable_change = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::ModifyColumnNullable {
+                        table,
+                        column,
+                        nullable: false,
+                        ..
+                    } if table == "users" && column == "email"
+                )
+            });
+            assert!(has_nullable_change, "Should detect nullable change");
+
+            let has_comment_change = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::ModifyColumnComment {
+                        table,
+                        column,
+                        new_comment: Some(comment),
+                    } if table == "users" && column == "email" && comment == "Required email"
+                )
+            });
+            assert!(has_comment_change, "Should detect comment change");
+        }
+    }
+
+    mod nullable_changes {
+        use super::*;
+
+        fn col_nullable(name: &str, ty: ColumnType, nullable: bool) -> ColumnDef {
+            ColumnDef {
+                name: name.to_string(),
+                r#type: ty,
+                nullable,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }
+        }
+
+        #[test]
+        fn column_nullable_to_non_nullable() {
+            // Column: nullable -> non-nullable
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_nullable("email", ColumnType::Simple(SimpleColumnType::Text), true),
+                ],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_nullable("email", ColumnType::Simple(SimpleColumnType::Text), false),
+                ],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            assert_eq!(plan.actions.len(), 1);
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::ModifyColumnNullable {
+                    table,
+                    column,
+                    nullable: false,
+                    fill_with: None,
+                } if table == "users" && column == "email"
+            ));
+        }
+
+        #[test]
+        fn column_non_nullable_to_nullable() {
+            // Column: non-nullable -> nullable
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_nullable("email", ColumnType::Simple(SimpleColumnType::Text), false),
+                ],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_nullable("email", ColumnType::Simple(SimpleColumnType::Text), true),
+                ],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            assert_eq!(plan.actions.len(), 1);
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::ModifyColumnNullable {
+                    table,
+                    column,
+                    nullable: true,
+                    fill_with: None,
+                } if table == "users" && column == "email"
+            ));
+        }
+
+        #[test]
+        fn multiple_columns_nullable_changes() {
+            // Multiple columns changing nullability at once
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_nullable("email", ColumnType::Simple(SimpleColumnType::Text), true),
+                    col_nullable("name", ColumnType::Simple(SimpleColumnType::Text), false),
+                    col_nullable("phone", ColumnType::Simple(SimpleColumnType::Text), true),
+                ],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_nullable("email", ColumnType::Simple(SimpleColumnType::Text), false), // nullable -> non-nullable
+                    col_nullable("name", ColumnType::Simple(SimpleColumnType::Text), true),   // non-nullable -> nullable
+                    col_nullable("phone", ColumnType::Simple(SimpleColumnType::Text), true),  // no change
+                ],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            assert_eq!(plan.actions.len(), 2);
+
+            let has_email_change = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::ModifyColumnNullable {
+                        table,
+                        column,
+                        nullable: false,
+                        ..
+                    } if table == "users" && column == "email"
+                )
+            });
+            assert!(has_email_change, "Should detect email nullable -> non-nullable");
+
+            let has_name_change = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::ModifyColumnNullable {
+                        table,
+                        column,
+                        nullable: true,
+                        ..
+                    } if table == "users" && column == "name"
+                )
+            });
+            assert!(has_name_change, "Should detect name non-nullable -> nullable");
+        }
+
+        #[test]
+        fn nullable_change_with_type_change() {
+            // Column changing both type and nullability
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_nullable("age", ColumnType::Simple(SimpleColumnType::Integer), true),
+                ],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col_nullable("age", ColumnType::Simple(SimpleColumnType::Text), false),
+                ],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            // Should generate both ModifyColumnType and ModifyColumnNullable
+            assert_eq!(plan.actions.len(), 2);
+
+            let has_type_change = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::ModifyColumnType { table, column, .. }
+                    if table == "users" && column == "age"
+                )
+            });
+            assert!(has_type_change, "Should detect type change");
+
+            let has_nullable_change = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::ModifyColumnNullable {
+                        table,
+                        column,
+                        nullable: false,
+                        ..
+                    } if table == "users" && column == "age"
+                )
+            });
+            assert!(has_nullable_change, "Should detect nullable change");
+        }
+    }
+
     mod diff_tables {
         use insta::assert_debug_snapshot;
 
@@ -1912,6 +3064,113 @@ mod tests {
             with_settings!({ snapshot_suffix => name }, {
                 assert_debug_snapshot!(plan.actions);
             });
+        }
+    }
+
+    // Explicit coverage tests for lines that tarpaulin might miss in rstest
+    mod coverage_explicit {
+        use super::*;
+
+        #[test]
+        fn delete_column_explicit() {
+            // Covers lines 292-294: DeleteColumn action inside modified table loop
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("name", ColumnType::Simple(SimpleColumnType::Text)),
+                ],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+            assert_eq!(plan.actions.len(), 1);
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::DeleteColumn { table, column }
+                if table == "users" && column == "name"
+            ));
+        }
+
+        #[test]
+        fn add_column_explicit() {
+            // Covers lines 359-362: AddColumn action inside modified table loop
+            let from = vec![table(
+                "users",
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("email", ColumnType::Simple(SimpleColumnType::Text)),
+                ],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+            assert_eq!(plan.actions.len(), 1);
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::AddColumn { table, column, .. }
+                if table == "users" && column.name == "email"
+            ));
+        }
+
+        #[test]
+        fn remove_constraint_explicit() {
+            // Covers lines 370-372: RemoveConstraint action inside modified table loop
+            let from = vec![table(
+                "users",
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+                vec![idx("idx_users_id", vec!["id"])],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+            assert_eq!(plan.actions.len(), 1);
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::RemoveConstraint { table, constraint }
+                if table == "users" && matches!(constraint, TableConstraint::Index { name: Some(n), .. } if n == "idx_users_id")
+            ));
+        }
+
+        #[test]
+        fn add_constraint_explicit() {
+            // Covers lines 378-380: AddConstraint action inside modified table loop
+            let from = vec![table(
+                "users",
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+                vec![idx("idx_users_id", vec!["id"])],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+            assert_eq!(plan.actions.len(), 1);
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::AddConstraint { table, constraint }
+                if table == "users" && matches!(constraint, TableConstraint::Index { name: Some(n), .. } if n == "idx_users_id")
+            ));
         }
     }
 }

@@ -259,21 +259,35 @@ fn validate_constraint(
 /// Validate a migration plan for correctness.
 /// Checks for:
 /// - AddColumn actions with NOT NULL columns without default must have fill_with
+/// - ModifyColumnNullable actions changing from nullable to non-nullable must have fill_with
 pub fn validate_migration_plan(plan: &MigrationPlan) -> Result<(), PlannerError> {
     for action in &plan.actions {
-        if let MigrationAction::AddColumn {
-            table,
-            column,
-            fill_with,
-        } = action
-        {
-            // If column is NOT NULL and has no default, fill_with is required
-            if !column.nullable && column.default.is_none() && fill_with.is_none() {
-                return Err(PlannerError::MissingFillWith(
-                    table.clone(),
-                    column.name.clone(),
-                ));
+        match action {
+            MigrationAction::AddColumn {
+                table,
+                column,
+                fill_with,
+            } => {
+                // If column is NOT NULL and has no default, fill_with is required
+                if !column.nullable && column.default.is_none() && fill_with.is_none() {
+                    return Err(PlannerError::MissingFillWith(
+                        table.clone(),
+                        column.name.clone(),
+                    ));
+                }
             }
+            MigrationAction::ModifyColumnNullable {
+                table,
+                column,
+                nullable,
+                fill_with,
+            } => {
+                // If changing from nullable to non-nullable, fill_with is required
+                if !nullable && fill_with.is_none() {
+                    return Err(PlannerError::MissingFillWith(table.clone(), column.clone()));
+                }
+            }
+            _ => {}
         }
     }
     Ok(())
@@ -895,6 +909,68 @@ mod tests {
         )];
 
         let result = validate_schema(&schema);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_migration_plan_modify_nullable_to_non_nullable_missing_fill_with() {
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::ModifyColumnNullable {
+                table: "users".into(),
+                column: "email".into(),
+                nullable: false,
+                fill_with: None,
+            }],
+        };
+
+        let result = validate_migration_plan(&plan);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            PlannerError::MissingFillWith(table, column) => {
+                assert_eq!(table, "users");
+                assert_eq!(column, "email");
+            }
+            _ => panic!("expected MissingFillWith error"),
+        }
+    }
+
+    #[test]
+    fn validate_migration_plan_modify_nullable_to_non_nullable_with_fill_with() {
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::ModifyColumnNullable {
+                table: "users".into(),
+                column: "email".into(),
+                nullable: false,
+                fill_with: Some("'unknown'".into()),
+            }],
+        };
+
+        let result = validate_migration_plan(&plan);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_migration_plan_modify_non_nullable_to_nullable() {
+        // Changing from non-nullable to nullable does NOT require fill_with
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::ModifyColumnNullable {
+                table: "users".into(),
+                column: "email".into(),
+                nullable: true,
+                fill_with: None,
+            }],
+        };
+
+        let result = validate_migration_plan(&plan);
         assert!(result.is_ok());
     }
 }

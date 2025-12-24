@@ -1,0 +1,8 @@
+---
+source: crates/vespertide-query/src/sql/modify_column_default.rs
+expression: sql
+---
+CREATE TABLE "events_temp" ( "id" integer NOT NULL, "created_at" timestamp_text NOT NULL DEFAULT CURRENT_TIMESTAMP )
+INSERT INTO "events_temp" ("id", "created_at") SELECT "id", "created_at" FROM "events"
+DROP TABLE "events"
+ALTER TABLE "events_temp" RENAME TO "events"

@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql/modify_column_default.rs
+expression: sql
+---
+ALTER TABLE "orders" ALTER COLUMN "status" DROP DEFAULT
