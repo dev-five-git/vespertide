@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/add_column.rs
+expression: sql
+---
+CREATE TYPE "users_user_status" AS ENUM ('active', 'inactive', 'pending');
+ALTER TABLE "users" ADD COLUMN "status" users_user_status NOT NULL DEFAULT 'active'

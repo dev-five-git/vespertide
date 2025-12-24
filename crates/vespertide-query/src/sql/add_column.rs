@@ -5,7 +5,7 @@ use vespertide_core::{ColumnDef, TableDef};
 use super::create_table::build_create_table_for_backend;
 use super::helpers::{
     build_create_enum_type_sql, build_schema_statement, build_sea_column_def_with_table,
-    collect_sqlite_enum_check_clauses,
+    collect_sqlite_enum_check_clauses, normalize_enum_default, normalize_fill_with,
 };
 use super::rename_table::build_rename_table;
 use super::types::{BuiltQuery, DatabaseBackend, RawSql};
@@ -87,10 +87,11 @@ pub fn build_add_column(
         for col in &table_def.columns {
             select_query = select_query.column(Alias::new(&col.name)).to_owned();
         }
-        let fill_expr = if let Some(fill) = fill_with {
-            Expr::cust(fill)
+        let normalized_fill = normalize_fill_with(fill_with);
+        let fill_expr = if let Some(fill) = normalized_fill.as_deref() {
+            Expr::cust(normalize_enum_default(&column.r#type, fill))
         } else if let Some(def) = &column.default {
-            Expr::cust(def.to_sql())
+            Expr::cust(normalize_enum_default(&column.r#type, &def.to_sql()))
         } else {
             Expr::cust("NULL")
         };
@@ -158,7 +159,7 @@ pub fn build_add_column(
         )));
 
         // Backfill with provided value
-        if let Some(fill) = fill_with {
+        if let Some(fill) = normalize_fill_with(fill_with) {
             let update_stmt = Query::update()
                 .table(Alias::new(table))
                 .value(Alias::new(&column.name), Expr::cust(fill))
@@ -517,6 +518,173 @@ mod tests {
             .join(";\n");
 
         with_settings!({ snapshot_suffix => format!("add_column_with_enum_type_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::postgres(DatabaseBackend::Postgres)]
+    #[case::mysql(DatabaseBackend::MySql)]
+    #[case::sqlite(DatabaseBackend::Sqlite)]
+    fn test_add_column_enum_non_nullable_with_default(#[case] backend: DatabaseBackend) {
+        use insta::{assert_snapshot, with_settings};
+        use vespertide_core::{ComplexColumnType, EnumValues};
+
+        // Test adding an enum column that is non-nullable with a default value
+        let column = ColumnDef {
+            name: "status".into(),
+            r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                name: "user_status".into(),
+                values: EnumValues::String(vec![
+                    "active".into(),
+                    "inactive".into(),
+                    "pending".into(),
+                ]),
+            }),
+            nullable: false,
+            default: Some("active".into()),
+            comment: None,
+            primary_key: None,
+            unique: None,
+            index: None,
+            foreign_key: None,
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        }];
+        let result = build_add_column(&backend, "users", &column, None, &current_schema);
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join(";\n");
+
+        with_settings!({ snapshot_suffix => format!("enum_non_nullable_with_default_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::postgres(DatabaseBackend::Postgres)]
+    #[case::mysql(DatabaseBackend::MySql)]
+    #[case::sqlite(DatabaseBackend::Sqlite)]
+    fn test_add_column_with_empty_string_default(#[case] backend: DatabaseBackend) {
+        use insta::{assert_snapshot, with_settings};
+
+        // Test adding a text column with empty string default
+        let column = ColumnDef {
+            name: "nickname".into(),
+            r#type: ColumnType::Simple(SimpleColumnType::Text),
+            nullable: false,
+            default: Some("".into()), // Empty string default
+            comment: None,
+            primary_key: None,
+            unique: None,
+            index: None,
+            foreign_key: None,
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        }];
+        let result = build_add_column(&backend, "users", &column, None, &current_schema);
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join(";\n");
+
+        // Verify empty string becomes ''
+        assert!(
+            sql.contains("''"),
+            "Expected SQL to contain empty string literal '', got: {}",
+            sql
+        );
+
+        with_settings!({ snapshot_suffix => format!("empty_string_default_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::postgres(DatabaseBackend::Postgres)]
+    #[case::mysql(DatabaseBackend::MySql)]
+    #[case::sqlite(DatabaseBackend::Sqlite)]
+    fn test_add_column_with_fill_with_empty_string(#[case] backend: DatabaseBackend) {
+        use insta::{assert_snapshot, with_settings};
+
+        // Test adding a column with fill_with as empty string
+        let column = ColumnDef {
+            name: "nickname".into(),
+            r#type: ColumnType::Simple(SimpleColumnType::Text),
+            nullable: false,
+            default: None,
+            comment: None,
+            primary_key: None,
+            unique: None,
+            index: None,
+            foreign_key: None,
+        };
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        }];
+        // fill_with empty string should become ''
+        let result = build_add_column(&backend, "users", &column, Some(""), &current_schema);
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join(";\n");
+
+        // Verify empty string becomes ''
+        assert!(
+            sql.contains("''"),
+            "Expected SQL to contain empty string literal '', got: {}",
+            sql
+        );
+
+        with_settings!({ snapshot_suffix => format!("fill_with_empty_string_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }

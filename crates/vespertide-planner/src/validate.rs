@@ -74,6 +74,68 @@ fn validate_table(
     Ok(())
 }
 
+/// Extract the unquoted value from a potentially quoted string.
+/// Returns None if the value is a SQL expression (contains parentheses or is a keyword).
+fn extract_enum_value(value: &str) -> Option<&str> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    // Check for SQL expressions/keywords that shouldn't be validated
+    if trimmed.contains('(')
+        || trimmed.contains(')')
+        || trimmed.eq_ignore_ascii_case("null")
+        || trimmed.eq_ignore_ascii_case("current_timestamp")
+        || trimmed.eq_ignore_ascii_case("now")
+    {
+        return None;
+    }
+    // Strip quotes if present
+    if (trimmed.starts_with('\'') && trimmed.ends_with('\''))
+        || (trimmed.starts_with('"') && trimmed.ends_with('"'))
+    {
+        if trimmed.len() >= 2 {
+            return Some(&trimmed[1..trimmed.len() - 1]);
+        }
+    }
+    // Unquoted value
+    Some(trimmed)
+}
+
+/// Validate that an enum default/fill_with value is in the allowed enum values.
+fn validate_enum_value(
+    value: &str,
+    enum_name: &str,
+    enum_values: &EnumValues,
+    table_name: &str,
+    column_name: &str,
+    value_type: &str, // "default" or "fill_with"
+) -> Result<(), PlannerError> {
+    let extracted = match extract_enum_value(value) {
+        Some(v) => v,
+        None => return Ok(()), // Skip validation for SQL expressions
+    };
+
+    let is_valid = match enum_values {
+        EnumValues::String(variants) => variants.iter().any(|v| v == extracted),
+        EnumValues::Integer(variants) => variants.iter().any(|v| v.name == extracted),
+    };
+
+    if !is_valid {
+        let allowed = enum_values.variant_names().join(", ");
+        return Err(PlannerError::InvalidEnumDefault(
+            enum_name.to_string(),
+            table_name.to_string(),
+            column_name.to_string(),
+            value_type.to_string(),
+            extracted.to_string(),
+            allowed,
+        ));
+    }
+
+    Ok(())
+}
+
 fn validate_column(column: &ColumnDef, table_name: &str) -> Result<(), PlannerError> {
     // Validate enum types for duplicate names/values
     if let ColumnType::Complex(ComplexColumnType::Enum { name, values }) = &column.r#type {
@@ -117,6 +179,12 @@ fn validate_column(column: &ColumnDef, table_name: &str) -> Result<(), PlannerEr
                     }
                 }
             }
+        }
+
+        // Validate default value is in enum values
+        if let Some(default) = &column.default {
+            let default_str = default.to_sql();
+            validate_enum_value(&default_str, name, values, table_name, &column.name, "default")?;
         }
     }
     Ok(())
@@ -260,6 +328,7 @@ fn validate_constraint(
 /// Checks for:
 /// - AddColumn actions with NOT NULL columns without default must have fill_with
 /// - ModifyColumnNullable actions changing from nullable to non-nullable must have fill_with
+/// - Enum columns with default/fill_with values must have valid enum values
 pub fn validate_migration_plan(plan: &MigrationPlan) -> Result<(), PlannerError> {
     for action in &plan.actions {
         match action {
@@ -274,6 +343,26 @@ pub fn validate_migration_plan(plan: &MigrationPlan) -> Result<(), PlannerError>
                         table.clone(),
                         column.name.clone(),
                     ));
+                }
+
+                // Validate enum default/fill_with values
+                if let ColumnType::Complex(ComplexColumnType::Enum { name, values }) =
+                    &column.r#type
+                {
+                    if let Some(fill) = fill_with {
+                        validate_enum_value(fill, name, values, table, &column.name, "fill_with")?;
+                    }
+                    if let Some(default) = &column.default {
+                        let default_str = default.to_sql();
+                        validate_enum_value(
+                            &default_str,
+                            name,
+                            values,
+                            table,
+                            &column.name,
+                            "default",
+                        )?;
+                    }
                 }
             }
             MigrationAction::ModifyColumnNullable {
@@ -967,6 +1056,403 @@ mod tests {
                 column: "email".into(),
                 nullable: true,
                 fill_with: None,
+            }],
+        };
+
+        let result = validate_migration_plan(&plan);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_enum_add_column_invalid_default() {
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "users".into(),
+                column: Box::new(ColumnDef {
+                    name: "status".into(),
+                    r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "user_status".into(),
+                        values: EnumValues::String(vec![
+                            "active".into(),
+                            "inactive".into(),
+                            "pending".into(),
+                        ]),
+                    }),
+                    nullable: false,
+                    default: Some("invalid_value".into()),
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }),
+                fill_with: None,
+            }],
+        };
+
+        let result = validate_migration_plan(&plan);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            PlannerError::InvalidEnumDefault(enum_name, table, column, value_type, value, _) => {
+                assert_eq!(enum_name, "user_status");
+                assert_eq!(table, "users");
+                assert_eq!(column, "status");
+                assert_eq!(value_type, "default");
+                assert_eq!(value, "invalid_value");
+            }
+            err => panic!("expected InvalidEnumDefault error, got {:?}", err),
+        }
+    }
+
+    #[test]
+    fn validate_enum_add_column_invalid_fill_with() {
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "users".into(),
+                column: Box::new(ColumnDef {
+                    name: "status".into(),
+                    r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "user_status".into(),
+                        values: EnumValues::String(vec![
+                            "active".into(),
+                            "inactive".into(),
+                            "pending".into(),
+                        ]),
+                    }),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }),
+                fill_with: Some("unknown_status".into()),
+            }],
+        };
+
+        let result = validate_migration_plan(&plan);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            PlannerError::InvalidEnumDefault(enum_name, table, column, value_type, value, _) => {
+                assert_eq!(enum_name, "user_status");
+                assert_eq!(table, "users");
+                assert_eq!(column, "status");
+                assert_eq!(value_type, "fill_with");
+                assert_eq!(value, "unknown_status");
+            }
+            err => panic!("expected InvalidEnumDefault error, got {:?}", err),
+        }
+    }
+
+    #[test]
+    fn validate_enum_add_column_valid_default_quoted() {
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "users".into(),
+                column: Box::new(ColumnDef {
+                    name: "status".into(),
+                    r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "user_status".into(),
+                        values: EnumValues::String(vec![
+                            "active".into(),
+                            "inactive".into(),
+                            "pending".into(),
+                        ]),
+                    }),
+                    nullable: false,
+                    default: Some("'active'".into()),
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }),
+                fill_with: None,
+            }],
+        };
+
+        let result = validate_migration_plan(&plan);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_enum_add_column_valid_default_unquoted() {
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "users".into(),
+                column: Box::new(ColumnDef {
+                    name: "status".into(),
+                    r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "user_status".into(),
+                        values: EnumValues::String(vec![
+                            "active".into(),
+                            "inactive".into(),
+                            "pending".into(),
+                        ]),
+                    }),
+                    nullable: false,
+                    default: Some("active".into()),
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }),
+                fill_with: None,
+            }],
+        };
+
+        let result = validate_migration_plan(&plan);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_enum_add_column_valid_fill_with() {
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "users".into(),
+                column: Box::new(ColumnDef {
+                    name: "status".into(),
+                    r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "user_status".into(),
+                        values: EnumValues::String(vec![
+                            "active".into(),
+                            "inactive".into(),
+                            "pending".into(),
+                        ]),
+                    }),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }),
+                fill_with: Some("'pending'".into()),
+            }],
+        };
+
+        let result = validate_migration_plan(&plan);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_enum_schema_invalid_default() {
+        // Test that schema validation also catches invalid enum defaults
+        let schema = vec![table(
+            "users",
+            vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                {
+                    let mut c = col(
+                        "status",
+                        ColumnType::Complex(ComplexColumnType::Enum {
+                            name: "user_status".into(),
+                            values: EnumValues::String(vec![
+                                "active".into(),
+                                "inactive".into(),
+                            ]),
+                        }),
+                    );
+                    c.default = Some("invalid".into());
+                    c
+                },
+            ],
+            vec![pk(vec!["id"])],
+        )];
+
+        let result = validate_schema(&schema);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            PlannerError::InvalidEnumDefault(enum_name, table, column, value_type, value, _) => {
+                assert_eq!(enum_name, "user_status");
+                assert_eq!(table, "users");
+                assert_eq!(column, "status");
+                assert_eq!(value_type, "default");
+                assert_eq!(value, "invalid");
+            }
+            err => panic!("expected InvalidEnumDefault error, got {:?}", err),
+        }
+    }
+
+    #[test]
+    fn validate_enum_schema_valid_default() {
+        let schema = vec![table(
+            "users",
+            vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                {
+                    let mut c = col(
+                        "status",
+                        ColumnType::Complex(ComplexColumnType::Enum {
+                            name: "user_status".into(),
+                            values: EnumValues::String(vec![
+                                "active".into(),
+                                "inactive".into(),
+                            ]),
+                        }),
+                    );
+                    c.default = Some("'active'".into());
+                    c
+                },
+            ],
+            vec![pk(vec!["id"])],
+        )];
+
+        let result = validate_schema(&schema);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_enum_integer_add_column_valid() {
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "tasks".into(),
+                column: Box::new(ColumnDef {
+                    name: "priority".into(),
+                    r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "priority_level".into(),
+                        values: EnumValues::Integer(vec![
+                            NumValue { name: "Low".into(), value: 0 },
+                            NumValue { name: "Medium".into(), value: 50 },
+                            NumValue { name: "High".into(), value: 100 },
+                        ]),
+                    }),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }),
+                fill_with: Some("Low".into()),
+            }],
+        };
+
+        let result = validate_migration_plan(&plan);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_enum_integer_add_column_invalid() {
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "tasks".into(),
+                column: Box::new(ColumnDef {
+                    name: "priority".into(),
+                    r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "priority_level".into(),
+                        values: EnumValues::Integer(vec![
+                            NumValue { name: "Low".into(), value: 0 },
+                            NumValue { name: "Medium".into(), value: 50 },
+                            NumValue { name: "High".into(), value: 100 },
+                        ]),
+                    }),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }),
+                fill_with: Some("Critical".into()), // Not a valid enum name
+            }],
+        };
+
+        let result = validate_migration_plan(&plan);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            PlannerError::InvalidEnumDefault(enum_name, table, column, value_type, value, _) => {
+                assert_eq!(enum_name, "priority_level");
+                assert_eq!(table, "tasks");
+                assert_eq!(column, "priority");
+                assert_eq!(value_type, "fill_with");
+                assert_eq!(value, "Critical");
+            }
+            err => panic!("expected InvalidEnumDefault error, got {:?}", err),
+        }
+    }
+
+    #[test]
+    fn validate_enum_null_value_skipped() {
+        // NULL values should be allowed and skipped during validation
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "users".into(),
+                column: Box::new(ColumnDef {
+                    name: "status".into(),
+                    r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "user_status".into(),
+                        values: EnumValues::String(vec!["active".into(), "inactive".into()]),
+                    }),
+                    nullable: true,
+                    default: Some("NULL".into()),
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }),
+                fill_with: None,
+            }],
+        };
+
+        let result = validate_migration_plan(&plan);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_enum_sql_expression_skipped() {
+        // SQL expressions like function calls should be skipped
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::AddColumn {
+                table: "users".into(),
+                column: Box::new(ColumnDef {
+                    name: "status".into(),
+                    r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "user_status".into(),
+                        values: EnumValues::String(vec!["active".into(), "inactive".into()]),
+                    }),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }),
+                fill_with: Some("COALESCE(old_status, 'active')".into()),
             }],
         };
 

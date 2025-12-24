@@ -1,0 +1,8 @@
+---
+source: crates/vespertide-query/src/sql/add_column.rs
+expression: sql
+---
+CREATE TABLE "users_temp" ( "id" integer NOT NULL, "status" enum_text NOT NULL DEFAULT 'active' , CONSTRAINT "chk_users__status" CHECK ("status" IN ('active', 'inactive', 'pending')));
+INSERT INTO "users_temp" ("id", "status") SELECT "id", 'active' AS "status" FROM "users";
+DROP TABLE "users";
+ALTER TABLE "users_temp" RENAME TO "users"

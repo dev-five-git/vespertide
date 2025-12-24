@@ -34,4 +34,6 @@ pub enum PlannerError {
     DuplicateEnumVariantName(String, String, String, String),
     #[error("enum '{0}' in column '{1}.{2}' has duplicate value: {3}")]
     DuplicateEnumValue(String, String, String, i32),
+    #[error("enum '{0}' in column '{1}.{2}' has invalid {3} value '{4}': not in allowed values [{5}]")]
+    InvalidEnumDefault(String, String, String, String, String, String),
 }

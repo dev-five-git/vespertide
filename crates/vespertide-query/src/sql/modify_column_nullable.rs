@@ -3,7 +3,7 @@ use sea_query::{Alias, Query, Table};
 use vespertide_core::{ColumnDef, TableDef};
 
 use super::create_table::build_create_table_for_backend;
-use super::helpers::build_sea_column_def_with_table;
+use super::helpers::{build_sea_column_def_with_table, normalize_fill_with};
 use super::rename_table::build_rename_table;
 use super::types::{BuiltQuery, DatabaseBackend, RawSql};
 use crate::error::QueryError;
@@ -22,7 +22,7 @@ pub fn build_modify_column_nullable(
 
     // If changing to NOT NULL, first update existing NULL values if fill_with is provided
     if !nullable
-        && let Some(fill_value) = fill_with
+        && let Some(fill_value) = normalize_fill_with(fill_with)
     {
         let update_sql = match backend {
             DatabaseBackend::Postgres | DatabaseBackend::Sqlite => format!(
