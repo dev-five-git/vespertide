@@ -34,6 +34,17 @@ pub enum PlannerError {
     DuplicateEnumVariantName(String, String, String, String),
     #[error("enum '{0}' in column '{1}.{2}' has duplicate value: {3}")]
     DuplicateEnumValue(String, String, String, i32),
-    #[error("enum '{0}' in column '{1}.{2}' has invalid {3} value '{4}': not in allowed values [{5}]")]
-    InvalidEnumDefault(String, String, String, String, String, String),
+    #[error("{0}")]
+    InvalidEnumDefault(#[from] Box<InvalidEnumDefaultError>),
+}
+
+#[derive(Debug, Error)]
+#[error("enum '{enum_name}' in column '{table_name}.{column_name}' has invalid {value_type} value '{value}': not in allowed values [{allowed}]")]
+pub struct InvalidEnumDefaultError {
+    pub enum_name: String,
+    pub table_name: String,
+    pub column_name: String,
+    pub value_type: String,
+    pub value: String,
+    pub allowed: String,
 }

@@ -114,8 +114,8 @@ mod tests {
 
     #[test]
     fn test_default_value_to_sql_float() {
-        let val = DefaultValue::Float(3.14);
-        assert_eq!(val.to_sql(), "3.14");
+        let val = DefaultValue::Float(1.5);
+        assert_eq!(val.to_sql(), "1.5");
     }
 
     #[test]
@@ -158,8 +158,8 @@ mod tests {
 
     #[test]
     fn test_default_value_from_float() {
-        let val: DefaultValue = 3.14f64.into();
-        assert_eq!(val, DefaultValue::Float(3.14));
+        let val: DefaultValue = 1.5f64.into();
+        assert_eq!(val, DefaultValue::Float(1.5));
     }
 
     #[test]
@@ -179,6 +179,6 @@ mod tests {
         assert!(DefaultValue::String("test".into()).is_string());
         assert!(!DefaultValue::Bool(true).is_string());
         assert!(!DefaultValue::Integer(42).is_string());
-        assert!(!DefaultValue::Float(3.14).is_string());
+        assert!(!DefaultValue::Float(1.5).is_string());
     }
 }

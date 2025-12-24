@@ -5,7 +5,7 @@ use vespertide_core::{
     TableConstraint, TableDef,
 };
 
-use crate::error::PlannerError;
+use crate::error::{InvalidEnumDefaultError, PlannerError};
 
 /// Validate a schema for data integrity issues.
 /// Checks for:
@@ -121,14 +121,15 @@ fn validate_enum_value(
 
     if !is_valid {
         let allowed = enum_values.variant_names().join(", ");
-        return Err(PlannerError::InvalidEnumDefault(
-            enum_name.to_string(),
-            table_name.to_string(),
-            column_name.to_string(),
-            value_type.to_string(),
-            extracted.to_string(),
+        return Err(Box::new(InvalidEnumDefaultError {
+            enum_name: enum_name.to_string(),
+            table_name: table_name.to_string(),
+            column_name: column_name.to_string(),
+            value_type: value_type.to_string(),
+            value: extracted.to_string(),
             allowed,
-        ));
+        })
+        .into());
     }
 
     Ok(())
@@ -1094,12 +1095,12 @@ mod tests {
         let result = validate_migration_plan(&plan);
         assert!(result.is_err());
         match result.unwrap_err() {
-            PlannerError::InvalidEnumDefault(enum_name, table, column, value_type, value, _) => {
-                assert_eq!(enum_name, "user_status");
-                assert_eq!(table, "users");
-                assert_eq!(column, "status");
-                assert_eq!(value_type, "default");
-                assert_eq!(value, "invalid_value");
+            PlannerError::InvalidEnumDefault(err) => {
+                assert_eq!(err.enum_name, "user_status");
+                assert_eq!(err.table_name, "users");
+                assert_eq!(err.column_name, "status");
+                assert_eq!(err.value_type, "default");
+                assert_eq!(err.value, "invalid_value");
             }
             err => panic!("expected InvalidEnumDefault error, got {:?}", err),
         }
@@ -1138,12 +1139,12 @@ mod tests {
         let result = validate_migration_plan(&plan);
         assert!(result.is_err());
         match result.unwrap_err() {
-            PlannerError::InvalidEnumDefault(enum_name, table, column, value_type, value, _) => {
-                assert_eq!(enum_name, "user_status");
-                assert_eq!(table, "users");
-                assert_eq!(column, "status");
-                assert_eq!(value_type, "fill_with");
-                assert_eq!(value, "unknown_status");
+            PlannerError::InvalidEnumDefault(err) => {
+                assert_eq!(err.enum_name, "user_status");
+                assert_eq!(err.table_name, "users");
+                assert_eq!(err.column_name, "status");
+                assert_eq!(err.value_type, "fill_with");
+                assert_eq!(err.value, "unknown_status");
             }
             err => panic!("expected InvalidEnumDefault error, got {:?}", err),
         }
@@ -1279,12 +1280,12 @@ mod tests {
         let result = validate_schema(&schema);
         assert!(result.is_err());
         match result.unwrap_err() {
-            PlannerError::InvalidEnumDefault(enum_name, table, column, value_type, value, _) => {
-                assert_eq!(enum_name, "user_status");
-                assert_eq!(table, "users");
-                assert_eq!(column, "status");
-                assert_eq!(value_type, "default");
-                assert_eq!(value, "invalid");
+            PlannerError::InvalidEnumDefault(err) => {
+                assert_eq!(err.enum_name, "user_status");
+                assert_eq!(err.table_name, "users");
+                assert_eq!(err.column_name, "status");
+                assert_eq!(err.value_type, "default");
+                assert_eq!(err.value, "invalid");
             }
             err => panic!("expected InvalidEnumDefault error, got {:?}", err),
         }
@@ -1385,12 +1386,12 @@ mod tests {
         let result = validate_migration_plan(&plan);
         assert!(result.is_err());
         match result.unwrap_err() {
-            PlannerError::InvalidEnumDefault(enum_name, table, column, value_type, value, _) => {
-                assert_eq!(enum_name, "priority_level");
-                assert_eq!(table, "tasks");
-                assert_eq!(column, "priority");
-                assert_eq!(value_type, "fill_with");
-                assert_eq!(value, "Critical");
+            PlannerError::InvalidEnumDefault(err) => {
+                assert_eq!(err.enum_name, "priority_level");
+                assert_eq!(err.table_name, "tasks");
+                assert_eq!(err.column_name, "priority");
+                assert_eq!(err.value_type, "fill_with");
+                assert_eq!(err.value, "Critical");
             }
             err => panic!("expected InvalidEnumDefault error, got {:?}", err),
         }
