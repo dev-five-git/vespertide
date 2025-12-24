@@ -185,7 +185,8 @@ pub fn build_sea_column_def_with_table(
     }
 
     if let Some(default) = &column.default {
-        let converted = convert_default_for_backend(default, backend);
+        let default_str = default.to_sql();
+        let converted = convert_default_for_backend(&default_str, backend);
         col.default(Into::<SimpleExpr>::into(sea_query::Expr::cust(converted)));
     }
 

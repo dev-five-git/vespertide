@@ -90,7 +90,7 @@ pub fn build_add_column(
         let fill_expr = if let Some(fill) = fill_with {
             Expr::cust(fill)
         } else if let Some(def) = &column.default {
-            Expr::cust(def)
+            Expr::cust(def.to_sql())
         } else {
             Expr::cust("NULL")
         };
