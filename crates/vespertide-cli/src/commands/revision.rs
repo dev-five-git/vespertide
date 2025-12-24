@@ -28,6 +28,99 @@ fn parse_fill_with_args(args: &[String]) -> HashMap<(String, String), String> {
     map
 }
 
+/// Format the type info string for display.
+fn format_type_info(column_type: Option<&String>) -> String {
+    column_type
+        .map(|t| format!(" ({})", t))
+        .unwrap_or_default()
+}
+
+/// Format a single fill_with item for display.
+fn format_fill_with_item(table: &str, column: &str, type_info: &str, action_type: &str) -> String {
+    format!(
+        "  {} {}.{}{}\n    {} {}",
+        "•".bright_cyan(),
+        table.bright_white(),
+        column.bright_green(),
+        type_info.bright_black(),
+        "Action:".bright_black(),
+        action_type.bright_magenta()
+    )
+}
+
+/// Format the prompt string for interactive input.
+fn format_fill_with_prompt(table: &str, column: &str) -> String {
+    format!(
+        "  Enter fill value for {}.{}",
+        table.bright_white(),
+        column.bright_green()
+    )
+}
+
+/// Print the header for fill_with prompts.
+fn print_fill_with_header() {
+    println!(
+        "\n{} {}",
+        "⚠".bright_yellow(),
+        "The following columns require fill_with values:".bright_yellow()
+    );
+    println!("{}", "─".repeat(60).bright_black());
+}
+
+/// Print the footer for fill_with prompts.
+fn print_fill_with_footer() {
+    println!("{}", "─".repeat(60).bright_black());
+}
+
+/// Print a fill_with item and return the formatted prompt.
+fn print_fill_with_item_and_get_prompt(
+    table: &str,
+    column: &str,
+    column_type: Option<&String>,
+    action_type: &str,
+) -> String {
+    let type_info = format_type_info(column_type);
+    let item_display = format_fill_with_item(table, column, &type_info, action_type);
+    println!("{}", item_display);
+    format_fill_with_prompt(table, column)
+}
+
+/// Prompt the user for a fill_with value using dialoguer.
+fn prompt_fill_with_value(prompt: &str) -> Result<String> {
+    Input::new()
+        .with_prompt(prompt)
+        .interact_text()
+        .context("failed to read input")
+}
+
+/// Collect fill_with values interactively for missing columns.
+/// The `prompt_fn` parameter allows injecting a mock for testing.
+fn collect_fill_with_values<F>(
+    missing: &[vespertide_planner::FillWithRequired],
+    fill_values: &mut HashMap<(String, String), String>,
+    prompt_fn: F,
+) -> Result<()>
+where
+    F: Fn(&str) -> Result<String>,
+{
+    print_fill_with_header();
+
+    for item in missing {
+        let prompt = print_fill_with_item_and_get_prompt(
+            &item.table,
+            &item.column,
+            item.column_type.as_ref(),
+            item.action_type,
+        );
+
+        let value = prompt_fn(&prompt)?;
+        fill_values.insert((item.table.clone(), item.column.clone()), value);
+    }
+
+    print_fill_with_footer();
+    Ok(())
+}
+
 /// Apply fill_with values to a migration plan.
 fn apply_fill_with_to_plan(
     plan: &mut MigrationPlan,
@@ -90,49 +183,7 @@ pub fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Result<()> 
     let missing = find_missing_fill_with(&plan);
 
     if !missing.is_empty() {
-        println!(
-            "\n{} {}",
-            "⚠".bright_yellow(),
-            "The following columns require fill_with values:".bright_yellow()
-        );
-        println!("{}", "─".repeat(60).bright_black());
-
-        for item in &missing {
-            let type_info = item
-                .column_type
-                .as_ref()
-                .map(|t| format!(" ({})", t))
-                .unwrap_or_default();
-
-            println!(
-                "  {} {}.{}{}",
-                "•".bright_cyan(),
-                item.table.bright_white(),
-                item.column.bright_green(),
-                type_info.bright_black()
-            );
-            println!(
-                "    {} {}",
-                "Action:".bright_black(),
-                item.action_type.bright_magenta()
-            );
-
-            // Prompt for value
-            let prompt = format!(
-                "  Enter fill value for {}.{}",
-                item.table.bright_white(),
-                item.column.bright_green()
-            );
-
-            let value: String = Input::new()
-                .with_prompt(&prompt)
-                .interact_text()
-                .context("failed to read input")?;
-
-            fill_values.insert((item.table.clone(), item.column.clone()), value);
-        }
-
-        println!("{}", "─".repeat(60).bright_black());
+        collect_fill_with_values(&missing, &mut fill_values, prompt_fill_with_value)?;
 
         // Apply the collected fill_with values
         apply_fill_with_to_plan(&mut plan, &fill_values);
@@ -632,5 +683,201 @@ mod tests {
             }
             _ => panic!("Expected DeleteColumn action"),
         }
+    }
+
+    #[test]
+    fn test_format_type_info_with_some() {
+        let column_type = Some("Integer".to_string());
+        let result = format_type_info(column_type.as_ref());
+        assert_eq!(result, " (Integer)");
+    }
+
+    #[test]
+    fn test_format_type_info_with_none() {
+        let result = format_type_info(None);
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_format_fill_with_item() {
+        let result = format_fill_with_item("users", "email", " (Text)", "AddColumn");
+        // The result should contain the table, column, type info, and action type
+        // Colors make exact matching difficult, but we can check structure
+        assert!(result.contains("users"));
+        assert!(result.contains("email"));
+        assert!(result.contains("(Text)"));
+        assert!(result.contains("AddColumn"));
+        assert!(result.contains("Action:"));
+    }
+
+    #[test]
+    fn test_format_fill_with_item_empty_type_info() {
+        let result = format_fill_with_item("orders", "status", "", "ModifyColumnNullable");
+        assert!(result.contains("orders"));
+        assert!(result.contains("status"));
+        assert!(result.contains("ModifyColumnNullable"));
+    }
+
+    #[test]
+    fn test_format_fill_with_prompt() {
+        let result = format_fill_with_prompt("users", "email");
+        assert!(result.contains("Enter fill value for"));
+        assert!(result.contains("users"));
+        assert!(result.contains("email"));
+    }
+
+    #[test]
+    fn test_print_fill_with_item_and_get_prompt() {
+        // This function prints to stdout and returns the prompt string
+        let prompt = print_fill_with_item_and_get_prompt(
+            "users",
+            "email",
+            Some(&"Text".to_string()),
+            "AddColumn",
+        );
+        assert!(prompt.contains("Enter fill value for"));
+        assert!(prompt.contains("users"));
+        assert!(prompt.contains("email"));
+    }
+
+    #[test]
+    fn test_print_fill_with_item_and_get_prompt_no_type() {
+        let prompt = print_fill_with_item_and_get_prompt(
+            "orders",
+            "status",
+            None,
+            "ModifyColumnNullable",
+        );
+        assert!(prompt.contains("Enter fill value for"));
+        assert!(prompt.contains("orders"));
+        assert!(prompt.contains("status"));
+    }
+
+    #[test]
+    fn test_print_fill_with_header() {
+        // Just verify it doesn't panic - output goes to stdout
+        print_fill_with_header();
+    }
+
+    #[test]
+    fn test_print_fill_with_footer() {
+        // Just verify it doesn't panic - output goes to stdout
+        print_fill_with_footer();
+    }
+
+    #[test]
+    fn test_collect_fill_with_values_single_item() {
+        use vespertide_planner::FillWithRequired;
+
+        let missing = vec![FillWithRequired {
+            action_index: 0,
+            table: "users".to_string(),
+            column: "email".to_string(),
+            action_type: "AddColumn",
+            column_type: Some("Text".to_string()),
+        }];
+
+        let mut fill_values = HashMap::new();
+
+        // Mock prompt function that returns a fixed value
+        let mock_prompt = |_prompt: &str| -> Result<String> { Ok("'test@example.com'".to_string()) };
+
+        let result = collect_fill_with_values(&missing, &mut fill_values, mock_prompt);
+        assert!(result.is_ok());
+        assert_eq!(fill_values.len(), 1);
+        assert_eq!(
+            fill_values.get(&("users".to_string(), "email".to_string())),
+            Some(&"'test@example.com'".to_string())
+        );
+    }
+
+    #[test]
+    fn test_collect_fill_with_values_multiple_items() {
+        use vespertide_planner::FillWithRequired;
+
+        let missing = vec![
+            FillWithRequired {
+                action_index: 0,
+                table: "users".to_string(),
+                column: "email".to_string(),
+                action_type: "AddColumn",
+                column_type: Some("Text".to_string()),
+            },
+            FillWithRequired {
+                action_index: 1,
+                table: "orders".to_string(),
+                column: "status".to_string(),
+                action_type: "ModifyColumnNullable",
+                column_type: None,
+            },
+        ];
+
+        let mut fill_values = HashMap::new();
+
+        // Mock prompt function that returns different values based on call count
+        let call_count = std::cell::RefCell::new(0);
+        let mock_prompt = |_prompt: &str| -> Result<String> {
+            let mut count = call_count.borrow_mut();
+            *count += 1;
+            match *count {
+                1 => Ok("'user@example.com'".to_string()),
+                2 => Ok("'pending'".to_string()),
+                _ => Ok("'default'".to_string()),
+            }
+        };
+
+        let result = collect_fill_with_values(&missing, &mut fill_values, mock_prompt);
+        assert!(result.is_ok());
+        assert_eq!(fill_values.len(), 2);
+        assert_eq!(
+            fill_values.get(&("users".to_string(), "email".to_string())),
+            Some(&"'user@example.com'".to_string())
+        );
+        assert_eq!(
+            fill_values.get(&("orders".to_string(), "status".to_string())),
+            Some(&"'pending'".to_string())
+        );
+    }
+
+    #[test]
+    fn test_collect_fill_with_values_empty() {
+        let missing: Vec<vespertide_planner::FillWithRequired> = vec![];
+        let mut fill_values = HashMap::new();
+
+        // This function should handle empty list gracefully (though it won't be called in practice)
+        // But we can't test the header/footer without items since the function still prints them
+        // So we test with a mock that would fail if called
+        let mock_prompt = |_prompt: &str| -> Result<String> {
+            panic!("Should not be called for empty list");
+        };
+
+        // Note: The function still prints header/footer even for empty list
+        // This is a design choice - in practice, cmd_revision won't call this with empty list
+        let result = collect_fill_with_values(&missing, &mut fill_values, mock_prompt);
+        assert!(result.is_ok());
+        assert!(fill_values.is_empty());
+    }
+
+    #[test]
+    fn test_collect_fill_with_values_prompt_error() {
+        use vespertide_planner::FillWithRequired;
+
+        let missing = vec![FillWithRequired {
+            action_index: 0,
+            table: "users".to_string(),
+            column: "email".to_string(),
+            action_type: "AddColumn",
+            column_type: Some("Text".to_string()),
+        }];
+
+        let mut fill_values = HashMap::new();
+
+        // Mock prompt function that returns an error
+        let mock_prompt =
+            |_prompt: &str| -> Result<String> { Err(anyhow::anyhow!("input cancelled")) };
+
+        let result = collect_fill_with_values(&missing, &mut fill_values, mock_prompt);
+        assert!(result.is_err());
+        assert!(fill_values.is_empty());
     }
 }
