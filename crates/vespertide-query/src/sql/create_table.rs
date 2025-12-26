@@ -21,6 +21,23 @@ pub(crate) fn build_create_table_for_backend(
         .iter()
         .any(|c| matches!(c, TableConstraint::PrimaryKey { .. }));
 
+    // Extract auto_increment columns from constraints
+    let auto_increment_columns: std::collections::HashSet<&str> = constraints
+        .iter()
+        .filter_map(|c| {
+            if let TableConstraint::PrimaryKey {
+                columns: pk_cols,
+                auto_increment: true,
+            } = c
+            {
+                Some(pk_cols.iter().map(|s| s.as_str()).collect::<Vec<_>>())
+            } else {
+                None
+            }
+        })
+        .flatten()
+        .collect();
+
     // Add columns
     for column in columns {
         let mut col = build_sea_column_def_with_table(backend, table, column);
@@ -28,6 +45,11 @@ pub(crate) fn build_create_table_for_backend(
         // Check for inline primary key
         if column.primary_key.is_some() && !has_table_primary_key {
             col.primary_key();
+        }
+
+        // Apply auto_increment if this column is in the auto_increment primary key
+        if auto_increment_columns.contains(column.name.as_str()) {
+            col.auto_increment();
         }
 
         // NOTE: We do NOT add inline unique constraints here.
@@ -499,6 +521,128 @@ mod tests {
             .join(";\n");
 
         with_settings!({ snapshot_suffix => format!("create_table_with_enum_column_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::auto_increment_postgres(DatabaseBackend::Postgres)]
+    #[case::auto_increment_mysql(DatabaseBackend::MySql)]
+    #[case::auto_increment_sqlite(DatabaseBackend::Sqlite)]
+    fn test_create_table_with_auto_increment_primary_key(#[case] backend: DatabaseBackend) {
+        // Test that auto_increment on primary key generates SERIAL/AUTO_INCREMENT/AUTOINCREMENT
+        let columns = vec![ColumnDef {
+            name: "id".into(),
+            r#type: ColumnType::Simple(SimpleColumnType::Integer),
+            nullable: false,
+            default: None,
+            comment: None,
+            primary_key: None,
+            unique: None,
+            index: None,
+            foreign_key: None,
+        }];
+        let constraints = vec![TableConstraint::PrimaryKey {
+            auto_increment: true,
+            columns: vec!["id".into()],
+        }];
+
+        let result = build_create_table(&backend, "users", &columns, &constraints);
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join(";\n");
+
+        // Verify auto_increment is applied correctly for each backend
+        match backend {
+            DatabaseBackend::Postgres => {
+                assert!(
+                    sql.contains("SERIAL") || sql.contains("serial"),
+                    "PostgreSQL should use SERIAL for auto_increment, got: {}",
+                    sql
+                );
+            }
+            DatabaseBackend::MySql => {
+                assert!(
+                    sql.contains("AUTO_INCREMENT") || sql.contains("auto_increment"),
+                    "MySQL should use AUTO_INCREMENT for auto_increment, got: {}",
+                    sql
+                );
+            }
+            DatabaseBackend::Sqlite => {
+                assert!(
+                    sql.contains("AUTOINCREMENT") || sql.contains("autoincrement"),
+                    "SQLite should use AUTOINCREMENT for auto_increment, got: {}",
+                    sql
+                );
+            }
+        }
+
+        with_settings!({ snapshot_suffix => format!("create_table_with_auto_increment_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::inline_auto_increment_postgres(DatabaseBackend::Postgres)]
+    #[case::inline_auto_increment_mysql(DatabaseBackend::MySql)]
+    #[case::inline_auto_increment_sqlite(DatabaseBackend::Sqlite)]
+    fn test_create_table_with_inline_auto_increment_primary_key(#[case] backend: DatabaseBackend) {
+        // Test that inline primary_key with auto_increment generates correct SQL
+        use vespertide_core::schema::primary_key::{PrimaryKeyDef, PrimaryKeySyntax};
+
+        let columns = vec![ColumnDef {
+            name: "id".into(),
+            r#type: ColumnType::Simple(SimpleColumnType::Integer),
+            nullable: false,
+            default: None,
+            comment: None,
+            primary_key: Some(PrimaryKeySyntax::Object(PrimaryKeyDef {
+                auto_increment: true,
+            })),
+            unique: None,
+            index: None,
+            foreign_key: None,
+        }];
+
+        let result = build_create_table(&backend, "users", &columns, &[]);
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join(";\n");
+
+        // Verify auto_increment is applied correctly for each backend
+        match backend {
+            DatabaseBackend::Postgres => {
+                assert!(
+                    sql.contains("SERIAL") || sql.contains("serial"),
+                    "PostgreSQL should use SERIAL for auto_increment, got: {}",
+                    sql
+                );
+            }
+            DatabaseBackend::MySql => {
+                assert!(
+                    sql.contains("AUTO_INCREMENT") || sql.contains("auto_increment"),
+                    "MySQL should use AUTO_INCREMENT for auto_increment, got: {}",
+                    sql
+                );
+            }
+            DatabaseBackend::Sqlite => {
+                assert!(
+                    sql.contains("AUTOINCREMENT") || sql.contains("autoincrement"),
+                    "SQLite should use AUTOINCREMENT for auto_increment, got: {}",
+                    sql
+                );
+            }
+        }
+
+        with_settings!({ snapshot_suffix => format!("create_table_with_inline_auto_increment_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }
