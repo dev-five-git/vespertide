@@ -1,6 +1,6 @@
 ---
 source: crates/vespertide-exporter/src/seaorm/mod.rs
-assertion_line: 2004
+assertion_line: 2099
 expression: rendered
 ---
 use sea_orm::entity::prelude::*;
@@ -8,14 +8,12 @@ use serde::{Deserialize, Serialize};
 
 #[sea_orm::model]
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(table_name = "posts")]
+#[sea_orm(table_name = "orders")]
 pub struct Model {
     #[sea_orm(primary_key)]
-    pub id: i32,
-    pub user_id: i32,
-    pub title: Option<String>,
-    #[sea_orm(belongs_to, from = "user_id", to = "id")]
-    pub user: HasOne<super::users::Entity>,
+    pub id: Uuid,
+    pub customer_id: Uuid,
+    pub total: f32,
 }
 
 impl ActiveModelBehavior for ActiveModel {}

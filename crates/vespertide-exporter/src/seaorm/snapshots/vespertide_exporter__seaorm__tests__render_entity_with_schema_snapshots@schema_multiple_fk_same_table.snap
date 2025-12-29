@@ -1,0 +1,23 @@
+---
+source: crates/vespertide-exporter/src/seaorm/mod.rs
+assertion_line: 2277
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[sea_orm(table_name = "post")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: Uuid,
+    pub creator_user_id: Uuid,
+    pub used_by_user_id: Uuid,
+    #[sea_orm(belongs_to, relation_enum = "CreatorUser", from = "creator_user_id", to = "id")]
+    pub creator_user: HasOne<super::user::Entity>,
+    #[sea_orm(belongs_to, relation_enum = "UsedByUser", from = "used_by_user_id", to = "id")]
+    pub used_by_user: HasOne<super::user::Entity>,
+}
+
+impl ActiveModelBehavior for ActiveModel {}

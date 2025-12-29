@@ -337,6 +337,24 @@ fn relation_field_defs_with_schema(table: &TableDef, schema: &[TableDef]) -> Vec
     let mut out = Vec::new();
     let mut used = HashSet::new();
 
+    // Group FKs by their target table to detect duplicates
+    let mut fk_by_table: std::collections::HashMap<String, Vec<&TableConstraint>> =
+        std::collections::HashMap::new();
+    for constraint in &table.constraints {
+        if let TableConstraint::ForeignKey {
+            ref_table,
+            ref_columns,
+            ..
+        } = constraint
+        {
+            let (resolved_table, _) = resolve_fk_target(ref_table, ref_columns, schema);
+            fk_by_table
+                .entry(resolved_table.to_string())
+                .or_default()
+                .push(constraint);
+        }
+    }
+
     // belongs_to relations (this table has FK to other tables)
     for constraint in &table.constraints {
         if let TableConstraint::ForeignKey {
@@ -350,13 +368,40 @@ fn relation_field_defs_with_schema(table: &TableDef, schema: &[TableDef]) -> Vec
             let (resolved_table, resolved_columns) =
                 resolve_fk_target(ref_table, ref_columns, schema);
 
-            let base = sanitize_field_name(resolved_table);
-            let field_name = unique_name(&base, &mut used);
             let from = fk_attr_value(columns);
             let to = fk_attr_value(&resolved_columns);
-            out.push(format!(
-                "    #[sea_orm(belongs_to, from = \"{from}\", to = \"{to}\")]"
-            ));
+
+            // Check if there are multiple FKs to the same target table
+            let fks_to_this_table = fk_by_table
+                .get(resolved_table)
+                .map(|fks| fks.len())
+                .unwrap_or(0);
+
+            // Smart field name inference from FK column names
+            // Try to use the FK column name (without _id suffix) as the field name
+            // If that doesn't work (conflicts), fall back to table name
+            let field_base = if columns.len() == 1 {
+                // For single-column FKs, try to infer from column name
+                infer_field_name_from_fk_column(&columns[0], resolved_table, &to)
+            } else {
+                // For composite FKs, use table name
+                sanitize_field_name(resolved_table)
+            };
+
+            let field_name = unique_name(&field_base, &mut used);
+
+            // Generate relation_enum name if there are multiple FKs to the same table
+            let attr = if fks_to_this_table > 1 {
+                // Generate a unique relation enum name from the FK column(s)
+                let relation_enum_name = generate_relation_enum_name(columns);
+                format!(
+                    "    #[sea_orm(belongs_to, relation_enum = \"{relation_enum_name}\", from = \"{from}\", to = \"{to}\")]"
+                )
+            } else {
+                format!("    #[sea_orm(belongs_to, from = \"{from}\", to = \"{to}\")]")
+            };
+
+            out.push(attr);
             out.push(format!(
                 "    pub {field_name}: HasOne<super::{resolved_table}::Entity>,"
             ));
@@ -370,6 +415,60 @@ fn relation_field_defs_with_schema(table: &TableDef, schema: &[TableDef]) -> Vec
     out
 }
 
+/// Generate a relation enum name from foreign key column names.
+/// For "creator_user_id", generates "CreatorUser".
+/// For composite FKs like ["org_id", "user_id"], generates "OrgUser".
+fn generate_relation_enum_name(columns: &[String]) -> String {
+    // Take the first column and remove common FK suffixes like "_id"
+    let first_col = &columns[0];
+    let without_id = if first_col.ends_with("_id") {
+        &first_col[..first_col.len() - 3]
+    } else {
+        first_col
+    };
+
+    to_pascal_case(without_id)
+}
+
+/// Infer a field name from a single FK column.
+/// For "creator_user_id" with to="id", tries "creator_user" first.
+/// If that ends with the table name, use the full column name (without the to suffix).
+/// Otherwise, fall back to the table name.
+///
+/// Examples:
+/// - FK column: "creator_user_id", table: "user", to: "id" -> "creator_user"
+/// - FK column: "creator_user_idx", table: "user", to: "idx" -> "creator_user"
+/// - FK column: "user_id", table: "user", to: "id" -> "user" (falls back to table name)
+/// - FK column: "org_id", table: "user", to: "id" -> "org"
+fn infer_field_name_from_fk_column(fk_column: &str, table_name: &str, to: &str) -> String {
+    let table_lower = table_name.to_lowercase();
+
+    // Remove the "to" suffix from FK column (e.g., "user_id" for to="id", "user_idx" for to="idx")
+    let without_suffix = if fk_column.ends_with(&format!("_{to}")) {
+        let suffix_len = to.len() + 1; // +1 for the underscore
+        &fk_column[..fk_column.len() - suffix_len]
+    } else {
+        fk_column
+    };
+
+    let sanitized = sanitize_field_name(without_suffix);
+    let sanitized_lower = sanitized.to_lowercase();
+
+    // If the sanitized name is exactly the table name (e.g., "user_id" -> "user" for table "user"),
+    // we need to fall back to the table name for proper disambiguation
+    if sanitized_lower == table_lower {
+        sanitize_field_name(table_name)
+    }
+    // If the sanitized name ends with (but is not equal to) the table name, use it as-is
+    // This handles cases like "creator_user" for table "user"
+    else if sanitized_lower.ends_with(&table_lower) {
+        sanitized
+    } else {
+        // Otherwise, use the inferred name from the column
+        sanitized
+    }
+}
+
 /// Generate reverse relation fields (has_one/has_many) for tables that reference this table.
 fn reverse_relation_field_defs(
     table: &TableDef,
@@ -377,6 +476,24 @@ fn reverse_relation_field_defs(
     used: &mut HashSet<String>,
 ) -> Vec<String> {
     let mut out = Vec::new();
+
+    // First, count how many FKs from each table reference this table
+    let mut fk_count_per_table: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    for other_table in schema {
+        if other_table.name == table.name {
+            continue;
+        }
+        for constraint in &other_table.constraints {
+            if let TableConstraint::ForeignKey { ref_table, .. } = constraint
+                && ref_table == &table.name
+            {
+                *fk_count_per_table
+                    .entry(other_table.name.clone())
+                    .or_insert(0) += 1;
+            }
+        }
+    }
 
     // Find all tables that have FK to this table
     for other_table in schema {
@@ -422,16 +539,47 @@ fn reverse_relation_field_defs(
                     let relation_type = if is_one_to_one { "has_one" } else { "has_many" };
                     let rust_type = if is_one_to_one { "HasOne" } else { "HasMany" };
 
-                    // Use plural form for has_many field names
-                    let base = if is_one_to_one {
-                        sanitize_field_name(&other_table.name)
+                    // Check if this table has multiple FKs to current table
+                    let has_multiple_fks = fk_count_per_table
+                        .get(&other_table.name)
+                        .map(|count| *count > 1)
+                        .unwrap_or(false);
+
+                    // Generate base field name
+                    let base = if has_multiple_fks {
+                        // Use relation_enum name to infer field name for multiple FKs
+                        let relation_enum_name = generate_relation_enum_name(columns);
+                        let lowercase_enum = to_snake_case(&relation_enum_name);
+                        if is_one_to_one {
+                            lowercase_enum
+                        } else {
+                            format!(
+                                "{}_{}",
+                                lowercase_enum,
+                                pluralize(&sanitize_field_name(&other_table.name))
+                            )
+                        }
                     } else {
-                        pluralize(&sanitize_field_name(&other_table.name))
+                        // Default naming for single FK
+                        if is_one_to_one {
+                            sanitize_field_name(&other_table.name)
+                        } else {
+                            pluralize(&sanitize_field_name(&other_table.name))
+                        }
                     };
                     let field_name = unique_name(&base, used);
 
-                    // has_one/has_many don't use from/to attributes (unlike belongs_to)
-                    out.push(format!("    #[sea_orm({relation_type})]"));
+                    // Generate relation_enum name if there are multiple FKs to this table
+                    let attr = if has_multiple_fks {
+                        let relation_enum_name = generate_relation_enum_name(columns);
+                        format!(
+                            "    #[sea_orm({relation_type}, relation_enum = \"{relation_enum_name}\", via_rel = \"{relation_enum_name}\")]"
+                        )
+                    } else {
+                        format!("    #[sea_orm({relation_type})]")
+                    };
+
+                    out.push(attr);
                     out.push(format!(
                         "    pub {field_name}: {rust_type}<super::{}::Entity>,",
                         other_table.name
@@ -707,6 +855,19 @@ fn to_pascal_case(s: &str) -> String {
     result
 }
 
+/// Convert PascalCase to snake_case.
+/// For "CreatorUser", generates "creator_user".
+fn to_snake_case(s: &str) -> String {
+    let mut result = String::new();
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && c.is_ascii_uppercase() {
+            result.push('_');
+        }
+        result.push(c.to_ascii_lowercase());
+    }
+    result
+}
+
 #[cfg(test)]
 mod helper_tests {
     use super::*;
@@ -815,6 +976,54 @@ mod helper_tests {
     }
 
     #[rstest]
+    #[case(vec!["creator_user_id".into()], "CreatorUser")]
+    #[case(vec!["used_by_user_id".into()], "UsedByUser")]
+    #[case(vec!["user_id".into()], "User")]
+    #[case(vec!["org_id".into()], "Org")]
+    #[case(vec!["org_id".into(), "user_id".into()], "Org")]
+    #[case(vec!["author_id".into()], "Author")]
+    // FK column WITHOUT _id suffix (coverage for line 428)
+    #[case(vec!["creator_user".into()], "CreatorUser")]
+    #[case(vec!["user".into()], "User")]
+    fn test_generate_relation_enum_name(#[case] columns: Vec<String>, #[case] expected: &str) {
+        assert_eq!(generate_relation_enum_name(&columns), expected);
+    }
+
+    #[rstest]
+    // FK column ends with table name -> use the FK column name
+    #[case("creator_user_id", "user", "id", "creator_user")]
+    #[case("used_by_user_id", "user", "id", "used_by_user")]
+    #[case("author_user_id", "user", "id", "author_user")]
+    // FK column is same as table -> fall back to table name
+    #[case("user_id", "user", "id", "user")]
+    #[case("org_id", "org", "id", "org")]
+    #[case("post_id", "post", "id", "post")]
+    // FK column doesn't end with table name -> use FK column name
+    #[case("author_id", "user", "id", "author")]
+    #[case("owner_id", "user", "id", "owner")]
+    // FK column WITHOUT _id suffix (coverage for line 450)
+    #[case("creator_user", "user", "id", "creator_user")]
+    #[case("user", "user", "id", "user")]
+    // FK column exactly matches table name with _id (coverage for line 464)
+    #[case("customer_id", "customer", "id", "customer")]
+    #[case("product_id", "product", "id", "product")]
+    // Test with different "to" suffixes (e.g., _idx instead of _id)
+    #[case("creator_user_idx", "user", "idx", "creator_user")]
+    #[case("user_idx", "user", "idx", "user")]
+    #[case("author_pk", "user", "pk", "author")]
+    fn test_infer_field_name_from_fk_column(
+        #[case] fk_column: &str,
+        #[case] table_name: &str,
+        #[case] to: &str,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(
+            infer_field_name_from_fk_column(fk_column, table_name, to),
+            expected
+        );
+    }
+
+    #[rstest]
     #[case("hello_world", "HelloWorld")]
     #[case("order_status", "OrderStatus")]
     #[case("hello-world", "HelloWorld")]
@@ -830,6 +1039,17 @@ mod helper_tests {
     #[case("", "")]
     fn test_to_pascal_case(#[case] input: &str, #[case] expected: &str) {
         assert_eq!(to_pascal_case(input), expected);
+    }
+
+    #[rstest]
+    #[case("CreatorUser", "creator_user")]
+    #[case("UsedByUser", "used_by_user")]
+    #[case("PreferredUser", "preferred_user")]
+    #[case("BackupUser", "backup_user")]
+    #[case("User", "user")]
+    #[case("ID", "i_d")]
+    fn test_to_snake_case(#[case] input: &str, #[case] expected: &str) {
+        assert_eq!(to_snake_case(input), expected);
     }
 
     #[rstest]
@@ -1863,6 +2083,17 @@ mod tests {
         ],
         constraints: vec![],
     })]
+    #[case("table_level_pk", TableDef {
+        name: "orders".into(),
+        columns: vec![
+            ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Uuid), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "customer_id".into(), r#type: ColumnType::Simple(SimpleColumnType::Uuid), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "total".into(), r#type: ColumnType::Simple(SimpleColumnType::Real), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+        ],
+        constraints: vec![
+            TableConstraint::PrimaryKey { columns: vec!["id".into()], auto_increment: false },
+        ],
+    })]
     fn render_entity_snapshots(#[case] name: &str, #[case] table: TableDef) {
         let rendered = render_entity(&table);
         with_settings!({ snapshot_suffix => format!("params_{}", name) }, {
@@ -1931,6 +2162,9 @@ mod tests {
     #[case("not_junction_single_pk")]
     #[case("not_junction_fk_not_in_pk_other")]
     #[case("not_junction_fk_not_in_pk_another")]
+    #[case("multiple_fk_same_table")]
+    #[case("multiple_reverse_relations")]
+    #[case("multiple_has_one_relations")]
     fn render_entity_with_schema_snapshots(#[case] name: &str) {
         use vespertide_core::SimpleColumnType::*;
 
@@ -2111,6 +2345,85 @@ mod tests {
                     ],
                 );
                 (another.clone(), vec![other, another, not_junction])
+            }
+            "multiple_fk_same_table" => {
+                let user = table_with_pk(
+                    "user",
+                    vec![col("id", ColumnType::Simple(Uuid))],
+                    vec!["id"],
+                );
+                let post = table_with_pk_and_fk(
+                    "post",
+                    vec![
+                        col("id", ColumnType::Simple(Uuid)),
+                        col("creator_user_id", ColumnType::Simple(Uuid)),
+                        col("used_by_user_id", ColumnType::Simple(Uuid)),
+                    ],
+                    vec!["id"],
+                    vec![
+                        (vec!["creator_user_id"], "user", vec!["id"]),
+                        (vec!["used_by_user_id"], "user", vec!["id"]),
+                    ],
+                );
+                (post.clone(), vec![user, post])
+            }
+            "multiple_reverse_relations" => {
+                // Test case where user has multiple has_one relations from profile
+                let user = table_with_pk(
+                    "user",
+                    vec![col("id", ColumnType::Simple(Uuid))],
+                    vec!["id"],
+                );
+                let profile = table_with_pk_and_fk(
+                    "profile",
+                    vec![
+                        col("id", ColumnType::Simple(Uuid)),
+                        col("preferred_user_id", ColumnType::Simple(Uuid)),
+                        col("backup_user_id", ColumnType::Simple(Uuid)),
+                    ],
+                    vec!["id"],
+                    vec![
+                        (vec!["preferred_user_id"], "user", vec!["id"]),
+                        (vec!["backup_user_id"], "user", vec!["id"]),
+                    ],
+                );
+                (user.clone(), vec![user, profile])
+            }
+            "multiple_has_one_relations" => {
+                // Test case where user has multiple has_one relations (UNIQUE FK)
+                let user = table_with_pk(
+                    "user",
+                    vec![col("id", ColumnType::Simple(Uuid))],
+                    vec!["id"],
+                );
+                let settings = table_with_pk_and_fk(
+                    "settings",
+                    vec![
+                        col("id", ColumnType::Simple(Uuid)),
+                        col("created_by_user_id", ColumnType::Simple(Uuid)),
+                        col("updated_by_user_id", ColumnType::Simple(Uuid)),
+                    ],
+                    vec!["id"],
+                    vec![
+                        (vec!["created_by_user_id"], "user", vec!["id"]),
+                        (vec!["updated_by_user_id"], "user", vec!["id"]),
+                    ],
+                );
+                // Add unique constraints to make them has_one (coverage for line 553)
+                let mut settings_with_unique = settings;
+                settings_with_unique
+                    .constraints
+                    .push(TableConstraint::Unique {
+                        name: None,
+                        columns: vec!["created_by_user_id".into()],
+                    });
+                settings_with_unique
+                    .constraints
+                    .push(TableConstraint::Unique {
+                        name: None,
+                        columns: vec!["updated_by_user_id".into()],
+                    });
+                (user.clone(), vec![user, settings_with_unique])
             }
             _ => panic!("Unknown test case: {}", name),
         };
