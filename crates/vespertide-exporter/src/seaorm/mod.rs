@@ -381,7 +381,7 @@ fn relation_field_defs_with_schema(table: &TableDef, schema: &[TableDef]) -> Vec
             // If that doesn't work (conflicts), fall back to table name
             let field_base = if columns.len() == 1 {
                 // For single-column FKs, try to infer from column name
-                infer_field_name_from_fk_column(&columns[0], resolved_table)
+                infer_field_name_from_fk_column(&columns[0], resolved_table, &to)
             } else {
                 // For composite FKs, use table name
                 sanitize_field_name(resolved_table)
@@ -432,40 +432,43 @@ fn generate_relation_enum_name(columns: &[String]) -> String {
 }
 
 /// Infer a field name from a single FK column.
-/// For "creator_user_id", tries "creator_user" first.
-/// If that ends with the table name, use the full column name (without _id).
+/// For "creator_user_id" with to="id", tries "creator_user" first.
+/// If that ends with the table name, use the full column name (without the to suffix).
 /// Otherwise, fall back to the table name.
 ///
 /// Examples:
-/// - FK column: "creator_user_id", table: "user" -> "creator_user"
-/// - FK column: "user_id", table: "user" -> "user" (falls back to table name)
-/// - FK column: "org_id", table: "user" -> "org"
-fn infer_field_name_from_fk_column(fk_column: &str, table_name: &str) -> String {
+/// - FK column: "creator_user_id", table: "user", to: "id" -> "creator_user"
+/// - FK column: "creator_user_idx", table: "user", to: "idx" -> "creator_user"
+/// - FK column: "user_id", table: "user", to: "id" -> "user" (falls back to table name)
+/// - FK column: "org_id", table: "user", to: "id" -> "org"
+fn infer_field_name_from_fk_column(fk_column: &str, table_name: &str, to: &str) -> String {
     let table_lower = table_name.to_lowercase();
 
-    // Remove _id suffix from FK column
-    let without_id = if fk_column.ends_with("_id") {
-        &fk_column[..fk_column.len() - 3]
+    // Remove the "to" suffix from FK column (e.g., "user_id" for to="id", "user_idx" for to="idx")
+    let without_suffix = if fk_column.ends_with(&format!("_{to}")) {
+        let suffix_len = to.len() + 1; // +1 for the underscore
+        &fk_column[..fk_column.len() - suffix_len]
     } else {
         fk_column
     };
 
-    let sanitized = sanitize_field_name(without_id);
-
-    // If the sanitized name ends with the table name, use it as-is
-    // This handles cases like "creator_user" for table "user"
-    if sanitized.to_lowercase().ends_with(&table_lower) {
-        return sanitized;
-    }
+    let sanitized = sanitize_field_name(without_suffix);
+    let sanitized_lower = sanitized.to_lowercase();
 
     // If the sanitized name is exactly the table name (e.g., "user_id" -> "user" for table "user"),
-    // fall back to the table name (which will be used as-is or with numeric suffix)
-    if sanitized.to_lowercase() == table_lower {
-        return sanitize_field_name(table_name);
+    // we need to fall back to the table name for proper disambiguation
+    if sanitized_lower == table_lower {
+        sanitize_field_name(table_name)
     }
-
-    // Otherwise, use the inferred name from the column
-    sanitized
+    // If the sanitized name ends with (but is not equal to) the table name, use it as-is
+    // This handles cases like "creator_user" for table "user"
+    else if sanitized_lower.ends_with(&table_lower) {
+        sanitized
+    }
+    else {
+        // Otherwise, use the inferred name from the column
+        sanitized
+    }
 }
 
 /// Generate reverse relation fields (has_one/has_many) for tables that reference this table.
@@ -975,6 +978,9 @@ mod helper_tests {
     #[case(vec!["org_id".into()], "Org")]
     #[case(vec!["org_id".into(), "user_id".into()], "Org")]
     #[case(vec!["author_id".into()], "Author")]
+    // FK column WITHOUT _id suffix (coverage for line 428)
+    #[case(vec!["creator_user".into()], "CreatorUser")]
+    #[case(vec!["user".into()], "User")]
     fn test_generate_relation_enum_name(
         #[case] columns: Vec<String>,
         #[case] expected: &str,
@@ -984,23 +990,34 @@ mod helper_tests {
 
     #[rstest]
     // FK column ends with table name -> use the FK column name
-    #[case("creator_user_id", "user", "creator_user")]
-    #[case("used_by_user_id", "user", "used_by_user")]
-    #[case("author_user_id", "user", "author_user")]
+    #[case("creator_user_id", "user", "id", "creator_user")]
+    #[case("used_by_user_id", "user", "id", "used_by_user")]
+    #[case("author_user_id", "user", "id", "author_user")]
     // FK column is same as table -> fall back to table name
-    #[case("user_id", "user", "user")]
-    #[case("org_id", "org", "org")]
-    #[case("post_id", "post", "post")]
+    #[case("user_id", "user", "id", "user")]
+    #[case("org_id", "org", "id", "org")]
+    #[case("post_id", "post", "id", "post")]
     // FK column doesn't end with table name -> use FK column name
-    #[case("author_id", "user", "author")]
-    #[case("owner_id", "user", "owner")]
+    #[case("author_id", "user", "id", "author")]
+    #[case("owner_id", "user", "id", "owner")]
+    // FK column WITHOUT _id suffix (coverage for line 450)
+    #[case("creator_user", "user", "id", "creator_user")]
+    #[case("user", "user", "id", "user")]
+    // FK column exactly matches table name with _id (coverage for line 464)
+    #[case("customer_id", "customer", "id", "customer")]
+    #[case("product_id", "product", "id", "product")]
+    // Test with different "to" suffixes (e.g., _idx instead of _id)
+    #[case("creator_user_idx", "user", "idx", "creator_user")]
+    #[case("user_idx", "user", "idx", "user")]
+    #[case("author_pk", "user", "pk", "author")]
     fn test_infer_field_name_from_fk_column(
         #[case] fk_column: &str,
         #[case] table_name: &str,
+        #[case] to: &str,
         #[case] expected: &str,
     ) {
         assert_eq!(
-            infer_field_name_from_fk_column(fk_column, table_name),
+            infer_field_name_from_fk_column(fk_column, table_name, to),
             expected
         );
     }
@@ -2065,6 +2082,17 @@ mod tests {
         ],
         constraints: vec![],
     })]
+    #[case("table_level_pk", TableDef {
+        name: "orders".into(),
+        columns: vec![
+            ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Uuid), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "customer_id".into(), r#type: ColumnType::Simple(SimpleColumnType::Uuid), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "total".into(), r#type: ColumnType::Simple(SimpleColumnType::Real), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+        ],
+        constraints: vec![
+            TableConstraint::PrimaryKey { columns: vec!["id".into()], auto_increment: false },
+        ],
+    })]
     fn render_entity_snapshots(#[case] name: &str, #[case] table: TableDef) {
         let rendered = render_entity(&table);
         with_settings!({ snapshot_suffix => format!("params_{}", name) }, {
@@ -2135,6 +2163,7 @@ mod tests {
     #[case("not_junction_fk_not_in_pk_another")]
     #[case("multiple_fk_same_table")]
     #[case("multiple_reverse_relations")]
+    #[case("multiple_has_one_relations")]
     fn render_entity_with_schema_snapshots(#[case] name: &str) {
         use vespertide_core::SimpleColumnType::*;
 
@@ -2358,6 +2387,38 @@ mod tests {
                     ],
                 );
                 (user.clone(), vec![user, profile])
+            }
+            "multiple_has_one_relations" => {
+                // Test case where user has multiple has_one relations (UNIQUE FK)
+                let user = table_with_pk(
+                    "user",
+                    vec![col("id", ColumnType::Simple(Uuid))],
+                    vec!["id"],
+                );
+                let settings = table_with_pk_and_fk(
+                    "settings",
+                    vec![
+                        col("id", ColumnType::Simple(Uuid)),
+                        col("created_by_user_id", ColumnType::Simple(Uuid)),
+                        col("updated_by_user_id", ColumnType::Simple(Uuid)),
+                    ],
+                    vec!["id"],
+                    vec![
+                        (vec!["created_by_user_id"], "user", vec!["id"]),
+                        (vec!["updated_by_user_id"], "user", vec!["id"]),
+                    ],
+                );
+                // Add unique constraints to make them has_one (coverage for line 553)
+                let mut settings_with_unique = settings;
+                settings_with_unique.constraints.push(TableConstraint::Unique {
+                    name: None,
+                    columns: vec!["created_by_user_id".into()],
+                });
+                settings_with_unique.constraints.push(TableConstraint::Unique {
+                    name: None,
+                    columns: vec!["updated_by_user_id".into()],
+                });
+                (user.clone(), vec![user, settings_with_unique])
             }
             _ => panic!("Unknown test case: {}", name),
         };

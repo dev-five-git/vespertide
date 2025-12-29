@@ -1,0 +1,21 @@
+---
+source: crates/vespertide-exporter/src/seaorm/mod.rs
+assertion_line: 2406
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[sea_orm(table_name = "user")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: Uuid,
+    #[sea_orm(has_one, relation_enum = "CreatedByUser", via_rel = "CreatedByUser")]
+    pub created_by_user: HasOne<super::settings::Entity>,
+    #[sea_orm(has_one, relation_enum = "UpdatedByUser", via_rel = "UpdatedByUser")]
+    pub updated_by_user: HasOne<super::settings::Entity>,
+}
+
+impl ActiveModelBehavior for ActiveModel {}
