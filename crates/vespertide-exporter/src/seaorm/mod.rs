@@ -338,7 +338,8 @@ fn relation_field_defs_with_schema(table: &TableDef, schema: &[TableDef]) -> Vec
     let mut used = HashSet::new();
 
     // Group FKs by their target table to detect duplicates
-    let mut fk_by_table: std::collections::HashMap<String, Vec<&TableConstraint>> = std::collections::HashMap::new();
+    let mut fk_by_table: std::collections::HashMap<String, Vec<&TableConstraint>> =
+        std::collections::HashMap::new();
     for constraint in &table.constraints {
         if let TableConstraint::ForeignKey {
             ref_table,
@@ -349,7 +350,7 @@ fn relation_field_defs_with_schema(table: &TableDef, schema: &[TableDef]) -> Vec
             let (resolved_table, _) = resolve_fk_target(ref_table, ref_columns, schema);
             fk_by_table
                 .entry(resolved_table.to_string())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(constraint);
         }
     }
@@ -397,9 +398,7 @@ fn relation_field_defs_with_schema(table: &TableDef, schema: &[TableDef]) -> Vec
                     "    #[sea_orm(belongs_to, relation_enum = \"{relation_enum_name}\", from = \"{from}\", to = \"{to}\")]"
                 )
             } else {
-                format!(
-                    "    #[sea_orm(belongs_to, from = \"{from}\", to = \"{to}\")]"
-                )
+                format!("    #[sea_orm(belongs_to, from = \"{from}\", to = \"{to}\")]")
             };
 
             out.push(attr);
@@ -464,8 +463,7 @@ fn infer_field_name_from_fk_column(fk_column: &str, table_name: &str, to: &str) 
     // This handles cases like "creator_user" for table "user"
     else if sanitized_lower.ends_with(&table_lower) {
         sanitized
-    }
-    else {
+    } else {
         // Otherwise, use the inferred name from the column
         sanitized
     }
@@ -487,12 +485,12 @@ fn reverse_relation_field_defs(
             continue;
         }
         for constraint in &other_table.constraints {
-            if let TableConstraint::ForeignKey { ref_table, .. } = constraint {
-                if ref_table == &table.name {
-                    *fk_count_per_table
-                        .entry(other_table.name.clone())
-                        .or_insert(0) += 1;
-                }
+            if let TableConstraint::ForeignKey { ref_table, .. } = constraint
+                && ref_table == &table.name
+            {
+                *fk_count_per_table
+                    .entry(other_table.name.clone())
+                    .or_insert(0) += 1;
             }
         }
     }
@@ -555,7 +553,11 @@ fn reverse_relation_field_defs(
                         if is_one_to_one {
                             lowercase_enum
                         } else {
-                            format!("{}_{}",lowercase_enum, pluralize(&sanitize_field_name(&other_table.name)))
+                            format!(
+                                "{}_{}",
+                                lowercase_enum,
+                                pluralize(&sanitize_field_name(&other_table.name))
+                            )
                         }
                     } else {
                         // Default naming for single FK
@@ -570,7 +572,9 @@ fn reverse_relation_field_defs(
                     // Generate relation_enum name if there are multiple FKs to this table
                     let attr = if has_multiple_fks {
                         let relation_enum_name = generate_relation_enum_name(columns);
-                        format!("    #[sea_orm({relation_type}, relation_enum = \"{relation_enum_name}\", via_rel = \"{relation_enum_name}\")]")
+                        format!(
+                            "    #[sea_orm({relation_type}, relation_enum = \"{relation_enum_name}\", via_rel = \"{relation_enum_name}\")]"
+                        )
                     } else {
                         format!("    #[sea_orm({relation_type})]")
                     };
@@ -981,10 +985,7 @@ mod helper_tests {
     // FK column WITHOUT _id suffix (coverage for line 428)
     #[case(vec!["creator_user".into()], "CreatorUser")]
     #[case(vec!["user".into()], "User")]
-    fn test_generate_relation_enum_name(
-        #[case] columns: Vec<String>,
-        #[case] expected: &str,
-    ) {
+    fn test_generate_relation_enum_name(#[case] columns: Vec<String>, #[case] expected: &str) {
         assert_eq!(generate_relation_enum_name(&columns), expected);
     }
 
@@ -2410,14 +2411,18 @@ mod tests {
                 );
                 // Add unique constraints to make them has_one (coverage for line 553)
                 let mut settings_with_unique = settings;
-                settings_with_unique.constraints.push(TableConstraint::Unique {
-                    name: None,
-                    columns: vec!["created_by_user_id".into()],
-                });
-                settings_with_unique.constraints.push(TableConstraint::Unique {
-                    name: None,
-                    columns: vec!["updated_by_user_id".into()],
-                });
+                settings_with_unique
+                    .constraints
+                    .push(TableConstraint::Unique {
+                        name: None,
+                        columns: vec!["created_by_user_id".into()],
+                    });
+                settings_with_unique
+                    .constraints
+                    .push(TableConstraint::Unique {
+                        name: None,
+                        columns: vec!["updated_by_user_id".into()],
+                    });
                 (user.clone(), vec![user, settings_with_unique])
             }
             _ => panic!("Unknown test case: {}", name),
