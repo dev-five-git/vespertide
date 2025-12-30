@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Vespertide is a Rust workspace for defining database schemas in JSON/YAML and generating migration plans and SQL from model diffs. It enables declarative schema management by comparing the current model state against a baseline reconstructed from applied migrations.
 
+The workspace uses Rust **edition 2024**.
+
 ## Build and Test Commands
 
 ```bash
@@ -19,6 +21,12 @@ cargo test
 cargo test -p vespertide-core
 cargo test -p vespertide-planner
 
+# Run a single test
+cargo test -p vespertide-planner test_name
+
+# Run tests with output shown
+cargo test -- --nocapture
+
 # Format code
 cargo fmt
 
@@ -28,6 +36,10 @@ cargo clippy --all-targets --all-features
 # Regenerate JSON schemas
 cargo run -p vespertide-schema-gen -- --out schemas
 
+# Snapshot testing (exporter crate)
+cargo insta test -p vespertide-exporter
+cargo insta accept
+
 # Run CLI commands (use -p vespertide-cli)
 cargo run -p vespertide-cli -- init
 cargo run -p vespertide-cli -- new user
@@ -36,6 +48,7 @@ cargo run -p vespertide-cli -- sql
 cargo run -p vespertide-cli -- revision -m "message"
 cargo run -p vespertide-cli -- status
 cargo run -p vespertide-cli -- log
+cargo run -p vespertide-cli -- export --orm seaorm
 ```
 
 ## Architecture
@@ -66,7 +79,10 @@ cargo run -p vespertide-cli -- log
 - **vespertide-exporter**: Exports schemas to other formats (e.g., SeaORM entities)
   - Uses `ColumnType::to_rust_type(nullable)` method for Rust type conversion
 - **vespertide-schema-gen**: Generates JSON Schema files for validation
-- **vespertide-macro**: Placeholder for future runtime migration executor
+- **vespertide-loader**: Loads migrations and models from filesystem (JSON/YAML)
+- **vespertide-naming**: Naming conventions and case conversion helpers
+- **vespertide-macro**: Compile-time migration macro (`vespertide_migration!`) for SeaORM
+- **vespertide**: Main crate that re-exports vespertide-core and vespertide-macro
 
 ### Key Architectural Patterns
 
@@ -154,5 +170,3 @@ Schema base URL can be overridden via `VESP_SCHEMA_BASE_URL` environment variabl
 ## Limitations
 
 - YAML loading is not implemented (templates can be generated but not parsed)
-- Runtime migration executor (`run_migrations`) in `vespertide-macro` is not implemented
-- SQL generation currently uses PostgreSQL-compatible syntax

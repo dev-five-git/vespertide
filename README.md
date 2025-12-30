@@ -12,9 +12,10 @@ Declarative database schema management. Define your schemas in JSON, and Vespert
 - **Declarative Schema**: Define your desired database state in JSON files
 - **Automatic Diffing**: Vespertide compares your models against applied migrations to compute changes
 - **Migration Planning**: Generates typed migration actions (not raw SQL) for safety and portability
-- **SQL Generation**: Converts migration actions to parameterized SQL statements
+- **Multi-Database Support**: PostgreSQL, MySQL, SQLite
+- **Zero-Runtime Migrations**: Compile-time macro generates database-specific SQL
 - **JSON Schema Validation**: Ships with JSON Schemas for IDE autocompletion and validation
-- **ORM Export**: Export schemas to SeaORM entities
+- **ORM Export**: Export schemas to SeaORM, SQLAlchemy, SQLModel
 
 ## Installation
 
@@ -53,6 +54,81 @@ vespertide revision -m "create user table"
 | `vespertide status` | Show configuration and sync status overview |
 | `vespertide log` | List applied migrations with generated SQL |
 | `vespertide export --orm seaorm` | Export models to SeaORM entity code |
+
+## Supported Databases
+
+Vespertide generates database-specific SQL for:
+
+| Database | SQL Syntax | Notes |
+|----------|------------|-------|
+| PostgreSQL | `"identifier"` | Full feature support |
+| MySQL | `` `identifier` `` | Full feature support |
+| SQLite | `"identifier"` | Full feature support |
+
+## ORM Export
+
+Export your schema definitions to ORM-specific code:
+
+```bash
+# SeaORM (Rust)
+vespertide export --orm seaorm
+
+# SQLAlchemy (Python)
+vespertide export --orm sqlalchemy
+
+# SQLModel (Python - SQLAlchemy + Pydantic)
+vespertide export --orm sqlmodel
+```
+
+| ORM | Language | Description |
+|-----|----------|-------------|
+| SeaORM | Rust | Async ORM for Rust with compile-time checked queries |
+| SQLAlchemy | Python | Python SQL toolkit and ORM |
+| SQLModel | Python | SQLAlchemy + Pydantic integration for FastAPI |
+
+## Runtime Migrations (Macro)
+
+Use the `vespertide_migration!` macro to run migrations at application startup. The macro generates database-specific SQL at compile time for zero-runtime overhead.
+
+### Setup
+
+Add dependencies to your `Cargo.toml`:
+
+```toml
+[dependencies]
+vespertide = "0.1"
+sea-orm = { version = "1.0", features = ["runtime-tokio-native-tls", "sqlx-postgres"] }
+tokio = { version = "1", features = ["full"] }
+```
+
+### Usage
+
+```rust
+use sea_orm::Database;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let db = Database::connect("postgres://user:pass@localhost/mydb").await?;
+
+    // Run migrations (uses SeaORM connection)
+    vespertide::vespertide_migration!(db).await?;
+
+    Ok(())
+}
+```
+
+### Options
+
+```rust
+// Custom version table name (default: "vespertide_version")
+vespertide::vespertide_migration!(db, version_table = "my_migrations").await?;
+```
+
+The macro:
+- Creates a version table if it doesn't exist
+- Tracks applied migrations by version number
+- Generates SQL for PostgreSQL, MySQL, and SQLite at compile time
+- Automatically selects the correct SQL dialect based on your SeaORM connection
 
 ## Model Definition
 
@@ -130,9 +206,9 @@ vespertide/
 ├── vespertide-query     # SQL generation
 ├── vespertide-config    # Configuration management
 ├── vespertide-cli       # Command-line interface
-├── vespertide-exporter  # ORM code generation (SeaORM)
+├── vespertide-exporter  # ORM code generation (SeaORM, SQLAlchemy, SQLModel)
 ├── vespertide-schema-gen # JSON Schema generation
-└── vespertide-macro     # Runtime migration executor (planned)
+└── vespertide-macro     # Compile-time migration macro for SeaORM
 ```
 
 ### How It Works
@@ -178,9 +254,7 @@ cargo run -p vespertide-schema-gen -- --out schemas
 
 ## Limitations
 
-- SQL generation currently uses PostgreSQL-compatible syntax
 - YAML loading is not yet implemented (templates can be generated but not parsed)
-- Runtime migration executor is not implemented
 
 ## License
 
