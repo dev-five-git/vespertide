@@ -2,7 +2,7 @@
 source: crates/vespertide-exporter/src/seaorm/mod.rs
 expression: result
 ---
-#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, vespera::Schema)]
 #[sea_orm(rs_type = "i32", db_type = "Integer")]
 pub enum Color {
     Black = 0,

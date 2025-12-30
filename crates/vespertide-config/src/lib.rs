@@ -2,7 +2,7 @@ pub mod config;
 pub mod file_format;
 pub mod name_case;
 
-pub use config::{VespertideConfig, default_migration_filename_pattern};
+pub use config::{SeaOrmConfig, VespertideConfig, default_migration_filename_pattern};
 pub use file_format::FileFormat;
 pub use name_case::NameCase;
 
@@ -35,5 +35,63 @@ mod tests {
         assert_eq!(cfg.migrations_dir(), Path::new("custom_migrations"));
         assert!(cfg.table_case().is_camel());
         assert!(cfg.column_case().is_pascal());
+    }
+
+    #[test]
+    fn seaorm_config_default_has_vespera_schema() {
+        let cfg = SeaOrmConfig::default();
+        assert_eq!(cfg.extra_enum_derives(), &["vespera::Schema".to_string()]);
+        assert!(cfg.extra_model_derives().is_empty());
+    }
+
+    #[test]
+    fn seaorm_config_accessors() {
+        let cfg = SeaOrmConfig {
+            extra_enum_derives: vec!["A".to_string(), "B".to_string()],
+            extra_model_derives: vec!["C".to_string()],
+        };
+        assert_eq!(cfg.extra_enum_derives(), &["A", "B"]);
+        assert_eq!(cfg.extra_model_derives(), &["C"]);
+    }
+
+    #[test]
+    fn vespertide_config_seaorm_accessor() {
+        let cfg = VespertideConfig::default();
+        let seaorm = cfg.seaorm();
+        assert_eq!(
+            seaorm.extra_enum_derives(),
+            &["vespera::Schema".to_string()]
+        );
+    }
+
+    #[test]
+    fn seaorm_config_deserialize_with_defaults() {
+        let json = r#"{}"#;
+        let cfg: SeaOrmConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.extra_enum_derives(), &["vespera::Schema".to_string()]);
+        assert!(cfg.extra_model_derives().is_empty());
+    }
+
+    #[test]
+    fn seaorm_config_deserialize_with_custom_values() {
+        let json = r#"{"extraEnumDerives": ["Custom"], "extraModelDerives": ["Model"]}"#;
+        let cfg: SeaOrmConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.extra_enum_derives(), &["Custom"]);
+        assert_eq!(cfg.extra_model_derives(), &["Model"]);
+    }
+
+    #[test]
+    fn vespertide_config_deserialize_with_seaorm() {
+        let json = r#"{
+            "modelsDir": "models",
+            "migrationsDir": "migrations",
+            "tableNamingCase": "snake",
+            "columnNamingCase": "snake",
+            "seaorm": {
+                "extraEnumDerives": ["MyDerive"]
+            }
+        }"#;
+        let cfg: VespertideConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.seaorm().extra_enum_derives(), &["MyDerive"]);
     }
 }

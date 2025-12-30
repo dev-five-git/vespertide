@@ -10,6 +10,44 @@ pub fn default_migration_filename_pattern() -> String {
     "%04v_%m".to_string()
 }
 
+/// SeaORM-specific export configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeaOrmConfig {
+    /// Additional derive macros to add to generated enum types.
+    /// Default: `["vespera::Schema"]`
+    #[serde(default = "default_extra_enum_derives")]
+    pub extra_enum_derives: Vec<String>,
+    /// Additional derive macros to add to generated entity model types.
+    #[serde(default)]
+    pub extra_model_derives: Vec<String>,
+}
+
+fn default_extra_enum_derives() -> Vec<String> {
+    vec!["vespera::Schema".to_string()]
+}
+
+impl Default for SeaOrmConfig {
+    fn default() -> Self {
+        Self {
+            extra_enum_derives: default_extra_enum_derives(),
+            extra_model_derives: Vec::new(),
+        }
+    }
+}
+
+impl SeaOrmConfig {
+    /// Get the extra derive macros for enum types.
+    pub fn extra_enum_derives(&self) -> &[String] {
+        &self.extra_enum_derives
+    }
+
+    /// Get the extra derive macros for model types.
+    pub fn extra_model_derives(&self) -> &[String] {
+        &self.extra_model_derives
+    }
+}
+
 /// Top-level vespertide configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,6 +65,9 @@ pub struct VespertideConfig {
     /// Output directory for generated ORM models.
     #[serde(default = "default_model_export_dir")]
     pub model_export_dir: PathBuf,
+    /// SeaORM-specific export configuration.
+    #[serde(default)]
+    pub seaorm: SeaOrmConfig,
 }
 
 fn default_model_export_dir() -> PathBuf {
@@ -44,6 +85,7 @@ impl Default for VespertideConfig {
             migration_format: FileFormat::Json,
             migration_filename_pattern: default_migration_filename_pattern(),
             model_export_dir: default_model_export_dir(),
+            seaorm: SeaOrmConfig::default(),
         }
     }
 }
@@ -87,5 +129,10 @@ impl VespertideConfig {
     /// Output directory for generated ORM models.
     pub fn model_export_dir(&self) -> &Path {
         &self.model_export_dir
+    }
+
+    /// SeaORM-specific export configuration.
+    pub fn seaorm(&self) -> &SeaOrmConfig {
+        &self.seaorm
     }
 }

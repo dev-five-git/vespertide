@@ -5,7 +5,7 @@ expression: rendered
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, vespera::Schema)]
 #[sea_orm(rs_type = "i32", db_type = "Integer")]
 pub enum TaskStatus {
     Pending = 0,

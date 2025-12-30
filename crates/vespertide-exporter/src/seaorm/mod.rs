@@ -1,12 +1,18 @@
 use std::collections::HashSet;
 
 use crate::orm::OrmExporter;
+use vespertide_config::SeaOrmConfig;
 use vespertide_core::{
     ColumnDef, ColumnType, ComplexColumnType, EnumValues, NumValue, StringOrBool, TableConstraint,
     TableDef,
 };
 
 pub struct SeaOrmExporter;
+
+/// SeaORM exporter with configuration support.
+pub struct SeaOrmExporterWithConfig<'a> {
+    pub config: &'a SeaOrmConfig,
+}
 
 impl OrmExporter for SeaOrmExporter {
     fn render_entity(&self, table: &TableDef) -> Result<String, String> {
@@ -22,6 +28,24 @@ impl OrmExporter for SeaOrmExporter {
     }
 }
 
+impl<'a> SeaOrmExporterWithConfig<'a> {
+    pub fn new(config: &'a SeaOrmConfig) -> Self {
+        Self { config }
+    }
+
+    pub fn render_entity(&self, table: &TableDef) -> Result<String, String> {
+        Ok(render_entity_with_config(table, &[], self.config))
+    }
+
+    pub fn render_entity_with_schema(
+        &self,
+        table: &TableDef,
+        schema: &[TableDef],
+    ) -> Result<String, String> {
+        Ok(render_entity_with_config(table, schema, self.config))
+    }
+}
+
 /// Render a single table into SeaORM entity code.
 ///
 /// Follows the official entity format:
@@ -32,6 +56,15 @@ pub fn render_entity(table: &TableDef) -> String {
 
 /// Render a single table into SeaORM entity code with schema context for FK chain resolution.
 pub fn render_entity_with_schema(table: &TableDef, schema: &[TableDef]) -> String {
+    render_entity_with_config(table, schema, &SeaOrmConfig::default())
+}
+
+/// Render a single table into SeaORM entity code with schema context and configuration.
+pub fn render_entity_with_config(
+    table: &TableDef,
+    schema: &[TableDef],
+    config: &SeaOrmConfig,
+) -> String {
     let primary_keys = primary_key_columns(table);
     let composite_pk = primary_keys.len() > 1;
     let relation_fields = relation_field_defs_with_schema(table, schema);
@@ -51,16 +84,31 @@ pub fn render_entity_with_schema(table: &TableDef, schema: &[TableDef]) -> Strin
         if let ColumnType::Complex(ComplexColumnType::Enum { name, values }) = &column.r#type {
             // Avoid duplicate enum definitions if multiple columns use the same enum
             if !processed_enums.contains(name) {
-                render_enum(&mut lines, &table.name, name, values);
+                render_enum(&mut lines, &table.name, name, values, config);
                 processed_enums.insert(name.clone());
             }
         }
     }
 
+    // Build model derive line with optional extra derives
+    let mut model_derives = vec![
+        "Clone",
+        "Debug",
+        "PartialEq",
+        "Eq",
+        "DeriveEntityModel",
+        "Serialize",
+        "Deserialize",
+    ];
+    let extra_model_derives: Vec<&str> = config
+        .extra_model_derives()
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
+    model_derives.extend(extra_model_derives);
+
     lines.push("#[sea_orm::model]".into());
-    lines.push(
-        "#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]".into(),
-    );
+    lines.push(format!("#[derive({})]", model_derives.join(", ")));
     lines.push(format!("#[sea_orm(table_name = \"{}\")]", table.name));
     lines.push("pub struct Model {".into());
 
@@ -763,15 +811,36 @@ fn unique_name(base: &str, used: &mut HashSet<String>) -> String {
     name
 }
 
-fn render_enum(lines: &mut Vec<String>, table_name: &str, name: &str, values: &EnumValues) {
+fn render_enum(
+    lines: &mut Vec<String>,
+    table_name: &str,
+    name: &str,
+    values: &EnumValues,
+    config: &SeaOrmConfig,
+) {
     let enum_name = to_pascal_case(name);
     // Construct the full enum name with table prefix for database
     let db_enum_name = format!("{}_{}", table_name, name);
 
-    lines.push(
-        "#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]"
-            .into(),
-    );
+    // Build derive line with optional extra derives
+    let mut derives = vec![
+        "Debug",
+        "Clone",
+        "PartialEq",
+        "Eq",
+        "EnumIter",
+        "DeriveActiveEnum",
+        "Serialize",
+        "Deserialize",
+    ];
+    let extra_derives: Vec<&str> = config
+        .extra_enum_derives()
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
+    derives.extend(extra_derives);
+
+    lines.push(format!("#[derive({})]", derives.join(", ")));
 
     match values {
         EnumValues::Integer(_) => {
@@ -1132,7 +1201,8 @@ mod helper_tests {
 
         let (enum_name, values) = input;
         let mut lines = Vec::new();
-        render_enum(&mut lines, table_name, enum_name, &values);
+        let config = SeaOrmConfig::default();
+        render_enum(&mut lines, table_name, enum_name, &values, &config);
         let result = lines.join("\n");
 
         with_settings!({ snapshot_suffix => name }, {
@@ -2587,5 +2657,162 @@ mod tests {
         let rendered = render_entity(&table);
         assert!(rendered.contains("default_value = true"));
         assert!(rendered.contains("default_value = false"));
+    }
+
+    #[test]
+    fn test_exporter_with_config_render_entity() {
+        use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+
+        let config = SeaOrmConfig {
+            extra_enum_derives: vec!["CustomDerive".to_string()],
+            extra_model_derives: vec!["ModelDerive".to_string()],
+        };
+        let exporter = SeaOrmExporterWithConfig::new(&config);
+
+        let table = TableDef {
+            name: "items".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        };
+
+        let result = exporter.render_entity(&table).unwrap();
+        assert!(result.contains("ModelDerive"));
+    }
+
+    #[test]
+    fn test_exporter_with_config_render_entity_with_enum() {
+        use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+
+        let config = SeaOrmConfig {
+            extra_enum_derives: vec!["CustomEnumDerive".to_string()],
+            extra_model_derives: vec![],
+        };
+        let exporter = SeaOrmExporterWithConfig::new(&config);
+
+        let table = TableDef {
+            name: "orders".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "status".into(),
+                    r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "order_status".into(),
+                        values: EnumValues::String(vec!["pending".into(), "shipped".into()]),
+                    }),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![],
+        };
+
+        let result = exporter.render_entity(&table).unwrap();
+        assert!(result.contains("CustomEnumDerive"));
+    }
+
+    #[test]
+    fn test_exporter_with_config_render_entity_with_schema() {
+        use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+
+        let config = SeaOrmConfig {
+            extra_enum_derives: vec![],
+            extra_model_derives: vec!["SchemaDerive".to_string()],
+        };
+        let exporter = SeaOrmExporterWithConfig::new(&config);
+
+        let table = TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        };
+
+        let schema = vec![table.clone()];
+        let result = exporter.render_entity_with_schema(&table, &schema).unwrap();
+        assert!(result.contains("SchemaDerive"));
+    }
+
+    #[test]
+    fn test_exporter_with_empty_extra_derives() {
+        use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+
+        let config = SeaOrmConfig {
+            extra_enum_derives: vec![],
+            extra_model_derives: vec![],
+        };
+        let exporter = SeaOrmExporterWithConfig::new(&config);
+
+        let table = TableDef {
+            name: "products".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "category".into(),
+                    r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "category".into(),
+                        values: EnumValues::String(vec!["electronics".into(), "clothing".into()]),
+                    }),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![],
+        };
+
+        let result = exporter.render_entity(&table).unwrap();
+        // Should have base derives but no extra ones
+        assert!(result.contains("DeriveActiveEnum"));
+        assert!(result.contains("DeriveEntityModel"));
+        // Should NOT contain vespera::Schema since we explicitly set empty
+        assert!(!result.contains("vespera::Schema"));
     }
 }

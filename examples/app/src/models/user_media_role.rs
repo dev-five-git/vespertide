@@ -2,8 +2,8 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "media_role")]
-pub enum MediaRole {
+#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "user_media_role_role")]
+pub enum Role {
     #[sea_orm(string_value = "owner")]
     Owner,
     #[sea_orm(string_value = "editor")]
@@ -21,7 +21,7 @@ pub struct Model {
     #[sea_orm(primary_key)]
     pub media_id: Uuid,
     #[sea_orm(indexed)]
-    pub role: MediaRole,
+    pub role: Role,
     #[sea_orm(default_value = "now()")]
     pub created_at: DateTimeWithTimeZone,
     #[sea_orm(belongs_to, from = "user_id", to = "id")]

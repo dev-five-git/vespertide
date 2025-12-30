@@ -5,7 +5,7 @@ expression: rendered
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, vespera::Schema)]
 #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "products_product_category")]
 pub enum ProductCategory {
     #[sea_orm(string_value = "electronics")]
@@ -16,7 +16,7 @@ pub enum ProductCategory {
     Food,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, vespera::Schema)]
 #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "products_availability_status")]
 pub enum AvailabilityStatus {
     #[sea_orm(string_value = "in_stock")]

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
 #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "article_status")]
-pub enum ArticleStatus {
+pub enum Status {
     #[sea_orm(string_value = "draft")]
     Draft,
     #[sea_orm(string_value = "review")]
@@ -26,8 +26,8 @@ pub struct Model {
     pub content: String,
     pub summary: Option<String>,
     pub thumbnail: Option<String>,
-    #[sea_orm(indexed, default_value = ArticleStatus::Draft)]
-    pub status: ArticleStatus,
+    #[sea_orm(indexed, default_value = "draft")]
+    pub status: Status,
     #[sea_orm(indexed)]
     pub published_at: Option<DateTimeWithTimeZone>,
     #[sea_orm(default_value = "now()")]

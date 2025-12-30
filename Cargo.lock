@@ -3032,6 +3032,7 @@ version = "0.1.20"
 dependencies = [
  "clap",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3052,6 +3053,7 @@ dependencies = [
  "insta",
  "rstest",
  "thiserror 2.0.17",
+ "vespertide-config",
  "vespertide-core",
 ]
 

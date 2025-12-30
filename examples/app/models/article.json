@@ -41,7 +41,7 @@
     },
     {
       "name": "status",
-      "type": { "kind": "enum", "name": "article_status", "values": ["draft", "review", "published", "archived"] },
+      "type": { "kind": "enum", "name": "status", "values": ["draft", "review", "published", "archived"] },
       "nullable": false,
       "default": "'draft'",
       "index": true

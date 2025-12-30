@@ -11,3 +11,6 @@ description = "Manages models/migrations directories and naming-case preferences
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"

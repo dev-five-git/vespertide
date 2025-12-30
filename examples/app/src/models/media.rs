@@ -16,7 +16,7 @@ pub struct Model {
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: Option<DateTimeWithTimeZone>,
     #[sea_orm(belongs_to, from = "owner_id", to = "id")]
-    pub user: HasOne<super::user::Entity>,
+    pub owner: HasOne<super::user::Entity>,
     #[sea_orm(has_many)]
     pub articles: HasMany<super::article::Entity>,
     #[sea_orm(has_many)]

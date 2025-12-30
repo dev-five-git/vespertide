@@ -2,7 +2,7 @@
 source: crates/vespertide-exporter/src/seaorm/mod.rs
 expression: result
 ---
-#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, vespera::Schema)]
 #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "tasks_priority")]
 pub enum Priority {
     #[sea_orm(string_value = "1_high")]
