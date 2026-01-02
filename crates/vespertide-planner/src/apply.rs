@@ -18,6 +18,7 @@ pub fn apply_action(
             }
             schema.push(TableDef {
                 name: table.clone(),
+                description: None,
                 columns: columns.clone(),
                 constraints: constraints.clone(),
             });
@@ -377,6 +378,7 @@ mod tests {
     fn table(name: &str, columns: Vec<ColumnDef>, constraints: Vec<TableConstraint>) -> TableDef {
         TableDef {
             name: name.to_string(),
+            description: None,
             columns,
             constraints,
         }

@@ -156,6 +156,7 @@ mod tests {
         fs::create_dir_all("models").unwrap();
         let table = TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),
@@ -191,6 +192,7 @@ mod tests {
         // Create model in subdirectory
         let table = TableDef {
             name: "subtable".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),
@@ -286,6 +288,7 @@ mod tests {
         // Create a model with invalid FK string format (missing dot separator)
         let table = TableDef {
             name: "orders".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "user_id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),

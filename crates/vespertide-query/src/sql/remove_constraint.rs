@@ -572,6 +572,7 @@ mod tests {
         // For SQLite, we need to provide current schema with the constraint to be removed
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: if title.contains("check") {
                 vec![
                     ColumnDef {
@@ -686,6 +687,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),
@@ -736,6 +738,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),
@@ -804,6 +807,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "id".into(),
@@ -861,6 +865,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "id".into(),
@@ -926,6 +931,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "id".into(),
@@ -1015,6 +1021,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "posts".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "id".into(),
@@ -1076,6 +1083,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "posts".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "id".into(),
@@ -1143,6 +1151,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "posts".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "id".into(),
@@ -1224,6 +1233,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "id".into(),
@@ -1287,6 +1297,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "id".into(),
@@ -1350,6 +1361,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "id".into(),
@@ -1419,6 +1431,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "posts".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "id".into(),
@@ -1488,6 +1501,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "id".into(),
@@ -1555,6 +1569,7 @@ mod tests {
 
         let schema = vec![TableDef {
             name: "users".to_string(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "email".to_string(),
                 r#type: ColumnType::Simple(SimpleColumnType::Text),

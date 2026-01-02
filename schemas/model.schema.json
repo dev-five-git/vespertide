@@ -15,6 +15,12 @@
         "$ref": "#/$defs/TableConstraint"
       }
     },
+    "description": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "name": {
       "type": "string"
     }

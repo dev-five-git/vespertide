@@ -50,6 +50,8 @@ impl std::error::Error for TableValidationError {}
 #[serde(rename_all = "snake_case")]
 pub struct TableDef {
     pub name: TableName,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     pub columns: Vec<ColumnDef>,
     pub constraints: Vec<TableConstraint>,
 }
@@ -398,6 +400,7 @@ impl TableDef {
 
         Ok(TableDef {
             name: self.name.clone(),
+            description: self.description.clone(),
             columns: self.columns.clone(),
             constraints,
         })
@@ -434,6 +437,7 @@ mod tests {
 
         let table = TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 id_col,
                 col("name", ColumnType::Simple(SimpleColumnType::Text)),
@@ -459,6 +463,7 @@ mod tests {
 
         let table = TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![id_col, tenant_col],
             constraints: vec![],
         };
@@ -478,6 +483,7 @@ mod tests {
 
         let table = TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![id_col],
             constraints: vec![TableConstraint::PrimaryKey {
                 auto_increment: false,
@@ -496,6 +502,7 @@ mod tests {
 
         let table = TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 id_col,
                 col("name", ColumnType::Simple(SimpleColumnType::Text)),
@@ -515,6 +522,7 @@ mod tests {
 
         let table = TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 email_col,
@@ -537,6 +545,7 @@ mod tests {
 
         let table = TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 email_col,
@@ -565,6 +574,7 @@ mod tests {
 
         let table = TableDef {
             name: "user".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 route_col,
@@ -592,6 +602,7 @@ mod tests {
 
         let table = TableDef {
             name: "user".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 email_col,
@@ -638,6 +649,7 @@ mod tests {
 
         let table = TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 name_col,
@@ -669,6 +681,7 @@ mod tests {
 
         let table = TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 name_col,
@@ -702,6 +715,7 @@ mod tests {
 
         let table = TableDef {
             name: "posts".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 user_id_col,
@@ -747,6 +761,7 @@ mod tests {
 
         let table = TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![id_col, email_col, name_col, user_id_col],
             constraints: vec![],
         };
@@ -782,6 +797,7 @@ mod tests {
 
         let table = TableDef {
             name: "post".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 updated_at_col,
@@ -826,6 +842,7 @@ mod tests {
 
         let table = TableDef {
             name: "test".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 col1,
@@ -877,6 +894,7 @@ mod tests {
 
         let table = TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 email_col,
@@ -894,6 +912,7 @@ mod tests {
         // This should cover lines 67-69, 72-73, and 93 (pk_columns.is_empty() branch)
         let table = TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 col("name", ColumnType::Simple(SimpleColumnType::Text)),
                 col("email", ColumnType::Simple(SimpleColumnType::Text)),
@@ -926,6 +945,7 @@ mod tests {
 
         let table = TableDef {
             name: "post".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 updated_at_col,
@@ -983,6 +1003,7 @@ mod tests {
 
         let table = TableDef {
             name: "test".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 col1,
@@ -1014,6 +1035,7 @@ mod tests {
 
         let table = TableDef {
             name: "test".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 col1.clone(),
@@ -1027,6 +1049,7 @@ mod tests {
         // Add same column again - should not create duplicate
         let table2 = TableDef {
             name: "test".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 col1,
@@ -1050,6 +1073,7 @@ mod tests {
 
         let table = TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 email_col,
@@ -1078,6 +1102,7 @@ mod tests {
 
         let table = TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 email_col,
@@ -1111,6 +1136,7 @@ mod tests {
 
         let table = TableDef {
             name: "posts".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 user_id_col,
@@ -1144,6 +1170,7 @@ mod tests {
 
         let table = TableDef {
             name: "test".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 col1.clone(),
@@ -1179,6 +1206,7 @@ mod tests {
 
         let table = TableDef {
             name: "test".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 col1,
@@ -1208,6 +1236,7 @@ mod tests {
 
         let table = TableDef {
             name: "test".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 col1.clone(),
@@ -1254,6 +1283,7 @@ mod tests {
 
         let table = TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 email_col,
@@ -1280,6 +1310,7 @@ mod tests {
 
         let table = TableDef {
             name: "test".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 col1,
@@ -1306,6 +1337,7 @@ mod tests {
 
         let table = TableDef {
             name: "test".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 col1.clone(),
@@ -1343,6 +1375,7 @@ mod tests {
 
         let table = TableDef {
             name: "posts".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 user_id_col,
@@ -1375,6 +1408,7 @@ mod tests {
 
         let table = TableDef {
             name: "posts".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 user_id_col,
@@ -1400,6 +1434,7 @@ mod tests {
 
         let table = TableDef {
             name: "posts".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 user_id_col,
@@ -1425,6 +1460,7 @@ mod tests {
 
         let table = TableDef {
             name: "posts".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 user_id_col,
@@ -1450,6 +1486,7 @@ mod tests {
 
         let table = TableDef {
             name: "posts".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 user_id_col,
@@ -1478,6 +1515,7 @@ mod tests {
 
         let table = TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 id_col,
                 col("name", ColumnType::Simple(SimpleColumnType::Text)),
@@ -1508,6 +1546,7 @@ mod tests {
 
         let table = TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 email_col,

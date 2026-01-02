@@ -118,6 +118,7 @@ mod tests {
     ) -> TableDef {
         TableDef {
             name: name.to_string(),
+            description: None,
             columns,
             constraints,
         }

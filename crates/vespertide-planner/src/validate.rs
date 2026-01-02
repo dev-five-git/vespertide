@@ -477,6 +477,7 @@ mod tests {
     fn table(name: &str, columns: Vec<ColumnDef>, constraints: Vec<TableConstraint>) -> TableDef {
         TableDef {
             name: name.to_string(),
+            description: None,
             columns,
             constraints,
         }
