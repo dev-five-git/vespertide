@@ -1224,6 +1224,7 @@ mod helper_tests {
         // media table without FK chain
         let media = TableDef {
             name: "media".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Uuid),
@@ -1253,6 +1254,7 @@ mod helper_tests {
         // media table
         let media = TableDef {
             name: "media".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Uuid),
@@ -1273,6 +1275,7 @@ mod helper_tests {
         // article table with FK to media
         let article = TableDef {
             name: "article".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "media_id".into(),
@@ -1325,6 +1328,7 @@ mod helper_tests {
         use vespertide_core::{ColumnType, SimpleColumnType};
         let media = TableDef {
             name: "media".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Uuid),
@@ -1361,6 +1365,7 @@ mod helper_tests {
         // media table
         let media = TableDef {
             name: "media".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Uuid),
@@ -1381,6 +1386,7 @@ mod helper_tests {
         // article table with FK to media
         let article = TableDef {
             name: "article".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "media_id".into(),
@@ -1424,6 +1430,7 @@ mod helper_tests {
         // article_user table with FK to article.media_id
         let article_user = TableDef {
             name: "article_user".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "article_media_id".into(),
@@ -1496,6 +1503,7 @@ mod helper_tests {
         // level_a (root)
         let level_a = TableDef {
             name: "level_a".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Uuid),
@@ -1516,6 +1524,7 @@ mod helper_tests {
         // level_b with FK to level_a
         let level_b = TableDef {
             name: "level_b".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "a_id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Uuid),
@@ -1546,6 +1555,7 @@ mod helper_tests {
         // level_c with FK to level_b
         let level_c = TableDef {
             name: "level_c".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "b_id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Uuid),
@@ -1587,6 +1597,7 @@ mod helper_tests {
         // user table
         let user = TableDef {
             name: "user".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Uuid),
@@ -1607,6 +1618,7 @@ mod helper_tests {
         // post table with FK to user (not PK, so has_many)
         let post = TableDef {
             name: "post".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "id".into(),
@@ -1666,6 +1678,7 @@ mod helper_tests {
         // user table
         let user = TableDef {
             name: "user".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Uuid),
@@ -1686,6 +1699,7 @@ mod helper_tests {
         // profile table with FK to user that is also the PK (one-to-one)
         let profile = TableDef {
             name: "profile".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "user_id".into(),
@@ -1745,6 +1759,7 @@ mod helper_tests {
         // user table
         let user = TableDef {
             name: "user".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Uuid),
@@ -1765,6 +1780,7 @@ mod helper_tests {
         // settings table with unique FK to user (one-to-one via UNIQUE constraint)
         let settings = TableDef {
             name: "settings".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "id".into(),
@@ -1833,6 +1849,7 @@ mod tests {
     #[rstest]
     #[case("basic_single_pk", TableDef {
         name: "users".into(),
+        description: None,
         columns: vec![
             ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
             ColumnDef { name: "display_name".into(), r#type: ColumnType::Simple(SimpleColumnType::Text), nullable: true, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
@@ -1841,6 +1858,7 @@ mod tests {
     })]
     #[case("composite_pk", TableDef {
         name: "accounts".into(),
+        description: None,
         columns: vec![
             ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
             ColumnDef { name: "tenant_id".into(), r#type: ColumnType::Simple(SimpleColumnType::BigInt), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
@@ -1849,6 +1867,7 @@ mod tests {
     })]
     #[case("fk_single", TableDef {
         name: "posts".into(),
+        description: None,
         columns: vec![
             ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
             ColumnDef { name: "user_id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
@@ -1868,6 +1887,7 @@ mod tests {
     })]
     #[case("fk_composite", TableDef {
         name: "invoices".into(),
+        description: None,
         columns: vec![
             ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
             ColumnDef { name: "customer_id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
@@ -1887,6 +1907,7 @@ mod tests {
     })]
     #[case("inline_pk", TableDef {
         name: "users".into(),
+        description: None,
         columns: vec![
             ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Uuid), nullable: false, default: Some("gen_random_uuid()".into()), comment: None, primary_key: Some(PrimaryKeySyntax::Bool(true)), unique: None, index: None, foreign_key: None },
             ColumnDef { name: "email".into(), r#type: ColumnType::Simple(SimpleColumnType::Text), nullable: false, default: None, comment: None, primary_key: None, unique: Some(vespertide_core::StrOrBoolOrArray::Bool(true)), index: None, foreign_key: None },
@@ -1898,6 +1919,7 @@ mod tests {
         use vespertide_core::schema::reference::ReferenceAction;
         let mut table = TableDef {
             name: "article_user".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "article_id".into(),
@@ -1984,6 +2006,7 @@ mod tests {
     })]
     #[case("enum_type", TableDef {
         name: "orders".into(),
+        description: None,
         columns: vec![
             ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: Some(PrimaryKeySyntax::Bool(true)), unique: None, index: None, foreign_key: None },
             ColumnDef {
@@ -2005,6 +2028,7 @@ mod tests {
     })]
     #[case("enum_nullable", TableDef {
         name: "tasks".into(),
+        description: None,
         columns: vec![
             ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: Some(PrimaryKeySyntax::Bool(true)), unique: None, index: None, foreign_key: None },
             ColumnDef {
@@ -2026,6 +2050,7 @@ mod tests {
     })]
     #[case("enum_multiple_columns", TableDef {
         name: "products".into(),
+        description: None,
         columns: vec![
             ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: Some(PrimaryKeySyntax::Bool(true)), unique: None, index: None, foreign_key: None },
             ColumnDef {
@@ -2061,6 +2086,7 @@ mod tests {
     })]
     #[case("enum_shared", TableDef {
         name: "documents".into(),
+        description: None,
         columns: vec![
             ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: Some(PrimaryKeySyntax::Bool(true)), unique: None, index: None, foreign_key: None },
             ColumnDef {
@@ -2096,6 +2122,7 @@ mod tests {
     })]
     #[case("enum_special_values", TableDef {
         name: "events".into(),
+        description: None,
         columns: vec![
             ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: Some(PrimaryKeySyntax::Bool(true)), unique: None, index: None, foreign_key: None },
             ColumnDef {
@@ -2117,6 +2144,7 @@ mod tests {
     })]
     #[case("unique_and_indexed", TableDef {
         name: "users".into(),
+        description: None,
         columns: vec![
             ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: Some(PrimaryKeySyntax::Bool(true)), unique: None, index: None, foreign_key: None },
             ColumnDef { name: "email".into(), r#type: ColumnType::Simple(SimpleColumnType::Text), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
@@ -2132,6 +2160,7 @@ mod tests {
     })]
     #[case("enum_with_default", TableDef {
         name: "tasks".into(),
+        description: None,
         columns: vec![
             ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: Some(PrimaryKeySyntax::Bool(true)), unique: None, index: None, foreign_key: None },
             ColumnDef {
@@ -2155,6 +2184,7 @@ mod tests {
     })]
     #[case("table_level_pk", TableDef {
         name: "orders".into(),
+        description: None,
         columns: vec![
             ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Uuid), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
             ColumnDef { name: "customer_id".into(), r#type: ColumnType::Simple(SimpleColumnType::Uuid), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
@@ -2189,6 +2219,7 @@ mod tests {
     fn table_with_pk(name: &str, columns: Vec<ColumnDef>, pk_cols: Vec<&str>) -> TableDef {
         TableDef {
             name: name.into(),
+            description: None,
             columns,
             constraints: vec![TableConstraint::PrimaryKey {
                 auto_increment: false,
@@ -2219,6 +2250,7 @@ mod tests {
         }
         TableDef {
             name: name.into(),
+            description: None,
             columns,
             constraints,
         }
@@ -2515,6 +2547,7 @@ mod tests {
         use vespertide_core::ComplexColumnType;
         let table = TableDef {
             name: "products".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "price".into(),
                 r#type: ColumnType::Complex(ComplexColumnType::Numeric {
@@ -2557,6 +2590,7 @@ mod tests {
         use vespertide_core::schema::primary_key::PrimaryKeySyntax;
         TableDef {
             name: "tasks".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "id".into(),
@@ -2617,6 +2651,7 @@ mod tests {
         use vespertide_core::schema::primary_key::PrimaryKeySyntax;
         let table = TableDef {
             name: "settings".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "id".into(),
@@ -2671,6 +2706,7 @@ mod tests {
 
         let table = TableDef {
             name: "items".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),
@@ -2701,6 +2737,7 @@ mod tests {
 
         let table = TableDef {
             name: "orders".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "id".into(),
@@ -2747,6 +2784,7 @@ mod tests {
 
         let table = TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),
@@ -2778,6 +2816,7 @@ mod tests {
 
         let table = TableDef {
             name: "products".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "id".into(),

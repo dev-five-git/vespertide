@@ -271,6 +271,7 @@ mod tests {
         // For SQLite, we need to provide current schema
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "id".into(),
@@ -351,6 +352,7 @@ mod tests {
     fn test_modify_column_type_column_not_found() {
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),
@@ -399,6 +401,7 @@ mod tests {
 
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "id".into(),
@@ -477,6 +480,7 @@ mod tests {
 
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "id".into(),
@@ -703,6 +707,7 @@ mod tests {
     ) {
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "status".into(),
                 r#type: old_type,

@@ -57,6 +57,7 @@ mod tests {
     fn simple_table() -> TableDef {
         TableDef {
             name: "test".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),

@@ -254,6 +254,7 @@ mod tests {
     fn sample_table(name: &str) -> TableDef {
         TableDef {
             name: name.to_string(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),

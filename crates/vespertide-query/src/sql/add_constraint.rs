@@ -510,6 +510,7 @@ mod tests {
         // For SQLite, we need to provide current schema
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: if title.contains("foreign_key") {
                 vec![
                     ColumnDef {
@@ -610,6 +611,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),
@@ -651,6 +653,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),
@@ -695,6 +698,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),
@@ -762,6 +766,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "posts".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "user_id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),
@@ -807,6 +812,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "posts".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "user_id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),
@@ -854,6 +860,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "posts".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "user_id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),
@@ -914,6 +921,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "age".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),
@@ -955,6 +963,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),
@@ -1000,6 +1009,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "posts".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "user_id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),
@@ -1039,6 +1049,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "age".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),
@@ -1082,6 +1093,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "age".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),

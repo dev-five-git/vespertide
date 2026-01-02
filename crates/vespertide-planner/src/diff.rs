@@ -446,6 +446,7 @@ mod tests {
     ) -> TableDef {
         TableDef {
             name: name.to_string(),
+            description: None,
             columns,
             constraints,
         }
@@ -1089,6 +1090,7 @@ mod tests {
 
             let table = TableDef {
                 name: "test".into(),
+                description: None,
                 columns: vec![
                     col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                     col1.clone(),
@@ -1120,6 +1122,7 @@ mod tests {
 
             let table = TableDef {
                 name: "test".into(),
+                description: None,
                 columns: vec![
                     col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                     col1.clone(),
@@ -1158,6 +1161,7 @@ mod tests {
         ) -> TableDef {
             TableDef {
                 name: name.to_string(),
+                description: None,
                 columns: vec![
                     col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                     col(fk_column, ColumnType::Simple(SimpleColumnType::Integer)),
@@ -1176,6 +1180,7 @@ mod tests {
         fn simple_table(name: &str) -> TableDef {
             TableDef {
                 name: name.to_string(),
+                description: None,
                 columns: vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
                 constraints: vec![],
             }
@@ -1356,6 +1361,7 @@ mod tests {
             // Create circular dependency: A -> B -> A
             let table_a = TableDef {
                 name: "table_a".to_string(),
+                description: None,
                 columns: vec![
                     col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                     col("b_id", ColumnType::Simple(SimpleColumnType::Integer)),
@@ -1372,6 +1378,7 @@ mod tests {
 
             let table_b = TableDef {
                 name: "table_b".to_string(),
+                description: None,
                 columns: vec![
                     col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                     col("a_id", ColumnType::Simple(SimpleColumnType::Integer)),
@@ -1549,24 +1556,28 @@ mod tests {
 
             let user = TableDef {
                 name: "user".to_string(),
+                description: None,
                 columns: vec![col_pk("id")],
                 constraints: vec![],
             };
 
             let product = TableDef {
                 name: "product".to_string(),
+                description: None,
                 columns: vec![col_pk("id")],
                 constraints: vec![],
             };
 
             let project = TableDef {
                 name: "project".to_string(),
+                description: None,
                 columns: vec![col_pk("id"), col_inline_fk("user_id", "user")],
                 constraints: vec![],
             };
 
             let code = TableDef {
                 name: "code".to_string(),
+                description: None,
                 columns: vec![
                     col_pk("id"),
                     col_inline_fk("product_id", "product"),
@@ -1578,6 +1589,7 @@ mod tests {
 
             let order = TableDef {
                 name: "order".to_string(),
+                description: None,
                 columns: vec![
                     col_pk("id"),
                     col_inline_fk("user_id", "user"),
@@ -1590,6 +1602,7 @@ mod tests {
 
             let payment = TableDef {
                 name: "payment".to_string(),
+                description: None,
                 columns: vec![col_pk("id"), col_inline_fk("order_id", "order")],
                 constraints: vec![],
             };
@@ -1683,12 +1696,14 @@ mod tests {
             // Table with multiple FKs referencing the same table (like code.creator_user_id and code.used_by_user_id)
             let user = TableDef {
                 name: "user".to_string(),
+                description: None,
                 columns: vec![col_pk("id")],
                 constraints: vec![],
             };
 
             let code = TableDef {
                 name: "code".to_string(),
+                description: None,
                 columns: vec![
                     col_pk("id"),
                     col_inline_fk("creator_user_id", "user"),

@@ -429,6 +429,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "age".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),
@@ -517,6 +518,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "id".into(),
@@ -572,6 +574,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![
                 ColumnDef {
                     name: "id".into(),
@@ -638,6 +641,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),
@@ -952,6 +956,7 @@ mod tests {
 
         let current_schema = vec![TableDef {
             name: "user".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "email".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Text),
@@ -1039,6 +1044,7 @@ mod tests {
 
         let current_schema = vec![TableDef {
             name: "user".into(),
+            description: None,
             columns: schema_columns,
             constraints: vec![],
         }];
@@ -1093,6 +1099,7 @@ mod tests {
 
         let current_schema = vec![TableDef {
             name: "user".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "email".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Text),
@@ -1184,6 +1191,7 @@ mod tests {
 
         let current_schema = vec![TableDef {
             name: "user".into(),
+            description: None,
             columns: schema_columns,
             constraints: vec![constraint.clone()],
         }];
@@ -1230,6 +1238,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "email".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Text),
@@ -1282,6 +1291,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "status".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Text),
@@ -1333,6 +1343,7 @@ mod tests {
         };
         let current_schema = vec![TableDef {
             name: "users".into(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "email".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Text),

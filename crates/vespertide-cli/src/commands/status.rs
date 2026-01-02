@@ -201,6 +201,7 @@ mod tests {
         fs::create_dir_all(&models_dir).unwrap();
         let table = TableDef {
             name: name.to_string(),
+            description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
                 r#type: ColumnType::Simple(SimpleColumnType::Integer),

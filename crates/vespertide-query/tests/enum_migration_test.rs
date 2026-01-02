@@ -29,6 +29,7 @@ fn test_enum_value_change_generates_correct_sql() {
     // Baseline schema after migration 0002 (with 2-value enum)
     let baseline_schema = vec![TableDef {
         name: "user".into(),
+        description: None,
         columns: vec![
             ColumnDef {
                 name: "id".into(),
