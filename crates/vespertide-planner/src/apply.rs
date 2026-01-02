@@ -18,6 +18,7 @@ pub fn apply_action(
             }
             schema.push(TableDef {
                 name: table.clone(),
+                description: None,
                 columns: columns.clone(),
                 constraints: constraints.clone(),
             });

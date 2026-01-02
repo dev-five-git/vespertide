@@ -87,7 +87,7 @@ pub fn cmd_status() -> Result<()> {
             .iter()
             .filter(|c| matches!(c, vespertide_core::TableConstraint::Unique { .. }))
             .count();
-        println!(
+        print!(
             "  {} {} ({} {}, {} {}, {} {})",
             "-".bright_white(),
             model.name.bright_green(),
@@ -98,6 +98,15 @@ pub fn cmd_status() -> Result<()> {
             unique_count.to_string().bright_blue(),
             "uniques".bright_white()
         );
+        if let Some(description) = &model.description {
+            println!(
+                "\n    {} {}",
+                "Description:".bright_black(),
+                description.bright_white()
+            );
+        } else {
+            println!();
+        }
     }
     println!();
 

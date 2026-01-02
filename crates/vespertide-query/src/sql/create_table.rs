@@ -147,6 +147,7 @@ pub fn build_create_table(
     // Normalize the table to convert inline constraints to table-level
     // This ensures we don't have duplicate constraints if both inline and table-level are defined
     let table_def = vespertide_core::TableDef {
+        description: None,
         name: table.to_string(),
         columns: columns.to_vec(),
         constraints: constraints.to_vec(),

@@ -30,6 +30,7 @@ pub fn cmd_new(name: String, format: Option<FileFormat>) -> Result<()> {
 
     let table = TableDef {
         name: name.clone(),
+        description: None,
         columns: Vec::new(),
         constraints: Vec::new(),
     };
