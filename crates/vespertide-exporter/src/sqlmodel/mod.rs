@@ -1269,4 +1269,60 @@ mod tests {
         assert!(result.contains("server_default"));
         assert!(result.contains("SOME_CONSTANT"));
     }
+
+    #[test]
+    fn test_used_types_add_column_type_simple_types() {
+        let mut used = UsedTypes::default();
+
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Date), false);
+        assert!(used.datetime_types.contains("date"));
+
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Time), false);
+        assert!(used.datetime_types.contains("time"));
+
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Timestamp), false);
+        assert!(used.datetime_types.contains("datetime"));
+
+        let mut used2 = UsedTypes::default();
+        used2.add_column_type(&ColumnType::Simple(SimpleColumnType::Timestamptz), false);
+        assert!(used2.datetime_types.contains("datetime"));
+
+        let mut used3 = UsedTypes::default();
+        used3.add_column_type(&ColumnType::Simple(SimpleColumnType::Uuid), false);
+        assert!(used3.needs_uuid);
+
+        // Test _ => {} branch with other types
+        let mut used4 = UsedTypes::default();
+        used4.add_column_type(&ColumnType::Simple(SimpleColumnType::Integer), false);
+        assert!(used4.datetime_types.is_empty());
+        assert!(!used4.needs_uuid);
+    }
+
+    #[test]
+    fn test_used_types_add_column_type_complex_types() {
+        let mut used = UsedTypes::default();
+        used.add_column_type(
+            &ColumnType::Complex(ComplexColumnType::Numeric {
+                precision: 10,
+                scale: 2,
+            }),
+            false,
+        );
+        assert!(used.needs_decimal);
+
+        let mut used2 = UsedTypes::default();
+        used2.add_column_type(
+            &ColumnType::Complex(ComplexColumnType::Varchar { length: 100 }),
+            false,
+        );
+        assert!(!used2.needs_decimal);
+    }
+
+    #[test]
+    fn test_used_types_nullable_sets_optional() {
+        let mut used = UsedTypes::default();
+        assert!(!used.needs_optional);
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Integer), true);
+        assert!(used.needs_optional);
+    }
 }
