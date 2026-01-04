@@ -1,0 +1,16 @@
+---
+source: crates/vespertide-exporter/src/sqlmodel/mod.rs
+expression: result
+---
+from __future__ import annotations
+
+
+from sqlmodel import Field, SQLModel
+
+
+class Posts(SQLModel, table=True):
+    __tablename__ = "posts"
+
+    id: int = Field(primary_key=True)
+    user_id: int = Field(foreign_key="users.id")
+    title: str = Field(...)

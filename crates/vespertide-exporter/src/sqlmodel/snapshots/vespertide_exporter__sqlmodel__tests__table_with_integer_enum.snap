@@ -1,0 +1,21 @@
+---
+source: crates/vespertide-exporter/src/sqlmodel/mod.rs
+expression: result
+---
+from __future__ import annotations
+
+import enum
+
+from sqlmodel import Field, SQLModel
+
+
+class PriorityLevel(enum.IntEnum):
+    Low = 0
+    Medium = 1
+    High = 2
+
+class Tasks(SQLModel, table=True):
+    __tablename__ = "tasks"
+
+    id: int = Field(primary_key=True)
+    priority: PriorityLevel = Field(...)
