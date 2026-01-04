@@ -107,6 +107,13 @@ pub fn render_entity_with_config(
         .collect();
     model_derives.extend(extra_model_derives);
 
+    // Add table description as doc comment
+    if let Some(ref desc) = table.description {
+        for line in desc.lines() {
+            lines.push(format!("/// {}", line));
+        }
+    }
+
     lines.push("#[sea_orm::model]".into());
     lines.push(format!("#[derive({})]", model_derives.join(", ")));
     lines.push(format!("#[sea_orm(table_name = \"{}\")]", table.name));
@@ -177,6 +184,13 @@ fn render_column(
     let is_unique = unique_columns.contains(&column.name);
     let is_indexed = indexed_columns.contains(&column.name);
     let has_default = column.default.is_some();
+
+    // Add column comment as doc comment
+    if let Some(ref comment) = column.comment {
+        for line in comment.lines() {
+            lines.push(format!("    /// {}", line));
+        }
+    }
 
     // Build attribute parts
     let mut attrs: Vec<String> = Vec::new();
@@ -2853,5 +2867,95 @@ mod tests {
         assert!(result.contains("DeriveEntityModel"));
         // Should NOT contain vespera::Schema since we explicitly set empty
         assert!(!result.contains("vespera::Schema"));
+    }
+
+    #[test]
+    fn test_doc_comments_from_description_and_comment() {
+        use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+
+        let table = TableDef {
+            name: "users".into(),
+            description: Some("User account information table".into()),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: Some("Unique user identifier".into()),
+                    primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: false,
+                    default: None,
+                    comment: Some("User's email address for login".into()),
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "name".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: true,
+                    default: None,
+                    comment: None, // No comment
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![],
+        };
+
+        let rendered = render_entity(&table);
+
+        // Check table description as doc comment
+        assert!(rendered.contains("/// User account information table"));
+
+        // Check column comments as doc comments
+        assert!(rendered.contains("/// Unique user identifier"));
+        assert!(rendered.contains("/// User's email address for login"));
+
+        // name column has no comment, so no doc comment for it
+        assert!(!rendered.contains("/// name"));
+    }
+
+    #[test]
+    fn test_multiline_doc_comments() {
+        use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+
+        let table = TableDef {
+            name: "posts".into(),
+            description: Some("Blog posts table\nContains all user-submitted content".into()),
+            columns: vec![ColumnDef {
+                name: "content".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Text),
+                nullable: false,
+                default: None,
+                comment: Some("Post content body\nSupports markdown format".into()),
+                primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        };
+
+        let rendered = render_entity(&table);
+
+        // Check multiline table description
+        assert!(rendered.contains("/// Blog posts table"));
+        assert!(rendered.contains("/// Contains all user-submitted content"));
+
+        // Check multiline column comment
+        assert!(rendered.contains("/// Post content body"));
+        assert!(rendered.contains("/// Supports markdown format"));
     }
 }

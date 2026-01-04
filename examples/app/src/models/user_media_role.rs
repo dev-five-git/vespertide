@@ -1,7 +1,7 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, vespera::Schema)]
 #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "user_media_role_role")]
 pub enum Role {
     #[sea_orm(string_value = "owner")]
@@ -12,10 +12,12 @@ pub enum Role {
     Reporter,
 }
 
+/// hello media role
 #[sea_orm::model]
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "user_media_role")]
 pub struct Model {
+    /// hello
     #[sea_orm(primary_key)]
     pub user_id: Uuid,
     #[sea_orm(primary_key)]
