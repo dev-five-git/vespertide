@@ -1,8 +1,9 @@
 use clap::ValueEnum;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Supported file formats for generated artifacts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 #[derive(Default)]
 pub enum FileFormat {

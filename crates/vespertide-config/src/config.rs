@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::file_format::FileFormat;
@@ -11,7 +12,7 @@ pub fn default_migration_filename_pattern() -> String {
 }
 
 /// SeaORM-specific export configuration.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SeaOrmConfig {
     /// Additional derive macros to add to generated enum types.
@@ -49,7 +50,7 @@ impl SeaOrmConfig {
 }
 
 /// Top-level vespertide configuration.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct VespertideConfig {
     pub models_dir: PathBuf,
