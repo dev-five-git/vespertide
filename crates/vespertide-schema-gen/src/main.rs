@@ -18,6 +18,7 @@ struct Args {
     out: PathBuf,
 }
 
+#[cfg(not(tarpaulin_include))]
 fn main() -> Result<()> {
     let args = Args::parse();
     run(args.out)

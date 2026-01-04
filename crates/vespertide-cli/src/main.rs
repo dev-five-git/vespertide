@@ -83,6 +83,7 @@ enum Commands {
     },
 }
 
+#[cfg(not(tarpaulin_include))]
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {

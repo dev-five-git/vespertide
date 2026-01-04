@@ -22,3 +22,6 @@ tempfile = "3"
 assert_cmd = "2"
 predicates = "3"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
+
