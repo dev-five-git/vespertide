@@ -299,4 +299,40 @@ mod tests {
 
         cmd_status().unwrap();
     }
+
+    #[test]
+    #[serial]
+    fn cmd_status_model_with_description() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+
+        let cfg = write_config();
+        fs::create_dir_all(cfg.models_dir()).unwrap();
+        fs::create_dir_all(cfg.migrations_dir()).unwrap();
+
+        // Create a model with a description to cover lines 102-105
+        let table = TableDef {
+            name: "users".to_string(),
+            description: Some("User accounts table".to_string()),
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
+        };
+        let path = cfg.models_dir().join("users.json");
+        fs::write(path, serde_json::to_string_pretty(&table).unwrap()).unwrap();
+
+        cmd_status().unwrap();
+    }
 }
