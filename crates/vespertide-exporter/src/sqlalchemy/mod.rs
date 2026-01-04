@@ -156,11 +156,10 @@ pub fn render_entity(table: &TableDef) -> Result<String, String> {
     }
 
     // Check for server defaults
-    let has_server_default = table.columns.iter().any(|c| {
-        c.default
-            .as_ref()
-            .map_or(false, |d| d.to_sql().contains('('))
-    });
+    let has_server_default = table
+        .columns
+        .iter()
+        .any(|c| c.default.as_ref().is_some_and(|d| d.to_sql().contains('(')));
     if has_server_default {
         used_types.sa_types.insert("text");
     }
@@ -566,7 +565,7 @@ fn to_screaming_snake_case(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use insta::{assert_snapshot, with_settings};
+    use insta::assert_snapshot;
     use rstest::rstest;
     use vespertide_core::schema::column::NumValue;
 

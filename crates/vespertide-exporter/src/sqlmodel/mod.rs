@@ -41,12 +41,11 @@ impl<'a> UsedTypes<'a> {
                 }
                 _ => {}
             },
-            ColumnType::Complex(ty) => match ty {
-                ComplexColumnType::Numeric { .. } => {
+            ColumnType::Complex(ty) => {
+                if let ComplexColumnType::Numeric { .. } = ty {
                     self.needs_decimal = true;
                 }
-                _ => {}
-            },
+            }
         }
     }
 }
@@ -101,11 +100,10 @@ pub fn render_entity(table: &TableDef) -> Result<String, String> {
     }
 
     // Check for server defaults (function calls like now())
-    let has_server_default = table.columns.iter().any(|c| {
-        c.default
-            .as_ref()
-            .map_or(false, |d| d.to_sql().contains('('))
-    });
+    let has_server_default = table
+        .columns
+        .iter()
+        .any(|c| c.default.as_ref().is_some_and(|d| d.to_sql().contains('(')));
     if has_server_default {
         used_types.needs_text = true;
     }
@@ -513,7 +511,7 @@ fn to_screaming_snake_case(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use insta::{assert_snapshot, with_settings};
+    use insta::assert_snapshot;
     use rstest::rstest;
     use vespertide_core::schema::column::NumValue;
 
