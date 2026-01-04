@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use clap::Parser;
 use schemars::schema_for;
+use vespertide_config::VespertideConfig;
 use vespertide_core::{MigrationPlan, TableDef};
 
 #[derive(Debug, Parser)]
@@ -29,9 +30,11 @@ fn run(out: PathBuf) -> Result<()> {
 
     let model_schema = schema_for!(TableDef);
     let migration_schema = schema_for!(MigrationPlan);
+    let config_schema = schema_for!(VespertideConfig);
 
     let model_path = out.join("model.schema.json");
     let migration_path = out.join("migration.schema.json");
+    let config_path = out.join("config.schema.json");
 
     fs::write(
         &model_path,
@@ -45,9 +48,16 @@ fn run(out: PathBuf) -> Result<()> {
     )
     .with_context(|| format!("write {}", migration_path.display()))?;
 
+    fs::write(
+        &config_path,
+        serde_json::to_string_pretty(&config_schema).context("serialize config schema")?,
+    )
+    .with_context(|| format!("write {}", config_path.display()))?;
+
     println!("Wrote schemas:");
     println!("  {}", model_path.display());
     println!("  {}", migration_path.display());
+    println!("  {}", config_path.display());
     Ok(())
 }
 
@@ -98,7 +108,7 @@ mod tests {
     }
 
     #[test]
-    fn run_generates_both_schema_files() {
+    fn run_generates_all_schema_files() {
         let temp_dir = TempDir::new().unwrap();
         let out = temp_dir.path();
 
@@ -106,16 +116,20 @@ mod tests {
 
         let model_path = out.join("model.schema.json");
         let migration_path = out.join("migration.schema.json");
+        let config_path = out.join("config.schema.json");
 
         assert!(model_path.exists());
         assert!(migration_path.exists());
+        assert!(config_path.exists());
 
         // Verify files are valid JSON
         let model_content = fs::read_to_string(&model_path).unwrap();
         let migration_content = fs::read_to_string(&migration_path).unwrap();
+        let config_content = fs::read_to_string(&config_path).unwrap();
 
         serde_json::from_str::<serde_json::Value>(&model_content).unwrap();
         serde_json::from_str::<serde_json::Value>(&migration_content).unwrap();
+        serde_json::from_str::<serde_json::Value>(&config_content).unwrap();
     }
 
     #[test]
@@ -132,7 +146,25 @@ mod tests {
 
         let model_path = out.join("model.schema.json");
         let migration_path = out.join("migration.schema.json");
+        let config_path = out.join("config.schema.json");
         assert!(model_path.exists());
         assert!(migration_path.exists());
+        assert!(config_path.exists());
+    }
+
+    #[test]
+    fn run_generates_config_schema_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let out = temp_dir.path();
+
+        run(out.to_path_buf()).unwrap();
+
+        let config_path = out.join("config.schema.json");
+        assert!(config_path.exists());
+
+        let content = fs::read_to_string(&config_path).unwrap();
+        assert!(content.contains("VespertideConfig"));
+        assert!(content.contains("modelsDir"));
+        assert!(content.contains("migrationsDir"));
     }
 }
