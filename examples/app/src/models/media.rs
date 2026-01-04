@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "media")]
 pub struct Model {
+    /// hello
     #[sea_orm(primary_key, default_value = "gen_random_uuid()")]
     pub id: Uuid,
     pub name: String,

@@ -137,3 +137,27 @@ impl VespertideConfig {
         &self.seaorm
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_vespertide_config_default() {
+        let config = VespertideConfig::default();
+
+        assert_eq!(config.models_dir, PathBuf::from("models"));
+        assert_eq!(config.migrations_dir, PathBuf::from("migrations"));
+        assert_eq!(config.table_naming_case, NameCase::Snake);
+        assert_eq!(config.column_naming_case, NameCase::Snake);
+        assert_eq!(config.model_format, FileFormat::Json);
+        assert_eq!(config.migration_format, FileFormat::Json);
+        assert_eq!(config.migration_filename_pattern, "%04v_%m");
+        assert_eq!(config.model_export_dir, PathBuf::from("src/models"));
+        assert_eq!(
+            config.seaorm.extra_enum_derives,
+            vec!["vespera::Schema".to_string()]
+        );
+        assert!(config.seaorm.extra_model_derives.is_empty());
+    }
+}

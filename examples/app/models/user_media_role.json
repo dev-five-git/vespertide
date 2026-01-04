@@ -1,6 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
   "name": "user_media_role",
+  "description": "hello media role",
   "columns": [
     {
       "name": "user_id",
@@ -12,7 +13,8 @@
         "on_delete": "cascade"
       },
       "index": true,
-      "primary_key": true
+      "primary_key": true,
+      "comment": "hello"
     },
     {
       "name": "media_id",
