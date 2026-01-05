@@ -83,6 +83,7 @@ enum Commands {
     },
 }
 
+#[cfg(not(tarpaulin_include))]
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
@@ -100,5 +101,28 @@ fn main() -> Result<()> {
             println!();
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_backend_arg_from_postgres() {
+        let backend: DatabaseBackend = BackendArg::Postgres.into();
+        assert!(matches!(backend, DatabaseBackend::Postgres));
+    }
+
+    #[test]
+    fn test_backend_arg_from_mysql() {
+        let backend: DatabaseBackend = BackendArg::Mysql.into();
+        assert!(matches!(backend, DatabaseBackend::MySql));
+    }
+
+    #[test]
+    fn test_backend_arg_from_sqlite() {
+        let backend: DatabaseBackend = BackendArg::Sqlite.into();
+        assert!(matches!(backend, DatabaseBackend::Sqlite));
     }
 }

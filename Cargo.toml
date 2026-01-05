@@ -9,6 +9,9 @@ repository = "https://github.com/dev-five-git/vespertide"
 homepage = "https://github.com/dev-five-git/vespertide"
 documentation = "https://docs.rs/vespertide"
 
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
+
 [workspace.dependencies]
 vespertide-core = { path = "crates/vespertide-core", version = "0.1.22" }
 vespertide-config = { path = "crates/vespertide-config", version = "0.1.22" }

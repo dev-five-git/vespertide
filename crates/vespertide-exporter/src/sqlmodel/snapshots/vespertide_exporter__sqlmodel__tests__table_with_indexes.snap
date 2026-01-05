@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/sqlmodel/mod.rs
+expression: result
+---
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlmodel import Field, SQLModel
+
+
+class Articles(SQLModel, table=True):
+    __tablename__ = "articles"
+
+    id: int = Field(primary_key=True)
+    title: str = Field(index=True)
+    created_at: datetime = Field(index=True)

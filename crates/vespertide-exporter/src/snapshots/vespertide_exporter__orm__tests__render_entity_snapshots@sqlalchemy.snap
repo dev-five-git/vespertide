@@ -2,4 +2,14 @@
 source: crates/vespertide-exporter/src/orm.rs
 expression: result.unwrap()
 ---
-# SQLAlchemy model placeholder for test
+from __future__ import annotations
+
+
+from sqlalchemy import Integer
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Test(DeclarativeBase):
+    __tablename__ = "test"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)

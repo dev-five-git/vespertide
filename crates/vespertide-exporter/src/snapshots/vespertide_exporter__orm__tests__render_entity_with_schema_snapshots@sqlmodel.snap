@@ -2,4 +2,13 @@
 source: crates/vespertide-exporter/src/orm.rs
 expression: result.unwrap()
 ---
-# SQLModel placeholder for test
+from __future__ import annotations
+
+
+from sqlmodel import Field, SQLModel
+
+
+class Test(SQLModel, table=True):
+    __tablename__ = "test"
+
+    id: int = Field(primary_key=True)

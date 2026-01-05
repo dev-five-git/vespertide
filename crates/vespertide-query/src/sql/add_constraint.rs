@@ -57,13 +57,7 @@ pub fn build_add_constraint(
             if *backend == DatabaseBackend::Sqlite {
                 // SQLite does not support ALTER TABLE ... ADD PRIMARY KEY
                 // Use temporary table approach
-                let table_def = current_schema
-                    .iter()
-                    .find(|t| t.name == table)
-                    .ok_or_else(|| QueryError::Other(format!(
-                        "Table '{}' not found in current schema. SQLite requires current schema information to add constraints.",
-                        table
-                    )))?;
+                let table_def = current_schema.iter().find(|t| t.name == table).ok_or_else(|| QueryError::Other(format!("Table '{}' not found in current schema. SQLite requires current schema information to add constraints.", table)))?;
 
                 // Create new constraints with the added primary key constraint
                 let mut new_constraints = table_def.constraints.clone();
@@ -185,13 +179,7 @@ pub fn build_add_constraint(
             // SQLite does not support ALTER TABLE ... ADD CONSTRAINT FOREIGN KEY
             if *backend == DatabaseBackend::Sqlite {
                 // Use temporary table approach for SQLite
-                let table_def = current_schema
-                    .iter()
-                    .find(|t| t.name == table)
-                    .ok_or_else(|| QueryError::Other(format!(
-                        "Table '{}' not found in current schema. SQLite requires current schema information to add constraints.",
-                        table
-                    )))?;
+                let table_def = current_schema.iter().find(|t| t.name == table).ok_or_else(|| QueryError::Other(format!("Table '{}' not found in current schema. SQLite requires current schema information to add constraints.", table)))?;
 
                 // Create new constraints with the added foreign key constraint
                 let mut new_constraints = table_def.constraints.clone();
@@ -305,13 +293,7 @@ pub fn build_add_constraint(
             // SQLite does not support ALTER TABLE ... ADD CONSTRAINT CHECK
             if *backend == DatabaseBackend::Sqlite {
                 // Use temporary table approach for SQLite
-                let table_def = current_schema
-                    .iter()
-                    .find(|t| t.name == table)
-                    .ok_or_else(|| QueryError::Other(format!(
-                        "Table '{}' not found in current schema. SQLite requires current schema information to add constraints.",
-                        table
-                    )))?;
+                let table_def = current_schema.iter().find(|t| t.name == table).ok_or_else(|| QueryError::Other(format!("Table '{}' not found in current schema. SQLite requires current schema information to add constraints.", table)))?;
 
                 // Create new constraints with the added check constraint
                 let mut new_constraints = table_def.constraints.clone();

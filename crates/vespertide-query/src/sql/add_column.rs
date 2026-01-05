@@ -44,13 +44,7 @@ pub fn build_add_column(
         *backend == DatabaseBackend::Sqlite && (!column.nullable || is_enum_column(column));
 
     if sqlite_needs_recreation {
-        let table_def = current_schema
-            .iter()
-            .find(|t| t.name == table)
-            .ok_or_else(|| QueryError::Other(format!(
-                "Table '{}' not found in current schema. SQLite requires current schema information to add columns.",
-                table
-            )))?;
+        let table_def = current_schema.iter().find(|t| t.name == table).ok_or_else(|| QueryError::Other(format!("Table '{}' not found in current schema. SQLite requires current schema information to add columns.", table)))?;
 
         let mut new_columns = table_def.columns.clone();
         new_columns.push(column.clone());

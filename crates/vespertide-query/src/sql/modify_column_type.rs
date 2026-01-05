@@ -18,13 +18,7 @@ pub fn build_modify_column_type(
     // SQLite does not support direct column type modification, so use temporary table approach
     if *backend == DatabaseBackend::Sqlite {
         // Current schema information is required
-        let table_def = current_schema
-            .iter()
-            .find(|t| t.name == table)
-            .ok_or_else(|| QueryError::Other(format!(
-                "Table '{}' not found in current schema. SQLite requires current schema information to modify column types.",
-                table
-            )))?;
+        let table_def = current_schema.iter().find(|t| t.name == table).ok_or_else(|| QueryError::Other(format!("Table '{}' not found in current schema. SQLite requires current schema information to modify column types.", table)))?;
 
         // Create new column definitions with the modified column
         let mut new_columns = table_def.columns.clone();
@@ -150,14 +144,7 @@ pub fn build_modify_column_type(
                 )));
 
                 // 2. ALTER TABLE ... ALTER COLUMN ... TYPE {table}_{enum}_new USING {column}::text::{table}_{enum}_new
-                queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
-                    format!(
-                        "ALTER TABLE \"{}\" ALTER COLUMN \"{}\" TYPE \"{}\" USING \"{}\"::text::\"{}\"",
-                        table, column, temp_type_name, column, temp_type_name
-                    ),
-                    String::new(),
-                    String::new(),
-                )));
+                queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(format!("ALTER TABLE \"{}\" ALTER COLUMN \"{}\" TYPE \"{}\" USING \"{}\"::text::\"{}\"", table, column, temp_type_name, column, temp_type_name), String::new(), String::new())));
 
                 // 3. DROP TYPE {table}_{enum}
                 queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
