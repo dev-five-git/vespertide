@@ -1271,35 +1271,52 @@ mod tests {
     }
 
     #[test]
-    fn test_used_types_add_column_type_simple_types() {
+    fn test_used_types_date() {
         let mut used = UsedTypes::default();
-
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::Date), false);
         assert!(used.datetime_types.contains("date"));
-
-        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Time), false);
-        assert!(used.datetime_types.contains("time"));
-
-        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Timestamp), false);
-        assert!(used.datetime_types.contains("datetime"));
-
-        let mut used2 = UsedTypes::default();
-        used2.add_column_type(&ColumnType::Simple(SimpleColumnType::Timestamptz), false);
-        assert!(used2.datetime_types.contains("datetime"));
-
-        let mut used3 = UsedTypes::default();
-        used3.add_column_type(&ColumnType::Simple(SimpleColumnType::Uuid), false);
-        assert!(used3.needs_uuid);
-
-        // Test _ => {} branch with other types
-        let mut used4 = UsedTypes::default();
-        used4.add_column_type(&ColumnType::Simple(SimpleColumnType::Integer), false);
-        assert!(used4.datetime_types.is_empty());
-        assert!(!used4.needs_uuid);
     }
 
     #[test]
-    fn test_used_types_add_column_type_complex_types() {
+    fn test_used_types_time() {
+        let mut used = UsedTypes::default();
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Time), false);
+        assert!(used.datetime_types.contains("time"));
+    }
+
+    #[test]
+    fn test_used_types_timestamp() {
+        let mut used = UsedTypes::default();
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Timestamp), false);
+        assert!(used.datetime_types.contains("datetime"));
+    }
+
+    #[test]
+    fn test_used_types_timestamptz() {
+        let mut used = UsedTypes::default();
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Timestamptz), false);
+        assert!(used.datetime_types.contains("datetime"));
+    }
+
+    #[test]
+    fn test_used_types_uuid() {
+        let mut used = UsedTypes::default();
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Uuid), false);
+        assert!(used.needs_uuid);
+    }
+
+    #[test]
+    fn test_used_types_other_simple_types_fallthrough() {
+        // Test _ => {} branch with types that don't set datetime/uuid
+        let mut used = UsedTypes::default();
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Integer), false);
+        assert!(used.datetime_types.is_empty());
+        assert!(!used.needs_uuid);
+        assert!(!used.needs_decimal);
+    }
+
+    #[test]
+    fn test_used_types_numeric() {
         let mut used = UsedTypes::default();
         used.add_column_type(
             &ColumnType::Complex(ComplexColumnType::Numeric {
@@ -1309,13 +1326,16 @@ mod tests {
             false,
         );
         assert!(used.needs_decimal);
+    }
 
-        let mut used2 = UsedTypes::default();
-        used2.add_column_type(
+    #[test]
+    fn test_used_types_varchar_no_decimal() {
+        let mut used = UsedTypes::default();
+        used.add_column_type(
             &ColumnType::Complex(ComplexColumnType::Varchar { length: 100 }),
             false,
         );
-        assert!(!used2.needs_decimal);
+        assert!(!used.needs_decimal);
     }
 
     #[test]

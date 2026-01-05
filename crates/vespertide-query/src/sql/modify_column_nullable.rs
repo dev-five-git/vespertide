@@ -54,26 +54,9 @@ pub fn build_modify_column_nullable(
         DatabaseBackend::MySql => {
             // MySQL requires the full column definition in MODIFY COLUMN
             // We need to get the column type from current schema
-            let table_def = current_schema
-                .iter()
-                .find(|t| t.name == table)
-                .ok_or_else(|| {
-                    QueryError::Other(format!(
-                        "Table '{}' not found in current schema. MySQL requires current schema information to modify column nullability.",
-                        table
-                    ))
-                })?;
+            let table_def = current_schema.iter().find(|t| t.name == table).ok_or_else(|| QueryError::Other(format!("Table '{}' not found in current schema. MySQL requires current schema information to modify column nullability.", table)))?;
 
-            let column_def = table_def
-                .columns
-                .iter()
-                .find(|c| c.name == column)
-                .ok_or_else(|| {
-                    QueryError::Other(format!(
-                        "Column '{}' not found in table '{}'. MySQL requires column information to modify nullability.",
-                        column, table
-                    ))
-                })?;
+            let column_def = table_def.columns.iter().find(|c| c.name == column).ok_or_else(|| QueryError::Other(format!("Column '{}' not found in table '{}'. MySQL requires column information to modify nullability.", column, table)))?;
 
             // Create a modified column def with the new nullability
             let modified_col_def = ColumnDef {
@@ -93,15 +76,7 @@ pub fn build_modify_column_nullable(
         DatabaseBackend::Sqlite => {
             // SQLite doesn't support ALTER COLUMN for nullability changes
             // Use temporary table approach
-            let table_def = current_schema
-                .iter()
-                .find(|t| t.name == table)
-                .ok_or_else(|| {
-                    QueryError::Other(format!(
-                        "Table '{}' not found in current schema. SQLite requires current schema information to modify column nullability.",
-                        table
-                    ))
-                })?;
+            let table_def = current_schema.iter().find(|t| t.name == table).ok_or_else(|| QueryError::Other(format!("Table '{}' not found in current schema. SQLite requires current schema information to modify column nullability.", table)))?;
 
             // Create modified columns with the new nullability
             let mut new_columns = table_def.columns.clone();

@@ -679,4 +679,131 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_vespertide_migration_impl_with_valid_project() {
+        use std::fs;
+
+        // Create a temporary directory with a valid vespertide project
+        let dir = tempdir().unwrap();
+        let project_dir = dir.path();
+
+        // Create vespertide.json config
+        let config_content = r#"{
+            "modelsDir": "models",
+            "migrationsDir": "migrations",
+            "tableNamingCase": "snake",
+            "columnNamingCase": "snake",
+            "modelFormat": "json"
+        }"#;
+        fs::write(project_dir.join("vespertide.json"), config_content).unwrap();
+
+        // Create empty models and migrations directories
+        fs::create_dir_all(project_dir.join("models")).unwrap();
+        fs::create_dir_all(project_dir.join("migrations")).unwrap();
+
+        // Save original CARGO_MANIFEST_DIR and set to temp dir
+        let original = std::env::var("CARGO_MANIFEST_DIR").ok();
+        unsafe {
+            std::env::set_var("CARGO_MANIFEST_DIR", project_dir);
+        }
+
+        let input: proc_macro2::TokenStream = "pool".parse().unwrap();
+        let output = vespertide_migration_impl(input);
+        let output_str = output.to_string();
+
+        // Should produce valid async code since there are no migrations
+        assert!(
+            output_str.contains("async"),
+            "Expected async block, got: {}",
+            output_str
+        );
+        assert!(
+            output_str.contains("CREATE TABLE IF NOT EXISTS"),
+            "Expected version table creation, got: {}",
+            output_str
+        );
+
+        // Restore CARGO_MANIFEST_DIR
+        if let Some(val) = original {
+            unsafe {
+                std::env::set_var("CARGO_MANIFEST_DIR", val);
+            }
+        } else {
+            unsafe {
+                std::env::remove_var("CARGO_MANIFEST_DIR");
+            }
+        }
+    }
+
+    #[test]
+    fn test_vespertide_migration_impl_with_migrations() {
+        use std::fs;
+
+        // Create a temporary directory with a valid vespertide project and migrations
+        let dir = tempdir().unwrap();
+        let project_dir = dir.path();
+
+        // Create vespertide.json config
+        let config_content = r#"{
+            "modelsDir": "models",
+            "migrationsDir": "migrations",
+            "tableNamingCase": "snake",
+            "columnNamingCase": "snake",
+            "modelFormat": "json"
+        }"#;
+        fs::write(project_dir.join("vespertide.json"), config_content).unwrap();
+
+        // Create models and migrations directories
+        fs::create_dir_all(project_dir.join("models")).unwrap();
+        fs::create_dir_all(project_dir.join("migrations")).unwrap();
+
+        // Create a migration file
+        let migration_content = r#"{
+            "version": 1,
+            "actions": [
+                {
+                    "type": "create_table",
+                    "table": "users",
+                    "columns": [
+                        {"name": "id", "type": "integer", "nullable": false}
+                    ],
+                    "constraints": []
+                }
+            ]
+        }"#;
+        fs::write(
+            project_dir.join("migrations").join("0001_initial.json"),
+            migration_content,
+        )
+        .unwrap();
+
+        // Save original CARGO_MANIFEST_DIR and set to temp dir
+        let original = std::env::var("CARGO_MANIFEST_DIR").ok();
+        unsafe {
+            std::env::set_var("CARGO_MANIFEST_DIR", project_dir);
+        }
+
+        let input: proc_macro2::TokenStream = "pool".parse().unwrap();
+        let output = vespertide_migration_impl(input);
+        let output_str = output.to_string();
+
+        // Should produce valid async code with migration
+        assert!(
+            output_str.contains("async"),
+            "Expected async block, got: {}",
+            output_str
+        );
+
+        // Restore CARGO_MANIFEST_DIR
+        if let Some(val) = original {
+            unsafe {
+                std::env::set_var("CARGO_MANIFEST_DIR", val);
+            }
+        } else {
+            unsafe {
+                std::env::remove_var("CARGO_MANIFEST_DIR");
+            }
+        }
+    }
 }

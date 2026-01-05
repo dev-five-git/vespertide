@@ -18,13 +18,7 @@ pub fn build_remove_constraint(
         TableConstraint::PrimaryKey { .. } => {
             if *backend == DatabaseBackend::Sqlite {
                 // SQLite does not support dropping primary key constraints, use temp table approach
-                let table_def = current_schema
-                    .iter()
-                    .find(|t| t.name == table)
-                    .ok_or_else(|| QueryError::Other(format!(
-                        "Table '{}' not found in current schema. SQLite requires current schema information to remove constraints.",
-                        table
-                    )))?;
+                let table_def = current_schema.iter().find(|t| t.name == table).ok_or_else(|| QueryError::Other(format!("Table '{}' not found in current schema. SQLite requires current schema information to remove constraints.", table)))?;
 
                 // Remove the primary key constraint
                 let mut new_constraints = table_def.constraints.clone();
@@ -113,13 +107,7 @@ pub fn build_remove_constraint(
             // SQLite does not support ALTER TABLE ... DROP CONSTRAINT UNIQUE
             if *backend == DatabaseBackend::Sqlite {
                 // Use temporary table approach for SQLite
-                let table_def = current_schema
-                    .iter()
-                    .find(|t| t.name == table)
-                    .ok_or_else(|| QueryError::Other(format!(
-                        "Table '{}' not found in current schema. SQLite requires current schema information to remove constraints.",
-                        table
-                    )))?;
+                let table_def = current_schema.iter().find(|t| t.name == table).ok_or_else(|| QueryError::Other(format!("Table '{}' not found in current schema. SQLite requires current schema information to remove constraints.", table)))?;
 
                 // Create new constraints without the removed unique constraint
                 let mut new_constraints = table_def.constraints.clone();
@@ -243,13 +231,7 @@ pub fn build_remove_constraint(
             // SQLite does not support ALTER TABLE ... DROP CONSTRAINT FOREIGN KEY
             if *backend == DatabaseBackend::Sqlite {
                 // Use temporary table approach for SQLite
-                let table_def = current_schema
-                    .iter()
-                    .find(|t| t.name == table)
-                    .ok_or_else(|| QueryError::Other(format!(
-                        "Table '{}' not found in current schema. SQLite requires current schema information to remove constraints.",
-                        table
-                    )))?;
+                let table_def = current_schema.iter().find(|t| t.name == table).ok_or_else(|| QueryError::Other(format!("Table '{}' not found in current schema. SQLite requires current schema information to remove constraints.", table)))?;
 
                 // Create new constraints without the removed foreign key constraint
                 let mut new_constraints = table_def.constraints.clone();
@@ -373,13 +355,7 @@ pub fn build_remove_constraint(
             // SQLite does not support ALTER TABLE ... DROP CONSTRAINT CHECK
             if *backend == DatabaseBackend::Sqlite {
                 // Use temporary table approach for SQLite
-                let table_def = current_schema
-                    .iter()
-                    .find(|t| t.name == table)
-                    .ok_or_else(|| QueryError::Other(format!(
-                        "Table '{}' not found in current schema. SQLite requires current schema information to remove constraints.",
-                        table
-                    )))?;
+                let table_def = current_schema.iter().find(|t| t.name == table).ok_or_else(|| QueryError::Other(format!("Table '{}' not found in current schema. SQLite requires current schema information to remove constraints.", table)))?;
 
                 // Create new constraints without the removed check constraint
                 let mut new_constraints = table_def.constraints.clone();

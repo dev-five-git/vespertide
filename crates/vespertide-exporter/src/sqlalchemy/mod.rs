@@ -1129,94 +1129,176 @@ mod tests {
     }
 
     #[test]
-    fn test_used_types_add_column_type_simple_types() {
+    fn test_used_types_smallint() {
         let mut used = UsedTypes::default();
-
-        // Test each simple type individually
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::SmallInt), false);
         assert!(used.sa_types.contains("SmallInteger"));
+    }
 
+    #[test]
+    fn test_used_types_integer() {
+        let mut used = UsedTypes::default();
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::Integer), false);
         assert!(used.sa_types.contains("Integer"));
+    }
 
+    #[test]
+    fn test_used_types_bigint() {
+        let mut used = UsedTypes::default();
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::BigInt), false);
         assert!(used.sa_types.contains("BigInteger"));
+    }
 
+    #[test]
+    fn test_used_types_real() {
+        let mut used = UsedTypes::default();
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::Real), false);
         assert!(used.sa_types.contains("Float"));
+    }
 
+    #[test]
+    fn test_used_types_double_precision() {
+        let mut used = UsedTypes::default();
         used.add_column_type(
             &ColumnType::Simple(SimpleColumnType::DoublePrecision),
             false,
         );
         assert!(used.sa_types.contains("Float"));
+    }
 
+    #[test]
+    fn test_used_types_text() {
+        let mut used = UsedTypes::default();
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::Text), false);
         assert!(used.sa_types.contains("Text"));
+    }
 
+    #[test]
+    fn test_used_types_boolean() {
+        let mut used = UsedTypes::default();
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::Boolean), false);
         assert!(used.sa_types.contains("Boolean"));
+    }
 
+    #[test]
+    fn test_used_types_date() {
+        let mut used = UsedTypes::default();
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::Date), false);
         assert!(used.sa_types.contains("Date"));
         assert!(used.datetime_types.contains("date"));
+    }
 
+    #[test]
+    fn test_used_types_time() {
+        let mut used = UsedTypes::default();
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::Time), false);
         assert!(used.sa_types.contains("Time"));
         assert!(used.datetime_types.contains("time"));
+    }
 
+    #[test]
+    fn test_used_types_timestamp() {
+        let mut used = UsedTypes::default();
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::Timestamp), false);
         assert!(used.sa_types.contains("DateTime"));
         assert!(used.datetime_types.contains("datetime"));
+    }
 
+    #[test]
+    fn test_used_types_timestamptz() {
+        let mut used = UsedTypes::default();
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::Timestamptz), false);
         assert!(used.sa_types.contains("DateTime"));
+        assert!(used.datetime_types.contains("datetime"));
+    }
 
+    #[test]
+    fn test_used_types_interval() {
+        let mut used = UsedTypes::default();
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::Interval), false);
         assert!(used.sa_types.contains("Interval"));
+    }
 
+    #[test]
+    fn test_used_types_bytea() {
+        let mut used = UsedTypes::default();
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::Bytea), false);
         assert!(used.sa_types.contains("LargeBinary"));
+    }
 
+    #[test]
+    fn test_used_types_uuid() {
+        let mut used = UsedTypes::default();
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::Uuid), false);
         assert!(used.sa_types.contains("Uuid"));
         assert!(used.needs_uuid);
+    }
 
+    #[test]
+    fn test_used_types_json() {
+        let mut used = UsedTypes::default();
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::Json), false);
         assert!(used.sa_types.contains("JSON"));
+    }
 
+    #[test]
+    fn test_used_types_jsonb() {
+        let mut used = UsedTypes::default();
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::Jsonb), false);
         assert!(used.sa_types.contains("JSON"));
+    }
 
+    #[test]
+    fn test_used_types_inet() {
+        let mut used = UsedTypes::default();
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::Inet), false);
         assert!(used.sa_types.contains("String"));
+    }
 
+    #[test]
+    fn test_used_types_cidr() {
+        let mut used = UsedTypes::default();
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::Cidr), false);
         assert!(used.sa_types.contains("String"));
+    }
 
+    #[test]
+    fn test_used_types_macaddr() {
+        let mut used = UsedTypes::default();
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::Macaddr), false);
         assert!(used.sa_types.contains("String"));
+    }
 
+    #[test]
+    fn test_used_types_xml() {
+        let mut used = UsedTypes::default();
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::Xml), false);
         assert!(used.sa_types.contains("Text"));
     }
 
     #[test]
-    fn test_used_types_add_column_type_complex_types() {
+    fn test_used_types_varchar() {
         let mut used = UsedTypes::default();
-
         used.add_column_type(
             &ColumnType::Complex(ComplexColumnType::Varchar { length: 100 }),
             false,
         );
         assert!(used.sa_types.contains("String"));
+    }
 
+    #[test]
+    fn test_used_types_char() {
+        let mut used = UsedTypes::default();
         used.add_column_type(
             &ColumnType::Complex(ComplexColumnType::Char { length: 10 }),
             false,
         );
         assert!(used.sa_types.contains("String"));
+    }
 
+    #[test]
+    fn test_used_types_numeric() {
+        let mut used = UsedTypes::default();
         used.add_column_type(
             &ColumnType::Complex(ComplexColumnType::Numeric {
                 precision: 10,
@@ -1226,15 +1308,25 @@ mod tests {
         );
         assert!(used.sa_types.contains("Numeric"));
         assert!(used.needs_decimal);
+    }
 
+    #[test]
+    fn test_used_types_custom() {
+        let mut used = UsedTypes::default();
+        let initial_count = used.sa_types.len();
         used.add_column_type(
             &ColumnType::Complex(ComplexColumnType::Custom {
                 custom_type: "FOO".into(),
             }),
             false,
         );
-        // Custom type doesn't add any sa_types
+        // Custom type doesn't add any sa_types - verify count unchanged
+        assert_eq!(used.sa_types.len(), initial_count);
+    }
 
+    #[test]
+    fn test_used_types_enum_string() {
+        let mut used = UsedTypes::default();
         used.add_column_type(
             &ColumnType::Complex(ComplexColumnType::Enum {
                 name: "status".into(),
@@ -1243,9 +1335,12 @@ mod tests {
             false,
         );
         assert!(used.sa_types.contains("Enum"));
+    }
 
-        let mut used2 = UsedTypes::default();
-        used2.add_column_type(
+    #[test]
+    fn test_used_types_enum_integer() {
+        let mut used = UsedTypes::default();
+        used.add_column_type(
             &ColumnType::Complex(ComplexColumnType::Enum {
                 name: "priority".into(),
                 values: EnumValues::Integer(vec![NumValue {
@@ -1255,7 +1350,7 @@ mod tests {
             }),
             false,
         );
-        assert!(used2.sa_types.contains("Integer"));
+        assert!(used.sa_types.contains("Integer"));
     }
 
     #[test]
