@@ -1,6 +1,6 @@
 [package]
 name = "vespertide-macro"
-version = "0.1.22"
+version = "0.1.23"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
