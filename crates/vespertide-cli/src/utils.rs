@@ -19,7 +19,7 @@ pub fn migration_filename_with_format_and_pattern(
         FileFormat::Yml => "yml",
     };
 
-    format!("{name}.{ext}")
+    format!("{name}.vespertide.{ext}")
 }
 
 fn sanitize_comment(comment: Option<&str>) -> String {
@@ -260,11 +260,11 @@ mod tests {
         Some("Hello! World"),
         FileFormat::Yml,
         "%04v_%m",
-        "0005_hello__world.yml"
+        "0005_hello__world.vespertide.yml"
     )]
-    #[case(3, None, FileFormat::Json, "%0v__", "0003.json")] // width 0 falls back to default version and trailing separators are trimmed
-    #[case(12, None, FileFormat::Json, "%v", "0012.json")]
-    #[case(7, None, FileFormat::Json, "%m", "0007.json")] // uses default when comment only and empty
+    #[case(3, None, FileFormat::Json, "%0v__", "0003.vespertide.json")] // width 0 falls back to default version and trailing separators are trimmed
+    #[case(12, None, FileFormat::Json, "%v", "0012.vespertide.json")]
+    #[case(7, None, FileFormat::Json, "%m", "0007.vespertide.json")] // uses default when comment only and empty
     fn migration_filename_with_format_and_pattern_tests(
         #[case] version: u32,
         #[case] comment: Option<&str>,
