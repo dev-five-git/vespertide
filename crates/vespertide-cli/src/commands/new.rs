@@ -23,7 +23,7 @@ pub fn cmd_new(name: String, format: Option<FileFormat>) -> Result<()> {
     };
 
     let schema_url = schema_url_for(format);
-    let path = dir.join(format!("{name}.{ext}"));
+    let path = dir.join(format!("{name}.vespertide.{ext}"));
     if path.exists() {
         bail!("model file already exists: {}", path.display());
     }
@@ -134,7 +134,7 @@ mod tests {
         cmd_new("users".into(), None).unwrap();
 
         let cfg = VespertideConfig::default();
-        let path = cfg.models_dir().join("users.json");
+        let path = cfg.models_dir().join("users.vespertide.json");
         assert!(path.exists());
 
         let text = fs::read_to_string(path).unwrap();
@@ -159,7 +159,7 @@ mod tests {
             model_format: FileFormat::Yaml,
             ..VespertideConfig::default()
         };
-        let path = cfg.models_dir().join("orders.yaml");
+        let path = cfg.models_dir().join("orders.vespertide.yaml");
         assert!(path.exists());
 
         let text = fs::read_to_string(path).unwrap();
@@ -185,7 +185,7 @@ mod tests {
             model_format: FileFormat::Yml,
             ..VespertideConfig::default()
         };
-        let path = cfg.models_dir().join("products.yml");
+        let path = cfg.models_dir().join("products.vespertide.yml");
         assert!(path.exists());
 
         let text = fs::read_to_string(path).unwrap();
@@ -206,12 +206,12 @@ mod tests {
 
         let cfg = VespertideConfig::default();
         std::fs::create_dir_all(cfg.models_dir()).unwrap();
-        let path = cfg.models_dir().join("users.json");
+        let path = cfg.models_dir().join("users.vespertide.json");
         std::fs::write(&path, "{}").unwrap();
 
         let err = cmd_new("users".into(), None).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("model file already exists"));
-        assert!(msg.contains("users.json"));
+        assert!(msg.contains("users.vespertide.json"));
     }
 }
