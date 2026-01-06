@@ -13,6 +13,7 @@ Declarative database schema management. Define your schemas in JSON, and Vespert
 - **Automatic Diffing**: Vespertide compares your models against applied migrations to compute changes
 - **Migration Planning**: Generates typed migration actions (not raw SQL) for safety and portability
 - **Multi-Database Support**: PostgreSQL, MySQL, SQLite
+- **Enum Types**: Native string enums and integer enums (no migration needed for new values)
 - **Zero-Runtime Migrations**: Compile-time macro generates database-specific SQL
 - **JSON Schema Validation**: Ships with JSON Schemas for IDE autocompletion and validation
 - **ORM Export**: Export schemas to SeaORM, SQLAlchemy, SQLModel
@@ -50,89 +51,15 @@ vespertide revision -m "create user table"
 | `vespertide new <name>` | Create a new model template with JSON Schema reference |
 | `vespertide diff` | Show pending changes between migrations and current models |
 | `vespertide sql` | Print SQL statements for the next migration |
+| `vespertide sql --backend mysql` | SQL for specific backend (postgres/mysql/sqlite) |
 | `vespertide revision -m "<msg>"` | Persist pending changes as a migration file |
 | `vespertide status` | Show configuration and sync status overview |
 | `vespertide log` | List applied migrations with generated SQL |
-| `vespertide export --orm seaorm` | Export models to SeaORM entity code |
-
-## Supported Databases
-
-Vespertide generates database-specific SQL for:
-
-| Database | SQL Syntax | Notes |
-|----------|------------|-------|
-| PostgreSQL | `"identifier"` | Full feature support |
-| MySQL | `` `identifier` `` | Full feature support |
-| SQLite | `"identifier"` | Full feature support |
-
-## ORM Export
-
-Export your schema definitions to ORM-specific code:
-
-```bash
-# SeaORM (Rust)
-vespertide export --orm seaorm
-
-# SQLAlchemy (Python)
-vespertide export --orm sqlalchemy
-
-# SQLModel (Python - SQLAlchemy + Pydantic)
-vespertide export --orm sqlmodel
-```
-
-| ORM | Language | Description |
-|-----|----------|-------------|
-| SeaORM | Rust | Async ORM for Rust with compile-time checked queries |
-| SQLAlchemy | Python | Python SQL toolkit and ORM |
-| SQLModel | Python | SQLAlchemy + Pydantic integration for FastAPI |
-
-## Runtime Migrations (Macro)
-
-Use the `vespertide_migration!` macro to run migrations at application startup. The macro generates database-specific SQL at compile time for zero-runtime overhead.
-
-### Setup
-
-Add dependencies to your `Cargo.toml`:
-
-```toml
-[dependencies]
-vespertide = "0.1"
-sea-orm = { version = "1.0", features = ["runtime-tokio-native-tls", "sqlx-postgres"] }
-tokio = { version = "1", features = ["full"] }
-```
-
-### Usage
-
-```rust
-use sea_orm::Database;
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let db = Database::connect("postgres://user:pass@localhost/mydb").await?;
-
-    // Run migrations (uses SeaORM connection)
-    vespertide::vespertide_migration!(db).await?;
-
-    Ok(())
-}
-```
-
-### Options
-
-```rust
-// Custom version table name (default: "vespertide_version")
-vespertide::vespertide_migration!(db, version_table = "my_migrations").await?;
-```
-
-The macro:
-- Creates a version table if it doesn't exist
-- Tracks applied migrations by version number
-- Generates SQL for PostgreSQL, MySQL, and SQLite at compile time
-- Automatically selects the correct SQL dialect based on your SeaORM connection
+| `vespertide export --orm seaorm` | Export models to ORM code |
 
 ## Model Definition
 
-Models are JSON files in the `models/` directory:
+Models are JSON files in the `models/` directory. Always include `$schema` for IDE validation:
 
 ```json
 {
@@ -141,61 +68,161 @@ Models are JSON files in the `models/` directory:
   "columns": [
     { "name": "id", "type": "integer", "nullable": false, "primary_key": true },
     { "name": "email", "type": "text", "nullable": false, "unique": true, "index": true },
-    { "name": "name", "type": "text", "nullable": false },
+    { "name": "name", "type": { "kind": "varchar", "length": 100 }, "nullable": false },
+    { 
+      "name": "status", 
+      "type": { "kind": "enum", "name": "user_status", "values": ["active", "inactive", "banned"] },
+      "nullable": false,
+      "default": "'active'"
+    },
     { "name": "created_at", "type": "timestamptz", "nullable": false, "default": "NOW()" }
-  ],
-  "constraints": []
+  ]
 }
 ```
 
 ### Column Types
 
-**Simple Types** (string values in JSON):
-| Type | SQL Type |
-|------|------------|
-| `"integer"` | INTEGER |
-| `"big_int"` | BIGINT |
-| `"text"` | TEXT |
-| `"boolean"` | BOOLEAN |
-| `"timestamp"` | TIMESTAMP |
-| `"timestamptz"` | TIMESTAMPTZ |
-| `"uuid"` | UUID |
-| `"jsonb"` | JSONB |
-| `"small_int"` | SMALLINT |
-| `"real"` | REAL |
-| `"double_precision"` | DOUBLE PRECISION |
-| `"date"` | DATE |
-| `"time"` | TIME |
-| `"bytea"` | BYTEA |
-| `"json"` | JSON |
-| `"inet"` | INET |
-| `"cidr"` | CIDR |
-| `"macaddr"` | MACADDR |
+**Simple Types:**
 
-**Complex Types** (object values in JSON):
-- `{ "kind": "varchar", "length": 255 }` → VARCHAR(255)
-- `{ "kind": "custom", "custom_type": "DECIMAL(10,2)" }` → DECIMAL(10,2)
-- `{ "kind": "custom", "custom_type": "UUID" }` → UUID
+| Type | SQL Type | Type | SQL Type |
+|------|----------|------|----------|
+| `"integer"` | INTEGER | `"text"` | TEXT |
+| `"big_int"` | BIGINT | `"boolean"` | BOOLEAN |
+| `"small_int"` | SMALLINT | `"uuid"` | UUID |
+| `"real"` | REAL | `"json"` | JSON |
+| `"double_precision"` | DOUBLE PRECISION | `"jsonb"` | JSONB |
+| `"date"` | DATE | `"bytea"` | BYTEA |
+| `"time"` | TIME | `"inet"` | INET |
+| `"timestamp"` | TIMESTAMP | `"cidr"` | CIDR |
+| `"timestamptz"` | TIMESTAMPTZ | `"macaddr"` | MACADDR |
+| `"interval"` | INTERVAL | `"xml"` | XML |
 
-### Inline Constraints
+**Complex Types:**
 
-Constraints can be defined directly on columns:
+```json
+{ "kind": "varchar", "length": 255 }
+{ "kind": "char", "length": 2 }
+{ "kind": "numeric", "precision": 10, "scale": 2 }
+{ "kind": "enum", "name": "status", "values": ["active", "inactive"] }
+{ "kind": "custom", "custom_type": "TSVECTOR" }
+```
+
+### Enum Types (Recommended)
+
+Use enums instead of text columns for status fields and categories:
+
+**String Enum** (PostgreSQL native enum):
+```json
+{
+  "name": "status",
+  "type": { "kind": "enum", "name": "order_status", "values": ["pending", "shipped", "delivered"] },
+  "nullable": false,
+  "default": "'pending'"
+}
+```
+
+**Integer Enum** (stored as INTEGER, no DB migration needed for new values):
+```json
+{
+  "name": "priority",
+  "type": {
+    "kind": "enum",
+    "name": "priority_level",
+    "values": [
+      { "name": "low", "value": 0 },
+      { "name": "medium", "value": 10 },
+      { "name": "high", "value": 20 }
+    ]
+  },
+  "nullable": false,
+  "default": 10
+}
+```
+
+### Inline Constraints (Preferred)
+
+Define constraints directly on columns instead of using table-level `constraints`:
 
 ```json
 {
-  "name": "user_id",
+  "name": "author_id",
   "type": "integer",
   "nullable": false,
   "foreign_key": {
     "ref_table": "user",
     "ref_columns": ["id"],
-    "on_delete": "Cascade"
+    "on_delete": "cascade"
   },
   "index": true
 }
 ```
 
-See [SKILL.md](SKILL.md) for complete documentation on model definitions.
+**Reference Actions** (snake_case): `"cascade"`, `"restrict"`, `"set_null"`, `"set_default"`, `"no_action"`
+
+**Composite Primary Key** (inline):
+```json
+{ "name": "user_id", "type": "integer", "nullable": false, "primary_key": true },
+{ "name": "role_id", "type": "integer", "nullable": false, "primary_key": true }
+```
+
+**Table-level constraints** are only needed for CHECK expressions:
+```json
+"constraints": [
+  { "type": "check", "name": "check_positive", "expr": "amount > 0" }
+]
+```
+
+See [SKILL.md](SKILL.md) for complete documentation.
+
+## Migration Files
+
+> **Important**: Migration files are auto-generated. Never create or edit them manually.
+
+```bash
+# Always use the CLI to create migrations
+vespertide revision -m "add status column"
+```
+
+The only exception is adding `fill_with` values when prompted (for NOT NULL columns without defaults).
+
+## Supported Databases
+
+| Database | Identifier Quoting | Notes |
+|----------|-------------------|-------|
+| PostgreSQL | `"identifier"` | Full feature support |
+| MySQL | `` `identifier` `` | Full feature support |
+| SQLite | `"identifier"` | Full feature support |
+
+## ORM Export
+
+```bash
+vespertide export --orm seaorm      # Rust - SeaORM entities
+vespertide export --orm sqlalchemy  # Python - SQLAlchemy models
+vespertide export --orm sqlmodel    # Python - SQLModel (FastAPI)
+```
+
+## Runtime Migrations (Macro)
+
+Use the `vespertide_migration!` macro to run migrations at application startup:
+
+```toml
+[dependencies]
+vespertide = "0.1"
+sea-orm = { version = "1.0", features = ["runtime-tokio-native-tls", "sqlx-postgres"] }
+```
+
+```rust
+use sea_orm::Database;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let db = Database::connect("postgres://user:pass@localhost/mydb").await?;
+    vespertide::vespertide_migration!(db).await?;
+    Ok(())
+}
+```
+
+The macro generates database-specific SQL at compile time for zero-runtime overhead.
 
 ## Architecture
 
@@ -203,21 +230,20 @@ See [SKILL.md](SKILL.md) for complete documentation on model definitions.
 vespertide/
 ├── vespertide-core      # Data structures (TableDef, ColumnDef, MigrationAction)
 ├── vespertide-planner   # Schema diffing and migration planning
-├── vespertide-query     # SQL generation
-├── vespertide-config    # Configuration management
+├── vespertide-query     # SQL generation (PostgreSQL, MySQL, SQLite)
 ├── vespertide-cli       # Command-line interface
-├── vespertide-exporter  # ORM code generation (SeaORM, SQLAlchemy, SQLModel)
-├── vespertide-schema-gen # JSON Schema generation
-└── vespertide-macro     # Compile-time migration macro for SeaORM
+├── vespertide-exporter  # ORM code generation
+├── vespertide-macro     # Compile-time migration macro
+└── vespertide-config    # Configuration management
 ```
 
 ### How It Works
 
-1. **Define Models**: Write table definitions in JSON files
+1. **Define Models**: Write table definitions in JSON files with `$schema` for validation
 2. **Replay Migrations**: Applied migrations are replayed to reconstruct the baseline schema
 3. **Diff Schemas**: Current models are compared against the baseline
 4. **Generate Plan**: Changes are converted into typed `MigrationAction` enums
-5. **Emit SQL**: Migration actions are translated to SQL
+5. **Emit SQL**: Migration actions are translated to database-specific SQL
 
 ## Configuration
 
@@ -236,25 +262,12 @@ vespertide/
 ## Development
 
 ```bash
-# Build
-cargo build
-
-# Test
-cargo test
-
-# Lint
-cargo clippy --all-targets --all-features
-
-# Format
-cargo fmt
-
-# Regenerate JSON Schemas
-cargo run -p vespertide-schema-gen -- --out schemas
+cargo build                              # Build
+cargo test                               # Test
+cargo clippy --all-targets --all-features # Lint
+cargo fmt                                # Format
+cargo run -p vespertide-schema-gen -- --out schemas  # Regenerate JSON Schemas
 ```
-
-## Limitations
-
-- YAML loading is not yet implemented (templates can be generated but not parsed)
 
 ## License
 
