@@ -793,6 +793,18 @@ fn render_indexes(lines: &mut Vec<String>, constraints: &[TableConstraint]) {
     }
 }
 
+/// Rust reserved keywords that cannot be used as identifiers without raw identifier syntax.
+/// Reference: https://doc.rust-lang.org/reference/keywords.html
+const RUST_KEYWORDS: &[&str] = &[
+    // Strict keywords
+    "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern",
+    "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
+    "ref", "return", "self", "Self", "static", "struct", "super", "trait", "true", "type",
+    "unsafe", "use", "where", "while", // Reserved keywords (for future use)
+    "abstract", "become", "box", "do", "final", "macro", "override", "priv", "try", "typeof",
+    "unsized", "virtual", "yield",
+];
+
 fn sanitize_field_name(name: &str) -> String {
     let mut result = String::new();
 
@@ -809,6 +821,8 @@ fn sanitize_field_name(name: &str) -> String {
 
     if result.is_empty() {
         "_col".into()
+    } else if RUST_KEYWORDS.contains(&result.as_str()) {
+        format!("r#{}", result)
     } else {
         result
     }
@@ -1044,6 +1058,24 @@ mod helper_tests {
     #[case("name_with_trailing_space ", "name_with_trailing_space_")]
     #[case("", "_col")]
     #[case("a", "a")]
+    // Reserved keywords should be prefixed with r#
+    #[case("type", "r#type")]
+    #[case("ref", "r#ref")]
+    #[case("mod", "r#mod")]
+    #[case("fn", "r#fn")]
+    #[case("let", "r#let")]
+    #[case("mut", "r#mut")]
+    #[case("pub", "r#pub")]
+    #[case("self", "r#self")]
+    #[case("Self", "r#Self")]
+    #[case("match", "r#match")]
+    #[case("async", "r#async")]
+    #[case("await", "r#await")]
+    #[case("abstract", "r#abstract")]
+    // Non-reserved words should not be prefixed
+    #[case("types", "types")]
+    #[case("reference", "reference")]
+    #[case("module", "module")]
     fn test_sanitize_field_name(#[case] input: &str, #[case] expected: &str) {
         assert_eq!(sanitize_field_name(input), expected);
     }
