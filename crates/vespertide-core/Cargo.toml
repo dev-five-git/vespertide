@@ -16,3 +16,4 @@ vespertide-naming = { workspace = true }
 
 [dev-dependencies]
 rstest = "0.26"
+serde_json = "1"
