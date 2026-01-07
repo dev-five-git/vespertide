@@ -53,6 +53,7 @@ pub struct TableDef {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     pub columns: Vec<ColumnDef>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub constraints: Vec<TableConstraint>,
 }
 
@@ -211,6 +212,22 @@ impl TableDef {
                             });
                         }
                         (parts[0].to_string(), vec![parts[1].to_string()], None, None)
+                    }
+                    ForeignKeySyntax::Reference(ref_syntax) => {
+                        // Parse { "references": "table.column", "on_delete": ... } format
+                        let parts: Vec<&str> = ref_syntax.references.split('.').collect();
+                        if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
+                            return Err(TableValidationError::InvalidForeignKeyFormat {
+                                column_name: col.name.clone(),
+                                value: ref_syntax.references.clone(),
+                            });
+                        }
+                        (
+                            parts[0].to_string(),
+                            vec![parts[1].to_string()],
+                            ref_syntax.on_delete.clone(),
+                            ref_syntax.on_update.clone(),
+                        )
                     }
                     ForeignKeySyntax::Object(fk_def) => (
                         fk_def.ref_table.clone(),
@@ -1578,5 +1595,121 @@ mod tests {
         assert!(error_msg.contains("user_id"));
         assert!(error_msg.contains("invalid"));
         assert!(error_msg.contains("table.column"));
+    }
+
+    #[test]
+    fn normalize_inline_foreign_key_reference_syntax() {
+        // Test ForeignKeySyntax::Reference with { "references": "table.column", "on_delete": ... }
+        use crate::schema::foreign_key::ReferenceSyntaxDef;
+
+        let mut user_id_col = col("user_id", ColumnType::Simple(SimpleColumnType::Integer));
+        user_id_col.foreign_key = Some(ForeignKeySyntax::Reference(ReferenceSyntaxDef {
+            references: "users.id".into(),
+            on_delete: Some(ReferenceAction::Cascade),
+            on_update: None,
+        }));
+
+        let table = TableDef {
+            name: "posts".into(),
+            description: None,
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                user_id_col,
+            ],
+            constraints: vec![],
+        };
+
+        let normalized = table.normalize().unwrap();
+        assert_eq!(normalized.constraints.len(), 1);
+        assert!(matches!(
+            &normalized.constraints[0],
+            TableConstraint::ForeignKey {
+                name: None,
+                columns,
+                ref_table,
+                ref_columns,
+                on_delete: Some(ReferenceAction::Cascade),
+                on_update: None,
+            } if columns == &["user_id".to_string()]
+                && ref_table == "users"
+                && ref_columns == &["id".to_string()]
+        ));
+    }
+
+    #[test]
+    fn normalize_inline_foreign_key_reference_syntax_invalid_format() {
+        // Test ForeignKeySyntax::Reference with invalid format
+        use crate::schema::foreign_key::ReferenceSyntaxDef;
+
+        let mut user_id_col = col("user_id", ColumnType::Simple(SimpleColumnType::Integer));
+        user_id_col.foreign_key = Some(ForeignKeySyntax::Reference(ReferenceSyntaxDef {
+            references: "invalid_no_dot".into(),
+            on_delete: None,
+            on_update: None,
+        }));
+
+        let table = TableDef {
+            name: "posts".into(),
+            description: None,
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                user_id_col,
+            ],
+            constraints: vec![],
+        };
+
+        let result = table.normalize();
+        assert!(result.is_err());
+        if let Err(TableValidationError::InvalidForeignKeyFormat { column_name, value }) = result {
+            assert_eq!(column_name, "user_id");
+            assert_eq!(value, "invalid_no_dot");
+        } else {
+            panic!("Expected InvalidForeignKeyFormat error");
+        }
+    }
+
+    #[test]
+    fn deserialize_table_without_constraints() {
+        // Test that constraints field is optional in JSON deserialization
+        let json = r#"{
+            "name": "users",
+            "columns": [
+                { "name": "id", "type": "integer", "nullable": false }
+            ]
+        }"#;
+
+        let table: TableDef = serde_json::from_str(json).unwrap();
+        assert_eq!(table.name.as_str(), "users");
+        assert!(table.constraints.is_empty());
+    }
+
+    #[test]
+    fn deserialize_foreign_key_reference_syntax() {
+        // Test JSON deserialization of new reference syntax
+        let json = r#"{
+            "name": "posts",
+            "columns": [
+                { "name": "id", "type": "integer", "nullable": false },
+                {
+                    "name": "user_id",
+                    "type": "integer",
+                    "nullable": false,
+                    "foreign_key": { "references": "users.id", "on_delete": "cascade" }
+                }
+            ]
+        }"#;
+
+        let table: TableDef = serde_json::from_str(json).unwrap();
+        assert_eq!(table.columns.len(), 2);
+
+        let user_id_col = &table.columns[1];
+        assert!(user_id_col.foreign_key.is_some());
+
+        if let Some(ForeignKeySyntax::Reference(ref_syntax)) = &user_id_col.foreign_key {
+            assert_eq!(ref_syntax.references, "users.id");
+            assert_eq!(ref_syntax.on_delete, Some(ReferenceAction::Cascade));
+        } else {
+            panic!("Expected Reference syntax");
+        }
     }
 }
