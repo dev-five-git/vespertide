@@ -1,0 +1,8 @@
+---
+source: crates/vespertide-query/src/sql/modify_column_type.rs
+expression: sql
+---
+CREATE TABLE "reservation_session_temp" ( "status" enum_text NOT NULL DEFAULT 'pending' );
+INSERT INTO "reservation_session_temp" ("status") SELECT "status" FROM "reservation_session";
+DROP TABLE "reservation_session";
+ALTER TABLE "reservation_session_temp" RENAME TO "reservation_session"

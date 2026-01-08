@@ -1,0 +1,10 @@
+---
+source: crates/vespertide-query/src/sql/modify_column_type.rs
+expression: sql
+---
+CREATE TYPE "reservation_session_session_status_new" AS ENUM ('pending', 'confirmed', 'cancelled');
+ALTER TABLE "reservation_session" ALTER COLUMN "status" DROP DEFAULT;
+ALTER TABLE "reservation_session" ALTER COLUMN "status" TYPE "reservation_session_session_status_new" USING "status"::text::"reservation_session_session_status_new";
+DROP TYPE "reservation_session_session_status";
+ALTER TYPE "reservation_session_session_status_new" RENAME TO "reservation_session_session_status";
+ALTER TABLE "reservation_session" ALTER COLUMN "status" SET DEFAULT 'pending'
