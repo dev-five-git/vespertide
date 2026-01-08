@@ -229,20 +229,19 @@ pub fn build_modify_column_type(
 
             // MySQL MODIFY COLUMN redefines the entire column, so we must preserve
             // existing NOT NULL and DEFAULT attributes
-            if *backend == DatabaseBackend::MySql {
-                if let Some(column_def) = current_schema
+            if *backend == DatabaseBackend::MySql
+                && let Some(column_def) = current_schema
                     .iter()
                     .find(|t| t.name == table)
                     .and_then(|t| t.columns.iter().find(|c| c.name == column))
-                {
-                    if !column_def.nullable {
-                        col.not_null();
-                    }
-                    if let Some(default) = &column_def.default {
-                        let default_str = default.to_sql();
-                        let converted = convert_default_for_backend(&default_str, backend);
-                        col.default(sea_query::Expr::cust(converted));
-                    }
+            {
+                if !column_def.nullable {
+                    col.not_null();
+                }
+                if let Some(default) = &column_def.default {
+                    let default_str = default.to_sql();
+                    let converted = convert_default_for_backend(&default_str, backend);
+                    col.default(sea_query::Expr::cust(converted));
                 }
             }
 
