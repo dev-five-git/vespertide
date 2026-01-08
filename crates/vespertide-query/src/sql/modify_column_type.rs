@@ -3,7 +3,9 @@ use sea_query::{Alias, ColumnDef as SeaColumnDef, Query, Table};
 use vespertide_core::{ColumnType, ComplexColumnType, TableDef};
 
 use super::create_table::build_create_table_for_backend;
-use super::helpers::{apply_column_type_with_table, build_create_enum_type_sql};
+use super::helpers::{
+    apply_column_type_with_table, build_create_enum_type_sql, convert_default_for_backend,
+};
 use super::rename_table::build_rename_table;
 use super::types::{BuiltQuery, DatabaseBackend};
 use crate::error::QueryError;
@@ -132,6 +134,13 @@ pub fn build_modify_column_type(
                 let type_name = super::helpers::build_enum_type_name(table, enum_name);
                 let temp_type_name = format!("{}_new", type_name);
 
+                // Check if column has a DEFAULT value that needs to be handled
+                let column_default = current_schema
+                    .iter()
+                    .find(|t| t.name == table)
+                    .and_then(|t| t.columns.iter().find(|c| c.name == column))
+                    .and_then(|c| c.default.clone());
+
                 // 1. CREATE TYPE {table}_{enum}_new AS ENUM (new values)
                 let create_temp_values = new_values.to_sql_values().join(", ");
                 queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
@@ -143,17 +152,29 @@ pub fn build_modify_column_type(
                     String::new(),
                 )));
 
-                // 2. ALTER TABLE ... ALTER COLUMN ... TYPE {table}_{enum}_new USING {column}::text::{table}_{enum}_new
+                // 2. DROP DEFAULT if exists (must be done before type change)
+                if column_default.is_some() {
+                    queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
+                        format!(
+                            "ALTER TABLE \"{}\" ALTER COLUMN \"{}\" DROP DEFAULT",
+                            table, column
+                        ),
+                        String::new(),
+                        String::new(),
+                    )));
+                }
+
+                // 3. ALTER TABLE ... ALTER COLUMN ... TYPE {table}_{enum}_new USING {column}::text::{table}_{enum}_new
                 queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(format!("ALTER TABLE \"{}\" ALTER COLUMN \"{}\" TYPE \"{}\" USING \"{}\"::text::\"{}\"", table, column, temp_type_name, column, temp_type_name), String::new(), String::new())));
 
-                // 3. DROP TYPE {table}_{enum}
+                // 4. DROP TYPE {table}_{enum}
                 queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
                     format!("DROP TYPE \"{}\"", type_name),
                     String::new(),
                     String::new(),
                 )));
 
-                // 4. ALTER TYPE {table}_{enum}_new RENAME TO {table}_{enum}
+                // 5. ALTER TYPE {table}_{enum}_new RENAME TO {table}_{enum}
                 queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
                     format!(
                         "ALTER TYPE \"{}\" RENAME TO \"{}\"",
@@ -162,6 +183,20 @@ pub fn build_modify_column_type(
                     String::new(),
                     String::new(),
                 )));
+
+                // 6. Restore DEFAULT if it existed
+                if let Some(default_value) = column_default {
+                    queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
+                        format!(
+                            "ALTER TABLE \"{}\" ALTER COLUMN \"{}\" SET DEFAULT {}",
+                            table,
+                            column,
+                            default_value.to_sql()
+                        ),
+                        String::new(),
+                        String::new(),
+                    )));
+                }
             }
         } else {
             // Standard column type modification
@@ -191,6 +226,25 @@ pub fn build_modify_column_type(
 
             let mut col = SeaColumnDef::new(Alias::new(column));
             apply_column_type_with_table(&mut col, new_type, table);
+
+            // MySQL MODIFY COLUMN redefines the entire column, so we must preserve
+            // existing NOT NULL and DEFAULT attributes
+            if *backend == DatabaseBackend::MySql {
+                if let Some(column_def) = current_schema
+                    .iter()
+                    .find(|t| t.name == table)
+                    .and_then(|t| t.columns.iter().find(|c| c.name == column))
+                {
+                    if !column_def.nullable {
+                        col.not_null();
+                    }
+                    if let Some(default) = &column_def.default {
+                        let default_str = default.to_sql();
+                        let converted = convert_default_for_backend(&default_str, backend);
+                        col.default(sea_query::Expr::cust(converted));
+                    }
+                }
+            }
 
             let stmt = Table::alter()
                 .table(Alias::new(table))
@@ -720,6 +774,98 @@ mod tests {
             .join(";\n");
 
         with_settings!({ snapshot_suffix => format!("modify_enum_types_{}", title) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::modify_enum_with_default_postgres(
+        "modify_enum_with_default_postgres",
+        DatabaseBackend::Postgres
+    )]
+    #[case::modify_enum_with_default_mysql(
+        "modify_enum_with_default_mysql",
+        DatabaseBackend::MySql
+    )]
+    #[case::modify_enum_with_default_sqlite(
+        "modify_enum_with_default_sqlite",
+        DatabaseBackend::Sqlite
+    )]
+    fn test_modify_enum_with_default_value(#[case] title: &str, #[case] backend: DatabaseBackend) {
+        // Test that enum type change handles DEFAULT values correctly
+        // PostgreSQL requires: DROP DEFAULT -> change type -> SET DEFAULT
+        let current_schema = vec![TableDef {
+            name: "reservation_session".into(),
+            description: None,
+            columns: vec![ColumnDef {
+                name: "status".into(),
+                r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                    name: "session_status".into(),
+                    values: EnumValues::String(vec!["pending".into(), "confirmed".into()]),
+                }),
+                nullable: false,
+                default: Some("'pending'".into()),
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        }];
+
+        let new_type = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "session_status".into(),
+            values: EnumValues::String(vec![
+                "pending".into(),
+                "confirmed".into(),
+                "cancelled".into(),
+            ]),
+        });
+
+        let result = build_modify_column_type(
+            &backend,
+            "reservation_session",
+            "status",
+            &new_type,
+            &current_schema,
+        )
+        .unwrap();
+
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<_>>()
+            .join(";\n");
+
+        // PostgreSQL-specific: verify DROP DEFAULT -> TYPE change -> SET DEFAULT order
+        if matches!(backend, DatabaseBackend::Postgres) {
+            assert!(
+                sql.contains("DROP DEFAULT"),
+                "Should drop default before type change. SQL: {}",
+                sql
+            );
+            assert!(
+                sql.contains("SET DEFAULT"),
+                "Should restore default after type change. SQL: {}",
+                sql
+            );
+
+            let drop_default_pos = sql.find("DROP DEFAULT").unwrap();
+            let type_change_pos = sql.find("USING").unwrap();
+            let set_default_pos = sql.find("SET DEFAULT").unwrap();
+
+            assert!(
+                drop_default_pos < type_change_pos,
+                "DROP DEFAULT should come before TYPE change"
+            );
+            assert!(
+                type_change_pos < set_default_pos,
+                "SET DEFAULT should come after TYPE change"
+            );
+        }
+
+        with_settings!({ snapshot_suffix => format!("modify_enum_with_default_{}", title) }, {
             assert_snapshot!(sql);
         });
     }
