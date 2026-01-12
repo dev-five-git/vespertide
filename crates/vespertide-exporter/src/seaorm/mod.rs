@@ -869,6 +869,10 @@ fn render_enum(
     derives.extend(extra_derives);
 
     lines.push(format!("#[derive({})]", derives.join(", ")));
+    lines.push(format!(
+        "#[serde(rename_all = \"{}\")]",
+        config.enum_naming_case().serde_rename_all()
+    ));
 
     match values {
         EnumValues::Integer(_) => {
@@ -2747,6 +2751,7 @@ mod tests {
         let config = SeaOrmConfig {
             extra_enum_derives: vec!["CustomDerive".to_string()],
             extra_model_derives: vec!["ModelDerive".to_string()],
+            ..Default::default()
         };
         let exporter = SeaOrmExporterWithConfig::new(&config);
 
@@ -2778,6 +2783,7 @@ mod tests {
         let config = SeaOrmConfig {
             extra_enum_derives: vec!["CustomEnumDerive".to_string()],
             extra_model_derives: vec![],
+            ..Default::default()
         };
         let exporter = SeaOrmExporterWithConfig::new(&config);
 
@@ -2825,6 +2831,7 @@ mod tests {
         let config = SeaOrmConfig {
             extra_enum_derives: vec![],
             extra_model_derives: vec!["SchemaDerive".to_string()],
+            ..Default::default()
         };
         let exporter = SeaOrmExporterWithConfig::new(&config);
 
@@ -2857,6 +2864,7 @@ mod tests {
         let config = SeaOrmConfig {
             extra_enum_derives: vec![],
             extra_model_derives: vec![],
+            ..Default::default()
         };
         let exporter = SeaOrmExporterWithConfig::new(&config);
 

@@ -3,6 +3,7 @@ source: crates/vespertide-exporter/src/seaorm/mod.rs
 expression: result
 ---
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, vespera::Schema)]
+#[serde(rename_all = "camelCase")]
 #[sea_orm(rs_type = "i32", db_type = "Integer")]
 pub enum TaskStatus {
     Pending = 0,
