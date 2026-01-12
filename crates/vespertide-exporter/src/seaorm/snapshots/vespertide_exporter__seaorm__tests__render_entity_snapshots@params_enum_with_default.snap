@@ -6,6 +6,7 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, vespera::Schema)]
+#[serde(rename_all = "camelCase")]
 #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "tasks_task_status")]
 pub enum TaskStatus {
     #[sea_orm(string_value = "pending")]

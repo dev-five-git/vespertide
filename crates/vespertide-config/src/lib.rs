@@ -49,6 +49,7 @@ mod tests {
         let cfg = SeaOrmConfig {
             extra_enum_derives: vec!["A".to_string(), "B".to_string()],
             extra_model_derives: vec!["C".to_string()],
+            ..Default::default()
         };
         assert_eq!(cfg.extra_enum_derives(), &["A", "B"]);
         assert_eq!(cfg.extra_model_derives(), &["C"]);
