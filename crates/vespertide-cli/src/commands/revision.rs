@@ -83,14 +83,32 @@ fn print_fill_with_item_and_get_prompt(
     format_fill_with_prompt(table, column)
 }
 
+/// Wrap a value with single quotes if it contains spaces and isn't already quoted.
+fn wrap_if_spaces(value: String) -> String {
+    if value.is_empty() {
+        return value;
+    }
+    // Already wrapped with single quotes
+    if value.starts_with('\'') && value.ends_with('\'') {
+        return value;
+    }
+    // Contains spaces: wrap with single quotes
+    if value.contains(' ') {
+        return format!("'{}'", value);
+    }
+    value
+}
+
 /// Prompt the user for a fill_with value using dialoguer.
 /// This function wraps terminal I/O and cannot be unit tested without a real terminal.
 #[cfg(not(tarpaulin_include))]
 fn prompt_fill_with_value(prompt: &str) -> Result<String> {
-    Input::new()
+    let value = Input::new()
         .with_prompt(prompt)
+        .allow_empty(true)
         .interact_text()
-        .context("failed to read input")
+        .context("failed to read input")?;
+    Ok(wrap_if_spaces(value))
 }
 
 /// Collect fill_with values interactively for missing columns.
@@ -1096,5 +1114,33 @@ mod tests {
             }
             _ => panic!("Expected ModifyColumnNullable action"),
         }
+    }
+
+    #[test]
+    fn test_wrap_if_spaces_empty() {
+        assert_eq!(wrap_if_spaces("".to_string()), "");
+    }
+
+    #[test]
+    fn test_wrap_if_spaces_no_spaces() {
+        assert_eq!(wrap_if_spaces("value".to_string()), "value");
+    }
+
+    #[test]
+    fn test_wrap_if_spaces_with_spaces() {
+        assert_eq!(wrap_if_spaces("my value".to_string()), "'my value'");
+    }
+
+    #[test]
+    fn test_wrap_if_spaces_already_quoted() {
+        assert_eq!(
+            wrap_if_spaces("'already quoted'".to_string()),
+            "'already quoted'"
+        );
+    }
+
+    #[test]
+    fn test_wrap_if_spaces_multiple_spaces() {
+        assert_eq!(wrap_if_spaces("a b c".to_string()), "'a b c'");
     }
 }
