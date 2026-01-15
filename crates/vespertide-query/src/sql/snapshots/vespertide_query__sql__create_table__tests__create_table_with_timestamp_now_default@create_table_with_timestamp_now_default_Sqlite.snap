@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql/create_table.rs
+expression: sql
+---
+CREATE TABLE "events" ( "id" bigint NOT NULL, "created_at" timestamp_with_timezone_text NOT NULL DEFAULT CURRENT_TIMESTAMP )

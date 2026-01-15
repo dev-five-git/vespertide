@@ -657,4 +657,64 @@ mod tests {
             assert_snapshot!(sql);
         });
     }
+
+    /// Test creating a table with timestamp column and NOW() default
+    /// SQLite should convert NOW() to CURRENT_TIMESTAMP
+    #[rstest]
+    #[case::timestamp_now_default_postgres(DatabaseBackend::Postgres)]
+    #[case::timestamp_now_default_mysql(DatabaseBackend::MySql)]
+    #[case::timestamp_now_default_sqlite(DatabaseBackend::Sqlite)]
+    fn test_create_table_with_timestamp_now_default(#[case] backend: DatabaseBackend) {
+        let columns = vec![
+            ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::BigInt),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            },
+            ColumnDef {
+                name: "created_at".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Timestamptz),
+                nullable: false,
+                default: Some("NOW()".into()), // uppercase NOW()
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            },
+        ];
+
+        let result = build_create_table(&backend, "events", &columns, &[]);
+        assert!(result.is_ok(), "build_create_table failed: {:?}", result);
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        // SQLite should NOT have NOW() - it should be converted to CURRENT_TIMESTAMP
+        if matches!(backend, DatabaseBackend::Sqlite) {
+            assert!(
+                !sql.contains("NOW()"),
+                "SQLite should not contain NOW(), got: {}",
+                sql
+            );
+            assert!(
+                sql.contains("CURRENT_TIMESTAMP"),
+                "SQLite should use CURRENT_TIMESTAMP, got: {}",
+                sql
+            );
+        }
+
+        with_settings!({ snapshot_suffix => format!("create_table_with_timestamp_now_default_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
 }

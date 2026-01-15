@@ -167,19 +167,31 @@ pub fn reference_action_sql(action: &ReferenceAction) -> &'static str {
 
 /// Convert a default value string to the appropriate backend-specific expression
 pub fn convert_default_for_backend(default: &str, backend: &DatabaseBackend) -> String {
-    match default {
-        "gen_random_uuid()" | "UUID()" | "lower(hex(randomblob(16)))" => match backend {
+    let lower = default.to_lowercase();
+
+    // UUID generation functions
+    if lower == "gen_random_uuid()" || lower == "uuid()" || lower == "lower(hex(randomblob(16)))" {
+        return match backend {
             DatabaseBackend::Postgres => "gen_random_uuid()".to_string(),
             DatabaseBackend::MySql => "(UUID())".to_string(),
             DatabaseBackend::Sqlite => "lower(hex(randomblob(16)))".to_string(),
-        },
-        "current_timestamp()" | "now()" | "CURRENT_TIMESTAMP" => match backend {
+        };
+    }
+
+    // Timestamp functions (case-insensitive)
+    if lower == "current_timestamp()"
+        || lower == "now()"
+        || lower == "current_timestamp"
+        || lower == "getdate()"
+    {
+        return match backend {
             DatabaseBackend::Postgres => "CURRENT_TIMESTAMP".to_string(),
             DatabaseBackend::MySql => "CURRENT_TIMESTAMP".to_string(),
             DatabaseBackend::Sqlite => "CURRENT_TIMESTAMP".to_string(),
-        },
-        other => other.to_string(),
+        };
     }
+
+    default.to_string()
 }
 
 /// Check if the column type is an enum type
@@ -492,6 +504,9 @@ mod tests {
     #[case::now_postgres("now()", DatabaseBackend::Postgres, "CURRENT_TIMESTAMP")]
     #[case::now_mysql("now()", DatabaseBackend::MySql, "CURRENT_TIMESTAMP")]
     #[case::now_sqlite("now()", DatabaseBackend::Sqlite, "CURRENT_TIMESTAMP")]
+    #[case::now_upper_postgres("NOW()", DatabaseBackend::Postgres, "CURRENT_TIMESTAMP")]
+    #[case::now_upper_mysql("NOW()", DatabaseBackend::MySql, "CURRENT_TIMESTAMP")]
+    #[case::now_upper_sqlite("NOW()", DatabaseBackend::Sqlite, "CURRENT_TIMESTAMP")]
     #[case::current_timestamp_upper_postgres(
         "CURRENT_TIMESTAMP",
         DatabaseBackend::Postgres,
