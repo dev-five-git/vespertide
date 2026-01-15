@@ -13,11 +13,11 @@ documentation = "https://docs.rs/vespertide"
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
 
 [workspace.dependencies]
-vespertide-core = { path = "crates/vespertide-core", version = "0.1.29" }
-vespertide-config = { path = "crates/vespertide-config", version = "0.1.29" }
-vespertide-loader = { path = "crates/vespertide-loader", version = "0.1.29" }
-vespertide-macro = { path = "crates/vespertide-macro", version = "0.1.29" }
-vespertide-naming = { path = "crates/vespertide-naming", version = "0.1.29" }
-vespertide-planner = { path = "crates/vespertide-planner", version = "0.1.29" }
-vespertide-query = { path = "crates/vespertide-query", version = "0.1.29" }
-vespertide-exporter = { path = "crates/vespertide-exporter", version = "0.1.29" }
+vespertide-core = { path = "crates/vespertide-core", version = "0.1.30" }
+vespertide-config = { path = "crates/vespertide-config", version = "0.1.30" }
+vespertide-loader = { path = "crates/vespertide-loader", version = "0.1.30" }
+vespertide-macro = { path = "crates/vespertide-macro", version = "0.1.30" }
+vespertide-naming = { path = "crates/vespertide-naming", version = "0.1.30" }
+vespertide-planner = { path = "crates/vespertide-planner", version = "0.1.30" }
+vespertide-query = { path = "crates/vespertide-query", version = "0.1.30" }
+vespertide-exporter = { path = "crates/vespertide-exporter", version = "0.1.30" }
