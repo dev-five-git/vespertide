@@ -2,4 +2,4 @@
 source: crates/vespertide-query/src/sql/create_table.rs
 expression: sql
 ---
-CREATE TABLE "users" ( "id" integer NOT NULL AUTOINCREMENT, PRIMARY KEY ("id") )
+CREATE TABLE "users" ( "id" integer NOT NULL PRIMARY KEY AUTOINCREMENT )

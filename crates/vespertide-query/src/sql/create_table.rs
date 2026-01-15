@@ -49,6 +49,11 @@ pub(crate) fn build_create_table_for_backend(
 
         // Apply auto_increment if this column is in the auto_increment primary key
         if auto_increment_columns.contains(column.name.as_str()) {
+            // For SQLite, AUTOINCREMENT requires inline PRIMARY KEY (INTEGER PRIMARY KEY AUTOINCREMENT)
+            // So we must call primary_key() on the column even if there's a table-level PRIMARY KEY
+            if matches!(backend, DatabaseBackend::Sqlite) {
+                col.primary_key();
+            }
             col.auto_increment();
         }
 
@@ -64,8 +69,13 @@ pub(crate) fn build_create_table_for_backend(
         match constraint {
             TableConstraint::PrimaryKey {
                 columns: pk_cols,
-                auto_increment: _,
+                auto_increment,
             } => {
+                // For SQLite with auto_increment, skip table-level PRIMARY KEY
+                // because AUTOINCREMENT requires inline PRIMARY KEY on the column
+                if matches!(backend, DatabaseBackend::Sqlite) && *auto_increment {
+                    continue;
+                }
                 // Build primary key index
                 let mut pk_idx = Index::create();
                 for c in pk_cols {
