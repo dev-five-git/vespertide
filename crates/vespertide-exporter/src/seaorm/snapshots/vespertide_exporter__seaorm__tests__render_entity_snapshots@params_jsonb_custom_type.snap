@@ -1,0 +1,21 @@
+---
+source: crates/vespertide-exporter/src/seaorm/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[sea_orm(table_name = "json_struct")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub json_data: Json,
+    #[sea_orm(column_type = "JSONB")]
+    pub jsonb_data: Json,
+    #[sea_orm(column_type = "jsonb")]
+    pub jsonb_nullable: Option<Json>,
+}
+
+impl ActiveModelBehavior for ActiveModel {}

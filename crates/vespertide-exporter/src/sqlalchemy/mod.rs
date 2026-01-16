@@ -65,7 +65,7 @@ impl<'a> UsedTypes<'a> {
                     self.sa_types.insert("Uuid");
                     self.needs_uuid = true;
                 }
-                SimpleColumnType::Json | SimpleColumnType::Jsonb => {
+                SimpleColumnType::Json => {
                     self.sa_types.insert("JSON");
                 }
                 SimpleColumnType::Inet | SimpleColumnType::Cidr | SimpleColumnType::Macaddr => {
@@ -461,7 +461,7 @@ fn column_type_to_python(col_type: &ColumnType, nullable: bool) -> String {
             SimpleColumnType::Interval => "str",
             SimpleColumnType::Bytea => "bytes",
             SimpleColumnType::Uuid => "UUID",
-            SimpleColumnType::Json | SimpleColumnType::Jsonb => "dict",
+            SimpleColumnType::Json => "dict",
             SimpleColumnType::Inet | SimpleColumnType::Cidr => "str",
             SimpleColumnType::Macaddr => "str",
             SimpleColumnType::Xml => "str",
@@ -505,7 +505,7 @@ fn column_type_to_sqlalchemy(col_type: &ColumnType) -> String {
             SimpleColumnType::Interval => "Interval".into(),
             SimpleColumnType::Bytea => "LargeBinary".into(),
             SimpleColumnType::Uuid => "Uuid".into(),
-            SimpleColumnType::Json | SimpleColumnType::Jsonb => "JSON".into(),
+            SimpleColumnType::Json => "JSON".into(),
             SimpleColumnType::Inet | SimpleColumnType::Cidr | SimpleColumnType::Macaddr => {
                 "String(255)".into()
             }
@@ -829,7 +829,6 @@ mod tests {
                 col("bytea_col", ColumnType::Simple(SimpleColumnType::Bytea)),
                 col("uuid_col", ColumnType::Simple(SimpleColumnType::Uuid)),
                 col("json_col", ColumnType::Simple(SimpleColumnType::Json)),
-                col("jsonb_col", ColumnType::Simple(SimpleColumnType::Jsonb)),
                 col("inet_col", ColumnType::Simple(SimpleColumnType::Inet)),
                 col("cidr_col", ColumnType::Simple(SimpleColumnType::Cidr)),
                 col("macaddr_col", ColumnType::Simple(SimpleColumnType::Macaddr)),
@@ -1238,13 +1237,6 @@ mod tests {
     fn test_used_types_json() {
         let mut used = UsedTypes::default();
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::Json), false);
-        assert!(used.sa_types.contains("JSON"));
-    }
-
-    #[test]
-    fn test_used_types_jsonb() {
-        let mut used = UsedTypes::default();
-        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Jsonb), false);
         assert!(used.sa_types.contains("JSON"));
     }
 

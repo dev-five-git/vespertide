@@ -87,7 +87,8 @@ impl ColumnType {
                 SimpleColumnType::Interval => "String".to_string(),
                 SimpleColumnType::Bytea => "Vec<u8>".to_string(),
                 SimpleColumnType::Uuid => "Uuid".to_string(),
-                SimpleColumnType::Json | SimpleColumnType::Jsonb => "Json".to_string(),
+                SimpleColumnType::Json => "Json".to_string(),
+                // SimpleColumnType::Jsonb => "Json".to_string(),
                 SimpleColumnType::Inet | SimpleColumnType::Cidr => "String".to_string(),
                 SimpleColumnType::Macaddr => "String".to_string(),
                 SimpleColumnType::Xml => "String".to_string(),
@@ -139,7 +140,7 @@ pub enum SimpleColumnType {
 
     // JSON types
     Json,
-    Jsonb,
+    // Jsonb,
 
     // Network types
     Inet,
@@ -263,7 +264,7 @@ mod tests {
     #[case(SimpleColumnType::Bytea, "Vec<u8>")]
     #[case(SimpleColumnType::Uuid, "Uuid")]
     #[case(SimpleColumnType::Json, "Json")]
-    #[case(SimpleColumnType::Jsonb, "Json")]
+    // #[case(SimpleColumnType::Jsonb, "Json")]
     #[case(SimpleColumnType::Inet, "String")]
     #[case(SimpleColumnType::Cidr, "String")]
     #[case(SimpleColumnType::Macaddr, "String")]
@@ -294,7 +295,7 @@ mod tests {
     #[case(SimpleColumnType::Bytea, "Option<Vec<u8>>")]
     #[case(SimpleColumnType::Uuid, "Option<Uuid>")]
     #[case(SimpleColumnType::Json, "Option<Json>")]
-    #[case(SimpleColumnType::Jsonb, "Option<Json>")]
+    // #[case(SimpleColumnType::Jsonb, "Option<Json>")]
     #[case(SimpleColumnType::Inet, "Option<String>")]
     #[case(SimpleColumnType::Cidr, "Option<String>")]
     #[case(SimpleColumnType::Macaddr, "Option<String>")]

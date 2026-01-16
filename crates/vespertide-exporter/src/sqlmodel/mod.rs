@@ -448,7 +448,7 @@ fn column_type_to_python(col_type: &ColumnType, nullable: bool) -> String {
             SimpleColumnType::Interval => "str",
             SimpleColumnType::Bytea => "bytes",
             SimpleColumnType::Uuid => "UUID",
-            SimpleColumnType::Json | SimpleColumnType::Jsonb => "dict",
+            SimpleColumnType::Json => "dict",
             SimpleColumnType::Inet | SimpleColumnType::Cidr => "str",
             SimpleColumnType::Macaddr => "str",
             SimpleColumnType::Xml => "str",
@@ -826,7 +826,6 @@ mod tests {
                 col("bytea_col", ColumnType::Simple(SimpleColumnType::Bytea)),
                 col("uuid_col", ColumnType::Simple(SimpleColumnType::Uuid)),
                 col("json_col", ColumnType::Simple(SimpleColumnType::Json)),
-                col("jsonb_col", ColumnType::Simple(SimpleColumnType::Jsonb)),
                 col("inet_col", ColumnType::Simple(SimpleColumnType::Inet)),
                 col("cidr_col", ColumnType::Simple(SimpleColumnType::Cidr)),
                 col("macaddr_col", ColumnType::Simple(SimpleColumnType::Macaddr)),
@@ -854,7 +853,6 @@ mod tests {
         assert!(result.contains("bytea_col: bytes"));
         assert!(result.contains("uuid_col: UUID"));
         assert!(result.contains("json_col: dict"));
-        assert!(result.contains("jsonb_col: dict"));
         assert!(result.contains("inet_col: str"));
         assert!(result.contains("cidr_col: str"));
         assert!(result.contains("macaddr_col: str"));

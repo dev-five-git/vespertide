@@ -374,7 +374,12 @@ mod tests {
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("CARGO_MANIFEST_DIR environment variable not set"));
 
-        drop(original);
+        // Restore the original value if it existed
+        if let Some(val) = original {
+            unsafe {
+                env::set_var("CARGO_MANIFEST_DIR", val);
+            }
+        }
     }
 
     #[test]
