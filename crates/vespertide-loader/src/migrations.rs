@@ -324,9 +324,11 @@ actions:
         assert!(err_msg.contains("CARGO_MANIFEST_DIR environment variable not set"));
 
         // Restore the original value if it existed
-        // Note: In a test environment, we don't restore to avoid affecting other tests
-        // The serial_test ensures tests run sequentially
-        drop(original);
+        if let Some(val) = original {
+            unsafe {
+                env::set_var("CARGO_MANIFEST_DIR", val);
+            }
+        }
     }
 
     #[test]
