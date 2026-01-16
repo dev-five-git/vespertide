@@ -219,6 +219,11 @@ fn render_column(
         attrs.push(formatted);
     }
 
+    // For custom types, add column_type attribute with the custom type value
+    if let ColumnType::Complex(ComplexColumnType::Custom { custom_type }) = &column.r#type {
+        attrs.push(format!("column_type = \"{}\"", custom_type));
+    }
+
     // Output attribute if any
     if !attrs.is_empty() {
         lines.push(format!("    #[sea_orm({})]", attrs.join(", ")));
@@ -233,6 +238,16 @@ fn render_column(
                 format!("Option<{}>", enum_type)
             } else {
                 enum_type
+            }
+        }
+        // JSONB custom type should use Json rust type
+        ColumnType::Complex(ComplexColumnType::Custom { custom_type })
+            if custom_type.to_uppercase() == "JSONB" =>
+        {
+            if column.nullable {
+                "Option<Json>".to_string()
+            } else {
+                "Json".to_string()
             }
         }
         _ => column.r#type.to_rust_type(column.nullable),
@@ -1035,7 +1050,6 @@ mod helper_tests {
     #[case(ColumnType::Simple(SimpleColumnType::Bytea), false, "Vec<u8>")]
     #[case(ColumnType::Simple(SimpleColumnType::Uuid), false, "Uuid")]
     #[case(ColumnType::Simple(SimpleColumnType::Json), false, "Json")]
-    #[case(ColumnType::Simple(SimpleColumnType::Jsonb), false, "Json")]
     #[case(ColumnType::Simple(SimpleColumnType::Inet), false, "String")]
     #[case(ColumnType::Simple(SimpleColumnType::Cidr), false, "String")]
     #[case(ColumnType::Simple(SimpleColumnType::Macaddr), false, "String")]
@@ -2243,6 +2257,17 @@ mod tests {
         constraints: vec![
             TableConstraint::PrimaryKey { columns: vec!["id".into()], auto_increment: false },
         ],
+    })]
+    #[case("jsonb_custom_type", TableDef {
+        name: "json_struct".into(),
+        description: None,
+        columns: vec![
+            ColumnDef { name: "id".into(), r#type: ColumnType::Simple(SimpleColumnType::Integer), nullable: false, default: None, comment: None, primary_key: Some(PrimaryKeySyntax::Bool(true)), unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "json_data".into(), r#type: ColumnType::Simple(SimpleColumnType::Json), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "jsonb_data".into(), r#type: ColumnType::Complex(ComplexColumnType::Custom { custom_type: "JSONB".into() }), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+            ColumnDef { name: "jsonb_nullable".into(), r#type: ColumnType::Complex(ComplexColumnType::Custom { custom_type: "jsonb".into() }), nullable: true, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None },
+        ],
+        constraints: vec![],
     })]
     fn render_entity_snapshots(#[case] name: &str, #[case] table: TableDef) {
         let rendered = render_entity(&table);

@@ -34,6 +34,28 @@ The schema URL provides:
 
 ---
 
+## Post-Edit Validation (MANDATORY)
+
+**After EVERY edit to a model file, ALWAYS run these checks:**
+
+```bash
+# 1. Check for parsing errors and schema violations
+vespertide diff
+
+# 2. Preview generated SQL to verify correctness
+vespertide sql
+```
+
+**Verify the output:**
+- `vespertide diff` shows expected changes (no unexpected additions/removals)
+- `vespertide sql` generates valid SQL for your target database
+- IDE shows no red squiggles (schema validation errors)
+- All required fields (`name`, `type`, `nullable`) are present
+
+**Only proceed to `vespertide revision` after verification passes.**
+
+---
+
 ## Installation
 
 ```bash
@@ -201,8 +223,7 @@ vespertide revision -m "add status column"
 | `"interval"` | INTERVAL | Time duration |
 | `"bytea"` | BYTEA | Binary data |
 | `"uuid"` | UUID | UUIDs |
-| `"json"` | JSON | JSON data |
-| `"jsonb"` | JSONB | Binary JSON (indexable, recommended) |
+| `"json"` | JSON | JSON data (cross-database compatible) |
 | `"inet"` | INET | IPv4/IPv6 address |
 | `"cidr"` | CIDR | Network address |
 | `"macaddr"` | MACADDR | MAC address |
@@ -261,7 +282,9 @@ vespertide revision -m "add status column"
 > - Better for frequently-changing value sets
 > - Works identically across PostgreSQL, MySQL, SQLite
 
-#### Custom Type (fallback)
+#### Custom Type (AVOID - last resort only)
+
+> **WARNING**: Avoid custom types. They break cross-database compatibility. Use built-in types or redesign your schema.
 
 ```json
 { "kind": "custom", "custom_type": "POINT" }
@@ -508,7 +531,7 @@ Both columns with `"primary_key": true` creates a **single composite primary key
       "nullable": false, 
       "default": "'pending'" 
     },
-    { "name": "metadata", "type": "jsonb", "nullable": true },
+    { "name": "metadata", "type": "json", "nullable": true },
     { "name": "created_at", "type": "timestamptz", "nullable": false, "default": "NOW()" },
     { "name": "updated_at", "type": "timestamptz", "nullable": true }
   ]
@@ -638,7 +661,7 @@ Both columns with `"primary_key": true` creates a **single composite primary key
 1. **Use enums for status/category fields** - Prefer over text + CHECK
 2. **Use integer enums for expandable sets** - No migration needed for new values
 3. **Use `timestamptz` over `timestamp`** - Timezone-aware is safer
-4. **Use `jsonb` over `json`** - Indexable and faster
+4. **Use `json` type for JSON data** - Works across all backends (PostgreSQL, MySQL, SQLite)
 
 ### MUST NOT DO
 
@@ -648,6 +671,9 @@ Both columns with `"primary_key": true` creates a **single composite primary key
 4. **Never use table-level constraints** - Except for CHECK expressions only
 5. **Never manually create/edit migration files** - Only `fill_with` exception
 6. **Never manually edit exported ORM files** - Use `vespertide export` to regenerate
+7. **Never use `jsonb` type** - Use `json` instead (JSONB not supported in SQLite)
+8. **Never use custom types** - Use built-in types only for cross-database compatibility
+9. **Never use array types** - Use a separate join table instead (arrays not supported in SQLite)
 
 ### Naming Conventions
 
@@ -675,7 +701,7 @@ boolean                              Flags
 date, time, timestamp, timestamptz   Time
 interval                             Duration
 uuid                                 UUIDs
-json, jsonb                          JSON
+json                                 JSON
 bytea                                Binary
 inet, cidr, macaddr                  Network
 xml                                  XML

@@ -93,9 +93,6 @@ pub fn apply_column_type_with_table(col: &mut SeaColumnDef, ty: &ColumnType, tab
             SimpleColumnType::Json => {
                 col.json();
             }
-            SimpleColumnType::Jsonb => {
-                col.json_binary();
-            }
             SimpleColumnType::Inet => {
                 col.custom(Alias::new("INET"));
             }
@@ -420,7 +417,6 @@ mod tests {
     #[case(SimpleColumnType::Bytea)]
     #[case(SimpleColumnType::Uuid)]
     #[case(SimpleColumnType::Json)]
-    #[case(SimpleColumnType::Jsonb)]
     #[case(SimpleColumnType::Inet)]
     #[case(SimpleColumnType::Cidr)]
     #[case(SimpleColumnType::Macaddr)]
