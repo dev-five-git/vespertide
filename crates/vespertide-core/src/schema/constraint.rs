@@ -38,3 +38,17 @@ pub enum TableConstraint {
         columns: Vec<ColumnName>,
     },
 }
+
+impl TableConstraint {
+    /// Returns the columns referenced by this constraint.
+    /// For Check constraints, returns an empty slice (expression-based, not column-based).
+    pub fn columns(&self) -> &[ColumnName] {
+        match self {
+            TableConstraint::PrimaryKey { columns, .. } => columns,
+            TableConstraint::Unique { columns, .. } => columns,
+            TableConstraint::ForeignKey { columns, .. } => columns,
+            TableConstraint::Index { columns, .. } => columns,
+            TableConstraint::Check { .. } => &[],
+        }
+    }
+}

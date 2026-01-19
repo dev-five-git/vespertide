@@ -286,14 +286,18 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
                 .map(|c| (c.name.as_str(), c))
                 .collect();
 
-            // Deleted columns
-            for col in from_cols.keys() {
-                if !to_cols.contains_key(col) {
-                    actions.push(MigrationAction::DeleteColumn {
-                        table: name.to_string(),
-                        column: col.to_string(),
-                    });
-                }
+            // Deleted columns - collect the set of columns being deleted for this table
+            let deleted_columns: BTreeSet<&str> = from_cols
+                .keys()
+                .filter(|col| !to_cols.contains_key(*col))
+                .copied()
+                .collect();
+
+            for col in &deleted_columns {
+                actions.push(MigrationAction::DeleteColumn {
+                    table: name.to_string(),
+                    column: col.to_string(),
+                });
             }
 
             // Modified columns - type changes
@@ -365,12 +369,25 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
             }
 
             // Constraints - compare and detect additions/removals (includes indexes)
+            // Skip RemoveConstraint for constraints where ALL columns are being deleted
+            // (the constraint will be automatically dropped when the column is dropped)
             for from_constraint in &from_tbl.constraints {
                 if !to_tbl.constraints.contains(from_constraint) {
-                    actions.push(MigrationAction::RemoveConstraint {
-                        table: name.to_string(),
-                        constraint: from_constraint.clone(),
-                    });
+                    // Get the columns referenced by this constraint
+                    let constraint_columns = from_constraint.columns();
+
+                    // Skip if ALL columns of the constraint are being deleted
+                    let all_columns_deleted = !constraint_columns.is_empty()
+                        && constraint_columns
+                            .iter()
+                            .all(|col| deleted_columns.contains(col.as_str()));
+
+                    if !all_columns_deleted {
+                        actions.push(MigrationAction::RemoveConstraint {
+                            table: name.to_string(),
+                            constraint: from_constraint.clone(),
+                        });
+                    }
                 }
             }
             for to_constraint in &to_tbl.constraints {
@@ -3209,6 +3226,193 @@ mod tests {
                 &plan.actions[0],
                 MigrationAction::AddConstraint { table, constraint }
                 if table == "users" && matches!(constraint, TableConstraint::Index { name: Some(n), .. } if n == "idx_users_id")
+            ));
+        }
+    }
+
+    mod constraint_removal_on_deleted_columns {
+        use super::*;
+
+        fn fk(columns: Vec<&str>, ref_table: &str, ref_columns: Vec<&str>) -> TableConstraint {
+            TableConstraint::ForeignKey {
+                name: None,
+                columns: columns.into_iter().map(|s| s.to_string()).collect(),
+                ref_table: ref_table.to_string(),
+                ref_columns: ref_columns.into_iter().map(|s| s.to_string()).collect(),
+                on_delete: None,
+                on_update: None,
+            }
+        }
+
+        #[test]
+        fn skip_remove_constraint_when_all_columns_deleted() {
+            // When a column with FK and index is deleted, the constraints should NOT
+            // generate separate RemoveConstraint actions (they are dropped with the column)
+            let from = vec![table(
+                "project",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("template_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ],
+                vec![
+                    fk(vec!["template_id"], "book_template", vec!["id"]),
+                    idx("ix_project__template_id", vec!["template_id"]),
+                ],
+            )];
+
+            let to = vec![table(
+                "project",
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            // Should only have DeleteColumn, NO RemoveConstraint actions
+            assert_eq!(plan.actions.len(), 1);
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::DeleteColumn { table, column }
+                if table == "project" && column == "template_id"
+            ));
+
+            // Explicitly verify no RemoveConstraint
+            let has_remove_constraint = plan
+                .actions
+                .iter()
+                .any(|a| matches!(a, MigrationAction::RemoveConstraint { .. }));
+            assert!(
+                !has_remove_constraint,
+                "Should NOT have RemoveConstraint when column is deleted"
+            );
+        }
+
+        #[test]
+        fn keep_remove_constraint_when_only_some_columns_deleted() {
+            // If a composite constraint has some columns remaining, RemoveConstraint is needed
+            let from = vec![table(
+                "orders",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("user_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("product_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ],
+                vec![idx(
+                    "ix_orders__user_product",
+                    vec!["user_id", "product_id"],
+                )],
+            )];
+
+            let to = vec![table(
+                "orders",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("user_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    // product_id is deleted, but user_id remains
+                ],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            // Should have both DeleteColumn AND RemoveConstraint
+            // (because user_id is still there, the composite index needs explicit removal)
+            let has_delete_column = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::DeleteColumn { table, column }
+                    if table == "orders" && column == "product_id"
+                )
+            });
+            assert!(has_delete_column, "Should have DeleteColumn for product_id");
+
+            let has_remove_constraint = plan.actions.iter().any(|a| {
+                matches!(
+                    a,
+                    MigrationAction::RemoveConstraint { table, .. }
+                    if table == "orders"
+                )
+            });
+            assert!(
+                has_remove_constraint,
+                "Should have RemoveConstraint for composite index when only some columns deleted"
+            );
+        }
+
+        #[test]
+        fn skip_remove_constraint_when_all_composite_columns_deleted() {
+            // If ALL columns of a composite constraint are deleted, skip RemoveConstraint
+            let from = vec![table(
+                "orders",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("user_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("product_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ],
+                vec![idx(
+                    "ix_orders__user_product",
+                    vec!["user_id", "product_id"],
+                )],
+            )];
+
+            let to = vec![table(
+                "orders",
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            // Should only have DeleteColumn actions, no RemoveConstraint
+            let delete_columns: Vec<_> = plan
+                .actions
+                .iter()
+                .filter(|a| matches!(a, MigrationAction::DeleteColumn { .. }))
+                .collect();
+            assert_eq!(
+                delete_columns.len(),
+                2,
+                "Should have 2 DeleteColumn actions"
+            );
+
+            let has_remove_constraint = plan
+                .actions
+                .iter()
+                .any(|a| matches!(a, MigrationAction::RemoveConstraint { .. }));
+            assert!(
+                !has_remove_constraint,
+                "Should NOT have RemoveConstraint when all composite columns deleted"
+            );
+        }
+
+        #[test]
+        fn keep_remove_constraint_when_no_columns_deleted() {
+            // Normal case: constraint removed but columns remain
+            let from = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("email", ColumnType::Simple(SimpleColumnType::Text)),
+                ],
+                vec![idx("ix_users__email", vec!["email"])],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("email", ColumnType::Simple(SimpleColumnType::Text)),
+                ],
+                vec![], // Index removed but column remains
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            assert_eq!(plan.actions.len(), 1);
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::RemoveConstraint { table, .. }
+                if table == "users"
             ));
         }
     }
