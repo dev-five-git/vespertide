@@ -29,8 +29,14 @@ fn parse_fill_with_args(args: &[String]) -> HashMap<(String, String), String> {
 }
 
 /// Format the type info string for display.
-fn format_type_info(column_type: Option<&String>) -> String {
-    column_type.map(|t| format!(" ({})", t)).unwrap_or_default()
+/// Includes column type and default value hint if available.
+fn format_type_info(column_type: Option<&String>, default_value: Option<&String>) -> String {
+    match (column_type, default_value) {
+        (Some(t), Some(d)) => format!(" ({}, default: {})", t, d),
+        (Some(t), None) => format!(" ({})", t),
+        (None, Some(d)) => format!(" (default: {})", d),
+        (None, None) => String::new(),
+    }
 }
 
 /// Format a single fill_with item for display.
@@ -75,9 +81,10 @@ fn print_fill_with_item_and_get_prompt(
     table: &str,
     column: &str,
     column_type: Option<&String>,
+    default_value: Option<&String>,
     action_type: &str,
 ) -> String {
-    let type_info = format_type_info(column_type);
+    let type_info = format_type_info(column_type, default_value);
     let item_display = format_fill_with_item(table, column, &type_info, action_type);
     println!("{}", item_display);
     format_fill_with_prompt(table, column)
@@ -128,6 +135,7 @@ where
             &item.table,
             &item.column,
             item.column_type.as_ref(),
+            item.default_value.as_ref(),
             item.action_type,
         );
 
@@ -720,15 +728,30 @@ mod tests {
     }
 
     #[test]
-    fn test_format_type_info_with_some() {
-        let column_type = Some("Integer".to_string());
-        let result = format_type_info(column_type.as_ref());
-        assert_eq!(result, " (Integer)");
+    fn test_format_type_info_with_type_and_default() {
+        let column_type = Some("integer".to_string());
+        let default_value = Some("0".to_string());
+        let result = format_type_info(column_type.as_ref(), default_value.as_ref());
+        assert_eq!(result, " (integer, default: 0)");
+    }
+
+    #[test]
+    fn test_format_type_info_with_type_only() {
+        let column_type = Some("text".to_string());
+        let result = format_type_info(column_type.as_ref(), None);
+        assert_eq!(result, " (text)");
+    }
+
+    #[test]
+    fn test_format_type_info_with_default_only() {
+        let default_value = Some("0".to_string());
+        let result = format_type_info(None, default_value.as_ref());
+        assert_eq!(result, " (default: 0)");
     }
 
     #[test]
     fn test_format_type_info_with_none() {
-        let result = format_type_info(None);
+        let result = format_type_info(None, None);
         assert_eq!(result, "");
     }
 
@@ -766,7 +789,8 @@ mod tests {
         let prompt = print_fill_with_item_and_get_prompt(
             "users",
             "email",
-            Some(&"Text".to_string()),
+            Some(&"text".to_string()),
+            Some(&"''".to_string()),
             "AddColumn",
         );
         assert!(prompt.contains("Enter fill value for"));
@@ -776,11 +800,30 @@ mod tests {
 
     #[test]
     fn test_print_fill_with_item_and_get_prompt_no_type() {
-        let prompt =
-            print_fill_with_item_and_get_prompt("orders", "status", None, "ModifyColumnNullable");
+        let prompt = print_fill_with_item_and_get_prompt(
+            "orders",
+            "status",
+            None,
+            None,
+            "ModifyColumnNullable",
+        );
         assert!(prompt.contains("Enter fill value for"));
         assert!(prompt.contains("orders"));
         assert!(prompt.contains("status"));
+    }
+
+    #[test]
+    fn test_print_fill_with_item_and_get_prompt_with_default() {
+        let prompt = print_fill_with_item_and_get_prompt(
+            "users",
+            "age",
+            Some(&"integer".to_string()),
+            Some(&"0".to_string()),
+            "AddColumn",
+        );
+        assert!(prompt.contains("Enter fill value for"));
+        assert!(prompt.contains("users"));
+        assert!(prompt.contains("age"));
     }
 
     #[test]
@@ -804,7 +847,8 @@ mod tests {
             table: "users".to_string(),
             column: "email".to_string(),
             action_type: "AddColumn",
-            column_type: Some("Text".to_string()),
+            column_type: Some("text".to_string()),
+            default_value: Some("''".to_string()),
         }];
 
         let mut fill_values = HashMap::new();
@@ -832,7 +876,8 @@ mod tests {
                 table: "users".to_string(),
                 column: "email".to_string(),
                 action_type: "AddColumn",
-                column_type: Some("Text".to_string()),
+                column_type: Some("text".to_string()),
+                default_value: Some("''".to_string()),
             },
             FillWithRequired {
                 action_index: 1,
@@ -840,6 +885,7 @@ mod tests {
                 column: "status".to_string(),
                 action_type: "ModifyColumnNullable",
                 column_type: None,
+                default_value: None,
             },
         ];
 
@@ -898,7 +944,8 @@ mod tests {
             table: "users".to_string(),
             column: "email".to_string(),
             action_type: "AddColumn",
-            column_type: Some("Text".to_string()),
+            column_type: Some("text".to_string()),
+            default_value: Some("''".to_string()),
         }];
 
         let mut fill_values = HashMap::new();

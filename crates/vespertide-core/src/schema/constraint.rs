@@ -52,3 +52,62 @@ impl TableConstraint {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_columns_primary_key() {
+        let pk = TableConstraint::PrimaryKey {
+            auto_increment: false,
+            columns: vec!["id".into(), "tenant_id".into()],
+        };
+        assert_eq!(pk.columns().len(), 2);
+        assert_eq!(pk.columns()[0], "id");
+        assert_eq!(pk.columns()[1], "tenant_id");
+    }
+
+    #[test]
+    fn test_columns_unique() {
+        let unique = TableConstraint::Unique {
+            name: Some("uq_email".into()),
+            columns: vec!["email".into()],
+        };
+        assert_eq!(unique.columns().len(), 1);
+        assert_eq!(unique.columns()[0], "email");
+    }
+
+    #[test]
+    fn test_columns_foreign_key() {
+        let fk = TableConstraint::ForeignKey {
+            name: Some("fk_user".into()),
+            columns: vec!["user_id".into()],
+            ref_table: "users".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: None,
+        };
+        assert_eq!(fk.columns().len(), 1);
+        assert_eq!(fk.columns()[0], "user_id");
+    }
+
+    #[test]
+    fn test_columns_index() {
+        let idx = TableConstraint::Index {
+            name: Some("ix_created_at".into()),
+            columns: vec!["created_at".into()],
+        };
+        assert_eq!(idx.columns().len(), 1);
+        assert_eq!(idx.columns()[0], "created_at");
+    }
+
+    #[test]
+    fn test_columns_check_returns_empty() {
+        let check = TableConstraint::Check {
+            name: "check_positive".into(),
+            expr: "amount > 0".into(),
+        };
+        assert!(check.columns().is_empty());
+    }
+}
