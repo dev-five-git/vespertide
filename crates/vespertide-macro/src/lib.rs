@@ -1,5 +1,8 @@
 // MigrationOptions and MigrationError are now in vespertide-core
 
+use std::env;
+use std::path::PathBuf;
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
@@ -183,9 +186,16 @@ pub(crate) fn vespertide_migration_impl(
     };
     let pool = &input.pool;
 
+    // Get project root from CARGO_MANIFEST_DIR (same as load_migrations_at_compile_time)
+    let project_root = match env::var("CARGO_MANIFEST_DIR") {
+        Ok(dir) => Some(PathBuf::from(dir)),
+        Err(_) => None,
+    };
+
     // Load config to get prefix
-    let config = match load_config_or_default(None) {
+    let config = match load_config_or_default(project_root) {
         Ok(config) => config,
+        #[cfg(not(tarpaulin_include))]
         Err(e) => {
             return syn::Error::new(
                 proc_macro2::Span::call_site(),
