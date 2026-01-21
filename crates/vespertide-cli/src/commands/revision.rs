@@ -800,8 +800,13 @@ mod tests {
 
     #[test]
     fn test_print_fill_with_item_and_get_prompt_no_type() {
-        let prompt =
-            print_fill_with_item_and_get_prompt("orders", "status", None, None, "ModifyColumnNullable");
+        let prompt = print_fill_with_item_and_get_prompt(
+            "orders",
+            "status",
+            None,
+            None,
+            "ModifyColumnNullable",
+        );
         assert!(prompt.contains("Enter fill value for"));
         assert!(prompt.contains("orders"));
         assert!(prompt.contains("status"));
