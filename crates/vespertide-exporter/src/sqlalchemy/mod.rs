@@ -31,39 +31,56 @@ impl<'a> UsedTypes<'a> {
 
     fn add_simple_type(&mut self, ty: &SimpleColumnType) {
         match ty {
-            SimpleColumnType::SmallInt => self.sa_types.insert("SmallInteger"),
-            SimpleColumnType::Integer => self.sa_types.insert("Integer"),
-            SimpleColumnType::BigInt => self.sa_types.insert("BigInteger"),
-            SimpleColumnType::Real | SimpleColumnType::DoublePrecision => {
-                self.sa_types.insert("Float")
+            SimpleColumnType::SmallInt => {
+                self.sa_types.insert("SmallInteger");
             }
-            SimpleColumnType::Text => self.sa_types.insert("Text"),
-            SimpleColumnType::Boolean => self.sa_types.insert("Boolean"),
+            SimpleColumnType::Integer => {
+                self.sa_types.insert("Integer");
+            }
+            SimpleColumnType::BigInt => {
+                self.sa_types.insert("BigInteger");
+            }
+            SimpleColumnType::Real | SimpleColumnType::DoublePrecision => {
+                self.sa_types.insert("Float");
+            }
+            SimpleColumnType::Text => {
+                self.sa_types.insert("Text");
+            }
+            SimpleColumnType::Boolean => {
+                self.sa_types.insert("Boolean");
+            }
             SimpleColumnType::Date => {
                 self.sa_types.insert("Date");
-                self.datetime_types.insert("date")
+                self.datetime_types.insert("date");
             }
             SimpleColumnType::Time => {
                 self.sa_types.insert("Time");
-                self.datetime_types.insert("time")
+                self.datetime_types.insert("time");
             }
             SimpleColumnType::Timestamp | SimpleColumnType::Timestamptz => {
                 self.sa_types.insert("DateTime");
-                self.datetime_types.insert("datetime")
+                self.datetime_types.insert("datetime");
             }
-            SimpleColumnType::Interval => self.sa_types.insert("Interval"),
-            SimpleColumnType::Bytea => self.sa_types.insert("LargeBinary"),
+            SimpleColumnType::Interval => {
+                self.sa_types.insert("Interval");
+            }
+            SimpleColumnType::Bytea => {
+                self.sa_types.insert("LargeBinary");
+            }
             SimpleColumnType::Uuid => {
                 self.sa_types.insert("Uuid");
                 self.needs_uuid = true;
-                true
             }
-            SimpleColumnType::Json => self.sa_types.insert("JSON"),
+            SimpleColumnType::Json => {
+                self.sa_types.insert("JSON");
+            }
             SimpleColumnType::Inet | SimpleColumnType::Cidr | SimpleColumnType::Macaddr => {
-                self.sa_types.insert("String")
+                self.sa_types.insert("String");
             }
-            SimpleColumnType::Xml => self.sa_types.insert("Text"),
-        };
+            SimpleColumnType::Xml => {
+                self.sa_types.insert("Text");
+            }
+        }
     }
 
     fn add_complex_type(&mut self, ty: &ComplexColumnType) {

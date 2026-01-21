@@ -849,4 +849,182 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_action_with_prefix_rename_column() {
+        let action = MigrationAction::RenameColumn {
+            table: "users".into(),
+            from: "name".into(),
+            to: "full_name".into(),
+        };
+        let prefixed = action.with_prefix("myapp_");
+        if let MigrationAction::RenameColumn { table, from, to } = prefixed {
+            assert_eq!(table.as_str(), "myapp_users");
+            assert_eq!(from.as_str(), "name");
+            assert_eq!(to.as_str(), "full_name");
+        } else {
+            panic!("Expected RenameColumn");
+        }
+    }
+
+    #[test]
+    fn test_action_with_prefix_delete_column() {
+        let action = MigrationAction::DeleteColumn {
+            table: "users".into(),
+            column: "old_field".into(),
+        };
+        let prefixed = action.with_prefix("myapp_");
+        if let MigrationAction::DeleteColumn { table, column } = prefixed {
+            assert_eq!(table.as_str(), "myapp_users");
+            assert_eq!(column.as_str(), "old_field");
+        } else {
+            panic!("Expected DeleteColumn");
+        }
+    }
+
+    #[test]
+    fn test_action_with_prefix_modify_column_type() {
+        let action = MigrationAction::ModifyColumnType {
+            table: "users".into(),
+            column: "age".into(),
+            new_type: ColumnType::Simple(SimpleColumnType::BigInt),
+        };
+        let prefixed = action.with_prefix("myapp_");
+        if let MigrationAction::ModifyColumnType {
+            table,
+            column,
+            new_type,
+        } = prefixed
+        {
+            assert_eq!(table.as_str(), "myapp_users");
+            assert_eq!(column.as_str(), "age");
+            assert!(matches!(
+                new_type,
+                ColumnType::Simple(SimpleColumnType::BigInt)
+            ));
+        } else {
+            panic!("Expected ModifyColumnType");
+        }
+    }
+
+    #[test]
+    fn test_action_with_prefix_modify_column_nullable() {
+        let action = MigrationAction::ModifyColumnNullable {
+            table: "users".into(),
+            column: "email".into(),
+            nullable: false,
+            fill_with: Some("default@example.com".into()),
+        };
+        let prefixed = action.with_prefix("myapp_");
+        if let MigrationAction::ModifyColumnNullable {
+            table,
+            column,
+            nullable,
+            fill_with,
+        } = prefixed
+        {
+            assert_eq!(table.as_str(), "myapp_users");
+            assert_eq!(column.as_str(), "email");
+            assert!(!nullable);
+            assert_eq!(fill_with, Some("default@example.com".into()));
+        } else {
+            panic!("Expected ModifyColumnNullable");
+        }
+    }
+
+    #[test]
+    fn test_action_with_prefix_modify_column_default() {
+        let action = MigrationAction::ModifyColumnDefault {
+            table: "users".into(),
+            column: "status".into(),
+            new_default: Some("active".into()),
+        };
+        let prefixed = action.with_prefix("myapp_");
+        if let MigrationAction::ModifyColumnDefault {
+            table,
+            column,
+            new_default,
+        } = prefixed
+        {
+            assert_eq!(table.as_str(), "myapp_users");
+            assert_eq!(column.as_str(), "status");
+            assert_eq!(new_default, Some("active".into()));
+        } else {
+            panic!("Expected ModifyColumnDefault");
+        }
+    }
+
+    #[test]
+    fn test_action_with_prefix_modify_column_comment() {
+        let action = MigrationAction::ModifyColumnComment {
+            table: "users".into(),
+            column: "bio".into(),
+            new_comment: Some("User biography".into()),
+        };
+        let prefixed = action.with_prefix("myapp_");
+        if let MigrationAction::ModifyColumnComment {
+            table,
+            column,
+            new_comment,
+        } = prefixed
+        {
+            assert_eq!(table.as_str(), "myapp_users");
+            assert_eq!(column.as_str(), "bio");
+            assert_eq!(new_comment, Some("User biography".into()));
+        } else {
+            panic!("Expected ModifyColumnComment");
+        }
+    }
+
+    #[test]
+    fn test_action_with_prefix_add_constraint() {
+        let action = MigrationAction::AddConstraint {
+            table: "posts".into(),
+            constraint: TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            },
+        };
+        let prefixed = action.with_prefix("myapp_");
+        if let MigrationAction::AddConstraint { table, constraint } = prefixed {
+            assert_eq!(table.as_str(), "myapp_posts");
+            if let TableConstraint::ForeignKey { ref_table, .. } = constraint {
+                assert_eq!(ref_table.as_str(), "myapp_users");
+            } else {
+                panic!("Expected ForeignKey constraint");
+            }
+        } else {
+            panic!("Expected AddConstraint");
+        }
+    }
+
+    #[test]
+    fn test_action_with_prefix_remove_constraint() {
+        let action = MigrationAction::RemoveConstraint {
+            table: "posts".into(),
+            constraint: TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            },
+        };
+        let prefixed = action.with_prefix("myapp_");
+        if let MigrationAction::RemoveConstraint { table, constraint } = prefixed {
+            assert_eq!(table.as_str(), "myapp_posts");
+            if let TableConstraint::ForeignKey { ref_table, .. } = constraint {
+                assert_eq!(ref_table.as_str(), "myapp_users");
+            } else {
+                panic!("Expected ForeignKey constraint");
+            }
+        } else {
+            panic!("Expected RemoveConstraint");
+        }
+    }
 }
