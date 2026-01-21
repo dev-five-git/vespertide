@@ -27,8 +27,7 @@
   },
   "required": [
     "name",
-    "columns",
-    "constraints"
+    "columns"
   ],
   "$defs": {
     "ColumnDef": {
@@ -297,6 +296,11 @@
           "type": "string"
         },
         {
+          "description": "{ \"references\": \"table.column\", \"on_delete\": \"cascade\" }",
+          "$ref": "#/$defs/ReferenceSyntaxDef"
+        },
+        {
+          "description": "{ \"ref_table\": \"table\", \"ref_columns\": [\"column\"], ... }",
           "$ref": "#/$defs/ForeignKeyDef"
         }
       ]
@@ -347,6 +351,39 @@
         "no_action"
       ]
     },
+    "ReferenceSyntaxDef": {
+      "description": "Shorthand syntax for foreign key: { \"references\": \"table.column\", \"on_delete\": \"cascade\" }",
+      "type": "object",
+      "properties": {
+        "on_delete": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReferenceAction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "on_update": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReferenceAction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "references": {
+          "description": "Reference in \"table.column\" format",
+          "type": "string"
+        }
+      },
+      "required": [
+        "references"
+      ]
+    },
     "SimpleColumnType": {
       "type": "string",
       "enum": [
@@ -365,7 +402,6 @@
         "bytea",
         "uuid",
         "json",
-        "jsonb",
         "inet",
         "cidr",
         "macaddr",

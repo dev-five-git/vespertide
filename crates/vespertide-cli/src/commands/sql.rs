@@ -10,15 +10,24 @@ pub fn cmd_sql(backend: DatabaseBackend) -> Result<()> {
     let current_models = load_models(&config)?;
     let applied_plans = load_migrations(&config)?;
 
-    // Reconstruct the baseline schema from applied migrations
-    let baseline_schema = schema_from_plans(&applied_plans)
+    // Reconstruct the baseline schema from applied migrations (with prefix applied)
+    let prefix = config.prefix();
+    let prefixed_plans: Vec<_> = applied_plans
+        .into_iter()
+        .map(|p| p.with_prefix(prefix))
+        .collect();
+    let baseline_schema = schema_from_plans(&prefixed_plans)
         .map_err(|e| anyhow::anyhow!("failed to reconstruct schema: {}", e))?;
 
     // Plan next migration using the pre-computed baseline
-    let plan = plan_next_migration_with_baseline(&current_models, &applied_plans, &baseline_schema)
-        .map_err(|e| anyhow::anyhow!("planning error: {}", e))?;
+    let plan =
+        plan_next_migration_with_baseline(&current_models, &prefixed_plans, &baseline_schema)
+            .map_err(|e| anyhow::anyhow!("planning error: {}", e))?;
 
-    emit_sql(&plan, backend, &baseline_schema)
+    // Apply prefix to the new plan for SQL generation
+    let prefixed_plan = plan.with_prefix(prefix);
+
+    emit_sql(&prefixed_plan, backend, &baseline_schema)
 }
 
 fn emit_sql(

@@ -1,10 +1,15 @@
 // MigrationOptions and MigrationError are now in vespertide-core
 
+use std::env;
+use std::path::PathBuf;
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
 use syn::{Expr, Ident, Token};
-use vespertide_loader::{load_migrations_at_compile_time, load_models_at_compile_time};
+use vespertide_loader::{
+    load_config_or_default, load_migrations_at_compile_time, load_models_at_compile_time,
+};
 use vespertide_planner::apply_action;
 use vespertide_query::{DatabaseBackend, build_plan_queries};
 
@@ -180,9 +185,32 @@ pub(crate) fn vespertide_migration_impl(
         Err(e) => return e.to_compile_error(),
     };
     let pool = &input.pool;
+
+    // Get project root from CARGO_MANIFEST_DIR (same as load_migrations_at_compile_time)
+    let project_root = match env::var("CARGO_MANIFEST_DIR") {
+        Ok(dir) => Some(PathBuf::from(dir)),
+        Err(_) => None,
+    };
+
+    // Load config to get prefix
+    let config = match load_config_or_default(project_root) {
+        Ok(config) => config,
+        #[cfg(not(tarpaulin_include))]
+        Err(e) => {
+            return syn::Error::new(
+                proc_macro2::Span::call_site(),
+                format!("Failed to load config at compile time: {}", e),
+            )
+            .to_compile_error();
+        }
+    };
+    let prefix = config.prefix();
+
+    // Apply prefix to version_table if not explicitly provided
     let version_table = input
         .version_table
-        .unwrap_or_else(|| "vespertide_version".to_string());
+        .map(|vt| config.apply_prefix(&vt))
+        .unwrap_or_else(|| config.apply_prefix("vespertide_version"));
 
     // Load migration files and build SQL at compile time
     let migrations = match load_migrations_at_compile_time() {
@@ -207,13 +235,15 @@ pub(crate) fn vespertide_migration_impl(
         }
     };
 
-    // Build SQL for each migration using incremental baseline schema
+    // Apply prefix to migrations and build SQL using incremental baseline schema
     let mut baseline_schema = Vec::new();
     let mut migration_blocks = Vec::new();
 
     #[cfg(not(tarpaulin_include))]
     for migration in &migrations {
-        match build_migration_block(migration, &mut baseline_schema) {
+        // Apply prefix to migration table names
+        let prefixed_migration = migration.clone().with_prefix(prefix);
+        match build_migration_block(&prefixed_migration, &mut baseline_schema) {
             Ok(block) => migration_blocks.push(block),
             Err(e) => {
                 return syn::Error::new(proc_macro2::Span::call_site(), e).to_compile_error();

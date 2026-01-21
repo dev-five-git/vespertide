@@ -83,6 +83,10 @@ pub struct VespertideConfig {
     /// SeaORM-specific export configuration.
     #[serde(default)]
     pub seaorm: SeaOrmConfig,
+    /// Prefix to add to all table names (including migration version table).
+    /// Default: "" (no prefix)
+    #[serde(default)]
+    pub prefix: String,
 }
 
 fn default_model_export_dir() -> PathBuf {
@@ -101,6 +105,7 @@ impl Default for VespertideConfig {
             migration_filename_pattern: default_migration_filename_pattern(),
             model_export_dir: default_model_export_dir(),
             seaorm: SeaOrmConfig::default(),
+            prefix: String::new(),
         }
     }
 }
@@ -150,6 +155,20 @@ impl VespertideConfig {
     pub fn seaorm(&self) -> &SeaOrmConfig {
         &self.seaorm
     }
+
+    /// Prefix to add to all table names.
+    pub fn prefix(&self) -> &str {
+        &self.prefix
+    }
+
+    /// Apply prefix to a table name.
+    pub fn apply_prefix(&self, table_name: &str) -> String {
+        if self.prefix.is_empty() {
+            table_name.to_string()
+        } else {
+            format!("{}{}", self.prefix, table_name)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -173,5 +192,26 @@ mod tests {
             vec!["vespera::Schema".to_string()]
         );
         assert!(config.seaorm.extra_model_derives.is_empty());
+        assert_eq!(config.prefix, "");
+    }
+
+    #[test]
+    fn test_vespertide_config_prefix() {
+        let config = VespertideConfig {
+            prefix: "myapp_".to_string(),
+            ..Default::default()
+        };
+
+        assert_eq!(config.prefix(), "myapp_");
+        assert_eq!(config.apply_prefix("users"), "myapp_users");
+        assert_eq!(config.apply_prefix("posts"), "myapp_posts");
+    }
+
+    #[test]
+    fn test_vespertide_config_empty_prefix() {
+        let config = VespertideConfig::default();
+
+        assert_eq!(config.prefix(), "");
+        assert_eq!(config.apply_prefix("users"), "users");
     }
 }
