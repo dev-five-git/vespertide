@@ -80,6 +80,123 @@ pub enum MigrationAction {
     },
 }
 
+impl MigrationPlan {
+    /// Apply a prefix to all table names in the migration plan.
+    /// This modifies all table references in all actions.
+    pub fn with_prefix(self, prefix: &str) -> Self {
+        if prefix.is_empty() {
+            return self;
+        }
+        Self {
+            actions: self
+                .actions
+                .into_iter()
+                .map(|action| action.with_prefix(prefix))
+                .collect(),
+            ..self
+        }
+    }
+}
+
+impl MigrationAction {
+    /// Apply a prefix to all table names in this action.
+    pub fn with_prefix(self, prefix: &str) -> Self {
+        if prefix.is_empty() {
+            return self;
+        }
+        match self {
+            MigrationAction::CreateTable {
+                table,
+                columns,
+                constraints,
+            } => MigrationAction::CreateTable {
+                table: format!("{}{}", prefix, table),
+                columns,
+                constraints: constraints
+                    .into_iter()
+                    .map(|c| c.with_prefix(prefix))
+                    .collect(),
+            },
+            MigrationAction::DeleteTable { table } => MigrationAction::DeleteTable {
+                table: format!("{}{}", prefix, table),
+            },
+            MigrationAction::AddColumn {
+                table,
+                column,
+                fill_with,
+            } => MigrationAction::AddColumn {
+                table: format!("{}{}", prefix, table),
+                column,
+                fill_with,
+            },
+            MigrationAction::RenameColumn { table, from, to } => MigrationAction::RenameColumn {
+                table: format!("{}{}", prefix, table),
+                from,
+                to,
+            },
+            MigrationAction::DeleteColumn { table, column } => MigrationAction::DeleteColumn {
+                table: format!("{}{}", prefix, table),
+                column,
+            },
+            MigrationAction::ModifyColumnType {
+                table,
+                column,
+                new_type,
+            } => MigrationAction::ModifyColumnType {
+                table: format!("{}{}", prefix, table),
+                column,
+                new_type,
+            },
+            MigrationAction::ModifyColumnNullable {
+                table,
+                column,
+                nullable,
+                fill_with,
+            } => MigrationAction::ModifyColumnNullable {
+                table: format!("{}{}", prefix, table),
+                column,
+                nullable,
+                fill_with,
+            },
+            MigrationAction::ModifyColumnDefault {
+                table,
+                column,
+                new_default,
+            } => MigrationAction::ModifyColumnDefault {
+                table: format!("{}{}", prefix, table),
+                column,
+                new_default,
+            },
+            MigrationAction::ModifyColumnComment {
+                table,
+                column,
+                new_comment,
+            } => MigrationAction::ModifyColumnComment {
+                table: format!("{}{}", prefix, table),
+                column,
+                new_comment,
+            },
+            MigrationAction::AddConstraint { table, constraint } => {
+                MigrationAction::AddConstraint {
+                    table: format!("{}{}", prefix, table),
+                    constraint: constraint.with_prefix(prefix),
+                }
+            }
+            MigrationAction::RemoveConstraint { table, constraint } => {
+                MigrationAction::RemoveConstraint {
+                    table: format!("{}{}", prefix, table),
+                    constraint: constraint.with_prefix(prefix),
+                }
+            }
+            MigrationAction::RenameTable { from, to } => MigrationAction::RenameTable {
+                from: format!("{}{}", prefix, from),
+                to: format!("{}{}", prefix, to),
+            },
+            MigrationAction::RawSql { sql } => MigrationAction::RawSql { sql },
+        }
+    }
+}
+
 impl fmt::Display for MigrationAction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -589,5 +706,147 @@ mod tests {
         assert!(result.contains("This is a very long comment"));
         // Should be truncated at 27 chars + "..."
         assert!(!result.contains("truncated in display"));
+    }
+
+    // Tests for with_prefix
+    #[test]
+    fn test_action_with_prefix_create_table() {
+        let action = MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![default_column()],
+            constraints: vec![TableConstraint::ForeignKey {
+                name: Some("fk_org".into()),
+                columns: vec!["org_id".into()],
+                ref_table: "organizations".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            }],
+        };
+        let prefixed = action.with_prefix("myapp_");
+        if let MigrationAction::CreateTable {
+            table, constraints, ..
+        } = prefixed
+        {
+            assert_eq!(table.as_str(), "myapp_users");
+            if let TableConstraint::ForeignKey { ref_table, .. } = &constraints[0] {
+                assert_eq!(ref_table.as_str(), "myapp_organizations");
+            }
+        } else {
+            panic!("Expected CreateTable");
+        }
+    }
+
+    #[test]
+    fn test_action_with_prefix_delete_table() {
+        let action = MigrationAction::DeleteTable {
+            table: "users".into(),
+        };
+        let prefixed = action.with_prefix("myapp_");
+        if let MigrationAction::DeleteTable { table } = prefixed {
+            assert_eq!(table.as_str(), "myapp_users");
+        } else {
+            panic!("Expected DeleteTable");
+        }
+    }
+
+    #[test]
+    fn test_action_with_prefix_add_column() {
+        let action = MigrationAction::AddColumn {
+            table: "users".into(),
+            column: Box::new(default_column()),
+            fill_with: None,
+        };
+        let prefixed = action.with_prefix("myapp_");
+        if let MigrationAction::AddColumn { table, .. } = prefixed {
+            assert_eq!(table.as_str(), "myapp_users");
+        } else {
+            panic!("Expected AddColumn");
+        }
+    }
+
+    #[test]
+    fn test_action_with_prefix_rename_table() {
+        let action = MigrationAction::RenameTable {
+            from: "old_table".into(),
+            to: "new_table".into(),
+        };
+        let prefixed = action.with_prefix("myapp_");
+        if let MigrationAction::RenameTable { from, to } = prefixed {
+            assert_eq!(from.as_str(), "myapp_old_table");
+            assert_eq!(to.as_str(), "myapp_new_table");
+        } else {
+            panic!("Expected RenameTable");
+        }
+    }
+
+    #[test]
+    fn test_action_with_prefix_raw_sql_unchanged() {
+        let action = MigrationAction::RawSql {
+            sql: "SELECT * FROM users".into(),
+        };
+        let prefixed = action.with_prefix("myapp_");
+        if let MigrationAction::RawSql { sql } = prefixed {
+            // RawSql is not modified - user is responsible for table names
+            assert_eq!(sql, "SELECT * FROM users");
+        } else {
+            panic!("Expected RawSql");
+        }
+    }
+
+    #[test]
+    fn test_action_with_prefix_empty_prefix() {
+        let action = MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![],
+            constraints: vec![],
+        };
+        let prefixed = action.clone().with_prefix("");
+        if let MigrationAction::CreateTable { table, .. } = prefixed {
+            assert_eq!(table.as_str(), "users");
+        }
+    }
+
+    #[test]
+    fn test_migration_plan_with_prefix() {
+        let plan = MigrationPlan {
+            comment: Some("test".into()),
+            created_at: None,
+            version: 1,
+            actions: vec![
+                MigrationAction::CreateTable {
+                    table: "users".into(),
+                    columns: vec![],
+                    constraints: vec![],
+                },
+                MigrationAction::CreateTable {
+                    table: "posts".into(),
+                    columns: vec![],
+                    constraints: vec![TableConstraint::ForeignKey {
+                        name: Some("fk_user".into()),
+                        columns: vec!["user_id".into()],
+                        ref_table: "users".into(),
+                        ref_columns: vec!["id".into()],
+                        on_delete: None,
+                        on_update: None,
+                    }],
+                },
+            ],
+        };
+        let prefixed = plan.with_prefix("myapp_");
+        assert_eq!(prefixed.actions.len(), 2);
+
+        if let MigrationAction::CreateTable { table, .. } = &prefixed.actions[0] {
+            assert_eq!(table.as_str(), "myapp_users");
+        }
+        if let MigrationAction::CreateTable {
+            table, constraints, ..
+        } = &prefixed.actions[1]
+        {
+            assert_eq!(table.as_str(), "myapp_posts");
+            if let TableConstraint::ForeignKey { ref_table, .. } = &constraints[0] {
+                assert_eq!(ref_table.as_str(), "myapp_users");
+            }
+        }
     }
 }

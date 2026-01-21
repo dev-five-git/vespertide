@@ -2,8 +2,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::schema::{
-    ReferenceAction,
     names::{ColumnName, TableName},
+    ReferenceAction,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -49,6 +49,33 @@ impl TableConstraint {
             TableConstraint::ForeignKey { columns, .. } => columns,
             TableConstraint::Index { columns, .. } => columns,
             TableConstraint::Check { .. } => &[],
+        }
+    }
+
+    /// Apply a prefix to referenced table names in this constraint.
+    /// Only affects ForeignKey constraints (which reference other tables).
+    pub fn with_prefix(self, prefix: &str) -> Self {
+        if prefix.is_empty() {
+            return self;
+        }
+        match self {
+            TableConstraint::ForeignKey {
+                name,
+                columns,
+                ref_table,
+                ref_columns,
+                on_delete,
+                on_update,
+            } => TableConstraint::ForeignKey {
+                name,
+                columns,
+                ref_table: format!("{}{}", prefix, ref_table),
+                ref_columns,
+                on_delete,
+                on_update,
+            },
+            // Other constraints don't reference external tables
+            other => other,
         }
     }
 }
@@ -109,5 +136,68 @@ mod tests {
             expr: "amount > 0".into(),
         };
         assert!(check.columns().is_empty());
+    }
+
+    #[test]
+    fn test_with_prefix_foreign_key() {
+        let fk = TableConstraint::ForeignKey {
+            name: Some("fk_user".into()),
+            columns: vec!["user_id".into()],
+            ref_table: "users".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: None,
+        };
+        let prefixed = fk.with_prefix("myapp_");
+        if let TableConstraint::ForeignKey { ref_table, .. } = prefixed {
+            assert_eq!(ref_table.as_str(), "myapp_users");
+        } else {
+            panic!("Expected ForeignKey");
+        }
+    }
+
+    #[test]
+    fn test_with_prefix_non_fk_unchanged() {
+        let pk = TableConstraint::PrimaryKey {
+            auto_increment: false,
+            columns: vec!["id".into()],
+        };
+        let prefixed = pk.clone().with_prefix("myapp_");
+        assert_eq!(pk, prefixed);
+
+        let unique = TableConstraint::Unique {
+            name: Some("uq_email".into()),
+            columns: vec!["email".into()],
+        };
+        let prefixed = unique.clone().with_prefix("myapp_");
+        assert_eq!(unique, prefixed);
+
+        let idx = TableConstraint::Index {
+            name: Some("ix_created_at".into()),
+            columns: vec!["created_at".into()],
+        };
+        let prefixed = idx.clone().with_prefix("myapp_");
+        assert_eq!(idx, prefixed);
+
+        let check = TableConstraint::Check {
+            name: "check_positive".into(),
+            expr: "amount > 0".into(),
+        };
+        let prefixed = check.clone().with_prefix("myapp_");
+        assert_eq!(check, prefixed);
+    }
+
+    #[test]
+    fn test_with_prefix_empty_prefix() {
+        let fk = TableConstraint::ForeignKey {
+            name: Some("fk_user".into()),
+            columns: vec!["user_id".into()],
+            ref_table: "users".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: None,
+        };
+        let prefixed = fk.clone().with_prefix("");
+        assert_eq!(fk, prefixed);
     }
 }

@@ -30,10 +30,16 @@
     "modelsDir": {
       "type": "string"
     },
+    "prefix": {
+      "description": "Prefix to add to all table names (including migration version table).\nDefault: \"\" (no prefix)",
+      "type": "string",
+      "default": ""
+    },
     "seaorm": {
       "description": "SeaORM-specific export configuration.",
       "$ref": "#/$defs/SeaOrmConfig",
       "default": {
+        "enumNamingCase": "camel",
         "extraEnumDerives": [
           "vespera::Schema"
         ],
@@ -73,6 +79,11 @@
       "description": "SeaORM-specific export configuration.",
       "type": "object",
       "properties": {
+        "enumNamingCase": {
+          "description": "Naming case for serde rename_all attribute on generated enums.\nDefault: `Camel` (generates `#[serde(rename_all = \"camelCase\")]`)",
+          "$ref": "#/$defs/NameCase",
+          "default": "camel"
+        },
         "extraEnumDerives": {
           "description": "Additional derive macros to add to generated enum types.\nDefault: `[\"vespera::Schema\"]`",
           "type": "array",

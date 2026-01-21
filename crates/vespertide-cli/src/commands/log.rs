@@ -2,7 +2,7 @@ use anyhow::Result;
 use colored::Colorize;
 use vespertide_loader::load_config;
 use vespertide_planner::apply_action;
-use vespertide_query::{DatabaseBackend, build_plan_queries};
+use vespertide_query::{build_plan_queries, DatabaseBackend};
 
 use crate::utils::load_migrations;
 
@@ -15,18 +15,22 @@ pub fn cmd_log(backend: DatabaseBackend) -> Result<()> {
         return Ok(());
     }
 
+    // Apply prefix to all migration plans
+    let prefix = config.prefix();
+    let prefixed_plans: Vec<_> = plans.into_iter().map(|p| p.with_prefix(prefix)).collect();
+
     println!(
         "{} {} {}",
         "Migrations".bright_cyan().bold(),
         "(oldest -> newest):".bright_white(),
-        plans.len().to_string().bright_yellow().bold()
+        prefixed_plans.len().to_string().bright_yellow().bold()
     );
     println!();
 
     // Build baseline schema incrementally as we iterate through migrations
     let mut baseline_schema = Vec::new();
 
-    for plan in &plans {
+    for plan in &prefixed_plans {
         println!(
             "{} {}",
             "Version:".bright_cyan().bold(),
