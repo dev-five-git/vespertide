@@ -108,6 +108,24 @@ impl ColumnType {
             base
         }
     }
+
+    /// Convert column type to human-readable display string (for CLI prompts)
+    /// Examples: "integer", "text", "varchar(255)", "numeric(10,2)"
+    pub fn to_display_string(&self) -> String {
+        match self {
+            ColumnType::Simple(ty) => ty.to_display_string(),
+            ColumnType::Complex(ty) => ty.to_display_string(),
+        }
+    }
+
+    /// Get the default fill value for this column type (for CLI prompts)
+    /// Returns None if no sensible default exists for the type
+    pub fn default_fill_value(&self) -> Option<&'static str> {
+        match self {
+            ColumnType::Simple(ty) => ty.default_fill_value(),
+            ColumnType::Complex(ty) => ty.default_fill_value(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -158,6 +176,45 @@ impl SimpleColumnType {
             self,
             SimpleColumnType::SmallInt | SimpleColumnType::Integer | SimpleColumnType::BigInt
         )
+    }
+
+    /// Convert to human-readable display string
+    pub fn to_display_string(&self) -> String {
+        match self {
+            SimpleColumnType::SmallInt => "smallint".to_string(),
+            SimpleColumnType::Integer => "integer".to_string(),
+            SimpleColumnType::BigInt => "bigint".to_string(),
+            SimpleColumnType::Real => "real".to_string(),
+            SimpleColumnType::DoublePrecision => "double precision".to_string(),
+            SimpleColumnType::Text => "text".to_string(),
+            SimpleColumnType::Boolean => "boolean".to_string(),
+            SimpleColumnType::Date => "date".to_string(),
+            SimpleColumnType::Time => "time".to_string(),
+            SimpleColumnType::Timestamp => "timestamp".to_string(),
+            SimpleColumnType::Timestamptz => "timestamptz".to_string(),
+            SimpleColumnType::Interval => "interval".to_string(),
+            SimpleColumnType::Bytea => "bytea".to_string(),
+            SimpleColumnType::Uuid => "uuid".to_string(),
+            SimpleColumnType::Json => "json".to_string(),
+            SimpleColumnType::Inet => "inet".to_string(),
+            SimpleColumnType::Cidr => "cidr".to_string(),
+            SimpleColumnType::Macaddr => "macaddr".to_string(),
+            SimpleColumnType::Xml => "xml".to_string(),
+        }
+    }
+
+    /// Get the default fill value for this type
+    /// Returns None if no sensible default exists
+    pub fn default_fill_value(&self) -> Option<&'static str> {
+        match self {
+            SimpleColumnType::SmallInt | SimpleColumnType::Integer | SimpleColumnType::BigInt => {
+                Some("0")
+            }
+            SimpleColumnType::Real | SimpleColumnType::DoublePrecision => Some("0.0"),
+            SimpleColumnType::Boolean => Some("false"),
+            SimpleColumnType::Text => Some("''"),
+            _ => None,
+        }
     }
 }
 
@@ -241,6 +298,37 @@ pub enum ComplexColumnType {
     Char { length: u32 },
     Custom { custom_type: String },
     Enum { name: String, values: EnumValues },
+}
+
+impl ComplexColumnType {
+    /// Convert to human-readable display string
+    pub fn to_display_string(&self) -> String {
+        match self {
+            ComplexColumnType::Varchar { length } => format!("varchar({})", length),
+            ComplexColumnType::Numeric { precision, scale } => {
+                format!("numeric({},{})", precision, scale)
+            }
+            ComplexColumnType::Char { length } => format!("char({})", length),
+            ComplexColumnType::Custom { custom_type } => custom_type.to_lowercase(),
+            ComplexColumnType::Enum { name, values } => {
+                if values.is_integer() {
+                    format!("enum<{}> (integer)", name)
+                } else {
+                    format!("enum<{}>", name)
+                }
+            }
+        }
+    }
+
+    /// Get the default fill value for this type
+    /// Returns None if no sensible default exists
+    pub fn default_fill_value(&self) -> Option<&'static str> {
+        match self {
+            ComplexColumnType::Varchar { .. } | ComplexColumnType::Char { .. } => Some("''"),
+            ComplexColumnType::Numeric { .. } => Some("0"),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -581,5 +669,171 @@ mod tests {
             }]),
         });
         assert!(string_enum.requires_migration(&int_enum));
+    }
+
+    // Tests for to_display_string
+    #[rstest]
+    #[case(SimpleColumnType::SmallInt, "smallint")]
+    #[case(SimpleColumnType::Integer, "integer")]
+    #[case(SimpleColumnType::BigInt, "bigint")]
+    #[case(SimpleColumnType::Real, "real")]
+    #[case(SimpleColumnType::DoublePrecision, "double precision")]
+    #[case(SimpleColumnType::Text, "text")]
+    #[case(SimpleColumnType::Boolean, "boolean")]
+    #[case(SimpleColumnType::Date, "date")]
+    #[case(SimpleColumnType::Time, "time")]
+    #[case(SimpleColumnType::Timestamp, "timestamp")]
+    #[case(SimpleColumnType::Timestamptz, "timestamptz")]
+    #[case(SimpleColumnType::Interval, "interval")]
+    #[case(SimpleColumnType::Bytea, "bytea")]
+    #[case(SimpleColumnType::Uuid, "uuid")]
+    #[case(SimpleColumnType::Json, "json")]
+    #[case(SimpleColumnType::Inet, "inet")]
+    #[case(SimpleColumnType::Cidr, "cidr")]
+    #[case(SimpleColumnType::Macaddr, "macaddr")]
+    #[case(SimpleColumnType::Xml, "xml")]
+    fn test_simple_column_type_to_display_string(
+        #[case] column_type: SimpleColumnType,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(column_type.to_display_string(), expected);
+    }
+
+    #[test]
+    fn test_complex_column_type_to_display_string_varchar() {
+        let ty = ComplexColumnType::Varchar { length: 255 };
+        assert_eq!(ty.to_display_string(), "varchar(255)");
+    }
+
+    #[test]
+    fn test_complex_column_type_to_display_string_numeric() {
+        let ty = ComplexColumnType::Numeric {
+            precision: 10,
+            scale: 2,
+        };
+        assert_eq!(ty.to_display_string(), "numeric(10,2)");
+    }
+
+    #[test]
+    fn test_complex_column_type_to_display_string_char() {
+        let ty = ComplexColumnType::Char { length: 5 };
+        assert_eq!(ty.to_display_string(), "char(5)");
+    }
+
+    #[test]
+    fn test_complex_column_type_to_display_string_custom() {
+        let ty = ComplexColumnType::Custom {
+            custom_type: "TSVECTOR".into(),
+        };
+        assert_eq!(ty.to_display_string(), "tsvector");
+    }
+
+    #[test]
+    fn test_complex_column_type_to_display_string_string_enum() {
+        let ty = ComplexColumnType::Enum {
+            name: "user_status".into(),
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
+        };
+        assert_eq!(ty.to_display_string(), "enum<user_status>");
+    }
+
+    #[test]
+    fn test_complex_column_type_to_display_string_integer_enum() {
+        let ty = ComplexColumnType::Enum {
+            name: "priority".into(),
+            values: EnumValues::Integer(vec![
+                NumValue {
+                    name: "Low".into(),
+                    value: 0,
+                },
+                NumValue {
+                    name: "High".into(),
+                    value: 10,
+                },
+            ]),
+        };
+        assert_eq!(ty.to_display_string(), "enum<priority> (integer)");
+    }
+
+    #[test]
+    fn test_column_type_to_display_string_simple() {
+        let ty = ColumnType::Simple(SimpleColumnType::Integer);
+        assert_eq!(ty.to_display_string(), "integer");
+    }
+
+    #[test]
+    fn test_column_type_to_display_string_complex() {
+        let ty = ColumnType::Complex(ComplexColumnType::Varchar { length: 100 });
+        assert_eq!(ty.to_display_string(), "varchar(100)");
+    }
+
+    // Tests for default_fill_value
+    #[rstest]
+    #[case(SimpleColumnType::SmallInt, Some("0"))]
+    #[case(SimpleColumnType::Integer, Some("0"))]
+    #[case(SimpleColumnType::BigInt, Some("0"))]
+    #[case(SimpleColumnType::Real, Some("0.0"))]
+    #[case(SimpleColumnType::DoublePrecision, Some("0.0"))]
+    #[case(SimpleColumnType::Boolean, Some("false"))]
+    #[case(SimpleColumnType::Text, Some("''"))]
+    #[case(SimpleColumnType::Date, None)]
+    #[case(SimpleColumnType::Time, None)]
+    #[case(SimpleColumnType::Timestamp, None)]
+    #[case(SimpleColumnType::Uuid, None)]
+    fn test_simple_column_type_default_fill_value(
+        #[case] column_type: SimpleColumnType,
+        #[case] expected: Option<&str>,
+    ) {
+        assert_eq!(column_type.default_fill_value(), expected);
+    }
+
+    #[test]
+    fn test_complex_column_type_default_fill_value_varchar() {
+        let ty = ComplexColumnType::Varchar { length: 255 };
+        assert_eq!(ty.default_fill_value(), Some("''"));
+    }
+
+    #[test]
+    fn test_complex_column_type_default_fill_value_char() {
+        let ty = ComplexColumnType::Char { length: 1 };
+        assert_eq!(ty.default_fill_value(), Some("''"));
+    }
+
+    #[test]
+    fn test_complex_column_type_default_fill_value_numeric() {
+        let ty = ComplexColumnType::Numeric {
+            precision: 10,
+            scale: 2,
+        };
+        assert_eq!(ty.default_fill_value(), Some("0"));
+    }
+
+    #[test]
+    fn test_complex_column_type_default_fill_value_custom() {
+        let ty = ComplexColumnType::Custom {
+            custom_type: "MONEY".into(),
+        };
+        assert_eq!(ty.default_fill_value(), None);
+    }
+
+    #[test]
+    fn test_complex_column_type_default_fill_value_enum() {
+        let ty = ComplexColumnType::Enum {
+            name: "status".into(),
+            values: EnumValues::String(vec!["active".into()]),
+        };
+        assert_eq!(ty.default_fill_value(), None);
+    }
+
+    #[test]
+    fn test_column_type_default_fill_value_simple() {
+        let ty = ColumnType::Simple(SimpleColumnType::Integer);
+        assert_eq!(ty.default_fill_value(), Some("0"));
+    }
+
+    #[test]
+    fn test_column_type_default_fill_value_complex() {
+        let ty = ColumnType::Complex(ComplexColumnType::Varchar { length: 100 });
+        assert_eq!(ty.default_fill_value(), Some("''"));
     }
 }

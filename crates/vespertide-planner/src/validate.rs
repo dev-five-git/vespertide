@@ -402,6 +402,8 @@ pub struct FillWithRequired {
     pub action_type: &'static str,
     /// Column type (for display purposes).
     pub column_type: Option<String>,
+    /// Default fill value hint for this column type.
+    pub default_value: Option<String>,
 }
 
 /// Find all actions in a migration plan that require fill_with values.
@@ -423,7 +425,8 @@ pub fn find_missing_fill_with(plan: &MigrationPlan) -> Vec<FillWithRequired> {
                         table: table.clone(),
                         column: column.name.clone(),
                         action_type: "AddColumn",
-                        column_type: Some(format!("{:?}", column.r#type)),
+                        column_type: Some(column.r#type.to_display_string()),
+                        default_value: column.r#type.default_fill_value().map(String::from),
                     });
                 }
             }
@@ -441,6 +444,7 @@ pub fn find_missing_fill_with(plan: &MigrationPlan) -> Vec<FillWithRequired> {
                         column: column.clone(),
                         action_type: "ModifyColumnNullable",
                         column_type: None,
+                        default_value: None,
                     });
                 }
             }
