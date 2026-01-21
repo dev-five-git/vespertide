@@ -24,74 +24,65 @@ impl<'a> UsedTypes<'a> {
         }
 
         match col_type {
-            ColumnType::Simple(ty) => match ty {
-                SimpleColumnType::SmallInt => {
-                    self.sa_types.insert("SmallInteger");
+            ColumnType::Simple(ty) => self.add_simple_type(ty),
+            ColumnType::Complex(ty) => self.add_complex_type(ty),
+        }
+    }
+
+    fn add_simple_type(&mut self, ty: &SimpleColumnType) {
+        match ty {
+            SimpleColumnType::SmallInt => self.sa_types.insert("SmallInteger"),
+            SimpleColumnType::Integer => self.sa_types.insert("Integer"),
+            SimpleColumnType::BigInt => self.sa_types.insert("BigInteger"),
+            SimpleColumnType::Real | SimpleColumnType::DoublePrecision => {
+                self.sa_types.insert("Float")
+            }
+            SimpleColumnType::Text => self.sa_types.insert("Text"),
+            SimpleColumnType::Boolean => self.sa_types.insert("Boolean"),
+            SimpleColumnType::Date => {
+                self.sa_types.insert("Date");
+                self.datetime_types.insert("date")
+            }
+            SimpleColumnType::Time => {
+                self.sa_types.insert("Time");
+                self.datetime_types.insert("time")
+            }
+            SimpleColumnType::Timestamp | SimpleColumnType::Timestamptz => {
+                self.sa_types.insert("DateTime");
+                self.datetime_types.insert("datetime")
+            }
+            SimpleColumnType::Interval => self.sa_types.insert("Interval"),
+            SimpleColumnType::Bytea => self.sa_types.insert("LargeBinary"),
+            SimpleColumnType::Uuid => {
+                self.sa_types.insert("Uuid");
+                self.needs_uuid = true;
+                true
+            }
+            SimpleColumnType::Json => self.sa_types.insert("JSON"),
+            SimpleColumnType::Inet | SimpleColumnType::Cidr | SimpleColumnType::Macaddr => {
+                self.sa_types.insert("String")
+            }
+            SimpleColumnType::Xml => self.sa_types.insert("Text"),
+        };
+    }
+
+    fn add_complex_type(&mut self, ty: &ComplexColumnType) {
+        match ty {
+            ComplexColumnType::Varchar { .. } | ComplexColumnType::Char { .. } => {
+                self.sa_types.insert("String");
+            }
+            ComplexColumnType::Numeric { .. } => {
+                self.sa_types.insert("Numeric");
+                self.needs_decimal = true;
+            }
+            ComplexColumnType::Custom { .. } => {}
+            ComplexColumnType::Enum { values, .. } => match values {
+                EnumValues::String(_) => {
+                    self.sa_types.insert("Enum");
                 }
-                SimpleColumnType::Integer => {
+                EnumValues::Integer(_) => {
                     self.sa_types.insert("Integer");
                 }
-                SimpleColumnType::BigInt => {
-                    self.sa_types.insert("BigInteger");
-                }
-                SimpleColumnType::Real | SimpleColumnType::DoublePrecision => {
-                    self.sa_types.insert("Float");
-                }
-                SimpleColumnType::Text => {
-                    self.sa_types.insert("Text");
-                }
-                SimpleColumnType::Boolean => {
-                    self.sa_types.insert("Boolean");
-                }
-                SimpleColumnType::Date => {
-                    self.sa_types.insert("Date");
-                    self.datetime_types.insert("date");
-                }
-                SimpleColumnType::Time => {
-                    self.sa_types.insert("Time");
-                    self.datetime_types.insert("time");
-                }
-                SimpleColumnType::Timestamp | SimpleColumnType::Timestamptz => {
-                    self.sa_types.insert("DateTime");
-                    self.datetime_types.insert("datetime");
-                }
-                SimpleColumnType::Interval => {
-                    self.sa_types.insert("Interval");
-                }
-                SimpleColumnType::Bytea => {
-                    self.sa_types.insert("LargeBinary");
-                }
-                SimpleColumnType::Uuid => {
-                    self.sa_types.insert("Uuid");
-                    self.needs_uuid = true;
-                }
-                SimpleColumnType::Json => {
-                    self.sa_types.insert("JSON");
-                }
-                SimpleColumnType::Inet | SimpleColumnType::Cidr | SimpleColumnType::Macaddr => {
-                    self.sa_types.insert("String");
-                }
-                SimpleColumnType::Xml => {
-                    self.sa_types.insert("Text");
-                }
-            },
-            ColumnType::Complex(ty) => match ty {
-                ComplexColumnType::Varchar { .. } | ComplexColumnType::Char { .. } => {
-                    self.sa_types.insert("String");
-                }
-                ComplexColumnType::Numeric { .. } => {
-                    self.sa_types.insert("Numeric");
-                    self.needs_decimal = true;
-                }
-                ComplexColumnType::Custom { .. } => {}
-                ComplexColumnType::Enum { values, .. } => match values {
-                    EnumValues::String(_) => {
-                        self.sa_types.insert("Enum");
-                    }
-                    EnumValues::Integer(_) => {
-                        self.sa_types.insert("Integer");
-                    }
-                },
             },
         }
     }
@@ -1351,5 +1342,129 @@ mod tests {
         assert!(!used.needs_optional);
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::Integer), true);
         assert!(used.needs_optional);
+    }
+
+    /// Comprehensive test that exercises ALL branches of add_column_type in a single test.
+    /// This ensures tarpaulin sees all branches as covered.
+    #[test]
+    fn test_used_types_all_branches_comprehensive() {
+        let mut used = UsedTypes::default();
+
+        // Simple types - each branch
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::SmallInt), false);
+        assert!(used.sa_types.contains("SmallInteger"));
+
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Integer), false);
+        assert!(used.sa_types.contains("Integer"));
+
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::BigInt), false);
+        assert!(used.sa_types.contains("BigInteger"));
+
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Real), false);
+        assert!(used.sa_types.contains("Float"));
+
+        used.add_column_type(
+            &ColumnType::Simple(SimpleColumnType::DoublePrecision),
+            false,
+        );
+        // Float already added by Real
+
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Text), false);
+        assert!(used.sa_types.contains("Text"));
+
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Boolean), false);
+        assert!(used.sa_types.contains("Boolean"));
+
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Date), false);
+        assert!(used.sa_types.contains("Date"));
+        assert!(used.datetime_types.contains("date"));
+
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Time), false);
+        assert!(used.sa_types.contains("Time"));
+        assert!(used.datetime_types.contains("time"));
+
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Timestamp), false);
+        assert!(used.sa_types.contains("DateTime"));
+        assert!(used.datetime_types.contains("datetime"));
+
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Timestamptz), false);
+        // DateTime already added
+
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Interval), false);
+        assert!(used.sa_types.contains("Interval"));
+
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Bytea), false);
+        assert!(used.sa_types.contains("LargeBinary"));
+
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Uuid), false);
+        assert!(used.sa_types.contains("Uuid"));
+        assert!(used.needs_uuid);
+
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Json), false);
+        assert!(used.sa_types.contains("JSON"));
+
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Inet), false);
+        assert!(used.sa_types.contains("String"));
+
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Cidr), false);
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Macaddr), false);
+
+        used.add_column_type(&ColumnType::Simple(SimpleColumnType::Xml), false);
+        // Text already added
+
+        // Complex types
+        used.add_column_type(
+            &ColumnType::Complex(ComplexColumnType::Varchar { length: 100 }),
+            false,
+        );
+        used.add_column_type(
+            &ColumnType::Complex(ComplexColumnType::Char { length: 10 }),
+            false,
+        );
+
+        used.add_column_type(
+            &ColumnType::Complex(ComplexColumnType::Numeric {
+                precision: 10,
+                scale: 2,
+            }),
+            false,
+        );
+        assert!(used.sa_types.contains("Numeric"));
+        assert!(used.needs_decimal);
+
+        used.add_column_type(
+            &ColumnType::Complex(ComplexColumnType::Custom {
+                custom_type: "FOO".into(),
+            }),
+            false,
+        );
+        // Custom doesn't add any type
+
+        used.add_column_type(
+            &ColumnType::Complex(ComplexColumnType::Enum {
+                name: "status".into(),
+                values: EnumValues::String(vec!["a".into()]),
+            }),
+            false,
+        );
+        assert!(used.sa_types.contains("Enum"));
+
+        used.add_column_type(
+            &ColumnType::Complex(ComplexColumnType::Enum {
+                name: "priority".into(),
+                values: EnumValues::Integer(vec![NumValue {
+                    name: "Low".into(),
+                    value: 0,
+                }]),
+            }),
+            false,
+        );
+        // Integer already added
+
+        // Test nullable
+        let mut used2 = UsedTypes::default();
+        assert!(!used2.needs_optional);
+        used2.add_column_type(&ColumnType::Simple(SimpleColumnType::Integer), true);
+        assert!(used2.needs_optional);
     }
 }
