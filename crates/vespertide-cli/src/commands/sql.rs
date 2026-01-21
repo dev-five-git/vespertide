@@ -1,7 +1,7 @@
 use anyhow::Result;
 use colored::Colorize;
 use vespertide_planner::{plan_next_migration_with_baseline, schema_from_plans};
-use vespertide_query::{build_plan_queries, DatabaseBackend};
+use vespertide_query::{DatabaseBackend, build_plan_queries};
 
 use crate::utils::{load_config, load_migrations, load_models};
 

@@ -2,7 +2,7 @@ use anyhow::Result;
 use colored::Colorize;
 use vespertide_loader::load_config;
 use vespertide_planner::apply_action;
-use vespertide_query::{build_plan_queries, DatabaseBackend};
+use vespertide_query::{DatabaseBackend, build_plan_queries};
 
 use crate::utils::load_migrations;
 
