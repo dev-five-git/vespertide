@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/delete_column.rs
+expression: sql
+---
+DROP INDEX "ix_posts__created_at";
+ALTER TABLE "posts" DROP COLUMN "created_at"

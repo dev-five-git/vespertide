@@ -1,0 +1,9 @@
+---
+source: crates/vespertide-query/src/sql/delete_column.rs
+expression: sql
+---
+CREATE TABLE "orders_temp" ( "id" integer, "created_at" timestamp_text, "total" integer );
+INSERT INTO "orders_temp" ("id", "created_at", "total") SELECT "id", "created_at", "total" FROM "orders";
+DROP TABLE "orders";
+ALTER TABLE "orders_temp" RENAME TO "orders";
+CREATE INDEX "ix_orders__created_at" ON "orders" ("created_at")

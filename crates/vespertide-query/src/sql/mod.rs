@@ -62,7 +62,13 @@ pub fn build_action_queries(
                 .find(|t| t.name == *table)
                 .and_then(|t| t.columns.iter().find(|c| c.name == *column))
                 .map(|c| &c.r#type);
-            Ok(build_delete_column(table, column, column_type))
+            Ok(build_delete_column(
+                backend,
+                table,
+                column,
+                column_type,
+                current_schema,
+            ))
         }
 
         MigrationAction::ModifyColumnType {
