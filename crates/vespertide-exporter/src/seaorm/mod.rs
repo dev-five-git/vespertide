@@ -12,6 +12,7 @@ pub struct SeaOrmExporter;
 /// SeaORM exporter with configuration support.
 pub struct SeaOrmExporterWithConfig<'a> {
     pub config: &'a SeaOrmConfig,
+    pub prefix: &'a str,
 }
 
 impl OrmExporter for SeaOrmExporter {
@@ -29,12 +30,12 @@ impl OrmExporter for SeaOrmExporter {
 }
 
 impl<'a> SeaOrmExporterWithConfig<'a> {
-    pub fn new(config: &'a SeaOrmConfig) -> Self {
-        Self { config }
+    pub fn new(config: &'a SeaOrmConfig, prefix: &'a str) -> Self {
+        Self { config, prefix }
     }
 
     pub fn render_entity(&self, table: &TableDef) -> Result<String, String> {
-        Ok(render_entity_with_config(table, &[], self.config))
+        Ok(render_entity_with_config(table, &[], self.config, self.prefix))
     }
 
     pub fn render_entity_with_schema(
@@ -42,7 +43,7 @@ impl<'a> SeaOrmExporterWithConfig<'a> {
         table: &TableDef,
         schema: &[TableDef],
     ) -> Result<String, String> {
-        Ok(render_entity_with_config(table, schema, self.config))
+        Ok(render_entity_with_config(table, schema, self.config, self.prefix))
     }
 }
 
@@ -56,7 +57,7 @@ pub fn render_entity(table: &TableDef) -> String {
 
 /// Render a single table into SeaORM entity code with schema context for FK chain resolution.
 pub fn render_entity_with_schema(table: &TableDef, schema: &[TableDef]) -> String {
-    render_entity_with_config(table, schema, &SeaOrmConfig::default())
+    render_entity_with_config(table, schema, &SeaOrmConfig::default(), "")
 }
 
 /// Render a single table into SeaORM entity code with schema context and configuration.
@@ -64,6 +65,7 @@ pub fn render_entity_with_config(
     table: &TableDef,
     schema: &[TableDef],
     config: &SeaOrmConfig,
+    prefix: &str,
 ) -> String {
     let primary_keys = primary_key_columns(table);
     let composite_pk = primary_keys.len() > 1;
@@ -116,7 +118,7 @@ pub fn render_entity_with_config(
 
     lines.push("#[sea_orm::model]".into());
     lines.push(format!("#[derive({})]", model_derives.join(", ")));
-    lines.push(format!("#[sea_orm(table_name = \"{}\")]", table.name));
+    lines.push(format!("#[sea_orm(table_name = \"{}{}\")]", prefix, table.name));
     lines.push("pub struct Model {".into());
 
     for column in &table.columns {
@@ -2778,7 +2780,7 @@ mod tests {
             extra_model_derives: vec!["ModelDerive".to_string()],
             ..Default::default()
         };
-        let exporter = SeaOrmExporterWithConfig::new(&config);
+        let exporter = SeaOrmExporterWithConfig::new(&config, "");
 
         let table = TableDef {
             name: "items".into(),
@@ -2810,7 +2812,7 @@ mod tests {
             extra_model_derives: vec![],
             ..Default::default()
         };
-        let exporter = SeaOrmExporterWithConfig::new(&config);
+        let exporter = SeaOrmExporterWithConfig::new(&config, "");
 
         let table = TableDef {
             name: "orders".into(),
@@ -2858,7 +2860,7 @@ mod tests {
             extra_model_derives: vec!["SchemaDerive".to_string()],
             ..Default::default()
         };
-        let exporter = SeaOrmExporterWithConfig::new(&config);
+        let exporter = SeaOrmExporterWithConfig::new(&config, "");
 
         let table = TableDef {
             name: "users".into(),
@@ -2891,7 +2893,7 @@ mod tests {
             extra_model_derives: vec![],
             ..Default::default()
         };
-        let exporter = SeaOrmExporterWithConfig::new(&config);
+        let exporter = SeaOrmExporterWithConfig::new(&config, "");
 
         let table = TableDef {
             name: "products".into(),
@@ -3022,5 +3024,63 @@ mod tests {
         // Check multiline column comment
         assert!(rendered.contains("/// Post content body"));
         assert!(rendered.contains("/// Supports markdown format"));
+    }
+
+    #[test]
+    fn test_exporter_with_prefix() {
+        use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+
+        let config = SeaOrmConfig::default();
+        let exporter = SeaOrmExporterWithConfig::new(&config, "myapp_");
+
+        let table = TableDef {
+            name: "users".into(),
+            description: None,
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        };
+
+        let result = exporter.render_entity(&table).unwrap();
+        // Should have prefixed table name
+        assert!(result.contains("#[sea_orm(table_name = \"myapp_users\")]"));
+    }
+
+    #[test]
+    fn test_exporter_without_prefix() {
+        use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+
+        let config = SeaOrmConfig::default();
+        let exporter = SeaOrmExporterWithConfig::new(&config, "");
+
+        let table = TableDef {
+            name: "users".into(),
+            description: None,
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        };
+
+        let result = exporter.render_entity(&table).unwrap();
+        // Should have original table name without prefix
+        assert!(result.contains("#[sea_orm(table_name = \"users\")]"));
     }
 }
