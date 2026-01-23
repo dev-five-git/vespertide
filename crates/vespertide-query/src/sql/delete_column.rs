@@ -66,6 +66,8 @@ pub fn build_delete_column(
                             .to_owned();
                         stmts.push(BuiltQuery::DropIndex(Box::new(drop_idx)));
                     }
+                    // PK/FK constraints trigger temp table approach earlier; Check returns empty columns.
+                    // This arm is defensive for future constraint types.
                     _ => {}
                 }
             }
@@ -949,5 +951,85 @@ mod tests {
         with_settings!({ snapshot_suffix => format!("delete_column_with_fk_and_index_{}", title) }, {
             assert_snapshot!(sql);
         });
+    }
+
+    #[test]
+    fn test_delete_column_sqlite_temp_table_with_enum_column() {
+        // SQLite temp table approach with enum column type
+        // This tests lines 122-124: enum type drop in temp table function
+        use vespertide_core::EnumValues;
+
+        let enum_type = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "order_status".into(),
+            values: EnumValues::String(vec![
+                "pending".into(),
+                "shipped".into(),
+                "delivered".into(),
+            ]),
+        });
+
+        let schema = vec![TableDef {
+            name: "orders".into(),
+            description: None,
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("user_id", ColumnType::Simple(SimpleColumnType::BigInt)),
+                col("status", enum_type.clone()),
+            ],
+            constraints: vec![TableConstraint::ForeignKey {
+                name: None,
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            }],
+        }];
+
+        // Delete the FK column (user_id) with an enum type - triggers temp table AND enum drop
+        let result = build_delete_column(
+            &DatabaseBackend::Sqlite,
+            "orders",
+            "user_id",
+            Some(&enum_type),
+            &schema,
+        );
+
+        // Should use temp table approach (FK triggers it) + DROP TYPE at end
+        assert!(
+            result.len() >= 4,
+            "Expected at least 4 statements for temp table approach, got: {}",
+            result.len()
+        );
+
+        let all_sql: Vec<String> = result
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Sqlite))
+            .collect();
+        let combined_sql = all_sql.join("\n");
+
+        // Verify temp table approach
+        assert!(
+            combined_sql.contains("orders_temp"),
+            "Should use temp table approach"
+        );
+
+        // The DROP TYPE statement should be empty for SQLite (only applies to PostgreSQL)
+        // but the code path should still be executed
+        let last_stmt = result.last().unwrap();
+        let last_sql = last_stmt.build(DatabaseBackend::Sqlite);
+        // SQLite doesn't have DROP TYPE, so it should be empty string
+        assert!(
+            last_sql.is_empty() || !last_sql.contains("DROP TYPE"),
+            "SQLite should not emit DROP TYPE"
+        );
+
+        // Verify it DOES emit DROP TYPE for PostgreSQL
+        let pg_last_sql = last_stmt.build(DatabaseBackend::Postgres);
+        assert!(
+            pg_last_sql.contains("DROP TYPE"),
+            "PostgreSQL should emit DROP TYPE, got: {}",
+            pg_last_sql
+        );
     }
 }
