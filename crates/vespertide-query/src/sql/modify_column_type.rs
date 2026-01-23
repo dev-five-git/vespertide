@@ -5,6 +5,7 @@ use vespertide_core::{ColumnType, ComplexColumnType, TableDef};
 use super::create_table::build_create_table_for_backend;
 use super::helpers::{
     apply_column_type_with_table, build_create_enum_type_sql, convert_default_for_backend,
+    normalize_enum_default,
 };
 use super::rename_table::build_rename_table;
 use super::types::{BuiltQuery, DatabaseBackend};
@@ -186,12 +187,13 @@ pub fn build_modify_column_type(
 
                 // 6. Restore DEFAULT if it existed
                 if let Some(default_value) = column_default {
+                    // Use normalize_enum_default to properly quote enum values
+                    let normalized_default =
+                        normalize_enum_default(new_type, &default_value.to_sql());
                     queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
                         format!(
                             "ALTER TABLE \"{}\" ALTER COLUMN \"{}\" SET DEFAULT {}",
-                            table,
-                            column,
-                            default_value.to_sql()
+                            table, column, normalized_default
                         ),
                         String::new(),
                         String::new(),
@@ -241,7 +243,9 @@ pub fn build_modify_column_type(
                 if let Some(default) = &column_def.default {
                     let default_str = default.to_sql();
                     let converted = convert_default_for_backend(&default_str, backend);
-                    col.default(sea_query::Expr::cust(converted));
+                    // Normalize enum default values if new type is an enum
+                    let final_default = normalize_enum_default(new_type, &converted);
+                    col.default(sea_query::Expr::cust(final_default));
                 }
             }
 

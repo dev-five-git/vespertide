@@ -3,7 +3,7 @@ use sea_query::{Alias, Query, Table};
 use vespertide_core::{ColumnDef, TableDef};
 
 use super::create_table::build_create_table_for_backend;
-use super::helpers::build_sea_column_def_with_table;
+use super::helpers::{build_sea_column_def_with_table, normalize_enum_default};
 use super::rename_table::build_rename_table;
 use super::types::{BuiltQuery, DatabaseBackend, RawSql};
 use crate::error::QueryError;
@@ -21,9 +21,22 @@ pub fn build_modify_column_default(
     match backend {
         DatabaseBackend::Postgres => {
             let alter_sql = if let Some(default_value) = new_default {
+                // Look up column type to properly quote enum defaults
+                let column_type = current_schema
+                    .iter()
+                    .find(|t| t.name == table)
+                    .and_then(|t| t.columns.iter().find(|c| c.name == column))
+                    .map(|c| &c.r#type);
+
+                let normalized_default = if let Some(col_type) = column_type {
+                    normalize_enum_default(col_type, default_value)
+                } else {
+                    default_value.to_string()
+                };
+
                 format!(
                     "ALTER TABLE \"{}\" ALTER COLUMN \"{}\" SET DEFAULT {}",
-                    table, column, default_value
+                    table, column, normalized_default
                 )
             } else {
                 format!(

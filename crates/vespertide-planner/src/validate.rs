@@ -404,6 +404,8 @@ pub struct FillWithRequired {
     pub column_type: Option<String>,
     /// Default fill value hint for this column type.
     pub default_value: Option<String>,
+    /// Enum values if the column is an enum type (for selection UI).
+    pub enum_values: Option<Vec<String>>,
 }
 
 /// Find all actions in a migration plan that require fill_with values.
@@ -427,6 +429,7 @@ pub fn find_missing_fill_with(plan: &MigrationPlan) -> Vec<FillWithRequired> {
                         action_type: "AddColumn",
                         column_type: Some(column.r#type.to_display_string()),
                         default_value: column.r#type.default_fill_value().map(String::from),
+                        enum_values: column.r#type.enum_variant_names(),
                     });
                 }
             }
@@ -445,6 +448,7 @@ pub fn find_missing_fill_with(plan: &MigrationPlan) -> Vec<FillWithRequired> {
                         action_type: "ModifyColumnNullable",
                         column_type: None,
                         default_value: None,
+                        enum_values: None, // We don't have column type info here
                     });
                 }
             }
