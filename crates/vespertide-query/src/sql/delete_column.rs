@@ -641,6 +641,134 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_delete_column_sqlite_unique_on_different_column_not_dropped() {
+        // When deleting a column in SQLite, UNIQUE constraints on OTHER columns should NOT be dropped
+        // This tests line 46's condition: only drop constraints that reference the deleted column
+        let schema = vec![TableDef {
+            name: "users".into(),
+            description: None,
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("email", ColumnType::Simple(SimpleColumnType::Text)),
+                col("nickname", ColumnType::Simple(SimpleColumnType::Text)),
+            ],
+            constraints: vec![
+                // UNIQUE on email (the column we're NOT deleting)
+                TableConstraint::Unique {
+                    name: None,
+                    columns: vec!["email".into()],
+                },
+            ],
+        }];
+
+        // Delete nickname, which does NOT have the unique constraint
+        let result =
+            build_delete_column(&DatabaseBackend::Sqlite, "users", "nickname", None, &schema);
+
+        // Should only have 1 statement: ALTER TABLE DROP COLUMN (no DROP INDEX needed)
+        assert_eq!(
+            result.len(),
+            1,
+            "Should not drop UNIQUE on email when deleting nickname, got: {} statements",
+            result.len()
+        );
+
+        let sql = result[0].build(DatabaseBackend::Sqlite);
+        assert!(
+            sql.contains("DROP COLUMN"),
+            "Expected DROP COLUMN, got: {}",
+            sql
+        );
+        assert!(
+            !sql.contains("DROP INDEX"),
+            "Should NOT drop the email UNIQUE constraint when deleting nickname"
+        );
+    }
+
+    #[test]
+    fn test_delete_column_sqlite_temp_table_filters_constraints_correctly() {
+        // When using temp table approach, constraints referencing the deleted column should be excluded,
+        // but constraints on OTHER columns should be preserved
+        // This tests lines 122-124: filter constraints by column reference
+        let schema = vec![TableDef {
+            name: "orders".into(),
+            description: None,
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("user_id", ColumnType::Simple(SimpleColumnType::BigInt)),
+                col("status", ColumnType::Simple(SimpleColumnType::Text)),
+                col(
+                    "created_at",
+                    ColumnType::Simple(SimpleColumnType::Timestamp),
+                ),
+            ],
+            constraints: vec![
+                // FK on user_id (column we're deleting) - should be excluded
+                TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["user_id".into()],
+                    ref_table: "users".into(),
+                    ref_columns: vec!["id".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+                // Index on created_at (different column) - should be preserved and recreated
+                TableConstraint::Index {
+                    name: None,
+                    columns: vec!["created_at".into()],
+                },
+                // Another FK on a different column - should be preserved
+                TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["status".into()],
+                    ref_table: "statuses".into(),
+                    ref_columns: vec!["code".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+            ],
+        }];
+
+        let result =
+            build_delete_column(&DatabaseBackend::Sqlite, "orders", "user_id", None, &schema);
+
+        let all_sql: Vec<String> = result
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Sqlite))
+            .collect();
+        let combined_sql = all_sql.join("\n");
+
+        // Should use temp table approach (FK triggers it)
+        assert!(
+            combined_sql.contains("orders_temp"),
+            "Should use temp table approach for FK column deletion"
+        );
+
+        // Index on created_at should be recreated after rename
+        assert!(
+            combined_sql.contains("ix_orders__created_at"),
+            "Index on created_at should be recreated, got: {}",
+            combined_sql
+        );
+
+        // The FK on user_id should NOT appear (deleted column)
+        // But the FK on status should be preserved
+        assert!(
+            combined_sql.contains("REFERENCES \"statuses\""),
+            "FK on status should be preserved, got: {}",
+            combined_sql
+        );
+
+        // Count FK references - should only be 1 (status FK, not user_id FK)
+        let fk_patterns = combined_sql.matches("REFERENCES").count();
+        assert_eq!(
+            fk_patterns, 1,
+            "Only the FK on status should exist (not the one on user_id), got: {}",
+            combined_sql
+        );
+    }
+
     // ==================== Snapshot Tests ====================
 
     fn build_sql_snapshot(result: &[BuiltQuery], backend: DatabaseBackend) -> String {
