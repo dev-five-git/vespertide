@@ -1,0 +1,8 @@
+---
+source: crates/vespertide-query/src/sql/delete_column.rs
+expression: sql
+---
+CREATE TABLE "orders_temp" ( "id" integer, "total" integer );
+INSERT INTO "orders_temp" ("id", "total") SELECT "id", "total" FROM "orders";
+DROP TABLE "orders";
+ALTER TABLE "orders_temp" RENAME TO "orders"

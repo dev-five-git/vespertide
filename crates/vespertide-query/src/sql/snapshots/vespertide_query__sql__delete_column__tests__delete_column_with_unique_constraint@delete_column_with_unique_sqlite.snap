@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/delete_column.rs
+expression: sql
+---
+DROP INDEX "uq_users__email";
+ALTER TABLE "users" DROP COLUMN "email"

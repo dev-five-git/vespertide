@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql/delete_column.rs
+expression: sql
+---
+ALTER TABLE `orders` DROP COLUMN `user_id`
