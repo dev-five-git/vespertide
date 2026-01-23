@@ -794,7 +794,15 @@ mod tests {
     #[case(SimpleColumnType::Date, None)]
     #[case(SimpleColumnType::Time, None)]
     #[case(SimpleColumnType::Timestamp, None)]
+    #[case(SimpleColumnType::Timestamptz, None)]
+    #[case(SimpleColumnType::Interval, None)]
+    #[case(SimpleColumnType::Bytea, None)]
     #[case(SimpleColumnType::Uuid, None)]
+    #[case(SimpleColumnType::Json, None)]
+    #[case(SimpleColumnType::Inet, None)]
+    #[case(SimpleColumnType::Cidr, None)]
+    #[case(SimpleColumnType::Macaddr, None)]
+    #[case(SimpleColumnType::Xml, None)]
     fn test_simple_column_type_default_fill_value(
         #[case] column_type: SimpleColumnType,
         #[case] expected: Option<&str>,
@@ -850,5 +858,104 @@ mod tests {
     fn test_column_type_default_fill_value_complex() {
         let ty = ColumnType::Complex(ComplexColumnType::Varchar { length: 100 });
         assert_eq!(ty.default_fill_value(), Some("''"));
+    }
+
+    // Tests for enum_variant_names
+    #[test]
+    fn test_enum_variant_names_simple_type_returns_none() {
+        let ty = ColumnType::Simple(SimpleColumnType::Integer);
+        assert_eq!(ty.enum_variant_names(), None);
+    }
+
+    #[test]
+    fn test_enum_variant_names_complex_non_enum_returns_none() {
+        let ty = ColumnType::Complex(ComplexColumnType::Varchar { length: 255 });
+        assert_eq!(ty.enum_variant_names(), None);
+    }
+
+    #[test]
+    fn test_enum_variant_names_complex_numeric_returns_none() {
+        let ty = ColumnType::Complex(ComplexColumnType::Numeric {
+            precision: 10,
+            scale: 2,
+        });
+        assert_eq!(ty.enum_variant_names(), None);
+    }
+
+    #[test]
+    fn test_enum_variant_names_complex_char_returns_none() {
+        let ty = ColumnType::Complex(ComplexColumnType::Char { length: 1 });
+        assert_eq!(ty.enum_variant_names(), None);
+    }
+
+    #[test]
+    fn test_enum_variant_names_complex_custom_returns_none() {
+        let ty = ColumnType::Complex(ComplexColumnType::Custom {
+            custom_type: "TSVECTOR".into(),
+        });
+        assert_eq!(ty.enum_variant_names(), None);
+    }
+
+    #[test]
+    fn test_enum_variant_names_string_enum() {
+        let ty = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: EnumValues::String(vec!["active".into(), "inactive".into(), "pending".into()]),
+        });
+        assert_eq!(
+            ty.enum_variant_names(),
+            Some(vec![
+                "active".to_string(),
+                "inactive".to_string(),
+                "pending".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn test_enum_variant_names_integer_enum() {
+        let ty = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "priority".into(),
+            values: EnumValues::Integer(vec![
+                NumValue {
+                    name: "Low".into(),
+                    value: 0,
+                },
+                NumValue {
+                    name: "Medium".into(),
+                    value: 5,
+                },
+                NumValue {
+                    name: "High".into(),
+                    value: 10,
+                },
+            ]),
+        });
+        assert_eq!(
+            ty.enum_variant_names(),
+            Some(vec![
+                "Low".to_string(),
+                "Medium".to_string(),
+                "High".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn test_enum_variant_names_empty_string_enum() {
+        let ty = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "empty".into(),
+            values: EnumValues::String(vec![]),
+        });
+        assert_eq!(ty.enum_variant_names(), Some(vec![]));
+    }
+
+    #[test]
+    fn test_enum_variant_names_empty_integer_enum() {
+        let ty = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "empty".into(),
+            values: EnumValues::Integer(vec![]),
+        });
+        assert_eq!(ty.enum_variant_names(), Some(vec![]));
     }
 }
