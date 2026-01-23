@@ -252,8 +252,8 @@ impl fmt::Display for MigrationAction {
                 new_comment,
             } => {
                 if let Some(comment) = new_comment {
-                    let display = if comment.len() > 30 {
-                        format!("{}...", &comment[..27])
+                    let display = if comment.chars().count() > 30 {
+                        format!("{}...", comment.chars().take(27).collect::<String>())
                     } else {
                         comment.clone()
                     };

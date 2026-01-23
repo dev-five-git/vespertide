@@ -126,6 +126,21 @@ impl ColumnType {
             ColumnType::Complex(ty) => ty.default_fill_value(),
         }
     }
+
+    /// Get enum variant names if this is an enum type
+    /// Returns None if not an enum, Some(names) otherwise
+    pub fn enum_variant_names(&self) -> Option<Vec<String>> {
+        match self {
+            ColumnType::Complex(ComplexColumnType::Enum { values, .. }) => Some(
+                values
+                    .variant_names()
+                    .into_iter()
+                    .map(String::from)
+                    .collect(),
+            ),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

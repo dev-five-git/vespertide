@@ -4,7 +4,7 @@ use std::fs;
 use anyhow::{Context, Result};
 use chrono::Utc;
 use colored::Colorize;
-use dialoguer::Input;
+use dialoguer::{Input, Select};
 use serde_json::Value;
 use vespertide_config::FileFormat;
 use vespertide_core::{MigrationAction, MigrationPlan};
@@ -118,15 +118,32 @@ fn prompt_fill_with_value(prompt: &str) -> Result<String> {
     Ok(wrap_if_spaces(value))
 }
 
+/// Prompt the user to select an enum value using dialoguer Select.
+/// Returns the selected value wrapped in single quotes for SQL.
+#[cfg(not(tarpaulin_include))]
+fn prompt_enum_value(prompt: &str, enum_values: &[String]) -> Result<String> {
+    let selection = Select::new()
+        .with_prompt(prompt)
+        .items(enum_values)
+        .default(0)
+        .interact()
+        .context("failed to read selection")?;
+    // Return the selected value with single quotes for SQL enum literal
+    Ok(format!("'{}'", enum_values[selection]))
+}
+
 /// Collect fill_with values interactively for missing columns.
 /// The `prompt_fn` parameter allows injecting a mock for testing.
-fn collect_fill_with_values<F>(
+/// The `enum_prompt_fn` parameter handles enum type columns with selection UI.
+fn collect_fill_with_values<F, E>(
     missing: &[vespertide_planner::FillWithRequired],
     fill_values: &mut HashMap<(String, String), String>,
     prompt_fn: F,
+    enum_prompt_fn: E,
 ) -> Result<()>
 where
     F: Fn(&str) -> Result<String>,
+    E: Fn(&str, &[String]) -> Result<String>,
 {
     print_fill_with_header();
 
@@ -139,7 +156,13 @@ where
             item.action_type,
         );
 
-        let value = prompt_fn(&prompt)?;
+        let value = if let Some(enum_values) = &item.enum_values {
+            // Use selection UI for enum types
+            enum_prompt_fn(&prompt, enum_values)?
+        } else {
+            // Use text input for other types
+            prompt_fn(&prompt)?
+        };
         fill_values.insert((item.table.clone(), item.column.clone()), value);
     }
 
@@ -184,18 +207,20 @@ fn apply_fill_with_to_plan(
 
 /// Handle interactive fill_with collection if there are missing values.
 /// Returns the updated fill_values map after collecting from user.
-fn handle_missing_fill_with<F>(
+fn handle_missing_fill_with<F, E>(
     plan: &mut MigrationPlan,
     fill_values: &mut HashMap<(String, String), String>,
     prompt_fn: F,
+    enum_prompt_fn: E,
 ) -> Result<()>
 where
     F: Fn(&str) -> Result<String>,
+    E: Fn(&str, &[String]) -> Result<String>,
 {
     let missing = find_missing_fill_with(plan);
 
     if !missing.is_empty() {
-        collect_fill_with_values(&missing, fill_values, prompt_fn)?;
+        collect_fill_with_values(&missing, fill_values, prompt_fn, enum_prompt_fn)?;
 
         // Apply the collected fill_with values
         apply_fill_with_to_plan(plan, fill_values);
@@ -228,7 +253,12 @@ pub fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Result<()> 
     apply_fill_with_to_plan(&mut plan, &fill_values);
 
     // Handle any missing fill_with values interactively
-    handle_missing_fill_with(&mut plan, &mut fill_values, prompt_fill_with_value)?;
+    handle_missing_fill_with(
+        &mut plan,
+        &mut fill_values,
+        prompt_fill_with_value,
+        prompt_enum_value,
+    )?;
 
     plan.comment = Some(message);
     if plan.created_at.is_none() {
@@ -838,6 +868,11 @@ mod tests {
         print_fill_with_footer();
     }
 
+    // Mock enum prompt function for tests - returns first enum value quoted
+    fn mock_enum_prompt(_prompt: &str, values: &[String]) -> Result<String> {
+        Ok(format!("'{}'", values[0]))
+    }
+
     #[test]
     fn test_collect_fill_with_values_single_item() {
         use vespertide_planner::FillWithRequired;
@@ -849,6 +884,7 @@ mod tests {
             action_type: "AddColumn",
             column_type: Some("text".to_string()),
             default_value: Some("''".to_string()),
+            enum_values: None,
         }];
 
         let mut fill_values = HashMap::new();
@@ -857,7 +893,8 @@ mod tests {
         let mock_prompt =
             |_prompt: &str| -> Result<String> { Ok("'test@example.com'".to_string()) };
 
-        let result = collect_fill_with_values(&missing, &mut fill_values, mock_prompt);
+        let result =
+            collect_fill_with_values(&missing, &mut fill_values, mock_prompt, mock_enum_prompt);
         assert!(result.is_ok());
         assert_eq!(fill_values.len(), 1);
         assert_eq!(
@@ -878,6 +915,7 @@ mod tests {
                 action_type: "AddColumn",
                 column_type: Some("text".to_string()),
                 default_value: Some("''".to_string()),
+                enum_values: None,
             },
             FillWithRequired {
                 action_index: 1,
@@ -886,6 +924,7 @@ mod tests {
                 action_type: "ModifyColumnNullable",
                 column_type: None,
                 default_value: None,
+                enum_values: None,
             },
         ];
 
@@ -903,7 +942,8 @@ mod tests {
             }
         };
 
-        let result = collect_fill_with_values(&missing, &mut fill_values, mock_prompt);
+        let result =
+            collect_fill_with_values(&missing, &mut fill_values, mock_prompt, mock_enum_prompt);
         assert!(result.is_ok());
         assert_eq!(fill_values.len(), 2);
         assert_eq!(
@@ -930,7 +970,8 @@ mod tests {
 
         // Note: The function still prints header/footer even for empty list
         // This is a design choice - in practice, cmd_revision won't call this with empty list
-        let result = collect_fill_with_values(&missing, &mut fill_values, mock_prompt);
+        let result =
+            collect_fill_with_values(&missing, &mut fill_values, mock_prompt, mock_enum_prompt);
         assert!(result.is_ok());
         assert!(fill_values.is_empty());
     }
@@ -946,6 +987,7 @@ mod tests {
             action_type: "AddColumn",
             column_type: Some("text".to_string()),
             default_value: Some("''".to_string()),
+            enum_values: None,
         }];
 
         let mut fill_values = HashMap::new();
@@ -954,7 +996,8 @@ mod tests {
         let mock_prompt =
             |_prompt: &str| -> Result<String> { Err(anyhow::anyhow!("input cancelled")) };
 
-        let result = collect_fill_with_values(&missing, &mut fill_values, mock_prompt);
+        let result =
+            collect_fill_with_values(&missing, &mut fill_values, mock_prompt, mock_enum_prompt);
         assert!(result.is_err());
         assert!(fill_values.is_empty());
     }
@@ -998,7 +1041,8 @@ mod tests {
         let mock_prompt =
             |_prompt: &str| -> Result<String> { Ok("'test@example.com'".to_string()) };
 
-        let result = handle_missing_fill_with(&mut plan, &mut fill_values, mock_prompt);
+        let result =
+            handle_missing_fill_with(&mut plan, &mut fill_values, mock_prompt, mock_enum_prompt);
         assert!(result.is_ok());
 
         // Verify fill_with was applied to the plan
@@ -1049,7 +1093,8 @@ mod tests {
             panic!("Should not be called when no missing fill_with values");
         };
 
-        let result = handle_missing_fill_with(&mut plan, &mut fill_values, mock_prompt);
+        let result =
+            handle_missing_fill_with(&mut plan, &mut fill_values, mock_prompt, mock_enum_prompt);
         assert!(result.is_ok());
         assert!(fill_values.is_empty());
     }
@@ -1085,7 +1130,8 @@ mod tests {
         let mock_prompt =
             |_prompt: &str| -> Result<String> { Err(anyhow::anyhow!("user cancelled")) };
 
-        let result = handle_missing_fill_with(&mut plan, &mut fill_values, mock_prompt);
+        let result =
+            handle_missing_fill_with(&mut plan, &mut fill_values, mock_prompt, mock_enum_prompt);
         assert!(result.is_err());
 
         // Plan should not be modified on error
@@ -1144,7 +1190,8 @@ mod tests {
             }
         };
 
-        let result = handle_missing_fill_with(&mut plan, &mut fill_values, mock_prompt);
+        let result =
+            handle_missing_fill_with(&mut plan, &mut fill_values, mock_prompt, mock_enum_prompt);
         assert!(result.is_ok());
 
         // Verify both actions were updated
@@ -1161,6 +1208,46 @@ mod tests {
             }
             _ => panic!("Expected ModifyColumnNullable action"),
         }
+    }
+
+    #[test]
+    fn test_collect_fill_with_values_enum_column() {
+        use vespertide_planner::FillWithRequired;
+
+        let missing = vec![FillWithRequired {
+            action_index: 0,
+            table: "orders".to_string(),
+            column: "status".to_string(),
+            action_type: "AddColumn",
+            column_type: Some("enum<order_status>".to_string()),
+            default_value: None,
+            enum_values: Some(vec![
+                "pending".to_string(),
+                "confirmed".to_string(),
+                "shipped".to_string(),
+            ]),
+        }];
+
+        let mut fill_values = HashMap::new();
+
+        // Mock prompt function that should NOT be called for enum columns
+        let mock_prompt = |_prompt: &str| -> Result<String> {
+            panic!("Should not be called for enum columns");
+        };
+
+        // Mock enum prompt that selects the second value
+        let mock_enum = |_prompt: &str, values: &[String]| -> Result<String> {
+            // Select "confirmed" (index 1)
+            Ok(format!("'{}'", values[1]))
+        };
+
+        let result = collect_fill_with_values(&missing, &mut fill_values, mock_prompt, mock_enum);
+        assert!(result.is_ok());
+        assert_eq!(fill_values.len(), 1);
+        assert_eq!(
+            fill_values.get(&("orders".to_string(), "status".to_string())),
+            Some(&"'confirmed'".to_string())
+        );
     }
 
     #[test]
