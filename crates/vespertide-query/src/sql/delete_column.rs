@@ -27,48 +27,43 @@ pub fn build_delete_column(
     if *backend == DatabaseBackend::Sqlite
         && let Some(table_def) = current_schema.iter().find(|t| t.name == table)
     {
-        // Check if the column has FK or PK constraints (requires temp table approach)
-        let has_fk_or_pk = table_def.constraints.iter().any(|c| {
-            c.columns().iter().any(|col| col == column)
-                && matches!(
-                    c,
-                    TableConstraint::ForeignKey { .. } | TableConstraint::PrimaryKey { .. }
-                )
-        });
-
-        if has_fk_or_pk {
-            // Use temp table approach for FK/PK constraints
-            return build_delete_column_sqlite_temp_table(table, column, table_def, column_type);
-        }
-
-        // For Unique/Index constraints, just drop the index first
+        // Handle constraints referencing the deleted column
         for constraint in &table_def.constraints {
-            if constraint.columns().iter().any(|c| c == column) {
-                match constraint {
-                    TableConstraint::Unique { name, columns } => {
-                        let index_name = vespertide_naming::build_unique_constraint_name(
-                            table,
-                            columns,
-                            name.as_deref(),
-                        );
-                        let drop_idx = Index::drop()
-                            .name(&index_name)
-                            .table(Alias::new(table))
-                            .to_owned();
-                        stmts.push(BuiltQuery::DropIndex(Box::new(drop_idx)));
-                    }
-                    TableConstraint::Index { name, columns } => {
-                        let index_name =
-                            vespertide_naming::build_index_name(table, columns, name.as_deref());
-                        let drop_idx = Index::drop()
-                            .name(&index_name)
-                            .table(Alias::new(table))
-                            .to_owned();
-                        stmts.push(BuiltQuery::DropIndex(Box::new(drop_idx)));
-                    }
-                    // PK/FK constraints trigger temp table approach earlier; Check returns empty columns.
-                    // This arm is defensive for future constraint types.
-                    _ => {}
+            match constraint {
+                // Check constraints are expression-based, not column-based - skip
+                TableConstraint::Check { .. } => continue,
+                // For column-based constraints, check if they reference the deleted column
+                _ if !constraint.columns().iter().any(|c| c == column) => continue,
+                // FK/PK require temp table approach - return immediately
+                TableConstraint::ForeignKey { .. } | TableConstraint::PrimaryKey { .. } => {
+                    return build_delete_column_sqlite_temp_table(
+                        table,
+                        column,
+                        table_def,
+                        column_type,
+                    );
+                }
+                // Unique/Index: drop the index first, then drop column below
+                TableConstraint::Unique { name, columns } => {
+                    let index_name = vespertide_naming::build_unique_constraint_name(
+                        table,
+                        columns,
+                        name.as_deref(),
+                    );
+                    let drop_idx = Index::drop()
+                        .name(&index_name)
+                        .table(Alias::new(table))
+                        .to_owned();
+                    stmts.push(BuiltQuery::DropIndex(Box::new(drop_idx)));
+                }
+                TableConstraint::Index { name, columns } => {
+                    let index_name =
+                        vespertide_naming::build_index_name(table, columns, name.as_deref());
+                    let drop_idx = Index::drop()
+                        .name(&index_name)
+                        .table(Alias::new(table))
+                        .to_owned();
+                    stmts.push(BuiltQuery::DropIndex(Box::new(drop_idx)));
                 }
             }
         }
@@ -1030,6 +1025,44 @@ mod tests {
             pg_last_sql.contains("DROP TYPE"),
             "PostgreSQL should emit DROP TYPE, got: {}",
             pg_last_sql
+        );
+    }
+
+    #[test]
+    fn test_delete_column_sqlite_with_check_constraint_skipped() {
+        // Check constraints are expression-based, not column-based.
+        // They should be skipped (continue) during constraint iteration.
+        let schema = vec![TableDef {
+            name: "orders".into(),
+            description: None,
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("amount", ColumnType::Simple(SimpleColumnType::Integer)),
+            ],
+            constraints: vec![TableConstraint::Check {
+                name: "check_positive".into(),
+                expr: "amount > 0".into(),
+            }],
+        }];
+
+        // Delete amount column - Check constraint should be skipped (not trigger temp table)
+        let result =
+            build_delete_column(&DatabaseBackend::Sqlite, "orders", "amount", None, &schema);
+
+        // Should have only 1 statement: ALTER TABLE DROP COLUMN
+        // (Check constraint doesn't require special handling)
+        assert_eq!(
+            result.len(),
+            1,
+            "Check constraint should be skipped, got: {} statements",
+            result.len()
+        );
+
+        let sql = result[0].build(DatabaseBackend::Sqlite);
+        assert!(
+            sql.contains("DROP COLUMN"),
+            "Expected DROP COLUMN, got: {}",
+            sql
         );
     }
 }

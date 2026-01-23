@@ -55,7 +55,7 @@ pub fn cmd_export(orm: OrmArg, export_dir: Option<PathBuf>) -> Result<()> {
     let all_tables: Vec<TableDef> = normalized_models.iter().map(|(t, _)| t.clone()).collect();
 
     // Create SeaORM exporter with config if needed
-    let seaorm_exporter = SeaOrmExporterWithConfig::new(config.seaorm());
+    let seaorm_exporter = SeaOrmExporterWithConfig::new(config.seaorm(), config.prefix());
 
     for (table, rel_path) in &normalized_models {
         let code = match orm_kind {
