@@ -124,8 +124,12 @@ fn build_delete_column_sqlite_temp_table(
         .collect();
 
     // 1. Create temp table without the column
-    let create_temp_table =
-        build_create_table_for_backend(&DatabaseBackend::Sqlite, &temp_table, &new_columns, &new_constraints);
+    let create_temp_table = build_create_table_for_backend(
+        &DatabaseBackend::Sqlite,
+        &temp_table,
+        &new_columns,
+        &new_constraints,
+    );
     stmts.push(BuiltQuery::CreateTable(Box::new(create_temp_table)));
 
     // 2. Copy data (excluding the deleted column)
@@ -156,7 +160,10 @@ fn build_delete_column_sqlite_temp_table(
         if let TableConstraint::Index { name, columns } = constraint {
             let index_name = vespertide_naming::build_index_name(table, columns, name.as_deref());
             let mut idx_stmt = Index::create();
-            idx_stmt = idx_stmt.name(&index_name).table(Alias::new(table)).to_owned();
+            idx_stmt = idx_stmt
+                .name(&index_name)
+                .table(Alias::new(table))
+                .to_owned();
             for col_name in columns {
                 idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
             }
@@ -294,13 +301,8 @@ mod tests {
             }],
         }];
 
-        let result = build_delete_column(
-            &DatabaseBackend::Sqlite,
-            "gift",
-            "gift_code",
-            None,
-            &schema,
-        );
+        let result =
+            build_delete_column(&DatabaseBackend::Sqlite, "gift", "gift_code", None, &schema);
 
         // Should have 2 statements: DROP INDEX then ALTER TABLE DROP COLUMN
         assert_eq!(result.len(), 2);
@@ -341,13 +343,7 @@ mod tests {
             }],
         }];
 
-        let result = build_delete_column(
-            &DatabaseBackend::Sqlite,
-            "users",
-            "email",
-            None,
-            &schema,
-        );
+        let result = build_delete_column(&DatabaseBackend::Sqlite, "users", "email", None, &schema);
 
         // Should have 2 statements: DROP INDEX then ALTER TABLE DROP COLUMN
         assert_eq!(result.len(), 2);
@@ -407,13 +403,8 @@ mod tests {
             }],
         }];
 
-        let result = build_delete_column(
-            &DatabaseBackend::Sqlite,
-            "gift",
-            "gift_code",
-            None,
-            &schema,
-        );
+        let result =
+            build_delete_column(&DatabaseBackend::Sqlite, "gift", "gift_code", None, &schema);
 
         assert_eq!(result.len(), 2);
 
@@ -447,13 +438,8 @@ mod tests {
             }],
         }];
 
-        let result = build_delete_column(
-            &DatabaseBackend::Sqlite,
-            "gift",
-            "sender_id",
-            None,
-            &schema,
-        );
+        let result =
+            build_delete_column(&DatabaseBackend::Sqlite, "gift", "sender_id", None, &schema);
 
         // Should use temp table approach:
         // 1. CREATE TABLE gift_temp (without sender_id column)
@@ -535,13 +521,8 @@ mod tests {
             ],
         }];
 
-        let result = build_delete_column(
-            &DatabaseBackend::Sqlite,
-            "gift",
-            "sender_id",
-            None,
-            &schema,
-        );
+        let result =
+            build_delete_column(&DatabaseBackend::Sqlite, "gift", "sender_id", None, &schema);
 
         let all_sql: Vec<String> = result
             .iter()
@@ -550,10 +531,7 @@ mod tests {
         let combined_sql = all_sql.join("\n");
 
         // Should preserve other columns
-        assert!(
-            combined_sql.contains("\"id\""),
-            "Should preserve id column"
-        );
+        assert!(combined_sql.contains("\"id\""), "Should preserve id column");
         assert!(
             combined_sql.contains("\"receiver_id\""),
             "Should preserve receiver_id column"
@@ -716,7 +694,10 @@ mod tests {
             description: None,
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
-                col("created_at", ColumnType::Simple(SimpleColumnType::Timestamp)),
+                col(
+                    "created_at",
+                    ColumnType::Simple(SimpleColumnType::Timestamp),
+                ),
                 col("title", ColumnType::Simple(SimpleColumnType::Text)),
             ],
             constraints: vec![TableConstraint::Index {
@@ -812,7 +793,10 @@ mod tests {
             columns: vec![
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
                 col("user_id", ColumnType::Simple(SimpleColumnType::BigInt)),
-                col("created_at", ColumnType::Simple(SimpleColumnType::Timestamp)),
+                col(
+                    "created_at",
+                    ColumnType::Simple(SimpleColumnType::Timestamp),
+                ),
                 col("total", ColumnType::Simple(SimpleColumnType::Integer)),
             ],
             constraints: vec![
