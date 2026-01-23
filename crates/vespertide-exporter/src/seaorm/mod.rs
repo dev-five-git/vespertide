@@ -35,7 +35,12 @@ impl<'a> SeaOrmExporterWithConfig<'a> {
     }
 
     pub fn render_entity(&self, table: &TableDef) -> Result<String, String> {
-        Ok(render_entity_with_config(table, &[], self.config, self.prefix))
+        Ok(render_entity_with_config(
+            table,
+            &[],
+            self.config,
+            self.prefix,
+        ))
     }
 
     pub fn render_entity_with_schema(
@@ -43,7 +48,12 @@ impl<'a> SeaOrmExporterWithConfig<'a> {
         table: &TableDef,
         schema: &[TableDef],
     ) -> Result<String, String> {
-        Ok(render_entity_with_config(table, schema, self.config, self.prefix))
+        Ok(render_entity_with_config(
+            table,
+            schema,
+            self.config,
+            self.prefix,
+        ))
     }
 }
 
@@ -118,7 +128,10 @@ pub fn render_entity_with_config(
 
     lines.push("#[sea_orm::model]".into());
     lines.push(format!("#[derive({})]", model_derives.join(", ")));
-    lines.push(format!("#[sea_orm(table_name = \"{}{}\")]", prefix, table.name));
+    lines.push(format!(
+        "#[sea_orm(table_name = \"{}{}\")]",
+        prefix, table.name
+    ));
     lines.push("pub struct Model {".into());
 
     for column in &table.columns {
