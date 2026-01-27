@@ -223,7 +223,7 @@ fn sort_delete_tables(actions: &mut [MigrationAction], all_tables: &BTreeMap<&st
 
 /// Sort actions so that CreateTable actions come before AddConstraint actions
 /// that reference those newly created tables via foreign keys.
-fn sort_create_before_add_constraint(actions: &mut Vec<MigrationAction>) {
+fn sort_create_before_add_constraint(actions: &mut [MigrationAction]) {
     // Collect names of tables being created
     let created_tables: BTreeSet<String> = actions
         .iter()
