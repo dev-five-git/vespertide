@@ -208,7 +208,7 @@ Use the `vespertide_migration!` macro to run migrations at application startup:
 ```toml
 [dependencies]
 vespertide = "0.1"
-sea-orm = { version = "1.0", features = ["runtime-tokio-native-tls", "sqlx-postgres"] }
+sea-orm = { version = "2.0.0-rc", features = ["sqlx-postgres", "runtime-tokio-native-tls", "macros"] }
 ```
 
 ```rust
