@@ -15,4 +15,4 @@ thiserror = "2"
 
 [dev-dependencies]
 rstest = "0.26"
-insta = "1.44"
+insta = "1.46"
