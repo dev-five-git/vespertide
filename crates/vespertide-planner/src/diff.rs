@@ -1324,8 +1324,22 @@ mod tests {
                 "CreateTable should be first"
             );
             // AddColumn (non-ref) should come before AddConstraint FK (refs created)
-            let add_col_pos = actions.iter().position(|a| matches!(a, MigrationAction::AddColumn { .. })).unwrap();
-            let add_fk_pos = actions.iter().position(|a| matches!(a, MigrationAction::AddConstraint { constraint: TableConstraint::ForeignKey { .. }, .. })).unwrap();
+            let add_col_pos = actions
+                .iter()
+                .position(|a| matches!(a, MigrationAction::AddColumn { .. }))
+                .unwrap();
+            let add_fk_pos = actions
+                .iter()
+                .position(|a| {
+                    matches!(
+                        a,
+                        MigrationAction::AddConstraint {
+                            constraint: TableConstraint::ForeignKey { .. },
+                            ..
+                        }
+                    )
+                })
+                .unwrap();
             assert!(
                 add_col_pos < add_fk_pos,
                 "AddColumn (non-ref) should come before AddConstraint FK (refs created)"
