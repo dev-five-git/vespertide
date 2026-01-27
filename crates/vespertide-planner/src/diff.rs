@@ -221,6 +221,76 @@ fn sort_delete_tables(actions: &mut [MigrationAction], all_tables: &BTreeMap<&st
     }
 }
 
+/// Compare two migration actions for sorting.
+/// Returns ordering where CreateTable comes first, then non-FK-ref actions, then FK-ref actions.
+fn compare_actions_for_create_order(
+    a: &MigrationAction,
+    b: &MigrationAction,
+    created_tables: &BTreeSet<String>,
+) -> std::cmp::Ordering {
+    let a_is_create = matches!(a, MigrationAction::CreateTable { .. });
+    let b_is_create = matches!(b, MigrationAction::CreateTable { .. });
+
+    // Check if action is AddConstraint with FK referencing a created table
+    let a_refs_created = if let MigrationAction::AddConstraint {
+        constraint: TableConstraint::ForeignKey { ref_table, .. },
+        ..
+    } = a
+    {
+        created_tables.contains(ref_table)
+    } else {
+        false
+    };
+    let b_refs_created = if let MigrationAction::AddConstraint {
+        constraint: TableConstraint::ForeignKey { ref_table, .. },
+        ..
+    } = b
+    {
+        created_tables.contains(ref_table)
+    } else {
+        false
+    };
+
+    // Order: CreateTable first, then non-referencing actions, then referencing AddConstraint last
+    match (a_is_create, b_is_create, a_refs_created, b_refs_created) {
+        // Both CreateTable - maintain original order
+        (true, true, _, _) => std::cmp::Ordering::Equal,
+        // a is CreateTable, b is not - a comes first
+        (true, false, _, _) => std::cmp::Ordering::Less,
+        // a is not CreateTable, b is - b comes first
+        (false, true, _, _) => std::cmp::Ordering::Greater,
+        // Neither is CreateTable
+        // If a refs created table and b doesn't, a comes after
+        (false, false, true, false) => std::cmp::Ordering::Greater,
+        // If b refs created table and a doesn't, b comes after
+        (false, false, false, true) => std::cmp::Ordering::Less,
+        // Both ref or both don't ref - maintain original order
+        (false, false, _, _) => std::cmp::Ordering::Equal,
+    }
+}
+
+/// Sort actions so that CreateTable actions come before AddConstraint actions
+/// that reference those newly created tables via foreign keys.
+fn sort_create_before_add_constraint(actions: &mut [MigrationAction]) {
+    // Collect names of tables being created
+    let created_tables: BTreeSet<String> = actions
+        .iter()
+        .filter_map(|a| {
+            if let MigrationAction::CreateTable { table, .. } = a {
+                Some(table.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if created_tables.is_empty() {
+        return;
+    }
+
+    actions.sort_by(|a, b| compare_actions_for_create_order(a, b, &created_tables));
+}
+
 /// Diff two schema snapshots into a migration plan.
 /// Schemas are normalized for comparison purposes, but the original (non-normalized)
 /// tables are used in migration actions to preserve inline constraint definitions.
@@ -424,6 +494,9 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
 
     // Sort DeleteTable actions so tables with FK dependencies are deleted first
     sort_delete_tables(&mut actions, &from_map);
+
+    // Sort so CreateTable comes before AddConstraint that references the new table
+    sort_create_before_add_constraint(&mut actions);
 
     Ok(MigrationPlan {
         comment: None,
@@ -1165,6 +1238,194 @@ mod tests {
         }
     }
 
+    // Direct unit tests for sort_create_before_add_constraint and compare_actions_for_create_order
+    mod sort_create_before_add_constraint_tests {
+        use super::*;
+        use crate::diff::{compare_actions_for_create_order, sort_create_before_add_constraint};
+        use std::cmp::Ordering;
+
+        fn make_add_column(table: &str, col: &str) -> MigrationAction {
+            MigrationAction::AddColumn {
+                table: table.into(),
+                column: Box::new(ColumnDef {
+                    name: col.into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }),
+                fill_with: None,
+            }
+        }
+
+        fn make_create_table(name: &str) -> MigrationAction {
+            MigrationAction::CreateTable {
+                table: name.into(),
+                columns: vec![],
+                constraints: vec![],
+            }
+        }
+
+        fn make_add_fk(table: &str, ref_table: &str) -> MigrationAction {
+            MigrationAction::AddConstraint {
+                table: table.into(),
+                constraint: TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["fk_col".into()],
+                    ref_table: ref_table.into(),
+                    ref_columns: vec!["id".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+            }
+        }
+
+        /// Test line 218: (false, true, _, _) - a is NOT CreateTable, b IS CreateTable
+        /// Direct test of comparison function
+        #[test]
+        fn test_compare_non_create_vs_create() {
+            let created_tables: BTreeSet<String> = ["roles".to_string()].into_iter().collect();
+
+            let add_col = make_add_column("users", "name");
+            let create_table = make_create_table("roles");
+
+            // a=AddColumn (non-create), b=CreateTable (create) -> Greater (b comes first)
+            let result = compare_actions_for_create_order(&add_col, &create_table, &created_tables);
+            assert_eq!(
+                result,
+                Ordering::Greater,
+                "Non-CreateTable vs CreateTable should return Greater"
+            );
+        }
+
+        /// Test line 216: (true, false, _, _) - a IS CreateTable, b is NOT CreateTable
+        #[test]
+        fn test_compare_create_vs_non_create() {
+            let created_tables: BTreeSet<String> = ["roles".to_string()].into_iter().collect();
+
+            let create_table = make_create_table("roles");
+            let add_col = make_add_column("users", "name");
+
+            // a=CreateTable (create), b=AddColumn (non-create) -> Less (a comes first)
+            let result = compare_actions_for_create_order(&create_table, &add_col, &created_tables);
+            assert_eq!(
+                result,
+                Ordering::Less,
+                "CreateTable vs Non-CreateTable should return Less"
+            );
+        }
+
+        /// Test line 214: (true, true, _, _) - both CreateTable
+        #[test]
+        fn test_compare_create_vs_create() {
+            let created_tables: BTreeSet<String> = ["roles".to_string(), "categories".to_string()]
+                .into_iter()
+                .collect();
+
+            let create1 = make_create_table("roles");
+            let create2 = make_create_table("categories");
+
+            // Both CreateTable -> Equal (maintain original order)
+            let result = compare_actions_for_create_order(&create1, &create2, &created_tables);
+            assert_eq!(
+                result,
+                Ordering::Equal,
+                "CreateTable vs CreateTable should return Equal"
+            );
+        }
+
+        /// Test line 221: (false, false, true, false) - neither CreateTable, a refs created, b doesn't
+        #[test]
+        fn test_compare_refs_vs_non_refs() {
+            let created_tables: BTreeSet<String> = ["roles".to_string()].into_iter().collect();
+
+            let add_fk = make_add_fk("users", "roles"); // refs created
+            let add_col = make_add_column("posts", "title"); // doesn't ref
+
+            // a refs created, b doesn't -> Greater (a comes after)
+            let result = compare_actions_for_create_order(&add_fk, &add_col, &created_tables);
+            assert_eq!(
+                result,
+                Ordering::Greater,
+                "FK-ref vs non-ref should return Greater"
+            );
+        }
+
+        /// Test line 223: (false, false, false, true) - neither CreateTable, a doesn't ref, b refs
+        #[test]
+        fn test_compare_non_refs_vs_refs() {
+            let created_tables: BTreeSet<String> = ["roles".to_string()].into_iter().collect();
+
+            let add_col = make_add_column("posts", "title"); // doesn't ref
+            let add_fk = make_add_fk("users", "roles"); // refs created
+
+            // a doesn't ref, b refs -> Less (b comes after, a comes first)
+            let result = compare_actions_for_create_order(&add_col, &add_fk, &created_tables);
+            assert_eq!(
+                result,
+                Ordering::Less,
+                "Non-ref vs FK-ref should return Less"
+            );
+        }
+
+        /// Test line 225: (false, false, _, _) - neither CreateTable, both don't ref
+        #[test]
+        fn test_compare_non_refs_vs_non_refs() {
+            let created_tables: BTreeSet<String> = ["roles".to_string()].into_iter().collect();
+
+            let add_col1 = make_add_column("users", "name");
+            let add_col2 = make_add_column("posts", "title");
+
+            // Both don't ref -> Equal
+            let result = compare_actions_for_create_order(&add_col1, &add_col2, &created_tables);
+            assert_eq!(
+                result,
+                Ordering::Equal,
+                "Non-ref vs non-ref should return Equal"
+            );
+        }
+
+        /// Test line 225: (false, false, _, _) - neither CreateTable, both ref created
+        #[test]
+        fn test_compare_refs_vs_refs() {
+            let created_tables: BTreeSet<String> = ["roles".to_string(), "categories".to_string()]
+                .into_iter()
+                .collect();
+
+            let add_fk1 = make_add_fk("users", "roles");
+            let add_fk2 = make_add_fk("posts", "categories");
+
+            // Both ref -> Equal
+            let result = compare_actions_for_create_order(&add_fk1, &add_fk2, &created_tables);
+            assert_eq!(
+                result,
+                Ordering::Equal,
+                "FK-ref vs FK-ref should return Equal"
+            );
+        }
+
+        /// Integration test: sort function works correctly
+        #[test]
+        fn test_sort_integration() {
+            let mut actions = vec![
+                make_add_column("t1", "c1"),
+                make_add_fk("users", "roles"),
+                make_create_table("roles"),
+            ];
+
+            sort_create_before_add_constraint(&mut actions);
+
+            // CreateTable first, AddColumn second, AddConstraint FK last
+            assert!(matches!(&actions[0], MigrationAction::CreateTable { .. }));
+            assert!(matches!(&actions[1], MigrationAction::AddColumn { .. }));
+            assert!(matches!(&actions[2], MigrationAction::AddConstraint { .. }));
+        }
+    }
+
     // Tests for foreign key dependency ordering
     mod fk_ordering {
         use super::*;
@@ -1672,6 +1933,345 @@ mod tests {
             assert!(
                 get_pos("order") < get_pos("payment"),
                 "order must come before payment"
+            );
+        }
+
+        /// Test that AddConstraint FK to a new table comes AFTER CreateTable for that table
+        #[test]
+        fn add_constraint_fk_to_new_table_comes_after_create_table() {
+            use super::*;
+
+            // Existing table: notification (with broadcast_id column)
+            let notification_from = table(
+                "notification",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col(
+                        "broadcast_id",
+                        ColumnType::Simple(SimpleColumnType::Integer),
+                    ),
+                ],
+                vec![],
+            );
+
+            // New table: notification_broadcast
+            let notification_broadcast = table(
+                "notification_broadcast",
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+                vec![],
+            );
+
+            // Modified notification with FK constraint to the new table
+            let notification_to = table(
+                "notification",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col(
+                        "broadcast_id",
+                        ColumnType::Simple(SimpleColumnType::Integer),
+                    ),
+                ],
+                vec![TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["broadcast_id".into()],
+                    ref_table: "notification_broadcast".into(),
+                    ref_columns: vec!["id".into()],
+                    on_delete: None,
+                    on_update: None,
+                }],
+            );
+
+            let from_schema = vec![notification_from];
+            let to_schema = vec![notification_to, notification_broadcast];
+
+            let plan = diff_schemas(&from_schema, &to_schema).unwrap();
+
+            // Find positions
+            let create_pos = plan.actions.iter().position(|a| matches!(a, MigrationAction::CreateTable { table, .. } if table == "notification_broadcast"));
+            let add_constraint_pos = plan.actions.iter().position(|a| {
+                matches!(a, MigrationAction::AddConstraint {
+                    constraint: TableConstraint::ForeignKey { ref_table, .. }, ..
+                } if ref_table == "notification_broadcast")
+            });
+
+            assert!(
+                create_pos.is_some(),
+                "Should have CreateTable for notification_broadcast"
+            );
+            assert!(
+                add_constraint_pos.is_some(),
+                "Should have AddConstraint for FK to notification_broadcast"
+            );
+            assert!(
+                create_pos.unwrap() < add_constraint_pos.unwrap(),
+                "CreateTable must come BEFORE AddConstraint FK that references it. Got CreateTable at {}, AddConstraint at {}",
+                create_pos.unwrap(),
+                add_constraint_pos.unwrap()
+            );
+        }
+
+        /// Test sort_create_before_add_constraint with multiple action types
+        /// Covers lines 218, 221, 223, 225 in sort_create_before_add_constraint
+        #[test]
+        fn sort_create_before_add_constraint_all_branches() {
+            use super::*;
+
+            // Scenario: Existing table gets modified (column change) AND gets FK to new table
+            // Plus another existing table gets a regular index added (not FK to new table)
+            // This creates:
+            // - ModifyColumnComment (doesn't ref created table)
+            // - AddConstraint FK (refs created table)
+            // - AddConstraint Index (doesn't ref created table)
+            // - CreateTable
+
+            let users_from = table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    {
+                        let mut c = col("name", ColumnType::Simple(SimpleColumnType::Text));
+                        c.comment = Some("Old comment".into());
+                        c
+                    },
+                    col("role_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ],
+                vec![],
+            );
+
+            let posts_from = table(
+                "posts",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("title", ColumnType::Simple(SimpleColumnType::Text)),
+                ],
+                vec![],
+            );
+
+            // New table: roles
+            let roles = table(
+                "roles",
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+                vec![],
+            );
+
+            // Modified users: comment change + FK to new roles table
+            let users_to = table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    {
+                        let mut c = col("name", ColumnType::Simple(SimpleColumnType::Text));
+                        c.comment = Some("New comment".into());
+                        c
+                    },
+                    col("role_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ],
+                vec![TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["role_id".into()],
+                    ref_table: "roles".into(),
+                    ref_columns: vec!["id".into()],
+                    on_delete: None,
+                    on_update: None,
+                }],
+            );
+
+            // Modified posts: add index (not FK to new table)
+            let posts_to = table(
+                "posts",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("title", ColumnType::Simple(SimpleColumnType::Text)),
+                ],
+                vec![TableConstraint::Index {
+                    name: Some("idx_title".into()),
+                    columns: vec!["title".into()],
+                }],
+            );
+
+            let from_schema = vec![users_from, posts_from];
+            let to_schema = vec![users_to, posts_to, roles];
+
+            let plan = diff_schemas(&from_schema, &to_schema).unwrap();
+
+            // Verify CreateTable comes first
+            let create_pos = plan
+                .actions
+                .iter()
+                .position(
+                    |a| matches!(a, MigrationAction::CreateTable { table, .. } if table == "roles"),
+                )
+                .expect("Should have CreateTable for roles");
+
+            // ModifyColumnComment should come after CreateTable (line 218: non-create vs create)
+            let modify_pos = plan
+                .actions
+                .iter()
+                .position(|a| matches!(a, MigrationAction::ModifyColumnComment { .. }))
+                .expect("Should have ModifyColumnComment");
+
+            // AddConstraint Index (not FK to created) should come after CreateTable (line 218)
+            let add_index_pos = plan
+                .actions
+                .iter()
+                .position(|a| {
+                    matches!(
+                        a,
+                        MigrationAction::AddConstraint {
+                            constraint: TableConstraint::Index { .. },
+                            ..
+                        }
+                    )
+                })
+                .expect("Should have AddConstraint Index");
+
+            // AddConstraint FK to roles should come last (line 221: refs created, others don't)
+            let add_fk_pos = plan
+                .actions
+                .iter()
+                .position(|a| {
+                    matches!(
+                        a,
+                        MigrationAction::AddConstraint {
+                            constraint: TableConstraint::ForeignKey { ref_table, .. },
+                            ..
+                        } if ref_table == "roles"
+                    )
+                })
+                .expect("Should have AddConstraint FK to roles");
+
+            assert!(
+                create_pos < modify_pos,
+                "CreateTable must come before ModifyColumnComment"
+            );
+            assert!(
+                create_pos < add_index_pos,
+                "CreateTable must come before AddConstraint Index"
+            );
+            assert!(
+                create_pos < add_fk_pos,
+                "CreateTable must come before AddConstraint FK"
+            );
+            // FK to created table should come after non-FK-to-created actions
+            assert!(
+                add_index_pos < add_fk_pos,
+                "AddConstraint Index (not referencing created) should come before AddConstraint FK (referencing created)"
+            );
+        }
+
+        /// Test that two AddConstraint FKs both referencing created tables maintain stable order
+        /// Covers line 225: both ref created tables
+        #[test]
+        fn sort_multiple_fks_to_created_tables() {
+            use super::*;
+
+            // Two existing tables, each getting FK to a different new table
+            let users_from = table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("role_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ],
+                vec![],
+            );
+
+            let posts_from = table(
+                "posts",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("category_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ],
+                vec![],
+            );
+
+            // Two new tables
+            let roles = table(
+                "roles",
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+                vec![],
+            );
+            let categories = table(
+                "categories",
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+                vec![],
+            );
+
+            let users_to = table(
+                "users",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("role_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ],
+                vec![TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["role_id".into()],
+                    ref_table: "roles".into(),
+                    ref_columns: vec!["id".into()],
+                    on_delete: None,
+                    on_update: None,
+                }],
+            );
+
+            let posts_to = table(
+                "posts",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("category_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ],
+                vec![TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["category_id".into()],
+                    ref_table: "categories".into(),
+                    ref_columns: vec!["id".into()],
+                    on_delete: None,
+                    on_update: None,
+                }],
+            );
+
+            let from_schema = vec![users_from, posts_from];
+            let to_schema = vec![users_to, posts_to, roles, categories];
+
+            let plan = diff_schemas(&from_schema, &to_schema).unwrap();
+
+            // Both CreateTable should come before both AddConstraint FK
+            let create_roles_pos = plan.actions.iter().position(
+                |a| matches!(a, MigrationAction::CreateTable { table, .. } if table == "roles"),
+            );
+            let create_categories_pos = plan.actions.iter().position(|a| matches!(a, MigrationAction::CreateTable { table, .. } if table == "categories"));
+            let add_fk_roles_pos = plan.actions.iter().position(|a| {
+                matches!(
+                    a,
+                    MigrationAction::AddConstraint {
+                        constraint: TableConstraint::ForeignKey { ref_table, .. },
+                        ..
+                    } if ref_table == "roles"
+                )
+            });
+            let add_fk_categories_pos = plan.actions.iter().position(|a| {
+                matches!(
+                    a,
+                    MigrationAction::AddConstraint {
+                        constraint: TableConstraint::ForeignKey { ref_table, .. },
+                        ..
+                    } if ref_table == "categories"
+                )
+            });
+
+            assert!(create_roles_pos.is_some());
+            assert!(create_categories_pos.is_some());
+            assert!(add_fk_roles_pos.is_some());
+            assert!(add_fk_categories_pos.is_some());
+
+            // All CreateTable before all AddConstraint FK
+            let max_create = create_roles_pos
+                .unwrap()
+                .max(create_categories_pos.unwrap());
+            let min_add_fk = add_fk_roles_pos
+                .unwrap()
+                .min(add_fk_categories_pos.unwrap());
+            assert!(
+                max_create < min_add_fk,
+                "All CreateTable actions must come before all AddConstraint FK actions"
             );
         }
 
