@@ -1232,6 +1232,107 @@ mod tests {
         }
     }
 
+    // Direct unit tests for sort_create_before_add_constraint
+    mod sort_create_before_add_constraint_tests {
+        use super::*;
+        use crate::diff::sort_create_before_add_constraint;
+
+        /// Test line 276: (false, true, _, _) - a is NOT CreateTable, b IS CreateTable
+        #[test]
+        fn test_non_create_vs_create_ordering() {
+            // Put AddColumn BEFORE CreateTable - sort should move CreateTable first
+            let mut actions = vec![
+                MigrationAction::AddColumn {
+                    table: "users".into(),
+                    column: Box::new(ColumnDef {
+                        name: "name".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Text),
+                        nullable: true,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    }),
+                    fill_with: None,
+                },
+                MigrationAction::CreateTable {
+                    table: "roles".into(),
+                    columns: vec![],
+                    constraints: vec![],
+                },
+            ];
+
+            sort_create_before_add_constraint(&mut actions);
+
+            // CreateTable should now be first
+            assert!(
+                matches!(&actions[0], MigrationAction::CreateTable { table, .. } if table == "roles"),
+                "CreateTable should be moved to first position"
+            );
+            assert!(
+                matches!(&actions[1], MigrationAction::AddColumn { .. }),
+                "AddColumn should be moved to second position"
+            );
+        }
+
+        /// Test line 281: (false, false, false, true) - neither is CreateTable, a doesn't ref, b refs
+        #[test]
+        fn test_non_ref_vs_ref_ordering() {
+            // Put AddConstraint FK (refs created) BEFORE AddColumn (doesn't ref)
+            // Sort should move the FK-referencing one AFTER the non-referencing one
+            let mut actions = vec![
+                MigrationAction::AddConstraint {
+                    table: "users".into(),
+                    constraint: TableConstraint::ForeignKey {
+                        name: None,
+                        columns: vec!["role_id".into()],
+                        ref_table: "roles".into(), // refs created table
+                        ref_columns: vec!["id".into()],
+                        on_delete: None,
+                        on_update: None,
+                    },
+                },
+                MigrationAction::AddColumn {
+                    table: "posts".into(),
+                    column: Box::new(ColumnDef {
+                        name: "title".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Text),
+                        nullable: true,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    }),
+                    fill_with: None,
+                },
+                MigrationAction::CreateTable {
+                    table: "roles".into(),
+                    columns: vec![],
+                    constraints: vec![],
+                },
+            ];
+
+            sort_create_before_add_constraint(&mut actions);
+
+            // CreateTable should be first
+            assert!(
+                matches!(&actions[0], MigrationAction::CreateTable { .. }),
+                "CreateTable should be first"
+            );
+            // AddColumn (non-ref) should come before AddConstraint FK (refs created)
+            let add_col_pos = actions.iter().position(|a| matches!(a, MigrationAction::AddColumn { .. })).unwrap();
+            let add_fk_pos = actions.iter().position(|a| matches!(a, MigrationAction::AddConstraint { constraint: TableConstraint::ForeignKey { .. }, .. })).unwrap();
+            assert!(
+                add_col_pos < add_fk_pos,
+                "AddColumn (non-ref) should come before AddConstraint FK (refs created)"
+            );
+        }
+    }
+
     // Tests for foreign key dependency ordering
     mod fk_ordering {
         use super::*;
