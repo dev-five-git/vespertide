@@ -221,6 +221,70 @@ fn sort_delete_tables(actions: &mut [MigrationAction], all_tables: &BTreeMap<&st
     }
 }
 
+/// Sort actions so that CreateTable actions come before AddConstraint actions
+/// that reference those newly created tables via foreign keys.
+fn sort_create_before_add_constraint(actions: &mut Vec<MigrationAction>) {
+    // Collect names of tables being created
+    let created_tables: BTreeSet<String> = actions
+        .iter()
+        .filter_map(|a| {
+            if let MigrationAction::CreateTable { table, .. } = a {
+                Some(table.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if created_tables.is_empty() {
+        return;
+    }
+
+    // Stable sort: CreateTable actions that are referenced by AddConstraint should come first
+    // We achieve this by partitioning: first all CreateTable, then everything else
+    actions.sort_by(|a, b| {
+        let a_is_create = matches!(a, MigrationAction::CreateTable { .. });
+        let b_is_create = matches!(b, MigrationAction::CreateTable { .. });
+
+        // Check if action is AddConstraint with FK referencing a created table
+        let a_refs_created = if let MigrationAction::AddConstraint {
+            constraint: TableConstraint::ForeignKey { ref_table, .. },
+            ..
+        } = a
+        {
+            created_tables.contains(ref_table)
+        } else {
+            false
+        };
+        let b_refs_created = if let MigrationAction::AddConstraint {
+            constraint: TableConstraint::ForeignKey { ref_table, .. },
+            ..
+        } = b
+        {
+            created_tables.contains(ref_table)
+        } else {
+            false
+        };
+
+        // Order: CreateTable first, then non-referencing actions, then referencing AddConstraint last
+        match (a_is_create, b_is_create, a_refs_created, b_refs_created) {
+            // Both CreateTable - maintain original order
+            (true, true, _, _) => std::cmp::Ordering::Equal,
+            // a is CreateTable, b is not - a comes first
+            (true, false, _, _) => std::cmp::Ordering::Less,
+            // a is not CreateTable, b is - b comes first
+            (false, true, _, _) => std::cmp::Ordering::Greater,
+            // Neither is CreateTable
+            // If a refs created table and b doesn't, a comes after
+            (false, false, true, false) => std::cmp::Ordering::Greater,
+            // If b refs created table and a doesn't, b comes after
+            (false, false, false, true) => std::cmp::Ordering::Less,
+            // Both ref or both don't ref - maintain original order
+            (false, false, _, _) => std::cmp::Ordering::Equal,
+        }
+    });
+}
+
 /// Diff two schema snapshots into a migration plan.
 /// Schemas are normalized for comparison purposes, but the original (non-normalized)
 /// tables are used in migration actions to preserve inline constraint definitions.
@@ -424,6 +488,9 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
 
     // Sort DeleteTable actions so tables with FK dependencies are deleted first
     sort_delete_tables(&mut actions, &from_map);
+
+    // Sort so CreateTable comes before AddConstraint that references the new table
+    sort_create_before_add_constraint(&mut actions);
 
     Ok(MigrationPlan {
         comment: None,
@@ -1672,6 +1739,76 @@ mod tests {
             assert!(
                 get_pos("order") < get_pos("payment"),
                 "order must come before payment"
+            );
+        }
+
+        /// Test that AddConstraint FK to a new table comes AFTER CreateTable for that table
+        #[test]
+        fn add_constraint_fk_to_new_table_comes_after_create_table() {
+            use super::*;
+
+            // Existing table: notification (with broadcast_id column)
+            let notification_from = table(
+                "notification",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("broadcast_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ],
+                vec![],
+            );
+
+            // New table: notification_broadcast
+            let notification_broadcast = table(
+                "notification_broadcast",
+                vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+                vec![],
+            );
+
+            // Modified notification with FK constraint to the new table
+            let notification_to = table(
+                "notification",
+                vec![
+                    col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col("broadcast_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ],
+                vec![TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["broadcast_id".into()],
+                    ref_table: "notification_broadcast".into(),
+                    ref_columns: vec!["id".into()],
+                    on_delete: None,
+                    on_update: None,
+                }],
+            );
+
+            let from_schema = vec![notification_from];
+            let to_schema = vec![notification_to, notification_broadcast];
+
+            let plan = diff_schemas(&from_schema, &to_schema).unwrap();
+
+            // Find positions
+            let create_pos = plan.actions.iter().position(|a| {
+                matches!(a, MigrationAction::CreateTable { table, .. } if table == "notification_broadcast")
+            });
+            let add_constraint_pos = plan.actions.iter().position(|a| {
+                matches!(a, MigrationAction::AddConstraint {
+                    constraint: TableConstraint::ForeignKey { ref_table, .. }, ..
+                } if ref_table == "notification_broadcast")
+            });
+
+            assert!(
+                create_pos.is_some(),
+                "Should have CreateTable for notification_broadcast"
+            );
+            assert!(
+                add_constraint_pos.is_some(),
+                "Should have AddConstraint for FK to notification_broadcast"
+            );
+            assert!(
+                create_pos.unwrap() < add_constraint_pos.unwrap(),
+                "CreateTable must come BEFORE AddConstraint FK that references it. Got CreateTable at {}, AddConstraint at {}",
+                create_pos.unwrap(),
+                add_constraint_pos.unwrap()
             );
         }
 
