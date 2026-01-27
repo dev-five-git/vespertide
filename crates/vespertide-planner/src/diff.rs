@@ -1752,7 +1752,10 @@ mod tests {
                 "notification",
                 vec![
                     col("id", ColumnType::Simple(SimpleColumnType::Integer)),
-                    col("broadcast_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col(
+                        "broadcast_id",
+                        ColumnType::Simple(SimpleColumnType::Integer),
+                    ),
                 ],
                 vec![],
             );
@@ -1769,7 +1772,10 @@ mod tests {
                 "notification",
                 vec![
                     col("id", ColumnType::Simple(SimpleColumnType::Integer)),
-                    col("broadcast_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                    col(
+                        "broadcast_id",
+                        ColumnType::Simple(SimpleColumnType::Integer),
+                    ),
                 ],
                 vec![TableConstraint::ForeignKey {
                     name: None,
