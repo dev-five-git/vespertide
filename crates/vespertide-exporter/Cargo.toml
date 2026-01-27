@@ -15,7 +15,7 @@ thiserror = "2"
 
 [dev-dependencies]
 rstest = "0.26"
-insta = { version = "1.44", features = ["yaml"] }
+insta = { version = "1.46", features = ["yaml"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }

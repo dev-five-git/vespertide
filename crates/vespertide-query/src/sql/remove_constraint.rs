@@ -200,30 +200,20 @@ pub fn build_remove_constraint(
                 queries.extend(index_queries);
                 Ok(queries)
             } else {
-                // For unique constraints, PostgreSQL uses DROP CONSTRAINT, MySQL uses DROP INDEX
-                // sea_query 0.32 doesn't support dropping unique constraint via Table::alter() directly
-                // We'll use Index::drop() which generates DROP INDEX for both backends
-                // However, PostgreSQL expects DROP CONSTRAINT, so we need to use Table::alter()
-                // Since drop_constraint() doesn't exist, we'll use Index::drop() for now
-                // Note: This may not match PostgreSQL's DROP CONSTRAINT syntax
+                // For unique constraints created via CREATE UNIQUE INDEX (PostgreSQL/SQLite),
+                // we use DROP INDEX. MySQL uses ALTER TABLE DROP INDEX.
                 let constraint_name = vespertide_naming::build_unique_constraint_name(
                     table,
                     columns,
                     name.as_deref(),
                 );
-                // Try using Table::alter() with drop_constraint if available
-                // If not, use Index::drop() as fallback
-                // For PostgreSQL, we need DROP CONSTRAINT, but sea_query doesn't support this
-                // We'll use raw SQL for PostgreSQL and Index::drop() for MySQL
-                let pg_sql = format!(
-                    "ALTER TABLE \"{}\" DROP CONSTRAINT \"{}\"",
-                    table, constraint_name
-                );
+                // PostgreSQL and SQLite: DROP INDEX (matches how we create them)
+                // MySQL: ALTER TABLE DROP INDEX
+                let pg_sql = format!("DROP INDEX \"{}\"", constraint_name);
                 let mysql_sql = format!("ALTER TABLE `{}` DROP INDEX `{}`", table, constraint_name);
+                let sqlite_sql = format!("DROP INDEX \"{}\"", constraint_name);
                 Ok(vec![BuiltQuery::Raw(RawSql::per_backend(
-                    pg_sql.clone(),
-                    mysql_sql,
-                    pg_sql,
+                    pg_sql, mysql_sql, sqlite_sql,
                 ))])
             }
         }
@@ -472,7 +462,7 @@ mod tests {
     #[case::remove_constraint_unique_named_postgres(
         "remove_constraint_unique_named_postgres",
         DatabaseBackend::Postgres,
-        &["DROP CONSTRAINT \"uq_users__uq_email\""]
+        &["DROP INDEX \"uq_users__uq_email\""]
     )]
     #[case::remove_constraint_unique_named_mysql(
         "remove_constraint_unique_named_mysql",
