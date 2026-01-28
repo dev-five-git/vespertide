@@ -1,6 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 
-use vespertide_core::{MigrationAction, MigrationPlan, TableConstraint, TableDef};
+use vespertide_core::{
+    ColumnType, ComplexColumnType, EnumValues, MigrationAction, MigrationPlan, TableConstraint,
+    TableDef,
+};
 
 use crate::error::PlannerError;
 
@@ -291,6 +294,111 @@ fn sort_create_before_add_constraint(actions: &mut [MigrationAction]) {
     actions.sort_by(|a, b| compare_actions_for_create_order(a, b, &created_tables));
 }
 
+/// Get the set of string enum values that were removed (present in `from` but not in `to`).
+/// Returns None if either type is not a string enum.
+fn get_removed_string_enum_values(from_type: &ColumnType, to_type: &ColumnType) -> Option<Vec<String>> {
+    match (from_type, to_type) {
+        (
+            ColumnType::Complex(ComplexColumnType::Enum {
+                values: EnumValues::String(from_values),
+                ..
+            }),
+            ColumnType::Complex(ComplexColumnType::Enum {
+                values: EnumValues::String(to_values),
+                ..
+            }),
+        ) => {
+            let to_set: HashSet<&str> = to_values.iter().map(|s| s.as_str()).collect();
+            let removed: Vec<String> = from_values
+                .iter()
+                .filter(|v| !to_set.contains(v.as_str()))
+                .cloned()
+                .collect();
+            if removed.is_empty() {
+                None
+            } else {
+                Some(removed)
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Extract the unquoted value from a SQL default string.
+/// For enum defaults like `'active'`, returns `active`.
+/// For values without quotes, returns as-is.
+fn extract_unquoted_default(default_sql: &str) -> &str {
+    let trimmed = default_sql.trim();
+    if trimmed.starts_with('\'') && trimmed.ends_with('\'') && trimmed.len() >= 2 {
+        &trimmed[1..trimmed.len() - 1]
+    } else {
+        trimmed
+    }
+}
+
+/// Sort ModifyColumnType and ModifyColumnDefault actions when they affect the same
+/// column AND involve enum value removal where the old default is the removed value.
+///
+/// When an enum value is being removed and the current default is that value,
+/// the default must be changed BEFORE the type is modified (to remove the enum value).
+/// Otherwise, the database will reject the ALTER TYPE because the default still
+/// references a value that would be removed.
+fn sort_enum_default_dependencies(
+    actions: &mut [MigrationAction],
+    from_map: &BTreeMap<&str, &TableDef>,
+) {
+    // Find indices of ModifyColumnType and ModifyColumnDefault actions
+    // Group by (table, column)
+    let mut type_changes: BTreeMap<(&str, &str), (usize, &ColumnType)> = BTreeMap::new();
+    let mut default_changes: BTreeMap<(&str, &str), usize> = BTreeMap::new();
+
+    for (i, action) in actions.iter().enumerate() {
+        match action {
+            MigrationAction::ModifyColumnType {
+                table,
+                column,
+                new_type,
+            } => {
+                type_changes.insert((table.as_str(), column.as_str()), (i, new_type));
+            }
+            MigrationAction::ModifyColumnDefault { table, column, .. } => {
+                default_changes.insert((table.as_str(), column.as_str()), i);
+            }
+            _ => {}
+        }
+    }
+
+    // Find pairs that need reordering
+    let mut swaps: Vec<(usize, usize)> = Vec::new();
+
+    for ((table, column), (type_idx, new_type)) in &type_changes {
+        if let Some(&default_idx) = default_changes.get(&(*table, *column))
+            && let Some(from_table) = from_map.get(table)
+            && let Some(from_column) = from_table.columns.iter().find(|c| c.name == *column)
+            && let Some(removed_values) =
+                get_removed_string_enum_values(&from_column.r#type, new_type)
+            && let Some(ref old_default) = from_column.default
+        {
+            // Both ModifyColumnType and ModifyColumnDefault exist for same column
+            // Check if old default is one of the removed enum values
+            let old_default_sql = old_default.to_sql();
+            let old_default_unquoted = extract_unquoted_default(&old_default_sql);
+
+            if removed_values.iter().any(|v| v == old_default_unquoted)
+                && *type_idx < default_idx
+            {
+                // Old default is being removed - must change default BEFORE type
+                swaps.push((*type_idx, default_idx));
+            }
+        }
+    }
+
+    // Apply swaps
+    for (i, j) in swaps {
+        actions.swap(i, j);
+    }
+}
+
 /// Diff two schema snapshots into a migration plan.
 /// Schemas are normalized for comparison purposes, but the original (non-normalized)
 /// tables are used in migration actions to preserve inline constraint definitions.
@@ -497,6 +605,10 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
 
     // Sort so CreateTable comes before AddConstraint that references the new table
     sort_create_before_add_constraint(&mut actions);
+
+    // Sort so ModifyColumnDefault comes before ModifyColumnType when removing enum values
+    // that were used as the default
+    sort_enum_default_dependencies(&mut actions, &from_map);
 
     Ok(MigrationPlan {
         comment: None,
@@ -780,6 +892,240 @@ mod tests {
                 MigrationAction::ModifyColumnType { table, column, .. }
                 if table == "orders" && column == "status"
             ));
+        }
+    }
+
+    // Tests for enum + default value ordering
+    mod enum_default_ordering {
+        use super::*;
+        use vespertide_core::{ComplexColumnType, EnumValues};
+
+        fn col_enum_with_default(name: &str, enum_name: &str, values: Vec<&str>, default: &str) -> ColumnDef {
+            ColumnDef {
+                name: name.to_string(),
+                r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                    name: enum_name.to_string(),
+                    values: EnumValues::String(values.into_iter().map(String::from).collect()),
+                }),
+                nullable: false,
+                default: Some(default.into()),
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }
+        }
+
+        #[test]
+        fn enum_add_value_with_new_default() {
+            // Case 1: Add new enum value and change default to that new value
+            // Expected order: ModifyColumnType FIRST (add value), then ModifyColumnDefault
+            let from = vec![table(
+                "orders",
+                vec![col_enum_with_default(
+                    "status",
+                    "order_status",
+                    vec!["pending", "shipped"],
+                    "'pending'",
+                )],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "orders",
+                vec![col_enum_with_default(
+                    "status",
+                    "order_status",
+                    vec!["pending", "shipped", "delivered"],
+                    "'delivered'", // new default uses newly added value
+                )],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            // Should generate both actions
+            assert_eq!(plan.actions.len(), 2, "Expected 2 actions, got: {:?}", plan.actions);
+
+            // ModifyColumnType should come FIRST (to add the new enum value)
+            assert!(
+                matches!(&plan.actions[0], MigrationAction::ModifyColumnType { table, column, .. }
+                    if table == "orders" && column == "status"),
+                "First action should be ModifyColumnType, got: {:?}", plan.actions[0]
+            );
+
+            // ModifyColumnDefault should come SECOND
+            assert!(
+                matches!(&plan.actions[1], MigrationAction::ModifyColumnDefault { table, column, .. }
+                    if table == "orders" && column == "status"),
+                "Second action should be ModifyColumnDefault, got: {:?}", plan.actions[1]
+            );
+        }
+
+        #[test]
+        fn enum_remove_value_that_was_default() {
+            // Case 2: Remove enum value that was the default
+            // Expected order: ModifyColumnDefault FIRST (change away from removed value),
+            //                 then ModifyColumnType (remove the value)
+            let from = vec![table(
+                "orders",
+                vec![col_enum_with_default(
+                    "status",
+                    "order_status",
+                    vec!["pending", "shipped", "cancelled"],
+                    "'cancelled'", // default is 'cancelled' which will be removed
+                )],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "orders",
+                vec![col_enum_with_default(
+                    "status",
+                    "order_status",
+                    vec!["pending", "shipped"], // 'cancelled' removed
+                    "'pending'", // default changed to existing value
+                )],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            // Should generate both actions
+            assert_eq!(plan.actions.len(), 2, "Expected 2 actions, got: {:?}", plan.actions);
+
+            // ModifyColumnDefault should come FIRST (change default before removing enum value)
+            assert!(
+                matches!(&plan.actions[0], MigrationAction::ModifyColumnDefault { table, column, .. }
+                    if table == "orders" && column == "status"),
+                "First action should be ModifyColumnDefault, got: {:?}", plan.actions[0]
+            );
+
+            // ModifyColumnType should come SECOND (now safe to remove enum value)
+            assert!(
+                matches!(&plan.actions[1], MigrationAction::ModifyColumnType { table, column, .. }
+                    if table == "orders" && column == "status"),
+                "Second action should be ModifyColumnType, got: {:?}", plan.actions[1]
+            );
+        }
+
+        #[test]
+        fn enum_remove_value_default_unchanged() {
+            // Remove enum value, but default was NOT that value (no reordering needed)
+            let from = vec![table(
+                "orders",
+                vec![col_enum_with_default(
+                    "status",
+                    "order_status",
+                    vec!["pending", "shipped", "cancelled"],
+                    "'pending'", // default is 'pending', not the removed 'cancelled'
+                )],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "orders",
+                vec![col_enum_with_default(
+                    "status",
+                    "order_status",
+                    vec!["pending", "shipped"], // 'cancelled' removed
+                    "'pending'", // default unchanged
+                )],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            // Should generate only ModifyColumnType (default unchanged)
+            assert_eq!(plan.actions.len(), 1, "Expected 1 action, got: {:?}", plan.actions);
+            assert!(
+                matches!(&plan.actions[0], MigrationAction::ModifyColumnType { table, column, .. }
+                    if table == "orders" && column == "status"),
+                "Action should be ModifyColumnType, got: {:?}", plan.actions[0]
+            );
+        }
+
+        #[test]
+        fn enum_remove_value_with_default_change_to_remaining() {
+            // Remove multiple enum values, old default was one of them, new default is a remaining value
+            let from = vec![table(
+                "orders",
+                vec![col_enum_with_default(
+                    "status",
+                    "order_status",
+                    vec!["draft", "pending", "shipped", "delivered", "cancelled"],
+                    "'cancelled'",
+                )],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "orders",
+                vec![col_enum_with_default(
+                    "status",
+                    "order_status",
+                    vec!["pending", "shipped", "delivered"], // removed 'draft' and 'cancelled'
+                    "'pending'",
+                )],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            assert_eq!(plan.actions.len(), 2, "Expected 2 actions, got: {:?}", plan.actions);
+
+            // ModifyColumnDefault MUST come first because old default 'cancelled' is being removed
+            assert!(
+                matches!(&plan.actions[0], MigrationAction::ModifyColumnDefault { .. }),
+                "First action should be ModifyColumnDefault, got: {:?}", plan.actions[0]
+            );
+            assert!(
+                matches!(&plan.actions[1], MigrationAction::ModifyColumnType { .. }),
+                "Second action should be ModifyColumnType, got: {:?}", plan.actions[1]
+            );
+        }
+
+        #[test]
+        fn enum_remove_value_with_unquoted_default() {
+            // Test coverage for extract_unquoted_default else branch (line 335)
+            // When default value doesn't have quotes, it should still be compared correctly
+            let from = vec![table(
+                "orders",
+                vec![col_enum_with_default(
+                    "status",
+                    "order_status",
+                    vec!["pending", "shipped", "cancelled"],
+                    "cancelled", // unquoted default (no single quotes)
+                )],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "orders",
+                vec![col_enum_with_default(
+                    "status",
+                    "order_status",
+                    vec!["pending", "shipped"], // 'cancelled' removed
+                    "pending", // unquoted default
+                )],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+
+            // Should generate both actions
+            assert_eq!(plan.actions.len(), 2, "Expected 2 actions, got: {:?}", plan.actions);
+
+            // ModifyColumnDefault should come FIRST because unquoted 'cancelled' matches removed value
+            assert!(
+                matches!(&plan.actions[0], MigrationAction::ModifyColumnDefault { .. }),
+                "First action should be ModifyColumnDefault, got: {:?}", plan.actions[0]
+            );
+            assert!(
+                matches!(&plan.actions[1], MigrationAction::ModifyColumnType { .. }),
+                "Second action should be ModifyColumnType, got: {:?}", plan.actions[1]
+            );
         }
     }
 
