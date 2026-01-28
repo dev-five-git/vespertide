@@ -296,7 +296,10 @@ fn sort_create_before_add_constraint(actions: &mut [MigrationAction]) {
 
 /// Get the set of string enum values that were removed (present in `from` but not in `to`).
 /// Returns None if either type is not a string enum.
-fn get_removed_string_enum_values(from_type: &ColumnType, to_type: &ColumnType) -> Option<Vec<String>> {
+fn get_removed_string_enum_values(
+    from_type: &ColumnType,
+    to_type: &ColumnType,
+) -> Option<Vec<String>> {
     match (from_type, to_type) {
         (
             ColumnType::Complex(ComplexColumnType::Enum {
@@ -384,9 +387,7 @@ fn sort_enum_default_dependencies(
             let old_default_sql = old_default.to_sql();
             let old_default_unquoted = extract_unquoted_default(&old_default_sql);
 
-            if removed_values.iter().any(|v| v == old_default_unquoted)
-                && *type_idx < default_idx
-            {
+            if removed_values.iter().any(|v| v == old_default_unquoted) && *type_idx < default_idx {
                 // Old default is being removed - must change default BEFORE type
                 swaps.push((*type_idx, default_idx));
             }
@@ -900,7 +901,12 @@ mod tests {
         use super::*;
         use vespertide_core::{ComplexColumnType, EnumValues};
 
-        fn col_enum_with_default(name: &str, enum_name: &str, values: Vec<&str>, default: &str) -> ColumnDef {
+        fn col_enum_with_default(
+            name: &str,
+            enum_name: &str,
+            values: Vec<&str>,
+            default: &str,
+        ) -> ColumnDef {
             ColumnDef {
                 name: name.to_string(),
                 r#type: ColumnType::Complex(ComplexColumnType::Enum {
@@ -946,20 +952,27 @@ mod tests {
             let plan = diff_schemas(&from, &to).unwrap();
 
             // Should generate both actions
-            assert_eq!(plan.actions.len(), 2, "Expected 2 actions, got: {:?}", plan.actions);
+            assert_eq!(
+                plan.actions.len(),
+                2,
+                "Expected 2 actions, got: {:?}",
+                plan.actions
+            );
 
             // ModifyColumnType should come FIRST (to add the new enum value)
             assert!(
                 matches!(&plan.actions[0], MigrationAction::ModifyColumnType { table, column, .. }
                     if table == "orders" && column == "status"),
-                "First action should be ModifyColumnType, got: {:?}", plan.actions[0]
+                "First action should be ModifyColumnType, got: {:?}",
+                plan.actions[0]
             );
 
             // ModifyColumnDefault should come SECOND
             assert!(
                 matches!(&plan.actions[1], MigrationAction::ModifyColumnDefault { table, column, .. }
                     if table == "orders" && column == "status"),
-                "Second action should be ModifyColumnDefault, got: {:?}", plan.actions[1]
+                "Second action should be ModifyColumnDefault, got: {:?}",
+                plan.actions[1]
             );
         }
 
@@ -985,7 +998,7 @@ mod tests {
                     "status",
                     "order_status",
                     vec!["pending", "shipped"], // 'cancelled' removed
-                    "'pending'", // default changed to existing value
+                    "'pending'",                // default changed to existing value
                 )],
                 vec![],
             )];
@@ -993,20 +1006,27 @@ mod tests {
             let plan = diff_schemas(&from, &to).unwrap();
 
             // Should generate both actions
-            assert_eq!(plan.actions.len(), 2, "Expected 2 actions, got: {:?}", plan.actions);
+            assert_eq!(
+                plan.actions.len(),
+                2,
+                "Expected 2 actions, got: {:?}",
+                plan.actions
+            );
 
             // ModifyColumnDefault should come FIRST (change default before removing enum value)
             assert!(
                 matches!(&plan.actions[0], MigrationAction::ModifyColumnDefault { table, column, .. }
                     if table == "orders" && column == "status"),
-                "First action should be ModifyColumnDefault, got: {:?}", plan.actions[0]
+                "First action should be ModifyColumnDefault, got: {:?}",
+                plan.actions[0]
             );
 
             // ModifyColumnType should come SECOND (now safe to remove enum value)
             assert!(
                 matches!(&plan.actions[1], MigrationAction::ModifyColumnType { table, column, .. }
                     if table == "orders" && column == "status"),
-                "Second action should be ModifyColumnType, got: {:?}", plan.actions[1]
+                "Second action should be ModifyColumnType, got: {:?}",
+                plan.actions[1]
             );
         }
 
@@ -1030,7 +1050,7 @@ mod tests {
                     "status",
                     "order_status",
                     vec!["pending", "shipped"], // 'cancelled' removed
-                    "'pending'", // default unchanged
+                    "'pending'",                // default unchanged
                 )],
                 vec![],
             )];
@@ -1038,11 +1058,17 @@ mod tests {
             let plan = diff_schemas(&from, &to).unwrap();
 
             // Should generate only ModifyColumnType (default unchanged)
-            assert_eq!(plan.actions.len(), 1, "Expected 1 action, got: {:?}", plan.actions);
+            assert_eq!(
+                plan.actions.len(),
+                1,
+                "Expected 1 action, got: {:?}",
+                plan.actions
+            );
             assert!(
                 matches!(&plan.actions[0], MigrationAction::ModifyColumnType { table, column, .. }
                     if table == "orders" && column == "status"),
-                "Action should be ModifyColumnType, got: {:?}", plan.actions[0]
+                "Action should be ModifyColumnType, got: {:?}",
+                plan.actions[0]
             );
         }
 
@@ -1073,16 +1099,26 @@ mod tests {
 
             let plan = diff_schemas(&from, &to).unwrap();
 
-            assert_eq!(plan.actions.len(), 2, "Expected 2 actions, got: {:?}", plan.actions);
+            assert_eq!(
+                plan.actions.len(),
+                2,
+                "Expected 2 actions, got: {:?}",
+                plan.actions
+            );
 
             // ModifyColumnDefault MUST come first because old default 'cancelled' is being removed
             assert!(
-                matches!(&plan.actions[0], MigrationAction::ModifyColumnDefault { .. }),
-                "First action should be ModifyColumnDefault, got: {:?}", plan.actions[0]
+                matches!(
+                    &plan.actions[0],
+                    MigrationAction::ModifyColumnDefault { .. }
+                ),
+                "First action should be ModifyColumnDefault, got: {:?}",
+                plan.actions[0]
             );
             assert!(
                 matches!(&plan.actions[1], MigrationAction::ModifyColumnType { .. }),
-                "Second action should be ModifyColumnType, got: {:?}", plan.actions[1]
+                "Second action should be ModifyColumnType, got: {:?}",
+                plan.actions[1]
             );
         }
 
@@ -1107,7 +1143,7 @@ mod tests {
                     "status",
                     "order_status",
                     vec!["pending", "shipped"], // 'cancelled' removed
-                    "pending", // unquoted default
+                    "pending",                  // unquoted default
                 )],
                 vec![],
             )];
@@ -1115,16 +1151,26 @@ mod tests {
             let plan = diff_schemas(&from, &to).unwrap();
 
             // Should generate both actions
-            assert_eq!(plan.actions.len(), 2, "Expected 2 actions, got: {:?}", plan.actions);
+            assert_eq!(
+                plan.actions.len(),
+                2,
+                "Expected 2 actions, got: {:?}",
+                plan.actions
+            );
 
             // ModifyColumnDefault should come FIRST because unquoted 'cancelled' matches removed value
             assert!(
-                matches!(&plan.actions[0], MigrationAction::ModifyColumnDefault { .. }),
-                "First action should be ModifyColumnDefault, got: {:?}", plan.actions[0]
+                matches!(
+                    &plan.actions[0],
+                    MigrationAction::ModifyColumnDefault { .. }
+                ),
+                "First action should be ModifyColumnDefault, got: {:?}",
+                plan.actions[0]
             );
             assert!(
                 matches!(&plan.actions[1], MigrationAction::ModifyColumnType { .. }),
-                "Second action should be ModifyColumnType, got: {:?}", plan.actions[1]
+                "Second action should be ModifyColumnType, got: {:?}",
+                plan.actions[1]
             );
         }
     }
