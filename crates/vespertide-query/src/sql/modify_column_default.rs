@@ -288,6 +288,41 @@ mod tests {
         assert!(err_msg.contains("Column 'email' not found"));
     }
 
+    /// Test Postgres default change when column is not in schema
+    /// This covers the fallback path where column_type is None
+    #[test]
+    fn test_postgres_column_not_in_schema_uses_default_as_is() {
+        let schema = vec![table_def(
+            "users",
+            vec![col(
+                "id",
+                ColumnType::Simple(SimpleColumnType::Integer),
+                false,
+            )],
+            // Note: "status" column is NOT in the schema
+            vec![],
+        )];
+
+        // Postgres doesn't error when column isn't found - it just uses the default as-is
+        let result = build_modify_column_default(
+            &DatabaseBackend::Postgres,
+            "users",
+            "status", // column not in schema
+            Some("'active'"),
+            &schema,
+        );
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(DatabaseBackend::Postgres))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        // Should still generate valid SQL, using the default value as-is
+        assert!(sql.contains("ALTER TABLE \"users\" ALTER COLUMN \"status\" SET DEFAULT 'active'"));
+    }
+
     /// Test with index - should recreate index after table rebuild (SQLite)
     #[rstest]
     #[case::postgres_with_index(DatabaseBackend::Postgres)]
