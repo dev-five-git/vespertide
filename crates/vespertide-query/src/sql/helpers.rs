@@ -779,4 +779,71 @@ mod tests {
     fn test_needs_quoting(#[case] input: &str, #[case] expected: bool) {
         assert_eq!(needs_quoting(input), expected);
     }
+
+    #[test]
+    fn test_recreate_indexes_after_rebuild_skips_pending() {
+        use vespertide_core::TableConstraint;
+        let idx1 = TableConstraint::Index {
+            name: Some("idx_a".into()),
+            columns: vec!["a".into()],
+        };
+        let idx2 = TableConstraint::Index {
+            name: Some("idx_b".into()),
+            columns: vec!["b".into()],
+        };
+        let uq1 = TableConstraint::Unique {
+            name: Some("uq_c".into()),
+            columns: vec!["c".into()],
+        };
+
+        // All three in table constraints, but idx1 and uq1 are pending
+        let constraints = vec![idx1.clone(), idx2.clone(), uq1.clone()];
+        let pending = vec![idx1.clone(), uq1.clone()];
+
+        let queries = recreate_indexes_after_rebuild("t", &constraints, &pending);
+        // Only idx_b should be recreated
+        assert_eq!(queries.len(), 1);
+        let sql = queries[0].build(DatabaseBackend::Sqlite);
+        assert!(sql.contains("idx_b"));
+    }
+
+    #[test]
+    fn test_recreate_indexes_after_rebuild_no_pending() {
+        use vespertide_core::TableConstraint;
+        let idx = TableConstraint::Index {
+            name: Some("idx_a".into()),
+            columns: vec!["a".into()],
+        };
+        let uq = TableConstraint::Unique {
+            name: Some("uq_b".into()),
+            columns: vec!["b".into()],
+        };
+
+        let queries = recreate_indexes_after_rebuild("t", &[idx, uq], &[]);
+        assert_eq!(queries.len(), 2);
+    }
+
+    #[test]
+    fn test_recreate_indexes_after_rebuild_skips_non_index_constraints() {
+        use vespertide_core::TableConstraint;
+        let pk = TableConstraint::PrimaryKey {
+            columns: vec!["id".into()],
+            auto_increment: false,
+        };
+        let fk = TableConstraint::ForeignKey {
+            name: None,
+            columns: vec!["uid".into()],
+            ref_table: "u".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: None,
+        };
+        let chk = TableConstraint::Check {
+            name: "chk".into(),
+            expr: "id > 0".into(),
+        };
+
+        let queries = recreate_indexes_after_rebuild("t", &[pk, fk, chk], &[]);
+        assert_eq!(queries.len(), 0);
+    }
 }

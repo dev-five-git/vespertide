@@ -1089,6 +1089,237 @@ mod tests {
     }
 
     #[test]
+    fn test_add_constraint_composite_primary_key_postgres() {
+        let constraint = TableConstraint::PrimaryKey {
+            columns: vec!["user_id".into(), "role_id".into()],
+            auto_increment: false,
+        };
+        let current_schema = vec![TableDef {
+            name: "user_roles".into(),
+            description: None,
+            columns: vec![
+                ColumnDef {
+                    name: "user_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "role_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![],
+        }];
+        let result = build_add_constraint(
+            &DatabaseBackend::Postgres,
+            "user_roles",
+            &constraint,
+            &current_schema,
+            &[],
+        )
+        .unwrap();
+        let sql = result[0].build(DatabaseBackend::Postgres);
+        assert!(sql.contains("ADD PRIMARY KEY"));
+        assert!(sql.contains("\"user_id\""));
+        assert!(sql.contains("\"role_id\""));
+    }
+
+    #[test]
+    fn test_add_constraint_composite_primary_key_mysql() {
+        let constraint = TableConstraint::PrimaryKey {
+            columns: vec!["user_id".into(), "role_id".into()],
+            auto_increment: false,
+        };
+        let current_schema = vec![TableDef {
+            name: "user_roles".into(),
+            description: None,
+            columns: vec![
+                ColumnDef {
+                    name: "user_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "role_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![],
+        }];
+        let result = build_add_constraint(
+            &DatabaseBackend::MySql,
+            "user_roles",
+            &constraint,
+            &current_schema,
+            &[],
+        )
+        .unwrap();
+        let sql = result[0].build(DatabaseBackend::MySql);
+        assert!(sql.contains("ADD PRIMARY KEY"));
+        assert!(sql.contains("`user_id`"));
+        assert!(sql.contains("`role_id`"));
+    }
+
+    #[test]
+    fn test_constraints_overlap_primary_key_same_columns() {
+        let a = TableConstraint::PrimaryKey {
+            columns: vec!["id".into()],
+            auto_increment: false,
+        };
+        let b = TableConstraint::PrimaryKey {
+            columns: vec!["id".into()],
+            auto_increment: true,
+        };
+        assert!(constraints_overlap(&a, &b));
+    }
+
+    #[test]
+    fn test_constraints_overlap_primary_key_different_columns() {
+        let a = TableConstraint::PrimaryKey {
+            columns: vec!["id".into()],
+            auto_increment: false,
+        };
+        let b = TableConstraint::PrimaryKey {
+            columns: vec!["uid".into()],
+            auto_increment: false,
+        };
+        assert!(!constraints_overlap(&a, &b));
+    }
+
+    #[test]
+    fn test_constraints_overlap_check_same() {
+        let a = TableConstraint::Check {
+            name: "chk_age".into(),
+            expr: "age > 0".into(),
+        };
+        let b = TableConstraint::Check {
+            name: "chk_age".into(),
+            expr: "age > 0".into(),
+        };
+        assert!(constraints_overlap(&a, &b));
+    }
+
+    #[test]
+    fn test_constraints_overlap_check_different_name() {
+        let a = TableConstraint::Check {
+            name: "chk_age".into(),
+            expr: "age > 0".into(),
+        };
+        let b = TableConstraint::Check {
+            name: "chk_age2".into(),
+            expr: "age > 0".into(),
+        };
+        assert!(!constraints_overlap(&a, &b));
+    }
+
+    #[test]
+    fn test_constraints_overlap_check_different_expr() {
+        let a = TableConstraint::Check {
+            name: "chk_age".into(),
+            expr: "age > 0".into(),
+        };
+        let b = TableConstraint::Check {
+            name: "chk_age".into(),
+            expr: "age > 10".into(),
+        };
+        assert!(!constraints_overlap(&a, &b));
+    }
+
+    #[test]
+    fn test_constraints_overlap_different_variants() {
+        let a = TableConstraint::PrimaryKey {
+            columns: vec!["id".into()],
+            auto_increment: false,
+        };
+        let b = TableConstraint::Check {
+            name: "chk".into(),
+            expr: "id > 0".into(),
+        };
+        assert!(!constraints_overlap(&a, &b));
+    }
+
+    #[test]
+    fn test_constraints_overlap_fk_same_columns() {
+        let a = TableConstraint::ForeignKey {
+            name: None,
+            columns: vec!["user_id".into()],
+            ref_table: "users".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: None,
+        };
+        let b = TableConstraint::ForeignKey {
+            name: Some("fk".into()),
+            columns: vec!["user_id".into()],
+            ref_table: "other".into(),
+            ref_columns: vec!["oid".into()],
+            on_delete: Some(ReferenceAction::Cascade),
+            on_update: None,
+        };
+        assert!(constraints_overlap(&a, &b));
+    }
+
+    #[test]
+    fn test_merge_constraint_replaces_overlapping() {
+        let existing = vec![
+            TableConstraint::PrimaryKey {
+                columns: vec!["id".into()],
+                auto_increment: false,
+            },
+            TableConstraint::Index {
+                name: None,
+                columns: vec!["email".into()],
+            },
+        ];
+        let new_pk = TableConstraint::PrimaryKey {
+            columns: vec!["id".into()],
+            auto_increment: true,
+        };
+        let result = merge_constraint(&existing, &new_pk);
+        assert_eq!(result.len(), 2); // replaced, not added
+    }
+
+    #[test]
+    fn test_merge_constraint_appends_non_overlapping() {
+        let existing = vec![TableConstraint::Index {
+            name: None,
+            columns: vec!["email".into()],
+        }];
+        let new_pk = TableConstraint::PrimaryKey {
+            columns: vec!["id".into()],
+            auto_increment: false,
+        };
+        let result = merge_constraint(&existing, &new_pk);
+        assert_eq!(result.len(), 2); // appended
+    }
+
+    #[test]
     fn test_extract_check_clauses_with_mixed_constraints() {
         // Test that extract_check_clauses filters out non-Check constraints
         let constraints = vec![

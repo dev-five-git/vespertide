@@ -865,6 +865,144 @@ mod tests {
     }
 
     #[test]
+    fn test_build_migration_block_verbose_create_table() {
+        let migration = MigrationPlan {
+            version: 1,
+            comment: Some("initial setup".into()),
+            created_at: None,
+            actions: vec![MigrationAction::CreateTable {
+                table: "users".into(),
+                columns: vec![test_column("id")],
+                constraints: vec![],
+            }],
+        };
+
+        let mut baseline = Vec::new();
+        let result = build_migration_block(&migration, &mut baseline, true);
+
+        assert!(result.is_ok());
+        let block_str = result.unwrap().to_string();
+
+        // Verbose mode should contain eprintln statements with action descriptions
+        assert!(block_str.contains("vespertide"));
+        assert!(block_str.contains("Action"));
+        assert!(block_str.contains("version < 1u32"));
+    }
+
+    #[test]
+    fn test_build_migration_block_verbose_multiple_actions() {
+        let migration = MigrationPlan {
+            version: 1,
+            comment: None,
+            created_at: None,
+            actions: vec![
+                MigrationAction::CreateTable {
+                    table: "users".into(),
+                    columns: vec![test_column("id")],
+                    constraints: vec![],
+                },
+                MigrationAction::CreateTable {
+                    table: "posts".into(),
+                    columns: vec![test_column("id")],
+                    constraints: vec![],
+                },
+            ],
+        };
+
+        let mut baseline = Vec::new();
+        let result = build_migration_block(&migration, &mut baseline, true);
+
+        assert!(result.is_ok());
+        let block_str = result.unwrap().to_string();
+
+        // Should have action numbering for both actions
+        assert!(block_str.contains("Action"));
+        assert_eq!(baseline.len(), 2);
+    }
+
+    #[test]
+    fn test_build_migration_block_verbose_add_column() {
+        // Create table first
+        let create = MigrationPlan {
+            version: 1,
+            comment: None,
+            created_at: None,
+            actions: vec![MigrationAction::CreateTable {
+                table: "users".into(),
+                columns: vec![test_column("id")],
+                constraints: vec![],
+            }],
+        };
+        let mut baseline = Vec::new();
+        let _ = build_migration_block(&create, &mut baseline, true);
+
+        // Add column in verbose mode
+        let add_col = MigrationPlan {
+            version: 2,
+            comment: Some("add email".into()),
+            created_at: None,
+            actions: vec![MigrationAction::AddColumn {
+                table: "users".into(),
+                column: Box::new(ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }),
+                fill_with: None,
+            }],
+        };
+
+        let result = build_migration_block(&add_col, &mut baseline, true);
+        assert!(result.is_ok());
+        let block_str = result.unwrap().to_string();
+        assert!(block_str.contains("vespertide"));
+        assert!(block_str.contains("version < 2u32"));
+    }
+
+    #[test]
+    fn test_generate_migration_code_verbose() {
+        let pool: Expr = syn::parse_str("db_pool").unwrap();
+        let version_table = "test_versions";
+
+        let migration = MigrationPlan {
+            version: 1,
+            comment: None,
+            created_at: None,
+            actions: vec![MigrationAction::CreateTable {
+                table: "users".into(),
+                columns: vec![test_column("id")],
+                constraints: vec![],
+            }],
+        };
+
+        let mut baseline = Vec::new();
+        let block = build_migration_block(&migration, &mut baseline, true).unwrap();
+
+        let generated = generate_migration_code(&pool, version_table, vec![block], true);
+        let generated_str = generated.to_string();
+
+        // Verbose mode should include current version eprintln
+        assert!(generated_str.contains("Current database version"));
+        assert!(generated_str.contains("async"));
+    }
+
+    #[test]
+    fn test_macro_parsing_verbose_flag() {
+        // Test parsing the "verbose" keyword
+        let input: proc_macro2::TokenStream = "pool, verbose".parse().unwrap();
+        let output = vespertide_migration_impl(input);
+        let output_str = output.to_string();
+        // Should produce output (either success or migration loading error)
+        assert!(!output_str.is_empty());
+    }
+
+    #[test]
     fn test_vespertide_migration_impl_with_migrations() {
         use std::fs;
 

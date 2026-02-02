@@ -1440,6 +1440,68 @@ mod tests {
         });
     }
 
+    #[test]
+    fn test_remove_constraint_primary_key_postgres_direct() {
+        // Direct non-rstest coverage for PK drop on Postgres (lines 53-54)
+        let constraint = TableConstraint::PrimaryKey {
+            columns: vec!["id".into()],
+            auto_increment: false,
+        };
+        let schema = vec![TableDef {
+            name: "orders".into(),
+            description: None,
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![constraint.clone()],
+        }];
+        let result =
+            build_remove_constraint(&DatabaseBackend::Postgres, "orders", &constraint, &schema)
+                .unwrap();
+        assert_eq!(result.len(), 1);
+        let sql = result[0].build(DatabaseBackend::Postgres);
+        assert!(sql.contains("ALTER TABLE \"orders\" DROP CONSTRAINT \"orders_pkey\""));
+    }
+
+    #[test]
+    fn test_remove_constraint_primary_key_mysql_direct() {
+        // Direct non-rstest coverage for PK drop on MySQL (lines 53-54)
+        let constraint = TableConstraint::PrimaryKey {
+            columns: vec!["id".into()],
+            auto_increment: false,
+        };
+        let schema = vec![TableDef {
+            name: "orders".into(),
+            description: None,
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![constraint.clone()],
+        }];
+        let result =
+            build_remove_constraint(&DatabaseBackend::MySql, "orders", &constraint, &schema)
+                .unwrap();
+        assert_eq!(result.len(), 1);
+        let sql = result[0].build(DatabaseBackend::MySql);
+        assert!(sql.contains("ALTER TABLE `orders` DROP PRIMARY KEY"));
+    }
+
     #[rstest]
     #[case::remove_index_with_custom_inline_name_postgres(DatabaseBackend::Postgres)]
     #[case::remove_index_with_custom_inline_name_mysql(DatabaseBackend::MySql)]
