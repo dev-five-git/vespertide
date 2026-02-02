@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/builder.rs
+expression: sql
+---
+ALTER TABLE "users" DROP COLUMN "email"

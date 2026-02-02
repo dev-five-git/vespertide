@@ -16,12 +16,22 @@ pub fn apply_action(
             if schema.iter().any(|t| t.name == *table) {
                 return Err(PlannerError::TableExists(table.clone()));
             }
-            schema.push(TableDef {
+            let table_def = TableDef {
                 name: table.clone(),
                 description: None,
                 columns: columns.clone(),
                 constraints: constraints.clone(),
-            });
+            };
+            // Normalize to promote inline constraints (unique, index, foreign_key, primary_key)
+            // to table-level TableConstraint entries. This is critical for SQLite which needs
+            // to know about constraints when dropping columns.
+            let normalized = table_def.normalize().map_err(|e| {
+                PlannerError::TableValidation(format!(
+                    "Failed to normalize table '{}': {}",
+                    table, e
+                ))
+            })?;
+            schema.push(normalized);
             Ok(())
         }
         MigrationAction::DeleteTable { table } => {
@@ -49,6 +59,15 @@ pub fn apply_action(
                 ))
             } else {
                 tbl.columns.push((**column).clone());
+                // Re-normalize to promote any inline constraints on the new column
+                // to table-level TableConstraint entries.
+                let normalized = tbl.clone().normalize().map_err(|e| {
+                    PlannerError::TableValidation(format!(
+                        "Failed to normalize table '{}' after adding column '{}': {}",
+                        table, column.name, e
+                    ))
+                })?;
+                *tbl = normalized;
                 Ok(())
             }
         }
@@ -1140,6 +1159,146 @@ mod tests {
         assert!(schema[0].constraints.is_empty());
         // Inline index cleared
         assert!(schema[0].columns[0].index.is_none());
+    }
+
+    // Tests for CreateTable normalizing inline constraints
+    #[test]
+    fn create_table_normalizes_inline_unique() {
+        let mut col_with_unique = col("email", ColumnType::Simple(SimpleColumnType::Text));
+        col_with_unique.unique = Some(vespertide_core::StrOrBoolOrArray::Bool(true));
+
+        let mut schema = vec![];
+        apply_action(
+            &mut schema,
+            &MigrationAction::CreateTable {
+                table: "users".into(),
+                columns: vec![col_with_unique],
+                constraints: vec![],
+            },
+        )
+        .unwrap();
+
+        // Inline unique: true should be normalized to a TableConstraint::Unique
+        assert!(
+            schema[0].constraints.iter().any(
+                |c| matches!(c, TableConstraint::Unique { columns, .. } if columns == &["email"])
+            ),
+            "Expected a Unique constraint on 'email', got: {:?}",
+            schema[0].constraints
+        );
+    }
+
+    #[test]
+    fn create_table_normalizes_inline_index() {
+        let mut col_with_index = col("email", ColumnType::Simple(SimpleColumnType::Text));
+        col_with_index.index = Some(vespertide_core::StrOrBoolOrArray::Bool(true));
+
+        let mut schema = vec![];
+        apply_action(
+            &mut schema,
+            &MigrationAction::CreateTable {
+                table: "users".into(),
+                columns: vec![col_with_index],
+                constraints: vec![],
+            },
+        )
+        .unwrap();
+
+        // Inline index: true should be normalized to a TableConstraint::Index
+        assert!(
+            schema[0].constraints.iter().any(
+                |c| matches!(c, TableConstraint::Index { columns, .. } if columns == &["email"])
+            ),
+            "Expected an Index constraint on 'email', got: {:?}",
+            schema[0].constraints
+        );
+    }
+
+    #[test]
+    fn create_table_normalizes_inline_primary_key() {
+        let mut col_with_pk = col("id", ColumnType::Simple(SimpleColumnType::Integer));
+        col_with_pk.primary_key =
+            Some(vespertide_core::schema::primary_key::PrimaryKeySyntax::Bool(true));
+
+        let mut schema = vec![];
+        apply_action(
+            &mut schema,
+            &MigrationAction::CreateTable {
+                table: "users".into(),
+                columns: vec![col_with_pk],
+                constraints: vec![],
+            },
+        )
+        .unwrap();
+
+        assert!(
+            schema[0].constraints.iter().any(
+                |c| matches!(c, TableConstraint::PrimaryKey { columns, .. } if columns == &["id"])
+            ),
+            "Expected a PrimaryKey constraint on 'id', got: {:?}",
+            schema[0].constraints
+        );
+    }
+
+    // Tests for AddColumn normalizing inline constraints
+    #[test]
+    fn add_column_normalizes_inline_unique() {
+        let mut schema = vec![table(
+            "users",
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+            vec![],
+        )];
+
+        let mut col_with_unique = col("email", ColumnType::Simple(SimpleColumnType::Text));
+        col_with_unique.unique = Some(vespertide_core::StrOrBoolOrArray::Bool(true));
+
+        apply_action(
+            &mut schema,
+            &MigrationAction::AddColumn {
+                table: "users".into(),
+                column: Box::new(col_with_unique),
+                fill_with: None,
+            },
+        )
+        .unwrap();
+
+        assert!(
+            schema[0].constraints.iter().any(
+                |c| matches!(c, TableConstraint::Unique { columns, .. } if columns == &["email"])
+            ),
+            "Expected a Unique constraint on 'email' after AddColumn, got: {:?}",
+            schema[0].constraints
+        );
+    }
+
+    #[test]
+    fn add_column_normalizes_inline_index() {
+        let mut schema = vec![table(
+            "users",
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+            vec![],
+        )];
+
+        let mut col_with_index = col("email", ColumnType::Simple(SimpleColumnType::Text));
+        col_with_index.index = Some(vespertide_core::StrOrBoolOrArray::Bool(true));
+
+        apply_action(
+            &mut schema,
+            &MigrationAction::AddColumn {
+                table: "users".into(),
+                column: Box::new(col_with_index),
+                fill_with: None,
+            },
+        )
+        .unwrap();
+
+        assert!(
+            schema[0].constraints.iter().any(
+                |c| matches!(c, TableConstraint::Index { columns, .. } if columns == &["email"])
+            ),
+            "Expected an Index constraint on 'email' after AddColumn, got: {:?}",
+            schema[0].constraints
+        );
     }
 
     // Tests for ModifyColumnNullable

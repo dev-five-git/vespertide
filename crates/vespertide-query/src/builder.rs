@@ -48,6 +48,7 @@ pub fn build_plan_queries(
 mod tests {
     use super::*;
     use crate::sql::DatabaseBackend;
+    use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
     use vespertide_core::{
         ColumnDef, ColumnType, MigrationAction, MigrationPlan, SimpleColumnType,
@@ -115,6 +116,107 @@ mod tests {
             expected_count,
             result.len()
         );
+    }
+
+    fn build_sql_snapshot(result: &[BuiltQuery], backend: DatabaseBackend) -> String {
+        result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<_>>()
+            .join(";\n")
+    }
+
+    /// Regression test: SQLite must emit DROP INDEX before DROP COLUMN when
+    /// the column was created with inline `unique: true` (no explicit table constraint).
+    /// Previously, apply_action didn't normalize inline constraints, so the evolving
+    /// schema had empty constraints and SQLite's DROP COLUMN failed.
+    #[rstest]
+    #[case::postgres("postgres", DatabaseBackend::Postgres)]
+    #[case::mysql("mysql", DatabaseBackend::MySql)]
+    #[case::sqlite("sqlite", DatabaseBackend::Sqlite)]
+    fn test_delete_column_after_create_table_with_inline_unique(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+    ) {
+        let mut col_with_unique = col("gift_code", ColumnType::Simple(SimpleColumnType::Text));
+        col_with_unique.unique = Some(vespertide_core::StrOrBoolOrArray::Bool(true));
+
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![
+                MigrationAction::CreateTable {
+                    table: "gift".into(),
+                    columns: vec![
+                        col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                        col_with_unique,
+                    ],
+                    constraints: vec![], // No explicit constraints - only inline unique: true
+                },
+                MigrationAction::DeleteColumn {
+                    table: "gift".into(),
+                    column: "gift_code".into(),
+                },
+            ],
+        };
+
+        let result = build_plan_queries(&plan, &[]).unwrap();
+        let queries = match backend {
+            DatabaseBackend::Postgres => &result[1].postgres,
+            DatabaseBackend::MySql => &result[1].mysql,
+            DatabaseBackend::Sqlite => &result[1].sqlite,
+        };
+        let sql = build_sql_snapshot(queries, backend);
+
+        with_settings!({ snapshot_suffix => format!("inline_unique_{}", title) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    /// Same regression test for inline `index: true`.
+    #[rstest]
+    #[case::postgres("postgres", DatabaseBackend::Postgres)]
+    #[case::mysql("mysql", DatabaseBackend::MySql)]
+    #[case::sqlite("sqlite", DatabaseBackend::Sqlite)]
+    fn test_delete_column_after_create_table_with_inline_index(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+    ) {
+        let mut col_with_index = col("email", ColumnType::Simple(SimpleColumnType::Text));
+        col_with_index.index = Some(vespertide_core::StrOrBoolOrArray::Bool(true));
+
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![
+                MigrationAction::CreateTable {
+                    table: "users".into(),
+                    columns: vec![
+                        col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                        col_with_index,
+                    ],
+                    constraints: vec![],
+                },
+                MigrationAction::DeleteColumn {
+                    table: "users".into(),
+                    column: "email".into(),
+                },
+            ],
+        };
+
+        let result = build_plan_queries(&plan, &[]).unwrap();
+        let queries = match backend {
+            DatabaseBackend::Postgres => &result[1].postgres,
+            DatabaseBackend::MySql => &result[1].mysql,
+            DatabaseBackend::Sqlite => &result[1].sqlite,
+        };
+        let sql = build_sql_snapshot(queries, backend);
+
+        with_settings!({ snapshot_suffix => format!("inline_index_{}", title) }, {
+            assert_snapshot!(sql);
+        });
     }
 
     #[test]
