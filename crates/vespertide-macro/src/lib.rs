@@ -54,24 +54,7 @@ impl Parse for MacroInput {
     }
 }
 
-/// Build a migration block (non-verbose).
 pub(crate) fn build_migration_block(
-    migration: &vespertide_core::MigrationPlan,
-    baseline_schema: &mut Vec<vespertide_core::TableDef>,
-) -> Result<proc_macro2::TokenStream, String> {
-    build_migration_block_inner(migration, baseline_schema, false)
-}
-
-/// Build a migration block with optional verbose logging.
-pub(crate) fn build_migration_block_verbose(
-    migration: &vespertide_core::MigrationPlan,
-    baseline_schema: &mut Vec<vespertide_core::TableDef>,
-    verbose: bool,
-) -> Result<proc_macro2::TokenStream, String> {
-    build_migration_block_inner(migration, baseline_schema, verbose)
-}
-
-fn build_migration_block_inner(
     migration: &vespertide_core::MigrationPlan,
     baseline_schema: &mut Vec<vespertide_core::TableDef>,
     verbose: bool,
@@ -229,14 +212,6 @@ fn generate_migration_code(
     pool: &Expr,
     version_table: &str,
     migration_blocks: Vec<proc_macro2::TokenStream>,
-) -> proc_macro2::TokenStream {
-    generate_migration_code_inner(pool, version_table, migration_blocks, false)
-}
-
-fn generate_migration_code_inner(
-    pool: &Expr,
-    version_table: &str,
-    migration_blocks: Vec<proc_macro2::TokenStream>,
     verbose: bool,
 ) -> proc_macro2::TokenStream {
     let verbose_current_version = if verbose {
@@ -366,7 +341,7 @@ pub(crate) fn vespertide_migration_impl(
     for migration in &migrations {
         // Apply prefix to migration table names
         let prefixed_migration = migration.clone().with_prefix(prefix);
-        match build_migration_block_verbose(&prefixed_migration, &mut baseline_schema, verbose) {
+        match build_migration_block(&prefixed_migration, &mut baseline_schema, verbose) {
             Ok(block) => migration_blocks.push(block),
             Err(e) => {
                 return syn::Error::new(proc_macro2::Span::call_site(), e).to_compile_error();
@@ -374,7 +349,7 @@ pub(crate) fn vespertide_migration_impl(
         }
     }
 
-    generate_migration_code_inner(pool, &version_table, migration_blocks, verbose)
+    generate_migration_code(pool, &version_table, migration_blocks, verbose)
 }
 
 /// Zero-runtime migration entry point.
@@ -511,7 +486,7 @@ mod tests {
         };
 
         let mut baseline = Vec::new();
-        let result = build_migration_block(&migration, &mut baseline);
+        let result = build_migration_block(&migration, &mut baseline, false);
 
         assert!(result.is_ok());
         let block = result.unwrap();
@@ -541,7 +516,7 @@ mod tests {
         };
 
         let mut baseline = Vec::new();
-        let _ = build_migration_block(&create_migration, &mut baseline);
+        let _ = build_migration_block(&create_migration, &mut baseline, false);
 
         // Now add a column
         let add_column_migration = MigrationPlan {
@@ -565,7 +540,7 @@ mod tests {
             }],
         };
 
-        let result = build_migration_block(&add_column_migration, &mut baseline);
+        let result = build_migration_block(&add_column_migration, &mut baseline, false);
         assert!(result.is_ok());
         let block = result.unwrap();
         let block_str = block.to_string();
@@ -596,7 +571,7 @@ mod tests {
         };
 
         let mut baseline = Vec::new();
-        let result = build_migration_block(&migration, &mut baseline);
+        let result = build_migration_block(&migration, &mut baseline, false);
 
         assert!(result.is_ok());
         assert_eq!(baseline.len(), 2);
@@ -620,9 +595,9 @@ mod tests {
         };
 
         let mut baseline = Vec::new();
-        let block = build_migration_block(&migration, &mut baseline).unwrap();
+        let block = build_migration_block(&migration, &mut baseline, false).unwrap();
 
-        let generated = generate_migration_code(&pool, version_table, vec![block]);
+        let generated = generate_migration_code(&pool, version_table, vec![block], false);
         let generated_str = generated.to_string();
 
         // Verify the generated code structure
@@ -638,7 +613,7 @@ mod tests {
         let pool: Expr = syn::parse_str("pool").unwrap();
         let version_table = "vespertide_version";
 
-        let generated = generate_migration_code(&pool, version_table, vec![]);
+        let generated = generate_migration_code(&pool, version_table, vec![], false);
         let generated_str = generated.to_string();
 
         // Should still generate the wrapper code
@@ -662,7 +637,7 @@ mod tests {
                 constraints: vec![],
             }],
         };
-        let block1 = build_migration_block(&migration1, &mut baseline).unwrap();
+        let block1 = build_migration_block(&migration1, &mut baseline, false).unwrap();
 
         let migration2 = MigrationPlan {
             version: 2,
@@ -674,9 +649,9 @@ mod tests {
                 constraints: vec![],
             }],
         };
-        let block2 = build_migration_block(&migration2, &mut baseline).unwrap();
+        let block2 = build_migration_block(&migration2, &mut baseline, false).unwrap();
 
-        let generated = generate_migration_code(&pool, "migrations", vec![block1, block2]);
+        let generated = generate_migration_code(&pool, "migrations", vec![block1, block2], false);
         let generated_str = generated.to_string();
 
         // Both version checks should be present
@@ -698,7 +673,7 @@ mod tests {
         };
 
         let mut baseline = Vec::new();
-        let result = build_migration_block(&migration, &mut baseline);
+        let result = build_migration_block(&migration, &mut baseline, false);
         assert!(result.is_ok());
 
         let block_str = result.unwrap().to_string();
@@ -724,7 +699,7 @@ mod tests {
         };
 
         let mut baseline = Vec::new();
-        let _ = build_migration_block(&create_migration, &mut baseline);
+        let _ = build_migration_block(&create_migration, &mut baseline, false);
         assert_eq!(baseline.len(), 1);
 
         // Now delete it
@@ -737,7 +712,7 @@ mod tests {
             }],
         };
 
-        let result = build_migration_block(&delete_migration, &mut baseline);
+        let result = build_migration_block(&delete_migration, &mut baseline, false);
         assert!(result.is_ok());
         let block_str = result.unwrap().to_string();
         assert!(block_str.contains("DROP TABLE"));
@@ -773,7 +748,7 @@ mod tests {
         };
 
         let mut baseline = Vec::new();
-        let result = build_migration_block(&migration, &mut baseline);
+        let result = build_migration_block(&migration, &mut baseline, false);
         assert!(result.is_ok());
 
         // Table should be normalized with index
@@ -797,7 +772,7 @@ mod tests {
         };
 
         let mut baseline = Vec::new();
-        let result = build_migration_block(&migration, &mut baseline);
+        let result = build_migration_block(&migration, &mut baseline, false);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
