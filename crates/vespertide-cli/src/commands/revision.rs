@@ -7,7 +7,7 @@ use colored::Colorize;
 use dialoguer::{Input, Select};
 use serde_json::Value;
 use vespertide_config::FileFormat;
-use vespertide_core::{MigrationAction, MigrationPlan, TableDef};
+use vespertide_core::{MigrationAction, MigrationPlan, TableConstraint, TableDef};
 use vespertide_planner::{find_missing_fill_with, plan_next_migration, schema_from_plans};
 
 use crate::utils::{
@@ -225,6 +225,43 @@ where
     Ok(())
 }
 
+/// Check that no AddColumn action adds a non-nullable FK column without a default.
+/// This is logically impossible: existing rows can't satisfy the FK constraint.
+fn check_non_nullable_fk_add_columns(plan: &MigrationPlan) -> Result<()> {
+    use std::collections::HashSet;
+
+    // Collect FK columns from AddConstraint actions
+    let mut fk_columns: HashSet<(String, String)> = HashSet::new();
+    for action in &plan.actions {
+        if let MigrationAction::AddConstraint {
+            table,
+            constraint: TableConstraint::ForeignKey { columns, .. },
+        } = action
+        {
+            for col in columns {
+                fk_columns.insert((table.clone(), col.to_string()));
+            }
+        }
+    }
+
+    for action in &plan.actions {
+        if let MigrationAction::AddColumn { table, column, .. } = action {
+            let has_fk = column.foreign_key.is_some()
+                || fk_columns.contains(&(table.clone(), column.name.to_string()));
+            if has_fk && !column.nullable && column.default.is_none() {
+                anyhow::bail!(
+                    "Cannot add non-nullable foreign key column '{}' to existing table '{}': \
+                     existing rows cannot satisfy the foreign key constraint. \
+                     Make the column nullable, or add it with a default value that references an existing row.",
+                    column.name,
+                    table
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Result<()> {
     let config = load_config()?;
     let current_models = load_models(&config)?;
@@ -241,6 +278,10 @@ pub fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Result<()> 
         );
         return Ok(());
     }
+
+    // Fail early: non-nullable FK column cannot be added to an existing table.
+    // Even with fill_with, there's no way to guarantee the value references a valid row.
+    check_non_nullable_fk_add_columns(&plan)?;
 
     // Reconstruct baseline schema for column type lookups
     let baseline_schema = schema_from_plans(&applied_plans)
@@ -471,6 +512,119 @@ mod tests {
                 .unwrap_or(false)
         });
         assert!(has_yaml);
+    }
+
+    #[test]
+    fn check_non_nullable_fk_add_column_fails() {
+        use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![
+                MigrationAction::AddColumn {
+                    table: "post".into(),
+                    column: Box::new(ColumnDef {
+                        name: "user_id".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    }),
+                    fill_with: Some("1".into()),
+                },
+                MigrationAction::AddConstraint {
+                    table: "post".into(),
+                    constraint: TableConstraint::ForeignKey {
+                        name: None,
+                        columns: vec!["user_id".into()],
+                        ref_table: "user".into(),
+                        ref_columns: vec!["id".into()],
+                        on_delete: None,
+                        on_update: None,
+                    },
+                },
+            ],
+        };
+        let result = check_non_nullable_fk_add_columns(&plan);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("user_id"),
+            "error should mention column: {msg}"
+        );
+        assert!(msg.contains("post"), "error should mention table: {msg}");
+    }
+
+    #[test]
+    fn check_nullable_fk_add_column_ok() {
+        use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![
+                MigrationAction::AddColumn {
+                    table: "post".into(),
+                    column: Box::new(ColumnDef {
+                        name: "user_id".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                        nullable: true,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    }),
+                    fill_with: None,
+                },
+                MigrationAction::AddConstraint {
+                    table: "post".into(),
+                    constraint: TableConstraint::ForeignKey {
+                        name: None,
+                        columns: vec!["user_id".into()],
+                        ref_table: "user".into(),
+                        ref_columns: vec!["id".into()],
+                        on_delete: None,
+                        on_update: None,
+                    },
+                },
+            ],
+        };
+        assert!(check_non_nullable_fk_add_columns(&plan).is_ok());
+    }
+
+    #[test]
+    fn check_non_nullable_no_fk_passes() {
+        // Regular non-nullable column without FK should NOT be blocked
+        use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![MigrationAction::AddColumn {
+                table: "post".into(),
+                column: Box::new(ColumnDef {
+                    name: "user_id1".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }),
+                fill_with: None,
+            }],
+        };
+        // Should pass — this column needs fill_with but that's handled separately
+        assert!(check_non_nullable_fk_add_columns(&plan).is_ok());
     }
 
     #[test]
