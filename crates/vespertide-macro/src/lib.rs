@@ -54,6 +54,14 @@ impl Parse for MacroInput {
     }
 }
 
+/// Build a migration block (non-verbose).
+pub(crate) fn build_migration_block(
+    migration: &vespertide_core::MigrationPlan,
+    baseline_schema: &mut Vec<vespertide_core::TableDef>,
+) -> Result<proc_macro2::TokenStream, String> {
+    build_migration_block_inner(migration, baseline_schema, false)
+}
+
 /// Build a migration block with optional verbose logging.
 pub(crate) fn build_migration_block_verbose(
     migration: &vespertide_core::MigrationPlan,
@@ -215,6 +223,14 @@ fn build_migration_block_inner(
     };
 
     Ok(block)
+}
+
+fn generate_migration_code(
+    pool: &Expr,
+    version_table: &str,
+    migration_blocks: Vec<proc_macro2::TokenStream>,
+) -> proc_macro2::TokenStream {
+    generate_migration_code_inner(pool, version_table, migration_blocks, false)
 }
 
 fn generate_migration_code_inner(
