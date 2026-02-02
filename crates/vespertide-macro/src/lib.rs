@@ -11,7 +11,7 @@ use vespertide_loader::{
     load_config_or_default, load_migrations_at_compile_time, load_models_at_compile_time,
 };
 use vespertide_planner::apply_action;
-use vespertide_query::{DatabaseBackend, build_plan_queries};
+use vespertide_query::{build_plan_queries, DatabaseBackend};
 
 struct MacroInput {
     pool: Expr,
@@ -90,12 +90,7 @@ pub(crate) fn build_migration_block(
 
     // Generate version guard and SQL execution block
     let block = quote! {
-        if version < #version {
-            // Begin transaction
-            let txn = __pool.begin().await.map_err(|e| {
-                ::vespertide::MigrationError::DatabaseError(format!("Failed to begin transaction: {}", e))
-            })?;
-
+        if __version < #version {
             // Select SQL statements based on backend
             let sqls: &[&str] = match backend {
                 sea_orm::DatabaseBackend::Postgres => &[#(#pg_sqls),*],
@@ -108,23 +103,17 @@ pub(crate) fn build_migration_block(
             for sql in sqls {
                 if !sql.is_empty() {
                     let stmt = sea_orm::Statement::from_string(backend, *sql);
-                    txn.execute_raw(stmt).await.map_err(|e| {
+                    __txn.execute_raw(stmt).await.map_err(|e| {
                         ::vespertide::MigrationError::DatabaseError(format!("Failed to execute SQL '{}': {}", sql, e))
                     })?;
                 }
             }
 
             // Insert version record for this migration
-            let q = if matches!(backend, sea_orm::DatabaseBackend::MySql) { '`' } else { '"' };
-            let insert_sql = format!("INSERT INTO {q}{}{q} (version) VALUES ({})", version_table, #version);
+            let insert_sql = format!("INSERT INTO {q}{}{q} (version) VALUES ({})", __version_table, #version);
             let stmt = sea_orm::Statement::from_string(backend, insert_sql);
-            txn.execute_raw(stmt).await.map_err(|e| {
+            __txn.execute_raw(stmt).await.map_err(|e| {
                 ::vespertide::MigrationError::DatabaseError(format!("Failed to insert version: {}", e))
-            })?;
-
-            // Commit transaction
-            txn.commit().await.map_err(|e| {
-                ::vespertide::MigrationError::DatabaseError(format!("Failed to commit transaction: {}", e))
             })?;
         }
     };
@@ -141,35 +130,46 @@ pub(crate) fn generate_migration_code(
     quote! {
         async {
             use sea_orm::{ConnectionTrait, TransactionTrait};
-            let __pool = #pool;
-            let version_table = #version_table;
+            let __pool = &#pool;
+            let __version_table = #version_table;
             let backend = __pool.get_database_backend();
-
-            // Create version table if it does not exist
-            // Table structure: version (INTEGER PRIMARY KEY), created_at (timestamp)
             let q = if matches!(backend, sea_orm::DatabaseBackend::MySql) { '`' } else { '"' };
+
+            // Create version table if it does not exist (outside transaction)
             let create_table_sql = format!(
                 "CREATE TABLE IF NOT EXISTS {q}{}{q} (version INTEGER PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
-                version_table
+                __version_table
             );
             let stmt = sea_orm::Statement::from_string(backend, create_table_sql);
             __pool.execute_raw(stmt).await.map_err(|e| {
                 ::vespertide::MigrationError::DatabaseError(format!("Failed to create version table: {}", e))
             })?;
 
-            // Read current maximum version (latest applied migration)
-            let select_sql = format!("SELECT MAX(version) as version FROM {q}{}{q}", version_table);
+            // Single transaction for the entire migration process.
+            // This prevents race conditions when multiple connections exist
+            // (e.g. SQLite with max_connections > 1).
+            let __txn = __pool.begin().await.map_err(|e| {
+                ::vespertide::MigrationError::DatabaseError(format!("Failed to begin transaction: {}", e))
+            })?;
+
+            // Read current maximum version inside the transaction (holds lock)
+            let select_sql = format!("SELECT MAX(version) as version FROM {q}{}{q}", __version_table);
             let stmt = sea_orm::Statement::from_string(backend, select_sql);
-            let version_result = __pool.query_one_raw(stmt).await.map_err(|e| {
+            let version_result = __txn.query_one_raw(stmt).await.map_err(|e| {
                 ::vespertide::MigrationError::DatabaseError(format!("Failed to read version: {}", e))
             })?;
 
-            let mut version = version_result
+            let __version = version_result
                 .and_then(|row| row.try_get::<i32>("", "version").ok())
                 .unwrap_or(0) as u32;
 
-            // Execute each migration block
+            // Execute each migration block within the same transaction
             #(#migration_blocks)*
+
+            // Commit the entire migration
+            __txn.commit().await.map_err(|e| {
+                ::vespertide::MigrationError::DatabaseError(format!("Failed to commit transaction: {}", e))
+            })?;
 
             Ok::<(), ::vespertide::MigrationError>(())
         }
