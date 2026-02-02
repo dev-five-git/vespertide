@@ -4,10 +4,11 @@ use sea_query::{
 };
 
 use vespertide_core::{
-    ColumnDef, ColumnType, ComplexColumnType, ReferenceAction, SimpleColumnType,
+    ColumnDef, ColumnType, ComplexColumnType, ReferenceAction, SimpleColumnType, TableConstraint,
 };
 
-use super::types::DatabaseBackend;
+use super::create_table::build_create_table_for_backend;
+use super::types::{BuiltQuery, DatabaseBackend, RawSql};
 
 /// Normalize fill_with value - empty string becomes '' (SQL empty string literal)
 pub fn normalize_fill_with(fill_with: Option<&str>) -> Option<String> {
@@ -368,6 +369,132 @@ pub fn collect_sqlite_enum_check_clauses(table: &str, columns: &[ColumnDef]) -> 
         .iter()
         .filter_map(|col| build_sqlite_enum_check_clause(table, &col.name, &col.r#type))
         .collect()
+}
+
+/// Extract CHECK constraint clauses from a list of table constraints.
+/// Returns SQL fragments like: `CONSTRAINT "chk_name" CHECK (expr)`
+pub fn extract_check_clauses(constraints: &[TableConstraint]) -> Vec<String> {
+    constraints
+        .iter()
+        .filter_map(|c| {
+            if let TableConstraint::Check { name, expr } = c {
+                Some(format!("CONSTRAINT \"{}\" CHECK ({})", name, expr))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Collect ALL CHECK constraint clauses for a SQLite temp table.
+/// Combines both:
+/// - Enum-based CHECK constraints (from column types)
+/// - Explicit CHECK constraints (from `TableConstraint::Check`)
+/// Returns deduplicated union of both.
+pub fn collect_all_check_clauses(
+    table: &str,
+    columns: &[ColumnDef],
+    constraints: &[TableConstraint],
+) -> Vec<String> {
+    let mut clauses = collect_sqlite_enum_check_clauses(table, columns);
+    let explicit = extract_check_clauses(constraints);
+    for clause in explicit {
+        if !clauses.contains(&clause) {
+            clauses.push(clause);
+        }
+    }
+    clauses
+}
+
+/// Build CREATE TABLE query with CHECK constraints properly embedded.
+/// sea-query doesn't support CHECK constraints natively, so we inject them
+/// by modifying the generated SQL string.
+pub fn build_create_with_checks(
+    backend: &DatabaseBackend,
+    create_stmt: &sea_query::TableCreateStatement,
+    check_clauses: &[String],
+) -> BuiltQuery {
+    if check_clauses.is_empty() {
+        BuiltQuery::CreateTable(Box::new(create_stmt.clone()))
+    } else {
+        let base_sql = build_schema_statement(create_stmt, *backend);
+        let mut modified_sql = base_sql;
+        if let Some(pos) = modified_sql.rfind(')') {
+            let check_sql = check_clauses.join(", ");
+            modified_sql.insert_str(pos, &format!(", {}", check_sql));
+        }
+        BuiltQuery::Raw(RawSql::per_backend(
+            modified_sql.clone(),
+            modified_sql.clone(),
+            modified_sql,
+        ))
+    }
+}
+
+/// Build the CREATE TABLE statement for a SQLite temp table, including all CHECK constraints.
+/// This combines `build_create_table_for_backend` with CHECK constraint injection.
+///
+/// `table` is the ORIGINAL table name (used for constraint naming).
+/// `temp_table` is the temporary table name.
+pub fn build_sqlite_temp_table_create(
+    backend: &DatabaseBackend,
+    temp_table: &str,
+    table: &str,
+    columns: &[ColumnDef],
+    constraints: &[TableConstraint],
+) -> BuiltQuery {
+    let create_stmt = build_create_table_for_backend(backend, temp_table, columns, constraints);
+    let check_clauses = collect_all_check_clauses(table, columns, constraints);
+    build_create_with_checks(backend, &create_stmt, &check_clauses)
+}
+
+/// Recreate all indexes (both regular and UNIQUE) after a SQLite temp table rebuild.
+/// After DROP TABLE + RENAME, all original indexes are gone, so plain CREATE INDEX is correct.
+pub fn recreate_indexes_after_rebuild(
+    table: &str,
+    constraints: &[TableConstraint],
+) -> Vec<BuiltQuery> {
+    let mut queries = Vec::new();
+    for constraint in constraints {
+        match constraint {
+            TableConstraint::Index { name, columns } => {
+                let index_name = build_index_name(table, columns, name.as_deref());
+                let cols_sql = columns
+                    .iter()
+                    .map(|c| format!("\"{}\"", c))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let sql = format!(
+                    "CREATE INDEX \"{}\" ON \"{}\" ({})",
+                    index_name, table, cols_sql
+                );
+                queries.push(BuiltQuery::Raw(RawSql::per_backend(
+                    sql.clone(),
+                    sql.clone(),
+                    sql,
+                )));
+            }
+            TableConstraint::Unique { name, columns } => {
+                let index_name = build_unique_constraint_name(table, columns, name.as_deref());
+                let cols_sql = columns
+                    .iter()
+                    .map(|c| format!("\"{}\"", c))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let sql = format!(
+                    "CREATE UNIQUE INDEX \"{}\" ON \"{}\" ({})",
+                    index_name, table, cols_sql
+                );
+                queries.push(BuiltQuery::Raw(RawSql::per_backend(
+                    sql.clone(),
+                    sql.clone(),
+                    sql,
+                )));
+            }
+            _ => {}
+        }
+    }
+    queries
 }
 
 /// Extract enum name from column type if it's an enum

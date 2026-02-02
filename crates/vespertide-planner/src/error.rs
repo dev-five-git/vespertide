@@ -36,6 +36,10 @@ pub enum PlannerError {
     DuplicateEnumValue(String, String, String, i32),
     #[error("{0}")]
     InvalidEnumDefault(#[from] Box<InvalidEnumDefaultError>),
+    #[error(
+        "auto_increment on non-integer column: {0}.{1} (type {2} does not support auto_increment)"
+    )]
+    InvalidAutoIncrement(String, String, String),
 }
 
 #[derive(Debug, Error)]

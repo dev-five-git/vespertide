@@ -6,3 +6,4 @@ CREATE TABLE "users_temp" ( "id" integer NOT NULL, "age" integer )
 INSERT INTO "users_temp" ("id", "age") SELECT "id", "age" FROM "users"
 DROP TABLE "users"
 ALTER TABLE "users_temp" RENAME TO "users"
+CREATE UNIQUE INDEX "uq_users__uq_age" ON "users" ("age")

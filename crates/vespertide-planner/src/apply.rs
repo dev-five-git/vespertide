@@ -186,7 +186,11 @@ pub fn apply_action(
                 .iter_mut()
                 .find(|t| t.name == *table)
                 .ok_or_else(|| PlannerError::TableNotFound(table.clone()))?;
-            tbl.constraints.push(constraint.clone());
+            // Skip if an equivalent constraint already exists (e.g. inline index
+            // was already promoted to table-level by normalize() during AddColumn)
+            if !tbl.constraints.contains(constraint) {
+                tbl.constraints.push(constraint.clone());
+            }
             Ok(())
         }
         MigrationAction::RemoveConstraint { table, constraint } => {

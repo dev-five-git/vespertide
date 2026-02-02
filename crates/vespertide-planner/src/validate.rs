@@ -61,6 +61,44 @@ fn validate_table(
         return Err(PlannerError::MissingPrimaryKey(table.name.clone()));
     }
 
+    // Validate auto_increment columns have integer types
+    for constraint in &table.constraints {
+        if let TableConstraint::PrimaryKey {
+            auto_increment: true,
+            columns,
+        } = constraint
+        {
+            for col_name in columns {
+                if let Some(column) = table.columns.iter().find(|c| c.name == *col_name)
+                    && !column.r#type.supports_auto_increment() {
+                        return Err(PlannerError::InvalidAutoIncrement(
+                            table.name.clone(),
+                            col_name.clone(),
+                            format!("{:?}", column.r#type),
+                        ));
+                    }
+            }
+        }
+    }
+
+    // Validate auto_increment on inline primary_key definitions
+    use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+    for column in &table.columns {
+        if let Some(pk_syntax) = &column.primary_key {
+            let has_auto_increment = match pk_syntax {
+                PrimaryKeySyntax::Bool(_) => false,
+                PrimaryKeySyntax::Object(pk_def) => pk_def.auto_increment,
+            };
+            if has_auto_increment && !column.r#type.supports_auto_increment() {
+                return Err(PlannerError::InvalidAutoIncrement(
+                    table.name.clone(),
+                    column.name.clone(),
+                    format!("{:?}", column.r#type),
+                ));
+            }
+        }
+    }
+
     // Validate columns (enum types)
     for column in &table.columns {
         validate_column(column, &table.name)?;
@@ -463,6 +501,7 @@ pub fn find_missing_fill_with(plan: &MigrationPlan) -> Vec<FillWithRequired> {
 mod tests {
     use super::*;
     use rstest::rstest;
+    use vespertide_core::schema::primary_key::{PrimaryKeyDef, PrimaryKeySyntax};
     use vespertide_core::{
         ColumnDef, ColumnType, ComplexColumnType, EnumValues, NumValue, SimpleColumnType,
         TableConstraint,
@@ -1825,5 +1864,62 @@ mod tests {
 
         let missing = find_missing_fill_with(&plan);
         assert!(missing.is_empty());
+    }
+
+    #[test]
+    fn validate_auto_increment_on_text_column_fails() {
+        let table_def = table(
+            "users",
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Text))],
+            vec![TableConstraint::PrimaryKey {
+                auto_increment: true,
+                columns: vec!["id".into()],
+            }],
+        );
+
+        let result = validate_table(&table_def, &std::collections::HashMap::new());
+        assert!(result.is_err());
+        match result {
+            Err(PlannerError::InvalidAutoIncrement(table_name, col_name, _)) => {
+                assert_eq!(table_name, "users");
+                assert_eq!(col_name, "id");
+            }
+            _ => panic!("Expected InvalidAutoIncrement error"),
+        }
+    }
+
+    #[test]
+    fn validate_auto_increment_on_integer_column_succeeds() {
+        let table_def = table(
+            "users",
+            vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+            vec![TableConstraint::PrimaryKey {
+                auto_increment: true,
+                columns: vec!["id".into()],
+            }],
+        );
+
+        let result = validate_table(&table_def, &std::collections::HashMap::new());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_inline_auto_increment_on_text_column_fails() {
+        let mut col_def = col("id", ColumnType::Simple(SimpleColumnType::Text));
+        col_def.primary_key = Some(PrimaryKeySyntax::Object(PrimaryKeyDef {
+            auto_increment: true,
+        }));
+
+        let table_def = table("users", vec![col_def], vec![]);
+
+        let result = validate_table(&table_def, &std::collections::HashMap::new());
+        assert!(result.is_err());
+        match result {
+            Err(PlannerError::InvalidAutoIncrement(table_name, col_name, _)) => {
+                assert_eq!(table_name, "users");
+                assert_eq!(col_name, "id");
+            }
+            _ => panic!("Expected InvalidAutoIncrement error"),
+        }
     }
 }

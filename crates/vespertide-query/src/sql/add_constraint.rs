@@ -2,49 +2,12 @@ use sea_query::{Alias, ForeignKey, Index, Query, Table};
 
 use vespertide_core::{TableConstraint, TableDef};
 
-use super::create_table::build_create_table_for_backend;
-use super::helpers::{build_schema_statement, to_sea_fk_action};
+use super::helpers::{
+    build_sqlite_temp_table_create, recreate_indexes_after_rebuild, to_sea_fk_action,
+};
 use super::rename_table::build_rename_table;
-use super::types::{BuiltQuery, DatabaseBackend};
+use super::types::{BuiltQuery, DatabaseBackend, RawSql};
 use crate::error::QueryError;
-use crate::sql::RawSql;
-
-/// Extract CHECK constraint clauses from a list of constraints
-fn extract_check_clauses(constraints: &[TableConstraint]) -> Vec<String> {
-    constraints
-        .iter()
-        .filter_map(|c| {
-            if let TableConstraint::Check { name, expr } = c {
-                Some(format!("CONSTRAINT \"{}\" CHECK ({})", name, expr))
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
-/// Build CREATE TABLE query with CHECK constraints properly embedded
-fn build_create_with_checks(
-    backend: &DatabaseBackend,
-    create_stmt: &sea_query::TableCreateStatement,
-    check_clauses: &[String],
-) -> BuiltQuery {
-    if check_clauses.is_empty() {
-        BuiltQuery::CreateTable(Box::new(create_stmt.clone()))
-    } else {
-        let base_sql = build_schema_statement(create_stmt, *backend);
-        let mut modified_sql = base_sql;
-        if let Some(pos) = modified_sql.rfind(')') {
-            let check_sql = check_clauses.join(", ");
-            modified_sql.insert_str(pos, &format!(", {}", check_sql));
-        }
-        BuiltQuery::Raw(RawSql::per_backend(
-            modified_sql.clone(),
-            modified_sql.clone(),
-            modified_sql,
-        ))
-    }
-}
 
 pub fn build_add_constraint(
     backend: &DatabaseBackend,
@@ -63,21 +26,16 @@ pub fn build_add_constraint(
                 let mut new_constraints = table_def.constraints.clone();
                 new_constraints.push(constraint.clone());
 
-                // Generate temporary table name
                 let temp_table = format!("{}_temp", table);
 
-                // 1. Create temporary table with new constraints
-                let create_temp_table = build_create_table_for_backend(
+                // 1. Create temporary table with new constraints + CHECK constraints
+                let create_query = build_sqlite_temp_table_create(
                     backend,
                     &temp_table,
+                    table,
                     &table_def.columns,
                     &new_constraints,
                 );
-
-                // Handle CHECK constraints (sea-query doesn't support them natively)
-                let check_clauses = extract_check_clauses(&new_constraints);
-                let create_query =
-                    build_create_with_checks(backend, &create_temp_table, &check_clauses);
 
                 // 2. Copy data
                 let column_aliases: Vec<Alias> = table_def
@@ -106,28 +64,8 @@ pub fn build_add_constraint(
                 // 4. Rename temporary table
                 let rename_query = build_rename_table(&temp_table, table);
 
-                // 5. Recreate indexes from Index constraints
-                let mut index_queries = Vec::new();
-                for c in &table_def.constraints {
-                    if let TableConstraint::Index {
-                        name: idx_name,
-                        columns: idx_cols,
-                    } = c
-                    {
-                        let index_name = vespertide_naming::build_index_name(
-                            table,
-                            idx_cols,
-                            idx_name.as_deref(),
-                        );
-                        let mut idx_stmt = sea_query::Index::create();
-                        idx_stmt = idx_stmt.name(&index_name).to_owned();
-                        for col_name in idx_cols {
-                            idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
-                        }
-                        idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
-                        index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
-                    }
-                }
+                // 5. Recreate indexes (both regular and UNIQUE)
+                let index_queries = recreate_indexes_after_rebuild(table, &table_def.constraints);
 
                 let mut queries = vec![create_query, insert_query, drop_query, rename_query];
                 queries.extend(index_queries);
@@ -154,7 +92,13 @@ pub fn build_add_constraint(
             }
         }
         TableConstraint::Unique { name, columns } => {
-            // SQLite does not support ALTER TABLE ... ADD CONSTRAINT UNIQUE
+            // On SQLite, skip if this constraint already exists in the schema —
+            // a prior temp table rebuild in the same migration already recreated it.
+            if *backend == DatabaseBackend::Sqlite
+                && let Some(table_def) = current_schema.iter().find(|t| t.name == table)
+                    && table_def.constraints.contains(constraint) {
+                        return Ok(vec![]);
+                    }
             // Always generate a proper name: uq_{table}_{key} or uq_{table}_{columns}
             let index_name =
                 super::helpers::build_unique_constraint_name(table, columns, name.as_deref());
@@ -182,24 +126,37 @@ pub fn build_add_constraint(
                 let table_def = current_schema.iter().find(|t| t.name == table).ok_or_else(|| QueryError::Other(format!("Table '{}' not found in current schema. SQLite requires current schema information to add constraints.", table)))?;
 
                 // Create new constraints with the added foreign key constraint
+                // Dedup: check if this FK already exists (e.g. from inline normalization)
                 let mut new_constraints = table_def.constraints.clone();
-                new_constraints.push(constraint.clone());
+                let fk_already_exists = new_constraints.iter().any(|c| {
+                    if let TableConstraint::ForeignKey {
+                        columns: existing_cols,
+                        ref_table: existing_ref,
+                        ref_columns: existing_ref_cols,
+                        ..
+                    } = c
+                    {
+                        columns == existing_cols
+                            && ref_table == existing_ref
+                            && ref_columns == existing_ref_cols
+                    } else {
+                        false
+                    }
+                });
+                if !fk_already_exists {
+                    new_constraints.push(constraint.clone());
+                }
 
-                // Generate temporary table name
                 let temp_table = format!("{}_temp", table);
 
-                // 1. Create temporary table with new constraints
-                let create_temp_table = build_create_table_for_backend(
+                // 1. Create temporary table with new constraints + CHECK constraints
+                let create_query = build_sqlite_temp_table_create(
                     backend,
                     &temp_table,
+                    table,
                     &table_def.columns,
                     &new_constraints,
                 );
-
-                // Handle CHECK constraints (sea-query doesn't support them natively)
-                let check_clauses = extract_check_clauses(&new_constraints);
-                let create_query =
-                    build_create_with_checks(backend, &create_temp_table, &check_clauses);
 
                 // 2. Copy data (all columns)
                 let column_aliases: Vec<Alias> = table_def
@@ -228,28 +185,8 @@ pub fn build_add_constraint(
                 // 4. Rename temporary table to original name
                 let rename_query = build_rename_table(&temp_table, table);
 
-                // 5. Recreate indexes from Index constraints
-                let mut index_queries = Vec::new();
-                for c in &table_def.constraints {
-                    if let TableConstraint::Index {
-                        name: idx_name,
-                        columns: idx_cols,
-                    } = c
-                    {
-                        let index_name = vespertide_naming::build_index_name(
-                            table,
-                            idx_cols,
-                            idx_name.as_deref(),
-                        );
-                        let mut idx_stmt = sea_query::Index::create();
-                        idx_stmt = idx_stmt.name(&index_name).to_owned();
-                        for col_name in idx_cols {
-                            idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
-                        }
-                        idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
-                        index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
-                    }
-                }
+                // 5. Recreate indexes (both regular and UNIQUE)
+                let index_queries = recreate_indexes_after_rebuild(table, &table_def.constraints);
 
                 let mut queries = vec![create_query, insert_query, drop_query, rename_query];
                 queries.extend(index_queries);
@@ -278,7 +215,13 @@ pub fn build_add_constraint(
             }
         }
         TableConstraint::Index { name, columns } => {
-            // Index constraints are simple CREATE INDEX statements for all backends
+            // On SQLite, skip if this constraint already exists in the schema —
+            // a prior temp table rebuild in the same migration already recreated it.
+            if *backend == DatabaseBackend::Sqlite
+                && let Some(table_def) = current_schema.iter().find(|t| t.name == table)
+                    && table_def.constraints.contains(constraint) {
+                        return Ok(vec![]);
+                    }
             let index_name = vespertide_naming::build_index_name(table, columns, name.as_deref());
             let mut idx = Index::create()
                 .table(Alias::new(table))
@@ -299,21 +242,16 @@ pub fn build_add_constraint(
                 let mut new_constraints = table_def.constraints.clone();
                 new_constraints.push(constraint.clone());
 
-                // Generate temporary table name
                 let temp_table = format!("{}_temp", table);
 
-                // 1. Create temporary table with new constraints
-                let create_temp_table = build_create_table_for_backend(
+                // 1. Create temporary table with new constraints + CHECK constraints
+                let create_query = build_sqlite_temp_table_create(
                     backend,
                     &temp_table,
+                    table,
                     &table_def.columns,
                     &new_constraints,
                 );
-
-                // Handle CHECK constraints (sea-query doesn't support them natively)
-                let check_clauses = extract_check_clauses(&new_constraints);
-                let create_query =
-                    build_create_with_checks(backend, &create_temp_table, &check_clauses);
 
                 // 2. Copy data (all columns)
                 let column_aliases: Vec<Alias> = table_def
@@ -342,28 +280,8 @@ pub fn build_add_constraint(
                 // 4. Rename temporary table to original name
                 let rename_query = build_rename_table(&temp_table, table);
 
-                // 5. Recreate indexes from Index constraints
-                let mut index_queries = Vec::new();
-                for c in &table_def.constraints {
-                    if let TableConstraint::Index {
-                        name: idx_name,
-                        columns: idx_cols,
-                    } = c
-                    {
-                        let index_name = vespertide_naming::build_index_name(
-                            table,
-                            idx_cols,
-                            idx_name.as_deref(),
-                        );
-                        let mut idx_stmt = sea_query::Index::create();
-                        idx_stmt = idx_stmt.name(&index_name).to_owned();
-                        for col_name in idx_cols {
-                            idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
-                        }
-                        idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
-                        index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
-                    }
-                }
+                // 5. Recreate indexes (both regular and UNIQUE)
+                let index_queries = recreate_indexes_after_rebuild(table, &table_def.constraints);
 
                 let mut queries = vec![create_query, insert_query, drop_query, rename_query];
                 queries.extend(index_queries);
@@ -1130,7 +1048,7 @@ mod tests {
                 columns: vec!["email".into()],
             },
         ];
-        let clauses = extract_check_clauses(&constraints);
+        let clauses = crate::sql::helpers::extract_check_clauses(&constraints);
         assert_eq!(clauses.len(), 2);
         assert!(clauses[0].contains("chk1"));
         assert!(clauses[1].contains("chk2"));
@@ -1148,13 +1066,13 @@ mod tests {
                 columns: vec!["email".into()],
             },
         ];
-        let clauses = extract_check_clauses(&constraints);
+        let clauses = crate::sql::helpers::extract_check_clauses(&constraints);
         assert!(clauses.is_empty());
     }
 
     #[test]
     fn test_build_create_with_checks_empty_clauses() {
-        use super::build_create_table_for_backend;
+        use crate::sql::create_table::build_create_table_for_backend;
 
         let create_stmt = build_create_table_for_backend(
             &DatabaseBackend::Sqlite,
@@ -1174,14 +1092,18 @@ mod tests {
         );
 
         // Empty check_clauses should return CreateTable variant
-        let result = build_create_with_checks(&DatabaseBackend::Sqlite, &create_stmt, &[]);
+        let result = crate::sql::helpers::build_create_with_checks(
+            &DatabaseBackend::Sqlite,
+            &create_stmt,
+            &[],
+        );
         let sql = result.build(DatabaseBackend::Sqlite);
         assert!(sql.contains("CREATE TABLE"));
     }
 
     #[test]
     fn test_build_create_with_checks_with_clauses() {
-        use super::build_create_table_for_backend;
+        use crate::sql::create_table::build_create_table_for_backend;
 
         let create_stmt = build_create_table_for_backend(
             &DatabaseBackend::Sqlite,
@@ -1202,8 +1124,11 @@ mod tests {
 
         // Non-empty check_clauses should return Raw variant with embedded checks
         let check_clauses = vec!["CONSTRAINT \"chk1\" CHECK (id > 0)".to_string()];
-        let result =
-            build_create_with_checks(&DatabaseBackend::Sqlite, &create_stmt, &check_clauses);
+        let result = crate::sql::helpers::build_create_with_checks(
+            &DatabaseBackend::Sqlite,
+            &create_stmt,
+            &check_clauses,
+        );
         let sql = result.build(DatabaseBackend::Sqlite);
         assert!(sql.contains("CREATE TABLE"));
         assert!(sql.contains("CONSTRAINT \"chk1\" CHECK (id > 0)"));

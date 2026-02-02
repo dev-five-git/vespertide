@@ -2,13 +2,12 @@ use sea_query::{Alias, Expr, Query, Table, TableAlterStatement};
 
 use vespertide_core::{ColumnDef, TableDef};
 
-use super::create_table::build_create_table_for_backend;
 use super::helpers::{
-    build_create_enum_type_sql, build_schema_statement, build_sea_column_def_with_table,
-    collect_sqlite_enum_check_clauses, normalize_enum_default, normalize_fill_with,
+    build_create_enum_type_sql, build_sea_column_def_with_table, build_sqlite_temp_table_create,
+    normalize_enum_default, normalize_fill_with, recreate_indexes_after_rebuild,
 };
 use super::rename_table::build_rename_table;
-use super::types::{BuiltQuery, DatabaseBackend, RawSql};
+use super::types::{BuiltQuery, DatabaseBackend};
 use crate::error::QueryError;
 
 fn build_add_column_alter_for_backend(
@@ -50,31 +49,15 @@ pub fn build_add_column(
         new_columns.push(column.clone());
 
         let temp_table = format!("{}_temp", table);
-        let create_temp = build_create_table_for_backend(
+
+        // 1. Create temporary table with all CHECK constraints (enum + explicit)
+        let create_query = build_sqlite_temp_table_create(
             backend,
             &temp_table,
+            table,
             &new_columns,
             &table_def.constraints,
         );
-
-        // For SQLite, add CHECK constraints for enum columns
-        // Use original table name for constraint naming (table will be renamed back)
-        let enum_check_clauses = collect_sqlite_enum_check_clauses(table, &new_columns);
-        let create_query = if !enum_check_clauses.is_empty() {
-            let base_sql = build_schema_statement(&create_temp, *backend);
-            let mut modified_sql = base_sql;
-            if let Some(pos) = modified_sql.rfind(')') {
-                let check_sql = enum_check_clauses.join(", ");
-                modified_sql.insert_str(pos, &format!(", {}", check_sql));
-            }
-            BuiltQuery::Raw(RawSql::per_backend(
-                modified_sql.clone(),
-                modified_sql.clone(),
-                modified_sql,
-            ))
-        } else {
-            BuiltQuery::CreateTable(Box::new(create_temp))
-        };
 
         // Copy existing data, filling new column
         let mut select_query = Query::select();
@@ -112,21 +95,8 @@ pub fn build_add_column(
             BuiltQuery::DropTable(Box::new(Table::drop().table(Alias::new(table)).to_owned()));
         let rename_query = build_rename_table(&temp_table, table);
 
-        // Recreate indexes from Index constraints
-        let mut index_queries = Vec::new();
-        for constraint in &table_def.constraints {
-            if let vespertide_core::TableConstraint::Index { name, columns } = constraint {
-                let index_name =
-                    vespertide_naming::build_index_name(table, columns, name.as_deref());
-                let mut idx_stmt = sea_query::Index::create();
-                idx_stmt = idx_stmt.name(&index_name).to_owned();
-                for col_name in columns {
-                    idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
-                }
-                idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
-                index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
-            }
-        }
+        // Recreate indexes (both regular and UNIQUE)
+        let index_queries = recreate_indexes_after_rebuild(table, &table_def.constraints);
 
         let mut stmts = vec![create_query, insert_query, drop_query, rename_query];
         stmts.extend(index_queries);
