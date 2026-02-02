@@ -2,7 +2,7 @@
 source: crates/vespertide-query/src/sql/remove_constraint.rs
 expression: sql
 ---
-CREATE TABLE "users_temp" ( "id" integer NOT NULL, "email" text, PRIMARY KEY ("id") )
+CREATE TABLE "users_temp" ( "id" integer NOT NULL, "email" text, PRIMARY KEY ("id") , CONSTRAINT "chk_email" CHECK (email IS NOT NULL))
 INSERT INTO "users_temp" ("id", "email") SELECT "id", "email" FROM "users"
 DROP TABLE "users"
 ALTER TABLE "users_temp" RENAME TO "users"

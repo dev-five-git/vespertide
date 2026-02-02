@@ -1,0 +1,22 @@
+---
+source: crates/vespertide-query/src/builder.rs
+expression: sql
+---
+-- Action 0: AddColumn { table: "companion", column: ColumnDef { name: "project_id", type: Simple(BigInt), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: Some(String("project.id")) }, fill_with: None }
+CREATE TABLE "companion_temp" ( "id" integer, "user_id" bigint, "project_id" bigint NOT NULL, FOREIGN KEY ("user_id") REFERENCES "user" ("id") ON DELETE CASCADE );
+INSERT INTO "companion_temp" ("id", "user_id", "project_id") SELECT "id", "user_id", NULL AS "project_id" FROM "companion";
+DROP TABLE "companion";
+ALTER TABLE "companion_temp" RENAME TO "companion";
+CREATE UNIQUE INDEX "uq_companion__invite_code" ON "companion" ("invite_code");
+CREATE INDEX "ix_companion__user_id" ON "companion" ("user_id")
+
+-- Action 1: AddConstraint { table: "companion", constraint: ForeignKey { name: None, columns: ["project_id"], ref_table: "project", ref_columns: ["id"], on_delete: Some(Cascade), on_update: None } }
+CREATE TABLE "companion_temp" ( "id" integer, "user_id" bigint, "project_id" bigint NOT NULL, FOREIGN KEY ("user_id") REFERENCES "user" ("id") ON DELETE CASCADE, FOREIGN KEY ("project_id") REFERENCES "project" ("id") ON DELETE CASCADE );
+INSERT INTO "companion_temp" ("id", "user_id", "project_id") SELECT "id", "user_id", "project_id" FROM "companion";
+DROP TABLE "companion";
+ALTER TABLE "companion_temp" RENAME TO "companion";
+CREATE UNIQUE INDEX "uq_companion__invite_code" ON "companion" ("invite_code");
+CREATE INDEX "ix_companion__user_id" ON "companion" ("user_id")
+
+-- Action 2: AddConstraint { table: "companion", constraint: Index { name: None, columns: ["project_id"] } }
+CREATE INDEX "ix_companion__project_id" ON "companion" ("project_id")

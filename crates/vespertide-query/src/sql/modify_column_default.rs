@@ -2,8 +2,10 @@ use sea_query::{Alias, Query, Table};
 
 use vespertide_core::{ColumnDef, TableDef};
 
-use super::create_table::build_create_table_for_backend;
-use super::helpers::{build_sea_column_def_with_table, normalize_enum_default};
+use super::helpers::{
+    build_sea_column_def_with_table, build_sqlite_temp_table_create, normalize_enum_default,
+    recreate_indexes_after_rebuild,
+};
 use super::rename_table::build_rename_table;
 use super::types::{BuiltQuery, DatabaseBackend, RawSql};
 use crate::error::QueryError;
@@ -99,14 +101,15 @@ pub fn build_modify_column_default(
             // Generate temporary table name
             let temp_table = format!("{}_temp", table);
 
-            // 1. Create temporary table with modified column
-            let create_temp_table = build_create_table_for_backend(
+            // 1. Create temporary table with modified column + CHECK constraints
+            let create_query = build_sqlite_temp_table_create(
                 backend,
                 &temp_table,
+                table,
                 &new_columns,
                 &table_def.constraints,
             );
-            queries.push(BuiltQuery::CreateTable(Box::new(create_temp_table)));
+            queries.push(create_query);
 
             // 2. Copy data (all columns)
             let column_aliases: Vec<Alias> = table_def
@@ -135,24 +138,12 @@ pub fn build_modify_column_default(
             // 4. Rename temporary table to original name
             queries.push(build_rename_table(&temp_table, table));
 
-            // 5. Recreate indexes from Index constraints
-            for constraint in &table_def.constraints {
-                if let vespertide_core::TableConstraint::Index {
-                    name: idx_name,
-                    columns: idx_cols,
-                } = constraint
-                {
-                    let index_name =
-                        vespertide_naming::build_index_name(table, idx_cols, idx_name.as_deref());
-                    let mut idx_stmt = sea_query::Index::create();
-                    idx_stmt = idx_stmt.name(&index_name).to_owned();
-                    for col_name in idx_cols {
-                        idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
-                    }
-                    idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
-                    queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
-                }
-            }
+            // 5. Recreate indexes (both regular and UNIQUE)
+            queries.extend(recreate_indexes_after_rebuild(
+                table,
+                &table_def.constraints,
+                &[],
+            ));
         }
     }
 

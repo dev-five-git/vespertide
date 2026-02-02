@@ -1,0 +1,12 @@
+---
+source: crates/vespertide-query/src/builder.rs
+expression: sql
+---
+-- Action 0: AddColumn { table: "companion", column: ColumnDef { name: "project_id", type: Simple(BigInt), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: Some(String("project.id")) }, fill_with: None }
+ALTER TABLE "companion" ADD COLUMN "project_id" bigint NOT NULL
+
+-- Action 1: AddConstraint { table: "companion", constraint: ForeignKey { name: None, columns: ["project_id"], ref_table: "project", ref_columns: ["id"], on_delete: Some(Cascade), on_update: None } }
+ALTER TABLE "companion" ADD CONSTRAINT "fk_companion__project_id" FOREIGN KEY ("project_id") REFERENCES "project" ("id") ON DELETE CASCADE
+
+-- Action 2: AddConstraint { table: "companion", constraint: Index { name: None, columns: ["project_id"] } }
+CREATE INDEX "ix_companion__project_id" ON "companion" ("project_id")

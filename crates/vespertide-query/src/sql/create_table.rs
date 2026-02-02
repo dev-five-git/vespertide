@@ -48,7 +48,12 @@ pub(crate) fn build_create_table_for_backend(
         }
 
         // Apply auto_increment if this column is in the auto_increment primary key
-        if auto_increment_columns.contains(column.name.as_str()) {
+        // and the column type supports it (integer types only).
+        // After ModifyColumnType, the PK may still have auto_increment: true but the
+        // column type may have changed to a non-integer type (e.g. varchar).
+        if auto_increment_columns.contains(column.name.as_str())
+            && column.r#type.supports_auto_increment()
+        {
             // For SQLite, AUTOINCREMENT requires inline PRIMARY KEY (INTEGER PRIMARY KEY AUTOINCREMENT)
             // So we must call primary_key() on the column even if there's a table-level PRIMARY KEY
             if matches!(backend, DatabaseBackend::Sqlite) {
@@ -72,8 +77,17 @@ pub(crate) fn build_create_table_for_backend(
                 auto_increment,
             } => {
                 // For SQLite with auto_increment, skip table-level PRIMARY KEY
-                // because AUTOINCREMENT requires inline PRIMARY KEY on the column
-                if matches!(backend, DatabaseBackend::Sqlite) && *auto_increment {
+                // because AUTOINCREMENT requires inline PRIMARY KEY on the column.
+                // But only if the PK column actually supports auto_increment (integer types).
+                if matches!(backend, DatabaseBackend::Sqlite)
+                    && *auto_increment
+                    && pk_cols.iter().all(|col_name| {
+                        columns
+                            .iter()
+                            .find(|c| c.name == *col_name)
+                            .is_some_and(|c| c.r#type.supports_auto_increment())
+                    })
+                {
                     continue;
                 }
                 // Build primary key index

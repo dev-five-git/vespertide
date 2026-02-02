@@ -4,4 +4,4 @@ expression: sql
 ---
 CREATE TYPE "users_new_status" AS ENUM ('active', 'inactive');
 ALTER TABLE "users" ALTER COLUMN "status" TYPE users_new_status;
-DROP TYPE IF EXISTS "users_old_status"
+DROP TYPE "users_old_status"

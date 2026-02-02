@@ -1,0 +1,8 @@
+---
+source: crates/vespertide-query/src/sql/mod.rs
+expression: sql
+---
+CREATE TABLE "orders_temp" ( "id" integer );
+INSERT INTO "orders_temp" ("id") SELECT "id" FROM "orders";
+DROP TABLE "orders";
+ALTER TABLE "orders_temp" RENAME TO "orders";

@@ -6,9 +6,9 @@ use std::time::Duration;
 async fn main() -> Result<()> {
     println!("Hello, world!");
 
-    let mut opt = ConnectOptions::new("postgres://postgres:password@localhost:5432/postgres");
+    // let mut opt = ConnectOptions::new("postgres://postgres:password@localhost:5432/postgres");
     // Configure SQLite connection
-    // let mut opt = ConnectOptions::new("sqlite://./local.db");
+    let mut opt = ConnectOptions::new("sqlite://./local.db");
     opt.max_connections(100)
         .min_connections(5)
         .connect_timeout(Duration::from_secs(8))
@@ -22,7 +22,7 @@ async fn main() -> Result<()> {
 
     println!("Successfully connected to SQLite database!");
 
-    vespertide::vespertide_migration!(db, version_table = "vespertide_version").await?;
+    vespertide::vespertide_migration!(db, version_table = "vespertide_version", verbose).await?;
 
     Ok(())
 }

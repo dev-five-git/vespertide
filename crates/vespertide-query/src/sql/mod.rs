@@ -18,7 +18,7 @@ pub use helpers::*;
 pub use types::{BuiltQuery, DatabaseBackend, RawSql};
 
 use crate::error::QueryError;
-use vespertide_core::{MigrationAction, TableDef};
+use vespertide_core::{MigrationAction, TableConstraint, TableDef};
 
 use self::{
     add_column::build_add_column, add_constraint::build_add_constraint,
@@ -35,6 +35,20 @@ pub fn build_action_queries(
     backend: &DatabaseBackend,
     action: &MigrationAction,
     current_schema: &[TableDef],
+) -> Result<Vec<BuiltQuery>, QueryError> {
+    build_action_queries_with_pending(backend, action, current_schema, &[])
+}
+
+/// Build SQL queries for a migration action, with awareness of pending constraints.
+///
+/// `pending_constraints` are constraints that exist in the logical schema but haven't been
+/// physically created as database indexes yet. This is used by SQLite temp table rebuilds
+/// to avoid recreating indexes that will be created by future AddConstraint actions.
+pub fn build_action_queries_with_pending(
+    backend: &DatabaseBackend,
+    action: &MigrationAction,
+    current_schema: &[TableDef],
+    pending_constraints: &[TableConstraint],
 ) -> Result<Vec<BuiltQuery>, QueryError> {
     match action {
         MigrationAction::CreateTable {
@@ -119,9 +133,13 @@ pub fn build_action_queries(
 
         MigrationAction::RawSql { sql } => Ok(vec![build_raw_sql(sql.clone())]),
 
-        MigrationAction::AddConstraint { table, constraint } => {
-            build_add_constraint(backend, table, constraint, current_schema)
-        }
+        MigrationAction::AddConstraint { table, constraint } => build_add_constraint(
+            backend,
+            table,
+            constraint,
+            current_schema,
+            pending_constraints,
+        ),
 
         MigrationAction::RemoveConstraint { table, constraint } => {
             build_remove_constraint(backend, table, constraint, current_schema)
@@ -1385,6 +1403,101 @@ mod tests {
         );
 
         with_settings!({ snapshot_suffix => suffix }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::create_table_func_default_postgres(DatabaseBackend::Postgres)]
+    #[case::create_table_func_default_mysql(DatabaseBackend::MySql)]
+    #[case::create_table_func_default_sqlite(DatabaseBackend::Sqlite)]
+    fn test_create_table_with_function_default(#[case] backend: DatabaseBackend) {
+        // SQLite requires DEFAULT (expr) for function-call defaults.
+        // This test ensures parentheses are added for SQLite.
+        let action = MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                    nullable: false,
+                    default: Some("gen_random_uuid()".into()),
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "created_at".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Timestamptz),
+                    nullable: false,
+                    default: Some("now()".into()),
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![],
+        };
+        let result = build_action_queries(&backend, &action, &[]).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<_>>()
+            .join(";\n");
+
+        with_settings!({ snapshot_suffix => format!("create_table_func_default_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::delete_enum_column_postgres(DatabaseBackend::Postgres)]
+    #[case::delete_enum_column_mysql(DatabaseBackend::MySql)]
+    #[case::delete_enum_column_sqlite(DatabaseBackend::Sqlite)]
+    fn test_delete_column_with_enum_type(#[case] backend: DatabaseBackend) {
+        // Deleting a column with an enum type — SQLite uses temp table approach,
+        // Postgres drops the enum type, MySQL uses simple DROP COLUMN.
+        let action = MigrationAction::DeleteColumn {
+            table: "orders".into(),
+            column: "status".into(),
+        };
+        let schema = vec![TableDef {
+            name: "orders".into(),
+            description: None,
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ColumnDef {
+                    name: "status".into(),
+                    r#type: ColumnType::Complex(vespertide_core::ComplexColumnType::Enum {
+                        name: "order_status".into(),
+                        values: vespertide_core::EnumValues::String(vec![
+                            "pending".into(),
+                            "shipped".into(),
+                        ]),
+                    }),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![],
+        }];
+        let result = build_action_queries(&backend, &action, &schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<_>>()
+            .join(";\n");
+
+        with_settings!({ snapshot_suffix => format!("delete_enum_column_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }

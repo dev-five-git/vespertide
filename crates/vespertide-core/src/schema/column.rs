@@ -61,8 +61,11 @@ impl ColumnType {
                 if values1.is_integer() && values2.is_integer() {
                     false
                 } else {
-                    // At least one is string enum - compare fully
-                    self != other
+                    // String enums: compare only values, not name.
+                    // The enum name is a user-facing label; the actual DB type name
+                    // is auto-generated with a table prefix at SQL generation time.
+                    // Different labels with identical values don't require a migration.
+                    values1 != values2
                 }
             }
             _ => self != other,
@@ -120,7 +123,7 @@ impl ColumnType {
 
     /// Get the default fill value for this column type (for CLI prompts)
     /// Returns None if no sensible default exists for the type
-    pub fn default_fill_value(&self) -> Option<&'static str> {
+    pub fn default_fill_value(&self) -> &'static str {
         match self {
             ColumnType::Simple(ty) => ty.default_fill_value(),
             ColumnType::Complex(ty) => ty.default_fill_value(),
@@ -220,15 +223,24 @@ impl SimpleColumnType {
 
     /// Get the default fill value for this type
     /// Returns None if no sensible default exists
-    pub fn default_fill_value(&self) -> Option<&'static str> {
+    pub fn default_fill_value(&self) -> &'static str {
         match self {
             SimpleColumnType::SmallInt | SimpleColumnType::Integer | SimpleColumnType::BigInt => {
-                Some("0")
+                "0"
             }
-            SimpleColumnType::Real | SimpleColumnType::DoublePrecision => Some("0.0"),
-            SimpleColumnType::Boolean => Some("false"),
-            SimpleColumnType::Text => Some("''"),
-            _ => None,
+            SimpleColumnType::Real | SimpleColumnType::DoublePrecision => "0.0",
+            SimpleColumnType::Boolean => "false",
+            SimpleColumnType::Text => "''",
+            SimpleColumnType::Date => "'1970-01-01'",
+            SimpleColumnType::Time => "'00:00:00'",
+            SimpleColumnType::Timestamp | SimpleColumnType::Timestamptz => "CURRENT_TIMESTAMP",
+            SimpleColumnType::Interval => "'0'",
+            SimpleColumnType::Uuid => "'00000000-0000-0000-0000-000000000000'",
+            SimpleColumnType::Json => "'{}'",
+            SimpleColumnType::Bytea => "''",
+            SimpleColumnType::Inet | SimpleColumnType::Cidr => "'0.0.0.0'",
+            SimpleColumnType::Macaddr => "'00:00:00:00:00:00'",
+            SimpleColumnType::Xml => "'<xml/>'",
         }
     }
 }
@@ -335,13 +347,13 @@ impl ComplexColumnType {
         }
     }
 
-    /// Get the default fill value for this type
-    /// Returns None if no sensible default exists
-    pub fn default_fill_value(&self) -> Option<&'static str> {
+    /// Get the default fill value for this type.
+    pub fn default_fill_value(&self) -> &'static str {
         match self {
-            ComplexColumnType::Varchar { .. } | ComplexColumnType::Char { .. } => Some("''"),
-            ComplexColumnType::Numeric { .. } => Some("0"),
-            _ => None,
+            ComplexColumnType::Varchar { .. } | ComplexColumnType::Char { .. } => "''",
+            ComplexColumnType::Numeric { .. } => "0",
+            ComplexColumnType::Custom { .. } => "''",
+            ComplexColumnType::Enum { .. } => "''",
         }
     }
 }
@@ -784,28 +796,28 @@ mod tests {
 
     // Tests for default_fill_value
     #[rstest]
-    #[case(SimpleColumnType::SmallInt, Some("0"))]
-    #[case(SimpleColumnType::Integer, Some("0"))]
-    #[case(SimpleColumnType::BigInt, Some("0"))]
-    #[case(SimpleColumnType::Real, Some("0.0"))]
-    #[case(SimpleColumnType::DoublePrecision, Some("0.0"))]
-    #[case(SimpleColumnType::Boolean, Some("false"))]
-    #[case(SimpleColumnType::Text, Some("''"))]
-    #[case(SimpleColumnType::Date, None)]
-    #[case(SimpleColumnType::Time, None)]
-    #[case(SimpleColumnType::Timestamp, None)]
-    #[case(SimpleColumnType::Timestamptz, None)]
-    #[case(SimpleColumnType::Interval, None)]
-    #[case(SimpleColumnType::Bytea, None)]
-    #[case(SimpleColumnType::Uuid, None)]
-    #[case(SimpleColumnType::Json, None)]
-    #[case(SimpleColumnType::Inet, None)]
-    #[case(SimpleColumnType::Cidr, None)]
-    #[case(SimpleColumnType::Macaddr, None)]
-    #[case(SimpleColumnType::Xml, None)]
+    #[case(SimpleColumnType::SmallInt, "0")]
+    #[case(SimpleColumnType::Integer, "0")]
+    #[case(SimpleColumnType::BigInt, "0")]
+    #[case(SimpleColumnType::Real, "0.0")]
+    #[case(SimpleColumnType::DoublePrecision, "0.0")]
+    #[case(SimpleColumnType::Boolean, "false")]
+    #[case(SimpleColumnType::Text, "''")]
+    #[case(SimpleColumnType::Date, "'1970-01-01'")]
+    #[case(SimpleColumnType::Time, "'00:00:00'")]
+    #[case(SimpleColumnType::Timestamp, "CURRENT_TIMESTAMP")]
+    #[case(SimpleColumnType::Timestamptz, "CURRENT_TIMESTAMP")]
+    #[case(SimpleColumnType::Interval, "'0'")]
+    #[case(SimpleColumnType::Bytea, "''")]
+    #[case(SimpleColumnType::Uuid, "'00000000-0000-0000-0000-000000000000'")]
+    #[case(SimpleColumnType::Json, "'{}'")]
+    #[case(SimpleColumnType::Inet, "'0.0.0.0'")]
+    #[case(SimpleColumnType::Cidr, "'0.0.0.0'")]
+    #[case(SimpleColumnType::Macaddr, "'00:00:00:00:00:00'")]
+    #[case(SimpleColumnType::Xml, "'<xml/>'")]
     fn test_simple_column_type_default_fill_value(
         #[case] column_type: SimpleColumnType,
-        #[case] expected: Option<&str>,
+        #[case] expected: &str,
     ) {
         assert_eq!(column_type.default_fill_value(), expected);
     }
@@ -813,13 +825,13 @@ mod tests {
     #[test]
     fn test_complex_column_type_default_fill_value_varchar() {
         let ty = ComplexColumnType::Varchar { length: 255 };
-        assert_eq!(ty.default_fill_value(), Some("''"));
+        assert_eq!(ty.default_fill_value(), "''");
     }
 
     #[test]
     fn test_complex_column_type_default_fill_value_char() {
         let ty = ComplexColumnType::Char { length: 1 };
-        assert_eq!(ty.default_fill_value(), Some("''"));
+        assert_eq!(ty.default_fill_value(), "''");
     }
 
     #[test]
@@ -828,7 +840,7 @@ mod tests {
             precision: 10,
             scale: 2,
         };
-        assert_eq!(ty.default_fill_value(), Some("0"));
+        assert_eq!(ty.default_fill_value(), "0");
     }
 
     #[test]
@@ -836,7 +848,7 @@ mod tests {
         let ty = ComplexColumnType::Custom {
             custom_type: "MONEY".into(),
         };
-        assert_eq!(ty.default_fill_value(), None);
+        assert_eq!(ty.default_fill_value(), "''");
     }
 
     #[test]
@@ -845,19 +857,19 @@ mod tests {
             name: "status".into(),
             values: EnumValues::String(vec!["active".into()]),
         };
-        assert_eq!(ty.default_fill_value(), None);
+        assert_eq!(ty.default_fill_value(), "''");
     }
 
     #[test]
     fn test_column_type_default_fill_value_simple() {
         let ty = ColumnType::Simple(SimpleColumnType::Integer);
-        assert_eq!(ty.default_fill_value(), Some("0"));
+        assert_eq!(ty.default_fill_value(), "0");
     }
 
     #[test]
     fn test_column_type_default_fill_value_complex() {
         let ty = ColumnType::Complex(ComplexColumnType::Varchar { length: 100 });
-        assert_eq!(ty.default_fill_value(), Some("''"));
+        assert_eq!(ty.default_fill_value(), "''");
     }
 
     // Tests for enum_variant_names

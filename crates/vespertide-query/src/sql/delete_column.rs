@@ -2,8 +2,9 @@ use sea_query::{Alias, Index, Query, Table};
 
 use vespertide_core::{ColumnType, TableConstraint, TableDef};
 
-use super::create_table::build_create_table_for_backend;
-use super::helpers::build_drop_enum_type_sql;
+use super::helpers::{
+    build_drop_enum_type_sql, build_sqlite_temp_table_create, recreate_indexes_after_rebuild,
+};
 use super::rename_table::build_rename_table;
 use super::types::{BuiltQuery, DatabaseBackend};
 
@@ -27,11 +28,33 @@ pub fn build_delete_column(
     if *backend == DatabaseBackend::Sqlite
         && let Some(table_def) = current_schema.iter().find(|t| t.name == table)
     {
+        // If the column has an enum type, SQLite embeds a CHECK constraint in CREATE TABLE.
+        // ALTER TABLE DROP COLUMN fails if the column is referenced by any CHECK.
+        // Must use temp table approach.
+        if let Some(col_def) = table_def.columns.iter().find(|c| c.name == column)
+            && let ColumnType::Complex(vespertide_core::ComplexColumnType::Enum { .. }) =
+                &col_def.r#type
+        {
+            return build_delete_column_sqlite_temp_table(table, column, table_def, column_type);
+        }
+
         // Handle constraints referencing the deleted column
         for constraint in &table_def.constraints {
             match constraint {
-                // Check constraints are expression-based, not column-based - skip
-                TableConstraint::Check { .. } => continue,
+                // Check constraints may reference the column in their expression.
+                // SQLite can't DROP COLUMN if a CHECK references it — use temp table.
+                TableConstraint::Check { expr, .. } => {
+                    // Check if the expression references the column (e.g. "status" IN (...))
+                    if expr.contains(&format!("\"{}\"", column)) || expr.contains(column) {
+                        return build_delete_column_sqlite_temp_table(
+                            table,
+                            column,
+                            table_def,
+                            column_type,
+                        );
+                    }
+                    continue;
+                }
                 // For column-based constraints, check if they reference the deleted column
                 _ if !constraint.columns().iter().any(|c| c == column) => continue,
                 // FK/PK require temp table approach - return immediately
@@ -116,18 +139,25 @@ fn build_delete_column_sqlite_temp_table(
     let new_constraints: Vec<_> = table_def
         .constraints
         .iter()
-        .filter(|c| !c.columns().iter().any(|col| col == column))
+        .filter(|c| {
+            // For CHECK constraints, check if expression references the column
+            if let TableConstraint::Check { expr, .. } = c {
+                return !expr.contains(&format!("\"{}\"", column)) && !expr.contains(column);
+            }
+            !c.columns().iter().any(|col| col == column)
+        })
         .cloned()
         .collect();
 
-    // 1. Create temp table without the column
-    let create_temp_table = build_create_table_for_backend(
+    // 1. Create temp table without the column + CHECK constraints
+    let create_query = build_sqlite_temp_table_create(
         &DatabaseBackend::Sqlite,
         &temp_table,
+        table,
         &new_columns,
         &new_constraints,
     );
-    stmts.push(BuiltQuery::CreateTable(Box::new(create_temp_table)));
+    stmts.push(create_query);
 
     // 2. Copy data (excluding the deleted column)
     let column_aliases: Vec<Alias> = new_columns.iter().map(|c| Alias::new(&c.name)).collect();
@@ -152,21 +182,8 @@ fn build_delete_column_sqlite_temp_table(
     // 4. Rename temp table to original name
     stmts.push(build_rename_table(&temp_table, table));
 
-    // 5. Recreate indexes that don't reference the deleted column
-    for constraint in &new_constraints {
-        if let TableConstraint::Index { name, columns } = constraint {
-            let index_name = vespertide_naming::build_index_name(table, columns, name.as_deref());
-            let mut idx_stmt = Index::create();
-            idx_stmt = idx_stmt
-                .name(&index_name)
-                .table(Alias::new(table))
-                .to_owned();
-            for col_name in columns {
-                idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
-            }
-            stmts.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
-        }
-    }
+    // 5. Recreate indexes (both regular and UNIQUE) that don't reference the deleted column
+    stmts.extend(recreate_indexes_after_rebuild(table, &new_constraints, &[]));
 
     // If column type is an enum, drop the type after (PostgreSQL only, but include for completeness)
     if let Some(col_type) = column_type
@@ -260,7 +277,7 @@ mod tests {
         assert!(alter_sql.contains("DROP COLUMN"));
 
         let drop_type_sql = result[1].build(DatabaseBackend::Postgres);
-        assert!(drop_type_sql.contains("DROP TYPE IF EXISTS \"users_status\""));
+        assert!(drop_type_sql.contains("DROP TYPE \"users_status\""));
 
         // MySQL and SQLite should have empty DROP TYPE
         let drop_type_mysql = result[1].build(DatabaseBackend::MySql);
@@ -1029,9 +1046,9 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_column_sqlite_with_check_constraint_skipped() {
-        // Check constraints are expression-based, not column-based.
-        // They should be skipped (continue) during constraint iteration.
+    fn test_delete_column_sqlite_with_check_constraint_referencing_column() {
+        // When a CHECK constraint references the column being deleted,
+        // SQLite can't use ALTER TABLE DROP COLUMN — must use temp table approach.
         let schema = vec![TableDef {
             name: "orders".into(),
             description: None,
@@ -1045,16 +1062,56 @@ mod tests {
             }],
         }];
 
-        // Delete amount column - Check constraint should be skipped (not trigger temp table)
+        // Delete amount column — CHECK references it, so temp table is needed
         let result =
             build_delete_column(&DatabaseBackend::Sqlite, "orders", "amount", None, &schema);
 
-        // Should have only 1 statement: ALTER TABLE DROP COLUMN
-        // (Check constraint doesn't require special handling)
+        // Should use temp table approach (CREATE temp, INSERT, DROP, RENAME)
+        assert!(
+            result.len() >= 4,
+            "Expected temp table approach (>=4 stmts), got: {} statements",
+            result.len()
+        );
+
+        let sql = result[0].build(DatabaseBackend::Sqlite);
+        assert!(
+            sql.contains("orders_temp"),
+            "Expected temp table creation, got: {}",
+            sql
+        );
+        // The CHECK constraint referencing "amount" should NOT be in the temp table
+        assert!(
+            !sql.contains("check_positive"),
+            "CHECK referencing deleted column should be removed, got: {}",
+            sql
+        );
+    }
+
+    #[test]
+    fn test_delete_column_sqlite_with_check_constraint_not_referencing_column() {
+        // When a CHECK constraint does NOT reference the column being deleted,
+        // simple DROP COLUMN should work.
+        let schema = vec![TableDef {
+            name: "orders".into(),
+            description: None,
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("amount", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("note", ColumnType::Simple(SimpleColumnType::Text)),
+            ],
+            constraints: vec![TableConstraint::Check {
+                name: "check_positive".into(),
+                expr: "amount > 0".into(),
+            }],
+        }];
+
+        // Delete "note" column — CHECK only references "amount", not "note"
+        let result = build_delete_column(&DatabaseBackend::Sqlite, "orders", "note", None, &schema);
+
         assert_eq!(
             result.len(),
             1,
-            "Check constraint should be skipped, got: {} statements",
+            "Unrelated CHECK should be skipped, got: {} statements",
             result.len()
         );
 

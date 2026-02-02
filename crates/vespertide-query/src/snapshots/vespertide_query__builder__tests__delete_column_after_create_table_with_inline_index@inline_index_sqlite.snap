@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/builder.rs
+expression: sql
+---
+DROP INDEX "ix_users__email";
+ALTER TABLE "users" DROP COLUMN "email"

@@ -2,7 +2,7 @@ use sea_query::{Alias, ForeignKey, Query, Table};
 
 use vespertide_core::{TableConstraint, TableDef};
 
-use super::create_table::build_create_table_for_backend;
+use super::helpers::{build_sqlite_temp_table_create, recreate_indexes_after_rebuild};
 use super::rename_table::build_rename_table;
 use super::types::{BuiltQuery, DatabaseBackend};
 use crate::error::QueryError;
@@ -24,17 +24,16 @@ pub fn build_remove_constraint(
                 let mut new_constraints = table_def.constraints.clone();
                 new_constraints.retain(|c| !matches!(c, TableConstraint::PrimaryKey { .. }));
 
-                // Generate temporary table name
                 let temp_table = format!("{}_temp", table);
 
-                // 1. Create temporary table without primary key constraint
-                let create_temp_table = build_create_table_for_backend(
+                // 1. Create temporary table without primary key constraint + CHECK constraints
+                let create_query = build_sqlite_temp_table_create(
                     backend,
                     &temp_table,
+                    table,
                     &table_def.columns,
                     &new_constraints,
                 );
-                let create_query = BuiltQuery::CreateTable(Box::new(create_temp_table));
 
                 // 2. Copy data (all columns)
                 let column_aliases: Vec<Alias> = table_def
@@ -63,28 +62,9 @@ pub fn build_remove_constraint(
                 // 4. Rename temporary table to original name
                 let rename_query = build_rename_table(&temp_table, table);
 
-                // 5. Recreate indexes from Index constraints
-                let mut index_queries = Vec::new();
-                for constraint in &table_def.constraints {
-                    if let TableConstraint::Index {
-                        name: idx_name,
-                        columns: idx_cols,
-                    } = constraint
-                    {
-                        let index_name = vespertide_naming::build_index_name(
-                            table,
-                            idx_cols,
-                            idx_name.as_deref(),
-                        );
-                        let mut idx_stmt = sea_query::Index::create();
-                        idx_stmt = idx_stmt.name(&index_name).to_owned();
-                        for col_name in idx_cols {
-                            idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
-                        }
-                        idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
-                        index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
-                    }
-                }
+                // 5. Recreate indexes (both regular and UNIQUE)
+                let index_queries =
+                    recreate_indexes_after_rebuild(table, &table_def.constraints, &[]);
 
                 let mut queries = vec![create_query, insert_query, drop_query, rename_query];
                 queries.extend(index_queries);
@@ -134,17 +114,16 @@ pub fn build_remove_constraint(
                     }
                 });
 
-                // Generate temporary table name
                 let temp_table = format!("{}_temp", table);
 
-                // 1. Create temporary table without the removed constraint
-                let create_temp_table = build_create_table_for_backend(
+                // 1. Create temporary table without the removed constraint + CHECK constraints
+                let create_query = build_sqlite_temp_table_create(
                     backend,
                     &temp_table,
+                    table,
                     &table_def.columns,
                     &new_constraints,
                 );
-                let create_query = BuiltQuery::CreateTable(Box::new(create_temp_table));
 
                 // 2. Copy data (all columns)
                 let column_aliases: Vec<Alias> = table_def
@@ -173,28 +152,8 @@ pub fn build_remove_constraint(
                 // 4. Rename temporary table to original name
                 let rename_query = build_rename_table(&temp_table, table);
 
-                // 5. Recreate indexes from Index constraints
-                let mut index_queries = Vec::new();
-                for c in &table_def.constraints {
-                    if let TableConstraint::Index {
-                        name: idx_name,
-                        columns: idx_cols,
-                    } = c
-                    {
-                        let index_name = vespertide_naming::build_index_name(
-                            table,
-                            idx_cols,
-                            idx_name.as_deref(),
-                        );
-                        let mut idx_stmt = sea_query::Index::create();
-                        idx_stmt = idx_stmt.name(&index_name).to_owned();
-                        for col_name in idx_cols {
-                            idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
-                        }
-                        idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
-                        index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
-                    }
-                }
+                // 5. Recreate indexes (both regular and UNIQUE, from new_constraints which has the unique removed)
+                let index_queries = recreate_indexes_after_rebuild(table, &new_constraints, &[]);
 
                 let mut queries = vec![create_query, insert_query, drop_query, rename_query];
                 queries.extend(index_queries);
@@ -250,17 +209,16 @@ pub fn build_remove_constraint(
                     }
                 });
 
-                // Generate temporary table name
                 let temp_table = format!("{}_temp", table);
 
-                // 1. Create temporary table without the removed constraint
-                let create_temp_table = build_create_table_for_backend(
+                // 1. Create temporary table without the removed constraint + CHECK constraints
+                let create_query = build_sqlite_temp_table_create(
                     backend,
                     &temp_table,
+                    table,
                     &table_def.columns,
                     &new_constraints,
                 );
-                let create_query = BuiltQuery::CreateTable(Box::new(create_temp_table));
 
                 // 2. Copy data (all columns)
                 let column_aliases: Vec<Alias> = table_def
@@ -289,28 +247,9 @@ pub fn build_remove_constraint(
                 // 4. Rename temporary table to original name
                 let rename_query = build_rename_table(&temp_table, table);
 
-                // 5. Recreate indexes from Index constraints
-                let mut index_queries = Vec::new();
-                for c in &table_def.constraints {
-                    if let TableConstraint::Index {
-                        name: idx_name,
-                        columns: idx_cols,
-                    } = c
-                    {
-                        let index_name = vespertide_naming::build_index_name(
-                            table,
-                            idx_cols,
-                            idx_name.as_deref(),
-                        );
-                        let mut idx_stmt = sea_query::Index::create();
-                        idx_stmt = idx_stmt.name(&index_name).to_owned();
-                        for col_name in idx_cols {
-                            idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
-                        }
-                        idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
-                        index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
-                    }
-                }
+                // 5. Recreate indexes (both regular and UNIQUE)
+                let index_queries =
+                    recreate_indexes_after_rebuild(table, &table_def.constraints, &[]);
 
                 let mut queries = vec![create_query, insert_query, drop_query, rename_query];
                 queries.extend(index_queries);
@@ -357,17 +296,16 @@ pub fn build_remove_constraint(
                     _ => true,
                 });
 
-                // Generate temporary table name
                 let temp_table = format!("{}_temp", table);
 
-                // 1. Create temporary table without the removed constraint
-                let create_temp_table = build_create_table_for_backend(
+                // 1. Create temporary table without the removed constraint + remaining CHECK constraints
+                let create_query = build_sqlite_temp_table_create(
                     backend,
                     &temp_table,
+                    table,
                     &table_def.columns,
                     &new_constraints,
                 );
-                let create_query = BuiltQuery::CreateTable(Box::new(create_temp_table));
 
                 // 2. Copy data (all columns)
                 let column_aliases: Vec<Alias> = table_def
@@ -396,28 +334,9 @@ pub fn build_remove_constraint(
                 // 4. Rename temporary table to original name
                 let rename_query = build_rename_table(&temp_table, table);
 
-                // 5. Recreate indexes from Index constraints
-                let mut index_queries = Vec::new();
-                for c in &table_def.constraints {
-                    if let TableConstraint::Index {
-                        name: idx_name,
-                        columns: idx_cols,
-                    } = c
-                    {
-                        let index_name = vespertide_naming::build_index_name(
-                            table,
-                            idx_cols,
-                            idx_name.as_deref(),
-                        );
-                        let mut idx_stmt = sea_query::Index::create();
-                        idx_stmt = idx_stmt.name(&index_name).to_owned();
-                        for col_name in idx_cols {
-                            idx_stmt = idx_stmt.col(Alias::new(col_name)).to_owned();
-                        }
-                        idx_stmt = idx_stmt.table(Alias::new(table)).to_owned();
-                        index_queries.push(BuiltQuery::CreateIndex(Box::new(idx_stmt)));
-                    }
-                }
+                // 5. Recreate indexes (both regular and UNIQUE)
+                let index_queries =
+                    recreate_indexes_after_rebuild(table, &table_def.constraints, &[]);
 
                 let mut queries = vec![create_query, insert_query, drop_query, rename_query];
                 queries.extend(index_queries);
@@ -1519,6 +1438,68 @@ mod tests {
         with_settings!({ snapshot_suffix => format!("remove_check_with_other_constraints_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
+    }
+
+    #[test]
+    fn test_remove_constraint_primary_key_postgres_direct() {
+        // Direct non-rstest coverage for PK drop on Postgres (lines 53-54)
+        let constraint = TableConstraint::PrimaryKey {
+            columns: vec!["id".into()],
+            auto_increment: false,
+        };
+        let schema = vec![TableDef {
+            name: "orders".into(),
+            description: None,
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![constraint.clone()],
+        }];
+        let result =
+            build_remove_constraint(&DatabaseBackend::Postgres, "orders", &constraint, &schema)
+                .unwrap();
+        assert_eq!(result.len(), 1);
+        let sql = result[0].build(DatabaseBackend::Postgres);
+        assert!(sql.contains("ALTER TABLE \"orders\" DROP CONSTRAINT \"orders_pkey\""));
+    }
+
+    #[test]
+    fn test_remove_constraint_primary_key_mysql_direct() {
+        // Direct non-rstest coverage for PK drop on MySQL (lines 53-54)
+        let constraint = TableConstraint::PrimaryKey {
+            columns: vec!["id".into()],
+            auto_increment: false,
+        };
+        let schema = vec![TableDef {
+            name: "orders".into(),
+            description: None,
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![constraint.clone()],
+        }];
+        let result =
+            build_remove_constraint(&DatabaseBackend::MySql, "orders", &constraint, &schema)
+                .unwrap();
+        assert_eq!(result.len(), 1);
+        let sql = result[0].build(DatabaseBackend::MySql);
+        assert!(sql.contains("ALTER TABLE `orders` DROP PRIMARY KEY"));
     }
 
     #[rstest]

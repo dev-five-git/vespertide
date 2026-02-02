@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/builder.rs
+expression: sql
+---
+DROP INDEX "uq_gift__gift_code";
+ALTER TABLE "gift" DROP COLUMN "gift_code"

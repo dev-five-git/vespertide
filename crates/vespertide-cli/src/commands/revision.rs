@@ -7,8 +7,8 @@ use colored::Colorize;
 use dialoguer::{Input, Select};
 use serde_json::Value;
 use vespertide_config::FileFormat;
-use vespertide_core::{MigrationAction, MigrationPlan};
-use vespertide_planner::{find_missing_fill_with, plan_next_migration};
+use vespertide_core::{MigrationAction, MigrationPlan, TableConstraint, TableDef};
+use vespertide_planner::{find_missing_fill_with, plan_next_migration, schema_from_plans};
 
 use crate::utils::{
     load_config, load_migrations, load_models, migration_filename_with_format_and_pattern,
@@ -30,13 +30,8 @@ fn parse_fill_with_args(args: &[String]) -> HashMap<(String, String), String> {
 
 /// Format the type info string for display.
 /// Includes column type and default value hint if available.
-fn format_type_info(column_type: Option<&String>, default_value: Option<&String>) -> String {
-    match (column_type, default_value) {
-        (Some(t), Some(d)) => format!(" ({}, default: {})", t, d),
-        (Some(t), None) => format!(" ({})", t),
-        (None, Some(d)) => format!(" (default: {})", d),
-        (None, None) => String::new(),
-    }
+fn format_type_info(column_type: &str, default_value: &str) -> String {
+    format!(" ({}, default: {})", column_type, default_value)
 }
 
 /// Format a single fill_with item for display.
@@ -80,8 +75,8 @@ fn print_fill_with_footer() {
 fn print_fill_with_item_and_get_prompt(
     table: &str,
     column: &str,
-    column_type: Option<&String>,
-    default_value: Option<&String>,
+    column_type: &str,
+    default_value: &str,
     action_type: &str,
 ) -> String {
     let type_info = format_type_info(column_type, default_value);
@@ -109,10 +104,10 @@ fn wrap_if_spaces(value: String) -> String {
 /// Prompt the user for a fill_with value using dialoguer.
 /// This function wraps terminal I/O and cannot be unit tested without a real terminal.
 #[cfg(not(tarpaulin_include))]
-fn prompt_fill_with_value(prompt: &str) -> Result<String> {
-    let value = Input::new()
+fn prompt_fill_with_value(prompt: &str, default: &str) -> Result<String> {
+    let value: String = Input::new()
         .with_prompt(prompt)
-        .allow_empty(true)
+        .default(default.to_string())
         .interact_text()
         .context("failed to read input")?;
     Ok(wrap_if_spaces(value))
@@ -142,7 +137,7 @@ fn collect_fill_with_values<F, E>(
     enum_prompt_fn: E,
 ) -> Result<()>
 where
-    F: Fn(&str) -> Result<String>,
+    F: Fn(&str, &str) -> Result<String>,
     E: Fn(&str, &[String]) -> Result<String>,
 {
     print_fill_with_header();
@@ -151,8 +146,8 @@ where
         let prompt = print_fill_with_item_and_get_prompt(
             &item.table,
             &item.column,
-            item.column_type.as_ref(),
-            item.default_value.as_ref(),
+            &item.column_type,
+            &item.default_value,
             item.action_type,
         );
 
@@ -160,8 +155,8 @@ where
             // Use selection UI for enum types
             enum_prompt_fn(&prompt, enum_values)?
         } else {
-            // Use text input for other types
-            prompt_fn(&prompt)?
+            // Use text input with default pre-filled
+            prompt_fn(&prompt, &item.default_value)?
         };
         fill_values.insert((item.table.clone(), item.column.clone()), value);
     }
@@ -210,14 +205,15 @@ fn apply_fill_with_to_plan(
 fn handle_missing_fill_with<F, E>(
     plan: &mut MigrationPlan,
     fill_values: &mut HashMap<(String, String), String>,
+    current_schema: &[TableDef],
     prompt_fn: F,
     enum_prompt_fn: E,
 ) -> Result<()>
 where
-    F: Fn(&str) -> Result<String>,
+    F: Fn(&str, &str) -> Result<String>,
     E: Fn(&str, &[String]) -> Result<String>,
 {
-    let missing = find_missing_fill_with(plan);
+    let missing = find_missing_fill_with(plan, current_schema);
 
     if !missing.is_empty() {
         collect_fill_with_values(&missing, fill_values, prompt_fn, enum_prompt_fn)?;
@@ -226,6 +222,43 @@ where
         apply_fill_with_to_plan(plan, fill_values);
     }
 
+    Ok(())
+}
+
+/// Check that no AddColumn action adds a non-nullable FK column without a default.
+/// This is logically impossible: existing rows can't satisfy the FK constraint.
+fn check_non_nullable_fk_add_columns(plan: &MigrationPlan) -> Result<()> {
+    use std::collections::HashSet;
+
+    // Collect FK columns from AddConstraint actions
+    let mut fk_columns: HashSet<(String, String)> = HashSet::new();
+    for action in &plan.actions {
+        if let MigrationAction::AddConstraint {
+            table,
+            constraint: TableConstraint::ForeignKey { columns, .. },
+        } = action
+        {
+            for col in columns {
+                fk_columns.insert((table.clone(), col.to_string()));
+            }
+        }
+    }
+
+    for action in &plan.actions {
+        if let MigrationAction::AddColumn { table, column, .. } = action {
+            let has_fk = column.foreign_key.is_some()
+                || fk_columns.contains(&(table.clone(), column.name.to_string()));
+            if has_fk && !column.nullable && column.default.is_none() {
+                anyhow::bail!(
+                    "Cannot add non-nullable foreign key column '{}' to existing table '{}': \
+                     existing rows cannot satisfy the foreign key constraint. \
+                     Make the column nullable, or add it with a default value that references an existing row.",
+                    column.name,
+                    table
+                );
+            }
+        }
+    }
     Ok(())
 }
 
@@ -246,6 +279,14 @@ pub fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Result<()> 
         return Ok(());
     }
 
+    // Fail early: non-nullable FK column cannot be added to an existing table.
+    // Even with fill_with, there's no way to guarantee the value references a valid row.
+    check_non_nullable_fk_add_columns(&plan)?;
+
+    // Reconstruct baseline schema for column type lookups
+    let baseline_schema = schema_from_plans(&applied_plans)
+        .map_err(|e| anyhow::anyhow!("schema reconstruction error: {}", e))?;
+
     // Parse CLI fill_with arguments
     let mut fill_values = parse_fill_with_args(&fill_with_args);
 
@@ -256,6 +297,7 @@ pub fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Result<()> 
     handle_missing_fill_with(
         &mut plan,
         &mut fill_values,
+        &baseline_schema,
         prompt_fill_with_value,
         prompt_enum_value,
     )?;
@@ -470,6 +512,119 @@ mod tests {
                 .unwrap_or(false)
         });
         assert!(has_yaml);
+    }
+
+    #[test]
+    fn check_non_nullable_fk_add_column_fails() {
+        use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![
+                MigrationAction::AddColumn {
+                    table: "post".into(),
+                    column: Box::new(ColumnDef {
+                        name: "user_id".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    }),
+                    fill_with: Some("1".into()),
+                },
+                MigrationAction::AddConstraint {
+                    table: "post".into(),
+                    constraint: TableConstraint::ForeignKey {
+                        name: None,
+                        columns: vec!["user_id".into()],
+                        ref_table: "user".into(),
+                        ref_columns: vec!["id".into()],
+                        on_delete: None,
+                        on_update: None,
+                    },
+                },
+            ],
+        };
+        let result = check_non_nullable_fk_add_columns(&plan);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("user_id"),
+            "error should mention column: {msg}"
+        );
+        assert!(msg.contains("post"), "error should mention table: {msg}");
+    }
+
+    #[test]
+    fn check_nullable_fk_add_column_ok() {
+        use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![
+                MigrationAction::AddColumn {
+                    table: "post".into(),
+                    column: Box::new(ColumnDef {
+                        name: "user_id".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                        nullable: true,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    }),
+                    fill_with: None,
+                },
+                MigrationAction::AddConstraint {
+                    table: "post".into(),
+                    constraint: TableConstraint::ForeignKey {
+                        name: None,
+                        columns: vec!["user_id".into()],
+                        ref_table: "user".into(),
+                        ref_columns: vec!["id".into()],
+                        on_delete: None,
+                        on_update: None,
+                    },
+                },
+            ],
+        };
+        assert!(check_non_nullable_fk_add_columns(&plan).is_ok());
+    }
+
+    #[test]
+    fn check_non_nullable_no_fk_passes() {
+        // Regular non-nullable column without FK should NOT be blocked
+        use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![MigrationAction::AddColumn {
+                table: "post".into(),
+                column: Box::new(ColumnDef {
+                    name: "user_id1".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }),
+                fill_with: None,
+            }],
+        };
+        // Should pass — this column needs fill_with but that's handled separately
+        assert!(check_non_nullable_fk_add_columns(&plan).is_ok());
     }
 
     #[test]
@@ -759,30 +914,14 @@ mod tests {
 
     #[test]
     fn test_format_type_info_with_type_and_default() {
-        let column_type = Some("integer".to_string());
-        let default_value = Some("0".to_string());
-        let result = format_type_info(column_type.as_ref(), default_value.as_ref());
+        let result = format_type_info("integer", "0");
         assert_eq!(result, " (integer, default: 0)");
     }
 
     #[test]
     fn test_format_type_info_with_type_only() {
-        let column_type = Some("text".to_string());
-        let result = format_type_info(column_type.as_ref(), None);
-        assert_eq!(result, " (text)");
-    }
-
-    #[test]
-    fn test_format_type_info_with_default_only() {
-        let default_value = Some("0".to_string());
-        let result = format_type_info(None, default_value.as_ref());
-        assert_eq!(result, " (default: 0)");
-    }
-
-    #[test]
-    fn test_format_type_info_with_none() {
-        let result = format_type_info(None, None);
-        assert_eq!(result, "");
+        let result = format_type_info("text", "''");
+        assert_eq!(result, " (text, default: '')");
     }
 
     #[test]
@@ -816,25 +955,20 @@ mod tests {
     #[test]
     fn test_print_fill_with_item_and_get_prompt() {
         // This function prints to stdout and returns the prompt string
-        let prompt = print_fill_with_item_and_get_prompt(
-            "users",
-            "email",
-            Some(&"text".to_string()),
-            Some(&"''".to_string()),
-            "AddColumn",
-        );
+        let prompt =
+            print_fill_with_item_and_get_prompt("users", "email", "text", "''", "AddColumn");
         assert!(prompt.contains("Enter fill value for"));
         assert!(prompt.contains("users"));
         assert!(prompt.contains("email"));
     }
 
     #[test]
-    fn test_print_fill_with_item_and_get_prompt_no_type() {
+    fn test_print_fill_with_item_and_get_prompt_no_default() {
         let prompt = print_fill_with_item_and_get_prompt(
             "orders",
             "status",
-            None,
-            None,
+            "text",
+            "''",
             "ModifyColumnNullable",
         );
         assert!(prompt.contains("Enter fill value for"));
@@ -844,13 +978,8 @@ mod tests {
 
     #[test]
     fn test_print_fill_with_item_and_get_prompt_with_default() {
-        let prompt = print_fill_with_item_and_get_prompt(
-            "users",
-            "age",
-            Some(&"integer".to_string()),
-            Some(&"0".to_string()),
-            "AddColumn",
-        );
+        let prompt =
+            print_fill_with_item_and_get_prompt("users", "age", "integer", "0", "AddColumn");
         assert!(prompt.contains("Enter fill value for"));
         assert!(prompt.contains("users"));
         assert!(prompt.contains("age"));
@@ -882,16 +1011,17 @@ mod tests {
             table: "users".to_string(),
             column: "email".to_string(),
             action_type: "AddColumn",
-            column_type: Some("text".to_string()),
-            default_value: Some("''".to_string()),
+            column_type: "text".to_string(),
+            default_value: "''".to_string(),
             enum_values: None,
         }];
 
         let mut fill_values = HashMap::new();
 
         // Mock prompt function that returns a fixed value
-        let mock_prompt =
-            |_prompt: &str| -> Result<String> { Ok("'test@example.com'".to_string()) };
+        let mock_prompt = |_prompt: &str, _default: &str| -> Result<String> {
+            Ok("'test@example.com'".to_string())
+        };
 
         let result =
             collect_fill_with_values(&missing, &mut fill_values, mock_prompt, mock_enum_prompt);
@@ -913,8 +1043,8 @@ mod tests {
                 table: "users".to_string(),
                 column: "email".to_string(),
                 action_type: "AddColumn",
-                column_type: Some("text".to_string()),
-                default_value: Some("''".to_string()),
+                column_type: "text".to_string(),
+                default_value: "''".to_string(),
                 enum_values: None,
             },
             FillWithRequired {
@@ -922,8 +1052,8 @@ mod tests {
                 table: "orders".to_string(),
                 column: "status".to_string(),
                 action_type: "ModifyColumnNullable",
-                column_type: None,
-                default_value: None,
+                column_type: "text".to_string(),
+                default_value: "''".to_string(),
                 enum_values: None,
             },
         ];
@@ -932,7 +1062,7 @@ mod tests {
 
         // Mock prompt function that returns different values based on call count
         let call_count = std::cell::RefCell::new(0);
-        let mock_prompt = |_prompt: &str| -> Result<String> {
+        let mock_prompt = |_prompt: &str, _default: &str| -> Result<String> {
             let mut count = call_count.borrow_mut();
             *count += 1;
             match *count {
@@ -964,7 +1094,7 @@ mod tests {
         // This function should handle empty list gracefully (though it won't be called in practice)
         // But we can't test the header/footer without items since the function still prints them
         // So we test with a mock that would fail if called
-        let mock_prompt = |_prompt: &str| -> Result<String> {
+        let mock_prompt = |_prompt: &str, _default: &str| -> Result<String> {
             panic!("Should not be called for empty list");
         };
 
@@ -985,16 +1115,17 @@ mod tests {
             table: "users".to_string(),
             column: "email".to_string(),
             action_type: "AddColumn",
-            column_type: Some("text".to_string()),
-            default_value: Some("''".to_string()),
+            column_type: "text".to_string(),
+            default_value: "''".to_string(),
             enum_values: None,
         }];
 
         let mut fill_values = HashMap::new();
 
         // Mock prompt function that returns an error
-        let mock_prompt =
-            |_prompt: &str| -> Result<String> { Err(anyhow::anyhow!("input cancelled")) };
+        let mock_prompt = |_prompt: &str, _default: &str| -> Result<String> {
+            Err(anyhow::anyhow!("input cancelled"))
+        };
 
         let result =
             collect_fill_with_values(&missing, &mut fill_values, mock_prompt, mock_enum_prompt);
@@ -1007,7 +1138,7 @@ mod tests {
         // This test verifies that prompt_fill_with_value has the correct signature.
         // We cannot actually call it in tests because dialoguer::Input blocks waiting for terminal input.
         // The function is excluded from coverage with #[cfg_attr(coverage_nightly, coverage(off))].
-        let _: fn(&str) -> Result<String> = prompt_fill_with_value;
+        let _: fn(&str, &str) -> Result<String> = prompt_fill_with_value;
     }
 
     #[test]
@@ -1038,11 +1169,17 @@ mod tests {
         let mut fill_values = HashMap::new();
 
         // Mock prompt function
-        let mock_prompt =
-            |_prompt: &str| -> Result<String> { Ok("'test@example.com'".to_string()) };
+        let mock_prompt = |_prompt: &str, _default: &str| -> Result<String> {
+            Ok("'test@example.com'".to_string())
+        };
 
-        let result =
-            handle_missing_fill_with(&mut plan, &mut fill_values, mock_prompt, mock_enum_prompt);
+        let result = handle_missing_fill_with(
+            &mut plan,
+            &mut fill_values,
+            &[],
+            mock_prompt,
+            mock_enum_prompt,
+        );
         assert!(result.is_ok());
 
         // Verify fill_with was applied to the plan
@@ -1089,12 +1226,17 @@ mod tests {
         let mut fill_values = HashMap::new();
 
         // Mock prompt that should never be called
-        let mock_prompt = |_prompt: &str| -> Result<String> {
+        let mock_prompt = |_prompt: &str, _default: &str| -> Result<String> {
             panic!("Should not be called when no missing fill_with values");
         };
 
-        let result =
-            handle_missing_fill_with(&mut plan, &mut fill_values, mock_prompt, mock_enum_prompt);
+        let result = handle_missing_fill_with(
+            &mut plan,
+            &mut fill_values,
+            &[],
+            mock_prompt,
+            mock_enum_prompt,
+        );
         assert!(result.is_ok());
         assert!(fill_values.is_empty());
     }
@@ -1127,11 +1269,17 @@ mod tests {
         let mut fill_values = HashMap::new();
 
         // Mock prompt that returns an error
-        let mock_prompt =
-            |_prompt: &str| -> Result<String> { Err(anyhow::anyhow!("user cancelled")) };
+        let mock_prompt = |_prompt: &str, _default: &str| -> Result<String> {
+            Err(anyhow::anyhow!("user cancelled"))
+        };
 
-        let result =
-            handle_missing_fill_with(&mut plan, &mut fill_values, mock_prompt, mock_enum_prompt);
+        let result = handle_missing_fill_with(
+            &mut plan,
+            &mut fill_values,
+            &[],
+            mock_prompt,
+            mock_enum_prompt,
+        );
         assert!(result.is_err());
 
         // Plan should not be modified on error
@@ -1180,7 +1328,7 @@ mod tests {
 
         // Mock prompt that returns different values based on call count
         let call_count = std::cell::RefCell::new(0);
-        let mock_prompt = |_prompt: &str| -> Result<String> {
+        let mock_prompt = |_prompt: &str, _default: &str| -> Result<String> {
             let mut count = call_count.borrow_mut();
             *count += 1;
             match *count {
@@ -1190,8 +1338,13 @@ mod tests {
             }
         };
 
-        let result =
-            handle_missing_fill_with(&mut plan, &mut fill_values, mock_prompt, mock_enum_prompt);
+        let result = handle_missing_fill_with(
+            &mut plan,
+            &mut fill_values,
+            &[],
+            mock_prompt,
+            mock_enum_prompt,
+        );
         assert!(result.is_ok());
 
         // Verify both actions were updated
@@ -1219,8 +1372,8 @@ mod tests {
             table: "orders".to_string(),
             column: "status".to_string(),
             action_type: "AddColumn",
-            column_type: Some("enum<order_status>".to_string()),
-            default_value: None,
+            column_type: "enum<order_status>".to_string(),
+            default_value: "''".to_string(),
             enum_values: Some(vec![
                 "pending".to_string(),
                 "confirmed".to_string(),
@@ -1231,7 +1384,7 @@ mod tests {
         let mut fill_values = HashMap::new();
 
         // Mock prompt function that should NOT be called for enum columns
-        let mock_prompt = |_prompt: &str| -> Result<String> {
+        let mock_prompt = |_prompt: &str, _default: &str| -> Result<String> {
             panic!("Should not be called for enum columns");
         };
 
