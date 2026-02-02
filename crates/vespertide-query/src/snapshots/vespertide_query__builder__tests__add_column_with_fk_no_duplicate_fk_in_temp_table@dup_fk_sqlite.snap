@@ -11,7 +11,7 @@ CREATE UNIQUE INDEX "uq_companion__invite_code" ON "companion" ("invite_code");
 CREATE INDEX "ix_companion__user_id" ON "companion" ("user_id")
 
 -- Action 1: AddConstraint { table: "companion", constraint: ForeignKey { name: None, columns: ["project_id"], ref_table: "project", ref_columns: ["id"], on_delete: Some(Cascade), on_update: None } }
-CREATE TABLE "companion_temp" ( "id" integer, "user_id" bigint, "project_id" bigint NOT NULL, FOREIGN KEY ("user_id") REFERENCES "user" ("id") ON DELETE CASCADE, FOREIGN KEY ("project_id") REFERENCES "project" ("id"), FOREIGN KEY ("project_id") REFERENCES "project" ("id") ON DELETE CASCADE );
+CREATE TABLE "companion_temp" ( "id" integer, "user_id" bigint, "project_id" bigint NOT NULL, FOREIGN KEY ("user_id") REFERENCES "user" ("id") ON DELETE CASCADE, FOREIGN KEY ("project_id") REFERENCES "project" ("id") ON DELETE CASCADE );
 INSERT INTO "companion_temp" ("id", "user_id", "project_id") SELECT "id", "user_id", "project_id" FROM "companion";
 DROP TABLE "companion";
 ALTER TABLE "companion_temp" RENAME TO "companion";

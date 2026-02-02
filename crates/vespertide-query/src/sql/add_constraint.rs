@@ -5,6 +5,71 @@ use vespertide_core::{TableConstraint, TableDef};
 use super::helpers::{
     build_sqlite_temp_table_create, recreate_indexes_after_rebuild, to_sea_fk_action,
 };
+
+/// Build new_constraints by cloning `table_def.constraints` and adding the
+/// given `constraint`.  If an equivalent constraint already exists (e.g.
+/// promoted by AddColumn normalization), it is **replaced** so that the
+/// explicit AddConstraint version (which may carry ON DELETE / ON UPDATE)
+/// wins, without producing duplicates.
+fn merge_constraint(
+    existing: &[TableConstraint],
+    constraint: &TableConstraint,
+) -> Vec<TableConstraint> {
+    let mut out: Vec<TableConstraint> = Vec::with_capacity(existing.len() + 1);
+    let mut replaced = false;
+
+    for c in existing {
+        if constraints_overlap(c, constraint) {
+            // Replace the existing (possibly weaker) constraint with the new one.
+            if !replaced {
+                out.push(constraint.clone());
+                replaced = true;
+            }
+            // else: skip additional duplicates
+        } else {
+            out.push(c.clone());
+        }
+    }
+
+    if !replaced {
+        out.push(constraint.clone());
+    }
+    out
+}
+
+/// Two constraints "overlap" when they are the same variant and target the
+/// same columns, even if their details (name, on_delete, …) differ.
+fn constraints_overlap(a: &TableConstraint, b: &TableConstraint) -> bool {
+    match (a, b) {
+        (
+            TableConstraint::ForeignKey {
+                columns: a_cols, ..
+            },
+            TableConstraint::ForeignKey {
+                columns: b_cols, ..
+            },
+        ) => a_cols == b_cols,
+        (
+            TableConstraint::PrimaryKey {
+                columns: a_cols, ..
+            },
+            TableConstraint::PrimaryKey {
+                columns: b_cols, ..
+            },
+        ) => a_cols == b_cols,
+        (
+            TableConstraint::Check {
+                name: a_name,
+                expr: a_expr,
+            },
+            TableConstraint::Check {
+                name: b_name,
+                expr: b_expr,
+            },
+        ) => a_name == b_name && a_expr == b_expr,
+        _ => false,
+    }
+}
 use super::rename_table::build_rename_table;
 use super::types::{BuiltQuery, DatabaseBackend, RawSql};
 use crate::error::QueryError;
@@ -24,8 +89,7 @@ pub fn build_add_constraint(
                 let table_def = current_schema.iter().find(|t| t.name == table).ok_or_else(|| QueryError::Other(format!("Table '{}' not found in current schema. SQLite requires current schema information to add constraints.", table)))?;
 
                 // Create new constraints with the added primary key constraint
-                let mut new_constraints: Vec<TableConstraint> = table_def.constraints.clone();
-                new_constraints.push(constraint.clone());
+                let new_constraints = merge_constraint(&table_def.constraints, constraint);
 
                 let temp_table = format!("{}_temp", table);
 
@@ -125,8 +189,7 @@ pub fn build_add_constraint(
                 let table_def = current_schema.iter().find(|t| t.name == table).ok_or_else(|| QueryError::Other(format!("Table '{}' not found in current schema. SQLite requires current schema information to add constraints.", table)))?;
 
                 // Create new constraints with the added foreign key constraint
-                let mut new_constraints = table_def.constraints.clone();
-                new_constraints.push(constraint.clone());
+                let new_constraints = merge_constraint(&table_def.constraints, constraint);
 
                 let temp_table = format!("{}_temp", table);
 
@@ -218,8 +281,7 @@ pub fn build_add_constraint(
                 let table_def = current_schema.iter().find(|t| t.name == table).ok_or_else(|| QueryError::Other(format!("Table '{}' not found in current schema. SQLite requires current schema information to add constraints.", table)))?;
 
                 // Create new constraints with the added check constraint
-                let mut new_constraints = table_def.constraints.clone();
-                new_constraints.push(constraint.clone());
+                let new_constraints = merge_constraint(&table_def.constraints, constraint);
 
                 let temp_table = format!("{}_temp", table);
 
