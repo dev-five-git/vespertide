@@ -133,9 +133,13 @@ pub fn build_action_queries_with_pending(
 
         MigrationAction::RawSql { sql } => Ok(vec![build_raw_sql(sql.clone())]),
 
-        MigrationAction::AddConstraint { table, constraint } => {
-            build_add_constraint(backend, table, constraint, current_schema, pending_constraints)
-        }
+        MigrationAction::AddConstraint { table, constraint } => build_add_constraint(
+            backend,
+            table,
+            constraint,
+            current_schema,
+            pending_constraints,
+        ),
 
         MigrationAction::RemoveConstraint { table, constraint } => {
             build_remove_constraint(backend, table, constraint, current_schema)
