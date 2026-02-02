@@ -894,6 +894,82 @@ mod tests {
                 if table == "orders" && column == "status"
             ));
         }
+
+        #[test]
+        fn string_enum_name_changed_same_values_no_migration() {
+            // String enum name changed but values identical - should NOT generate migration
+            // Reproduces the phantom diff: model "status" vs migration "article_status"
+            let from = vec![table(
+                "orders",
+                vec![col(
+                    "status",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "order_status".into(),
+                        values: EnumValues::String(vec!["pending".into(), "shipped".into()]),
+                    }),
+                )],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "orders",
+                vec![col(
+                    "status",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "status".into(),
+                        values: EnumValues::String(vec!["pending".into(), "shipped".into()]),
+                    }),
+                )],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+            assert!(
+                plan.actions.is_empty(),
+                "Expected no actions for enum name-only change, got: {:?}",
+                plan.actions
+            );
+        }
+
+        #[test]
+        fn string_enum_name_and_values_changed_requires_migration() {
+            // String enum name AND values changed - SHOULD generate ModifyColumnType
+            let from = vec![table(
+                "orders",
+                vec![col(
+                    "status",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "order_status".into(),
+                        values: EnumValues::String(vec!["pending".into(), "shipped".into()]),
+                    }),
+                )],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "orders",
+                vec![col(
+                    "status",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "status".into(),
+                        values: EnumValues::String(vec![
+                            "pending".into(),
+                            "shipped".into(),
+                            "delivered".into(),
+                        ]),
+                    }),
+                )],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+            assert_eq!(plan.actions.len(), 1);
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::ModifyColumnType { table, column, .. }
+                if table == "orders" && column == "status"
+            ));
+        }
     }
 
     // Tests for enum + default value ordering

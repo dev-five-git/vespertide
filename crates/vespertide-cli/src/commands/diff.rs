@@ -81,12 +81,18 @@ fn format_action(action: &MigrationAction) -> String {
                 column.bright_cyan().bold()
             )
         }
-        MigrationAction::ModifyColumnType { table, column, .. } => {
+        MigrationAction::ModifyColumnType {
+            table,
+            column,
+            new_type,
+        } => {
             format!(
-                "{} {}.{}",
+                "{} {}.{} {} {}",
                 "Modify column type:".bright_yellow(),
                 table.bright_cyan(),
-                column.bright_cyan().bold()
+                column.bright_cyan().bold(),
+                "->".bright_white(),
+                new_type.to_display_string().bright_cyan().bold()
             )
         }
         MigrationAction::ModifyColumnNullable {
@@ -324,7 +330,7 @@ mod tests {
             column: "id".into(),
             new_type: ColumnType::Simple(SimpleColumnType::Integer),
         },
-        format!("{} {}.{}", "Modify column type:".bright_yellow(), "users".bright_cyan(), "id".bright_cyan().bold())
+        format!("{} {}.{} {} {}", "Modify column type:".bright_yellow(), "users".bright_cyan(), "id".bright_cyan().bold(), "->".bright_white(), "integer".bright_cyan().bold())
     )]
     #[case(
         MigrationAction::AddConstraint {

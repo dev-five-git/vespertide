@@ -61,8 +61,11 @@ impl ColumnType {
                 if values1.is_integer() && values2.is_integer() {
                     false
                 } else {
-                    // At least one is string enum - compare fully
-                    self != other
+                    // String enums: compare only values, not name.
+                    // The enum name is a user-facing label; the actual DB type name
+                    // is auto-generated with a table prefix at SQL generation time.
+                    // Different labels with identical values don't require a migration.
+                    values1 != values2
                 }
             }
             _ => self != other,
