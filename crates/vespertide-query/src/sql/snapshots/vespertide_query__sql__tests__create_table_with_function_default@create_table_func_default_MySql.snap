@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql/mod.rs
+expression: sql
+---
+CREATE TABLE `users` ( `id` binary(16) NOT NULL DEFAULT (UUID()), `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP )

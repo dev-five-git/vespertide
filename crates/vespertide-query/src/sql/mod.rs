@@ -1390,6 +1390,53 @@ mod tests {
     }
 
     #[rstest]
+    #[case::create_table_func_default_postgres(DatabaseBackend::Postgres)]
+    #[case::create_table_func_default_mysql(DatabaseBackend::MySql)]
+    #[case::create_table_func_default_sqlite(DatabaseBackend::Sqlite)]
+    fn test_create_table_with_function_default(#[case] backend: DatabaseBackend) {
+        // SQLite requires DEFAULT (expr) for function-call defaults.
+        // This test ensures parentheses are added for SQLite.
+        let action = MigrationAction::CreateTable {
+            table: "users".into(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                    nullable: false,
+                    default: Some("gen_random_uuid()".into()),
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "created_at".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Timestamptz),
+                    nullable: false,
+                    default: Some("now()".into()),
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![],
+        };
+        let result = build_action_queries(&backend, &action, &[]).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<_>>()
+            .join(";\n");
+
+        with_settings!({ snapshot_suffix => format!("create_table_func_default_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
     #[case::delete_enum_column_postgres(DatabaseBackend::Postgres)]
     #[case::delete_enum_column_mysql(DatabaseBackend::MySql)]
     #[case::delete_enum_column_sqlite(DatabaseBackend::Sqlite)]

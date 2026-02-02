@@ -264,6 +264,17 @@ pub fn build_sea_column_def_with_table(
                 converted
             };
 
+        // SQLite requires DEFAULT (expr) for expressions containing function calls.
+        // Wrapping in parentheses is always safe for all backends.
+        let final_default = if *backend == DatabaseBackend::Sqlite
+            && final_default.contains('(')
+            && !final_default.starts_with('(')
+        {
+            format!("({})", final_default)
+        } else {
+            final_default
+        };
+
         col.default(Into::<SimpleExpr>::into(sea_query::Expr::cust(
             final_default,
         )));
