@@ -390,6 +390,7 @@ pub fn extract_check_clauses(constraints: &[TableConstraint]) -> Vec<String> {
 /// Combines both:
 /// - Enum-based CHECK constraints (from column types)
 /// - Explicit CHECK constraints (from `TableConstraint::Check`)
+///
 /// Returns deduplicated union of both.
 pub fn collect_all_check_clauses(
     table: &str,
