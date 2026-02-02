@@ -18,7 +18,7 @@ pub use helpers::*;
 pub use types::{BuiltQuery, DatabaseBackend, RawSql};
 
 use crate::error::QueryError;
-use vespertide_core::{MigrationAction, TableDef};
+use vespertide_core::{MigrationAction, TableConstraint, TableDef};
 
 use self::{
     add_column::build_add_column, add_constraint::build_add_constraint,
@@ -35,6 +35,20 @@ pub fn build_action_queries(
     backend: &DatabaseBackend,
     action: &MigrationAction,
     current_schema: &[TableDef],
+) -> Result<Vec<BuiltQuery>, QueryError> {
+    build_action_queries_with_pending(backend, action, current_schema, &[])
+}
+
+/// Build SQL queries for a migration action, with awareness of pending constraints.
+///
+/// `pending_constraints` are constraints that exist in the logical schema but haven't been
+/// physically created as database indexes yet. This is used by SQLite temp table rebuilds
+/// to avoid recreating indexes that will be created by future AddConstraint actions.
+pub fn build_action_queries_with_pending(
+    backend: &DatabaseBackend,
+    action: &MigrationAction,
+    current_schema: &[TableDef],
+    pending_constraints: &[TableConstraint],
 ) -> Result<Vec<BuiltQuery>, QueryError> {
     match action {
         MigrationAction::CreateTable {
@@ -120,7 +134,7 @@ pub fn build_action_queries(
         MigrationAction::RawSql { sql } => Ok(vec![build_raw_sql(sql.clone())]),
 
         MigrationAction::AddConstraint { table, constraint } => {
-            build_add_constraint(backend, table, constraint, current_schema)
+            build_add_constraint(backend, table, constraint, current_schema, pending_constraints)
         }
 
         MigrationAction::RemoveConstraint { table, constraint } => {

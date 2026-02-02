@@ -130,6 +130,7 @@ pub fn build_modify_column_nullable(
             queries.extend(recreate_indexes_after_rebuild(
                 table,
                 &table_def.constraints,
+                &[],
             ));
         }
     }

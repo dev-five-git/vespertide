@@ -462,12 +462,21 @@ pub fn build_sqlite_temp_table_create(
 
 /// Recreate all indexes (both regular and UNIQUE) after a SQLite temp table rebuild.
 /// After DROP TABLE + RENAME, all original indexes are gone, so plain CREATE INDEX is correct.
+///
+/// `pending_constraints` are constraints that exist in the logical schema but haven't been
+/// physically created yet (e.g., promoted from inline column definitions by AddColumn normalization).
+/// These will be created by separate AddConstraint actions later, so we must NOT recreate them here.
 pub fn recreate_indexes_after_rebuild(
     table: &str,
     constraints: &[TableConstraint],
+    pending_constraints: &[TableConstraint],
 ) -> Vec<BuiltQuery> {
     let mut queries = Vec::new();
     for constraint in constraints {
+        // Skip constraints that will be created by future AddConstraint actions
+        if pending_constraints.contains(constraint) {
+            continue;
+        }
         match constraint {
             TableConstraint::Index { name, columns } => {
                 let index_name = build_index_name(table, columns, name.as_deref());

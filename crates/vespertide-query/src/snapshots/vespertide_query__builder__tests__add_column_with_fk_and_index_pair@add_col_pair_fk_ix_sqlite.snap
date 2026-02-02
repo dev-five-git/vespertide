@@ -1,0 +1,15 @@
+---
+source: crates/vespertide-query/src/builder.rs
+expression: sql
+---
+-- Action 0: AddColumn { table: "product", column: ColumnDef { name: "category_id", type: Simple(BigInt), nullable: true, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None }, fill_with: None }
+ALTER TABLE "product" ADD COLUMN "category_id" bigint
+
+-- Action 1: AddConstraint { table: "product", constraint: ForeignKey { name: None, columns: ["category_id"], ref_table: "category", ref_columns: ["id"], on_delete: Some(Cascade), on_update: None } }
+CREATE TABLE "product_temp" ( "id" integer, "category_id" bigint, FOREIGN KEY ("category_id") REFERENCES "category" ("id") ON DELETE CASCADE );
+INSERT INTO "product_temp" ("id", "category_id") SELECT "id", "category_id" FROM "product";
+DROP TABLE "product";
+ALTER TABLE "product_temp" RENAME TO "product"
+
+-- Action 2: AddConstraint { table: "product", constraint: Index { name: None, columns: ["category_id"] } }
+CREATE INDEX "ix_product__category_id" ON "product" ("category_id")

@@ -96,7 +96,7 @@ pub fn build_add_column(
         let rename_query = build_rename_table(&temp_table, table);
 
         // Recreate indexes (both regular and UNIQUE)
-        let index_queries = recreate_indexes_after_rebuild(table, &table_def.constraints);
+        let index_queries = recreate_indexes_after_rebuild(table, &table_def.constraints, &[]);
 
         let mut stmts = vec![create_query, insert_query, drop_query, rename_query];
         stmts.extend(index_queries);

@@ -1,0 +1,15 @@
+---
+source: crates/vespertide-query/src/builder.rs
+expression: sql
+---
+-- Action 0: RemoveConstraint { table: "product", constraint: Index { name: None, columns: ["category_id"] } }
+DROP INDEX `ix_product__category_id` ON `product`
+
+-- Action 1: RemoveConstraint { table: "product", constraint: ForeignKey { name: None, columns: ["category_id"], ref_table: "category", ref_columns: ["id"], on_delete: Some(Cascade), on_update: None } }
+ALTER TABLE `product` DROP FOREIGN KEY `fk_product__category_id`
+
+-- Action 2: RemoveConstraint { table: "product", constraint: Unique { name: None, columns: ["category_id"] } }
+ALTER TABLE `product` DROP INDEX `uq_product__category_id`
+
+-- Action 3: DeleteColumn { table: "product", column: "category_id" }
+ALTER TABLE `product` DROP COLUMN `category_id`

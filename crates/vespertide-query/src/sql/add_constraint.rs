@@ -14,6 +14,7 @@ pub fn build_add_constraint(
     table: &str,
     constraint: &TableConstraint,
     current_schema: &[TableDef],
+    pending_constraints: &[TableConstraint],
 ) -> Result<Vec<BuiltQuery>, QueryError> {
     match constraint {
         TableConstraint::PrimaryKey { columns, .. } => {
@@ -65,7 +66,12 @@ pub fn build_add_constraint(
                 let rename_query = build_rename_table(&temp_table, table);
 
                 // 5. Recreate indexes (both regular and UNIQUE)
-                let index_queries = recreate_indexes_after_rebuild(table, &table_def.constraints);
+                // Exclude pending constraints that will be created by future AddConstraint actions
+                let index_queries = recreate_indexes_after_rebuild(
+                    table,
+                    &table_def.constraints,
+                    pending_constraints,
+                );
 
                 let mut queries = vec![create_query, insert_query, drop_query, rename_query];
                 queries.extend(index_queries);
@@ -161,7 +167,12 @@ pub fn build_add_constraint(
                 let rename_query = build_rename_table(&temp_table, table);
 
                 // 5. Recreate indexes (both regular and UNIQUE)
-                let index_queries = recreate_indexes_after_rebuild(table, &table_def.constraints);
+                // Exclude pending constraints that will be created by future AddConstraint actions
+                let index_queries = recreate_indexes_after_rebuild(
+                    table,
+                    &table_def.constraints,
+                    pending_constraints,
+                );
 
                 let mut queries = vec![create_query, insert_query, drop_query, rename_query];
                 queries.extend(index_queries);
@@ -249,7 +260,12 @@ pub fn build_add_constraint(
                 let rename_query = build_rename_table(&temp_table, table);
 
                 // 5. Recreate indexes (both regular and UNIQUE)
-                let index_queries = recreate_indexes_after_rebuild(table, &table_def.constraints);
+                // Exclude pending constraints that will be created by future AddConstraint actions
+                let index_queries = recreate_indexes_after_rebuild(
+                    table,
+                    &table_def.constraints,
+                    pending_constraints,
+                );
 
                 let mut queries = vec![create_query, insert_query, drop_query, rename_query];
                 queries.extend(index_queries);
@@ -437,7 +453,8 @@ mod tests {
             constraints: vec![],
         }];
 
-        let result = build_add_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+        let result =
+            build_add_constraint(&backend, "users", &constraint, &current_schema, &[]).unwrap();
         let sql = result[0].build(backend);
         for exp in expected {
             assert!(
@@ -465,6 +482,7 @@ mod tests {
             "users",
             &constraint,
             &current_schema,
+            &[],
         );
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -501,6 +519,7 @@ mod tests {
             "users",
             &constraint,
             &current_schema,
+            &[],
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
@@ -543,6 +562,7 @@ mod tests {
             "users",
             &constraint,
             &current_schema,
+            &[],
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
@@ -588,6 +608,7 @@ mod tests {
             "users",
             &constraint,
             &current_schema,
+            &[],
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
@@ -616,6 +637,7 @@ mod tests {
             "posts",
             &constraint,
             &current_schema,
+            &[],
         );
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -656,6 +678,7 @@ mod tests {
             "posts",
             &constraint,
             &current_schema,
+            &[],
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
@@ -702,6 +725,7 @@ mod tests {
             "posts",
             &constraint,
             &current_schema,
+            &[],
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
@@ -750,6 +774,7 @@ mod tests {
             "posts",
             &constraint,
             &current_schema,
+            &[],
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
@@ -774,6 +799,7 @@ mod tests {
             "users",
             &constraint,
             &current_schema,
+            &[],
         );
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -808,6 +834,7 @@ mod tests {
             "users",
             &constraint,
             &current_schema,
+            &[],
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
@@ -850,6 +877,7 @@ mod tests {
             "users",
             &constraint,
             &current_schema,
+            &[],
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
@@ -896,6 +924,7 @@ mod tests {
             "posts",
             &constraint,
             &current_schema,
+            &[],
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
@@ -939,6 +968,7 @@ mod tests {
             "users",
             &constraint,
             &current_schema,
+            &[],
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
@@ -983,6 +1013,7 @@ mod tests {
             "users",
             &constraint,
             &current_schema,
+            &[],
         );
         assert!(result.is_ok());
         let queries = result.unwrap();

@@ -183,7 +183,7 @@ fn build_delete_column_sqlite_temp_table(
     stmts.push(build_rename_table(&temp_table, table));
 
     // 5. Recreate indexes (both regular and UNIQUE) that don't reference the deleted column
-    stmts.extend(recreate_indexes_after_rebuild(table, &new_constraints));
+    stmts.extend(recreate_indexes_after_rebuild(table, &new_constraints, &[]));
 
     // If column type is an enum, drop the type after (PostgreSQL only, but include for completeness)
     if let Some(col_type) = column_type
