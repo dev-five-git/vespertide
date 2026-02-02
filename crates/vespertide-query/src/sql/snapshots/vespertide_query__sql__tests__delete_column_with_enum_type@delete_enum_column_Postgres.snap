@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/mod.rs
+expression: sql
+---
+ALTER TABLE "orders" DROP COLUMN "status";
+DROP TYPE "orders_order_status"

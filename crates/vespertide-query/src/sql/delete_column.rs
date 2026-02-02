@@ -277,7 +277,7 @@ mod tests {
         assert!(alter_sql.contains("DROP COLUMN"));
 
         let drop_type_sql = result[1].build(DatabaseBackend::Postgres);
-        assert!(drop_type_sql.contains("DROP TYPE IF EXISTS \"users_status\""));
+        assert!(drop_type_sql.contains("DROP TYPE \"users_status\""));
 
         // MySQL and SQLite should have empty DROP TYPE
         let drop_type_mysql = result[1].build(DatabaseBackend::MySql);

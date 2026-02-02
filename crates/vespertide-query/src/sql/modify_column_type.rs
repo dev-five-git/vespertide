@@ -256,7 +256,7 @@ pub fn build_modify_column_type(
                     // Use table-prefixed enum type name
                     let old_type_name = super::helpers::build_enum_type_name(table, old_name);
                     queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
-                        format!("DROP TYPE IF EXISTS \"{}\"", old_type_name),
+                        format!("DROP TYPE \"{}\"", old_type_name),
                         String::new(),
                         String::new(),
                     )));

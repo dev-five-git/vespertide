@@ -2027,4 +2027,19 @@ mod tests {
             _ => panic!("Expected InvalidAutoIncrement error"),
         }
     }
+
+    #[test]
+    fn validate_inline_primary_key_bool_does_not_check_auto_increment() {
+        // PrimaryKeySyntax::Bool(true) has no auto_increment field, so validation
+        // should pass even on a non-integer column.
+        let mut col_def = col("code", ColumnType::Simple(SimpleColumnType::Text));
+        col_def.primary_key = Some(PrimaryKeySyntax::Bool(true));
+
+        let table_def = table("items", vec![col_def], vec![]);
+        let result = validate_table(&table_def, &std::collections::HashMap::new());
+        assert!(
+            result.is_ok(),
+            "Bool primary key should not trigger auto_increment validation"
+        );
+    }
 }

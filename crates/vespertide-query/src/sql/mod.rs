@@ -1388,4 +1388,52 @@ mod tests {
             assert_snapshot!(sql);
         });
     }
+
+    #[rstest]
+    #[case::delete_enum_column_postgres(DatabaseBackend::Postgres)]
+    #[case::delete_enum_column_mysql(DatabaseBackend::MySql)]
+    #[case::delete_enum_column_sqlite(DatabaseBackend::Sqlite)]
+    fn test_delete_column_with_enum_type(#[case] backend: DatabaseBackend) {
+        // Deleting a column with an enum type — SQLite uses temp table approach,
+        // Postgres drops the enum type, MySQL uses simple DROP COLUMN.
+        let action = MigrationAction::DeleteColumn {
+            table: "orders".into(),
+            column: "status".into(),
+        };
+        let schema = vec![TableDef {
+            name: "orders".into(),
+            description: None,
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ColumnDef {
+                    name: "status".into(),
+                    r#type: ColumnType::Complex(vespertide_core::ComplexColumnType::Enum {
+                        name: "order_status".into(),
+                        values: vespertide_core::EnumValues::String(vec![
+                            "pending".into(),
+                            "shipped".into(),
+                        ]),
+                    }),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![],
+        }];
+        let result = build_action_queries(&backend, &action, &schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<_>>()
+            .join(";\n");
+
+        with_settings!({ snapshot_suffix => format!("delete_enum_column_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
 }

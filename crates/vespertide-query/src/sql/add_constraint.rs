@@ -23,7 +23,7 @@ pub fn build_add_constraint(
                 let table_def = current_schema.iter().find(|t| t.name == table).ok_or_else(|| QueryError::Other(format!("Table '{}' not found in current schema. SQLite requires current schema information to add constraints.", table)))?;
 
                 // Create new constraints with the added primary key constraint
-                let mut new_constraints = table_def.constraints.clone();
+                let mut new_constraints: Vec<TableConstraint> = table_def.constraints.clone();
                 new_constraints.push(constraint.clone());
 
                 let temp_table = format!("{}_temp", table);
@@ -92,14 +92,6 @@ pub fn build_add_constraint(
             }
         }
         TableConstraint::Unique { name, columns } => {
-            // On SQLite, skip if this constraint already exists in the schema —
-            // a prior temp table rebuild in the same migration already recreated it.
-            if *backend == DatabaseBackend::Sqlite
-                && let Some(table_def) = current_schema.iter().find(|t| t.name == table)
-                && table_def.constraints.contains(constraint)
-            {
-                return Ok(vec![]);
-            }
             // Always generate a proper name: uq_{table}_{key} or uq_{table}_{columns}
             let index_name =
                 super::helpers::build_unique_constraint_name(table, columns, name.as_deref());
@@ -127,26 +119,8 @@ pub fn build_add_constraint(
                 let table_def = current_schema.iter().find(|t| t.name == table).ok_or_else(|| QueryError::Other(format!("Table '{}' not found in current schema. SQLite requires current schema information to add constraints.", table)))?;
 
                 // Create new constraints with the added foreign key constraint
-                // Dedup: check if this FK already exists (e.g. from inline normalization)
                 let mut new_constraints = table_def.constraints.clone();
-                let fk_already_exists = new_constraints.iter().any(|c| {
-                    if let TableConstraint::ForeignKey {
-                        columns: existing_cols,
-                        ref_table: existing_ref,
-                        ref_columns: existing_ref_cols,
-                        ..
-                    } = c
-                    {
-                        columns == existing_cols
-                            && ref_table == existing_ref
-                            && ref_columns == existing_ref_cols
-                    } else {
-                        false
-                    }
-                });
-                if !fk_already_exists {
-                    new_constraints.push(constraint.clone());
-                }
+                new_constraints.push(constraint.clone());
 
                 let temp_table = format!("{}_temp", table);
 
@@ -216,14 +190,6 @@ pub fn build_add_constraint(
             }
         }
         TableConstraint::Index { name, columns } => {
-            // On SQLite, skip if this constraint already exists in the schema —
-            // a prior temp table rebuild in the same migration already recreated it.
-            if *backend == DatabaseBackend::Sqlite
-                && let Some(table_def) = current_schema.iter().find(|t| t.name == table)
-                && table_def.constraints.contains(constraint)
-            {
-                return Ok(vec![]);
-            }
             let index_name = vespertide_naming::build_index_name(table, columns, name.as_deref());
             let mut idx = Index::create()
                 .table(Alias::new(table))

@@ -319,8 +319,8 @@ pub fn build_drop_enum_type_sql(
         // Generate the same unique type name used in CREATE TYPE
         let type_name = build_enum_type_name(table, name);
 
-        // PostgreSQL: DROP TYPE IF EXISTS {table}_{name}
-        let pg_sql = format!("DROP TYPE IF EXISTS \"{}\"", type_name);
+        // PostgreSQL: DROP TYPE {table}_{name}
+        let pg_sql = format!("DROP TYPE \"{}\"", type_name);
 
         // MySQL/SQLite: No action needed
         Some(super::types::RawSql::per_backend(
