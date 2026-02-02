@@ -34,14 +34,9 @@ pub fn build_delete_column(
         if let Some(col_def) = table_def.columns.iter().find(|c| c.name == column)
             && let ColumnType::Complex(vespertide_core::ComplexColumnType::Enum { .. }) =
                 &col_def.r#type
-            {
-                return build_delete_column_sqlite_temp_table(
-                    table,
-                    column,
-                    table_def,
-                    column_type,
-                );
-            }
+        {
+            return build_delete_column_sqlite_temp_table(table, column, table_def, column_type);
+        }
 
         // Handle constraints referencing the deleted column
         for constraint in &table_def.constraints {

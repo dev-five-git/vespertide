@@ -70,13 +70,14 @@ fn validate_table(
         {
             for col_name in columns {
                 if let Some(column) = table.columns.iter().find(|c| c.name == *col_name)
-                    && !column.r#type.supports_auto_increment() {
-                        return Err(PlannerError::InvalidAutoIncrement(
-                            table.name.clone(),
-                            col_name.clone(),
-                            format!("{:?}", column.r#type),
-                        ));
-                    }
+                    && !column.r#type.supports_auto_increment()
+                {
+                    return Err(PlannerError::InvalidAutoIncrement(
+                        table.name.clone(),
+                        col_name.clone(),
+                        format!("{:?}", column.r#type),
+                    ));
+                }
             }
         }
     }
@@ -439,16 +440,22 @@ pub struct FillWithRequired {
     /// Type of action: "AddColumn" or "ModifyColumnNullable".
     pub action_type: &'static str,
     /// Column type (for display purposes).
-    pub column_type: Option<String>,
+    pub column_type: String,
     /// Default fill value hint for this column type.
-    pub default_value: Option<String>,
+    pub default_value: String,
     /// Enum values if the column is an enum type (for selection UI).
     pub enum_values: Option<Vec<String>>,
 }
 
 /// Find all actions in a migration plan that require fill_with values.
 /// Returns a list of actions that need fill_with but don't have one.
-pub fn find_missing_fill_with(plan: &MigrationPlan) -> Vec<FillWithRequired> {
+///
+/// `current_schema` is the baseline schema (from applied migrations) used to look up
+/// column type info for `ModifyColumnNullable` actions. Pass an empty slice if unavailable.
+pub fn find_missing_fill_with(
+    plan: &MigrationPlan,
+    current_schema: &[TableDef],
+) -> Vec<FillWithRequired> {
     let mut missing = Vec::new();
 
     for (idx, action) in plan.actions.iter().enumerate() {
@@ -465,8 +472,8 @@ pub fn find_missing_fill_with(plan: &MigrationPlan) -> Vec<FillWithRequired> {
                         table: table.clone(),
                         column: column.name.clone(),
                         action_type: "AddColumn",
-                        column_type: Some(column.r#type.to_display_string()),
-                        default_value: column.r#type.default_fill_value().map(String::from),
+                        column_type: column.r#type.to_display_string(),
+                        default_value: column.r#type.default_fill_value().to_string(),
                         enum_values: column.r#type.enum_variant_names(),
                     });
                 }
@@ -478,15 +485,36 @@ pub fn find_missing_fill_with(plan: &MigrationPlan) -> Vec<FillWithRequired> {
                 fill_with,
             } => {
                 // If changing from nullable to non-nullable, fill_with is required
+                // UNLESS the column already has a default value (which will be used)
                 if !nullable && fill_with.is_none() {
+                    // Look up column from the current schema
+                    let col_def = current_schema
+                        .iter()
+                        .find(|t| t.name == *table)
+                        .and_then(|t| t.columns.iter().find(|c| c.name == *column));
+
+                    // If column has a default value, fill_with is not needed
+                    if col_def.is_some_and(|c| c.default.is_some()) {
+                        continue;
+                    }
+
+                    let (col_type_str, default_val, enum_vals) = match col_def {
+                        Some(c) => (
+                            c.r#type.to_display_string(),
+                            c.r#type.default_fill_value().to_string(),
+                            c.r#type.enum_variant_names(),
+                        ),
+                        None => (column.clone(), "''".to_string(), None),
+                    };
+
                     missing.push(FillWithRequired {
                         action_index: idx,
                         table: table.clone(),
                         column: column.clone(),
                         action_type: "ModifyColumnNullable",
-                        column_type: None,
-                        default_value: None,
-                        enum_values: None, // We don't have column type info here
+                        column_type: col_type_str,
+                        default_value: default_val,
+                        enum_values: enum_vals,
                     });
                 }
             }
@@ -503,8 +531,8 @@ mod tests {
     use rstest::rstest;
     use vespertide_core::schema::primary_key::{PrimaryKeyDef, PrimaryKeySyntax};
     use vespertide_core::{
-        ColumnDef, ColumnType, ComplexColumnType, EnumValues, NumValue, SimpleColumnType,
-        TableConstraint,
+        ColumnDef, ColumnType, ComplexColumnType, DefaultValue, EnumValues, NumValue,
+        SimpleColumnType, TableConstraint,
     };
 
     fn col(name: &str, ty: ColumnType) -> ColumnDef {
@@ -1640,12 +1668,12 @@ mod tests {
             }],
         };
 
-        let missing = find_missing_fill_with(&plan);
+        let missing = find_missing_fill_with(&plan, &[]);
         assert_eq!(missing.len(), 1);
         assert_eq!(missing[0].table, "users");
         assert_eq!(missing[0].column, "email");
         assert_eq!(missing[0].action_type, "AddColumn");
-        assert!(missing[0].column_type.is_some());
+        assert!(!missing[0].column_type.is_empty());
     }
 
     #[test]
@@ -1671,7 +1699,7 @@ mod tests {
             }],
         };
 
-        let missing = find_missing_fill_with(&plan);
+        let missing = find_missing_fill_with(&plan, &[]);
         assert!(missing.is_empty());
     }
 
@@ -1698,7 +1726,7 @@ mod tests {
             }],
         };
 
-        let missing = find_missing_fill_with(&plan);
+        let missing = find_missing_fill_with(&plan, &[]);
         assert!(missing.is_empty());
     }
 
@@ -1725,7 +1753,7 @@ mod tests {
             }],
         };
 
-        let missing = find_missing_fill_with(&plan);
+        let missing = find_missing_fill_with(&plan, &[]);
         assert!(missing.is_empty());
     }
 
@@ -1743,12 +1771,13 @@ mod tests {
             }],
         };
 
-        let missing = find_missing_fill_with(&plan);
+        let missing = find_missing_fill_with(&plan, &[]);
         assert_eq!(missing.len(), 1);
         assert_eq!(missing[0].table, "users");
         assert_eq!(missing[0].column, "email");
         assert_eq!(missing[0].action_type, "ModifyColumnNullable");
-        assert!(missing[0].column_type.is_none());
+        // With no schema provided, falls back to column name as type display
+        assert_eq!(missing[0].column_type, "email");
     }
 
     #[test]
@@ -1765,7 +1794,7 @@ mod tests {
             }],
         };
 
-        let missing = find_missing_fill_with(&plan);
+        let missing = find_missing_fill_with(&plan, &[]);
         assert!(missing.is_empty());
     }
 
@@ -1783,8 +1812,84 @@ mod tests {
             }],
         };
 
-        let missing = find_missing_fill_with(&plan);
+        let missing = find_missing_fill_with(&plan, &[]);
         assert!(missing.is_empty());
+    }
+
+    #[test]
+    fn find_missing_fill_with_modify_nullable_to_not_null_with_column_default() {
+        // Column has a default value in the schema, so fill_with should NOT be required
+        let schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "status".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Text),
+                nullable: true,
+                default: Some(DefaultValue::String("'active'".into())),
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            description: None,
+        }];
+
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::ModifyColumnNullable {
+                table: "users".into(),
+                column: "status".into(),
+                nullable: false,
+                fill_with: None,
+            }],
+        };
+
+        let missing = find_missing_fill_with(&plan, &schema);
+        assert!(
+            missing.is_empty(),
+            "fill_with should not be required when column has a default value"
+        );
+    }
+
+    #[test]
+    fn find_missing_fill_with_modify_nullable_to_not_null_without_column_default() {
+        // Column has NO default value, so fill_with IS required
+        let schema = vec![TableDef {
+            name: "users".into(),
+            columns: vec![ColumnDef {
+                name: "email".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Text),
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+            description: None,
+        }];
+
+        let plan = MigrationPlan {
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::ModifyColumnNullable {
+                table: "users".into(),
+                column: "email".into(),
+                nullable: false,
+                fill_with: None,
+            }],
+        };
+
+        let missing = find_missing_fill_with(&plan, &schema);
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].column, "email");
     }
 
     #[test]
@@ -1833,7 +1938,7 @@ mod tests {
             ],
         };
 
-        let missing = find_missing_fill_with(&plan);
+        let missing = find_missing_fill_with(&plan, &[]);
         assert_eq!(missing.len(), 2);
         assert_eq!(missing[0].action_index, 0);
         assert_eq!(missing[0].table, "users");
@@ -1862,7 +1967,7 @@ mod tests {
             ],
         };
 
-        let missing = find_missing_fill_with(&plan);
+        let missing = find_missing_fill_with(&plan, &[]);
         assert!(missing.is_empty());
     }
 

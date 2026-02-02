@@ -11,7 +11,7 @@ use vespertide_loader::{
     load_config_or_default, load_migrations_at_compile_time, load_models_at_compile_time,
 };
 use vespertide_planner::apply_action;
-use vespertide_query::{build_plan_queries, DatabaseBackend};
+use vespertide_query::{DatabaseBackend, build_plan_queries};
 
 struct MacroInput {
     pool: Expr,

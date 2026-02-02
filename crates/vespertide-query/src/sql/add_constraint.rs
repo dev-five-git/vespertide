@@ -96,9 +96,10 @@ pub fn build_add_constraint(
             // a prior temp table rebuild in the same migration already recreated it.
             if *backend == DatabaseBackend::Sqlite
                 && let Some(table_def) = current_schema.iter().find(|t| t.name == table)
-                    && table_def.constraints.contains(constraint) {
-                        return Ok(vec![]);
-                    }
+                && table_def.constraints.contains(constraint)
+            {
+                return Ok(vec![]);
+            }
             // Always generate a proper name: uq_{table}_{key} or uq_{table}_{columns}
             let index_name =
                 super::helpers::build_unique_constraint_name(table, columns, name.as_deref());
@@ -219,9 +220,10 @@ pub fn build_add_constraint(
             // a prior temp table rebuild in the same migration already recreated it.
             if *backend == DatabaseBackend::Sqlite
                 && let Some(table_def) = current_schema.iter().find(|t| t.name == table)
-                    && table_def.constraints.contains(constraint) {
-                        return Ok(vec![]);
-                    }
+                && table_def.constraints.contains(constraint)
+            {
+                return Ok(vec![]);
+            }
             let index_name = vespertide_naming::build_index_name(table, columns, name.as_deref());
             let mut idx = Index::create()
                 .table(Alias::new(table))
