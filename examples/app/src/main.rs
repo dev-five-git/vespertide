@@ -22,7 +22,7 @@ async fn main() -> Result<()> {
 
     println!("Successfully connected to SQLite database!");
 
-    vespertide::vespertide_migration!(db, version_table = "vespertide_version").await?;
+    vespertide::vespertide_migration!(db, version_table = "vespertide_version", verbose).await?;
 
     Ok(())
 }

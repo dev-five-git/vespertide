@@ -11,17 +11,19 @@ use vespertide_loader::{
     load_config_or_default, load_migrations_at_compile_time, load_models_at_compile_time,
 };
 use vespertide_planner::apply_action;
-use vespertide_query::{DatabaseBackend, build_plan_queries};
+use vespertide_query::{build_plan_queries, DatabaseBackend};
 
 struct MacroInput {
     pool: Expr,
     version_table: Option<String>,
+    verbose: bool,
 }
 
 impl Parse for MacroInput {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let pool = input.parse()?;
         let mut version_table = None;
+        let mut verbose = false;
 
         while !input.is_empty() {
             input.parse::<Token![,]>()?;
@@ -34,6 +36,8 @@ impl Parse for MacroInput {
                 input.parse::<Token![=]>()?;
                 let value: syn::LitStr = input.parse()?;
                 version_table = Some(value.value());
+            } else if key == "verbose" {
+                verbose = true;
             } else {
                 return Err(syn::Error::new(
                     key.span(),
@@ -45,15 +49,24 @@ impl Parse for MacroInput {
         Ok(MacroInput {
             pool,
             version_table,
+            verbose,
         })
     }
 }
 
-/// Build a migration block for a single migration version.
-/// Returns the generated code block and updates the baseline schema.
-pub(crate) fn build_migration_block(
+/// Build a migration block with optional verbose logging.
+pub(crate) fn build_migration_block_verbose(
     migration: &vespertide_core::MigrationPlan,
     baseline_schema: &mut Vec<vespertide_core::TableDef>,
+    verbose: bool,
+) -> Result<proc_macro2::TokenStream, String> {
+    build_migration_block_inner(migration, baseline_schema, verbose)
+}
+
+fn build_migration_block_inner(
+    migration: &vespertide_core::MigrationPlan,
+    baseline_schema: &mut Vec<vespertide_core::TableDef>,
+    verbose: bool,
 ) -> Result<proc_macro2::TokenStream, String> {
     let version = migration.version;
 
@@ -70,63 +83,154 @@ pub(crate) fn build_migration_block(
         let _ = apply_action(baseline_schema, action);
     }
 
-    // Pre-generate SQL for all backends at compile time
-    // Each query may produce multiple SQL statements, so we flatten them
-    let mut pg_sqls = Vec::new();
-    let mut mysql_sqls = Vec::new();
-    let mut sqlite_sqls = Vec::new();
-
-    for q in &queries {
-        for stmt in &q.postgres {
-            pg_sqls.push(stmt.build(DatabaseBackend::Postgres));
-        }
-        for stmt in &q.mysql {
-            mysql_sqls.push(stmt.build(DatabaseBackend::MySql));
-        }
-        for stmt in &q.sqlite {
-            sqlite_sqls.push(stmt.build(DatabaseBackend::Sqlite));
-        }
-    }
-
     // Generate version guard and SQL execution block
-    let block = quote! {
-        if __version < #version {
-            // Select SQL statements based on backend
-            let sqls: &[&str] = match backend {
-                sea_orm::DatabaseBackend::Postgres => &[#(#pg_sqls),*],
-                sea_orm::DatabaseBackend::MySql => &[#(#mysql_sqls),*],
-                sea_orm::DatabaseBackend::Sqlite => &[#(#sqlite_sqls),*],
-                _ => &[#(#pg_sqls),*], // Fallback to PostgreSQL syntax for unknown backends
-            };
+    let version_str = format!("v{}", version);
+    let comment_str = migration.comment.as_deref().unwrap_or("").to_string();
 
-            // Execute SQL statements
-            for sql in sqls {
-                if !sql.is_empty() {
-                    let stmt = sea_orm::Statement::from_string(backend, *sql);
-                    __txn.execute_raw(stmt).await.map_err(|e| {
-                        ::vespertide::MigrationError::DatabaseError(format!("Failed to execute SQL '{}': {}", sql, e))
-                    })?;
-                }
+    let block = if verbose {
+        // Verbose mode: preserve per-action grouping with action descriptions
+        let total_sql_count: usize = queries
+            .iter()
+            .map(|q| q.postgres.len().max(q.mysql.len()).max(q.sqlite.len()))
+            .sum();
+        let total_sql_count_lit = total_sql_count;
+
+        let mut action_blocks = Vec::new();
+        let mut global_idx: usize = 0;
+
+        for (action_idx, q) in queries.iter().enumerate() {
+            let action_desc = format!("{}", q.action);
+            let action_num = action_idx + 1;
+            let total_actions = queries.len();
+
+            let pg: Vec<String> = q
+                .postgres
+                .iter()
+                .map(|s| s.build(DatabaseBackend::Postgres))
+                .collect();
+            let mysql: Vec<String> = q
+                .mysql
+                .iter()
+                .map(|s| s.build(DatabaseBackend::MySql))
+                .collect();
+            let sqlite: Vec<String> = q
+                .sqlite
+                .iter()
+                .map(|s| s.build(DatabaseBackend::Sqlite))
+                .collect();
+
+            // Build per-SQL execution with global index
+            let sql_count = pg.len().max(mysql.len()).max(sqlite.len());
+            let mut sql_exec_blocks = Vec::new();
+
+            for i in 0..sql_count {
+                let idx = global_idx + i + 1;
+                let pg_sql = pg.get(i).cloned().unwrap_or_default();
+                let mysql_sql = mysql.get(i).cloned().unwrap_or_default();
+                let sqlite_sql = sqlite.get(i).cloned().unwrap_or_default();
+
+                sql_exec_blocks.push(quote! {
+                    {
+                        let sql: &str = match backend {
+                            sea_orm::DatabaseBackend::Postgres => #pg_sql,
+                            sea_orm::DatabaseBackend::MySql => #mysql_sql,
+                            sea_orm::DatabaseBackend::Sqlite => #sqlite_sql,
+                            _ => #pg_sql,
+                        };
+                        if !sql.is_empty() {
+                            eprintln!("[vespertide]     [{}/{}] {}", #idx, #total_sql_count_lit, sql);
+                            let stmt = sea_orm::Statement::from_string(backend, sql);
+                            __txn.execute_raw(stmt).await.map_err(|e| {
+                                ::vespertide::MigrationError::DatabaseError(format!("Failed to execute SQL '{}': {}", sql, e))
+                            })?;
+                        }
+                    }
+                });
             }
+            global_idx += sql_count;
 
-            // Insert version record for this migration
-            let insert_sql = format!("INSERT INTO {q}{}{q} (version) VALUES ({})", __version_table, #version);
-            let stmt = sea_orm::Statement::from_string(backend, insert_sql);
-            __txn.execute_raw(stmt).await.map_err(|e| {
-                ::vespertide::MigrationError::DatabaseError(format!("Failed to insert version: {}", e))
-            })?;
+            action_blocks.push(quote! {
+                eprintln!("[vespertide]   Action {}/{}: {}", #action_num, #total_actions, #action_desc);
+                #(#sql_exec_blocks)*
+            });
+        }
+
+        quote! {
+            if __version < #version {
+                eprintln!("[vespertide] Applying migration {} ({})", #version_str, #comment_str);
+                #(#action_blocks)*
+
+                let insert_sql = format!("INSERT INTO {q}{}{q} (version) VALUES ({})", __version_table, #version);
+                let stmt = sea_orm::Statement::from_string(backend, insert_sql);
+                __txn.execute_raw(stmt).await.map_err(|e| {
+                    ::vespertide::MigrationError::DatabaseError(format!("Failed to insert version: {}", e))
+                })?;
+
+                eprintln!("[vespertide] Migration {} applied successfully", #version_str);
+            }
+        }
+    } else {
+        // Non-verbose: flatten all SQL into one array (minimal overhead)
+        let mut pg_sqls = Vec::new();
+        let mut mysql_sqls = Vec::new();
+        let mut sqlite_sqls = Vec::new();
+
+        for q in &queries {
+            for stmt in &q.postgres {
+                pg_sqls.push(stmt.build(DatabaseBackend::Postgres));
+            }
+            for stmt in &q.mysql {
+                mysql_sqls.push(stmt.build(DatabaseBackend::MySql));
+            }
+            for stmt in &q.sqlite {
+                sqlite_sqls.push(stmt.build(DatabaseBackend::Sqlite));
+            }
+        }
+
+        quote! {
+            if __version < #version {
+                let sqls: &[&str] = match backend {
+                    sea_orm::DatabaseBackend::Postgres => &[#(#pg_sqls),*],
+                    sea_orm::DatabaseBackend::MySql => &[#(#mysql_sqls),*],
+                    sea_orm::DatabaseBackend::Sqlite => &[#(#sqlite_sqls),*],
+                    _ => &[#(#pg_sqls),*],
+                };
+
+                for sql in sqls {
+                    if !sql.is_empty() {
+                        let stmt = sea_orm::Statement::from_string(backend, *sql);
+                        __txn.execute_raw(stmt).await.map_err(|e| {
+                            ::vespertide::MigrationError::DatabaseError(format!("Failed to execute SQL '{}': {}", sql, e))
+                        })?;
+                    }
+                }
+
+                let insert_sql = format!("INSERT INTO {q}{}{q} (version) VALUES ({})", __version_table, #version);
+                let stmt = sea_orm::Statement::from_string(backend, insert_sql);
+                __txn.execute_raw(stmt).await.map_err(|e| {
+                    ::vespertide::MigrationError::DatabaseError(format!("Failed to insert version: {}", e))
+                })?;
+            }
         }
     };
 
     Ok(block)
 }
 
-/// Generate the final async migration block with all migrations.
-pub(crate) fn generate_migration_code(
+fn generate_migration_code_inner(
     pool: &Expr,
     version_table: &str,
     migration_blocks: Vec<proc_macro2::TokenStream>,
+    verbose: bool,
 ) -> proc_macro2::TokenStream {
+    let verbose_current_version = if verbose {
+        quote! {
+            eprintln!("[vespertide] Current database version: {}", __version);
+        }
+    } else {
+        quote! {}
+    };
+
     quote! {
         async {
             use sea_orm::{ConnectionTrait, TransactionTrait};
@@ -163,6 +267,8 @@ pub(crate) fn generate_migration_code(
                 .and_then(|row| row.try_get::<i32>("", "version").ok())
                 .unwrap_or(0) as u32;
 
+            #verbose_current_version
+
             // Execute each migration block within the same transaction
             #(#migration_blocks)*
 
@@ -185,6 +291,7 @@ pub(crate) fn vespertide_migration_impl(
         Err(e) => return e.to_compile_error(),
     };
     let pool = &input.pool;
+    let verbose = input.verbose;
 
     // Get project root from CARGO_MANIFEST_DIR (same as load_migrations_at_compile_time)
     let project_root = match env::var("CARGO_MANIFEST_DIR") {
@@ -243,7 +350,7 @@ pub(crate) fn vespertide_migration_impl(
     for migration in &migrations {
         // Apply prefix to migration table names
         let prefixed_migration = migration.clone().with_prefix(prefix);
-        match build_migration_block(&prefixed_migration, &mut baseline_schema) {
+        match build_migration_block_verbose(&prefixed_migration, &mut baseline_schema, verbose) {
             Ok(block) => migration_blocks.push(block),
             Err(e) => {
                 return syn::Error::new(proc_macro2::Span::call_site(), e).to_compile_error();
@@ -251,7 +358,7 @@ pub(crate) fn vespertide_migration_impl(
         }
     }
 
-    generate_migration_code(pool, &version_table, migration_blocks)
+    generate_migration_code_inner(pool, &version_table, migration_blocks, verbose)
 }
 
 /// Zero-runtime migration entry point.
