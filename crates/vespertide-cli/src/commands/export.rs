@@ -111,6 +111,9 @@ fn build_output_path(root: &Path, rel_path: &Path, orm: Orm) -> PathBuf {
             (file_name, "")
         };
 
+        // Strip ".vespertide" suffix if present (e.g., "user.vespertide" -> "user")
+        let stem = stem.strip_suffix(".vespertide").unwrap_or(stem);
+
         let sanitized = sanitize_filename(stem);
         let ext = match orm {
             Orm::SeaOrm => "rs",
@@ -145,8 +148,19 @@ fn load_models_recursive(base: &Path) -> Result<Vec<(TableDef, PathBuf)>> {
 
 fn ensure_mod_chain(root: &Path, rel_path: &Path) -> Result<()> {
     // Only needed for SeaORM (Rust) exports to wire modules.
-    let mut comps: Vec<String> = rel_path
-        .with_extension("")
+    // Strip extension and ".vespertide" suffix from filename
+    let path_without_ext = rel_path.with_extension("");
+    let path_stripped = if let Some(stem) = path_without_ext.file_stem().and_then(|s| s.to_str()) {
+        let stripped_stem = stem.strip_suffix(".vespertide").unwrap_or(stem);
+        if let Some(parent) = path_without_ext.parent() {
+            parent.join(stripped_stem)
+        } else {
+            PathBuf::from(stripped_stem)
+        }
+    } else {
+        path_without_ext
+    };
+    let mut comps: Vec<String> = path_stripped
         .components()
         .filter_map(|c| {
             c.as_os_str()
@@ -503,5 +517,55 @@ mod tests {
         let rel_path2 = Path::new("../other/items.yaml");
         let out2 = build_output_path(root, rel_path2, Orm::SeaOrm);
         assert!(out2.to_string_lossy().contains("items"));
+    }
+
+    #[test]
+    fn build_output_path_strips_vespertide_suffix() {
+        use std::path::Path;
+        let root = Path::new("src/models");
+
+        // .vespertide.json -> .rs (strips ".vespertide" from stem)
+        let rel_path = Path::new("user.vespertide.json");
+        let out = build_output_path(root, rel_path, Orm::SeaOrm);
+        assert_eq!(out, Path::new("src/models/user.rs"));
+
+        // Nested path with .vespertide.json
+        let rel_path2 = Path::new("blog/post.vespertide.json");
+        let out2 = build_output_path(root, rel_path2, Orm::SeaOrm);
+        assert_eq!(out2, Path::new("src/models/blog/post.rs"));
+
+        // .vespertide.yaml -> .py
+        let rel_path3 = Path::new("order.vespertide.yaml");
+        let out3 = build_output_path(root, rel_path3, Orm::SqlAlchemy);
+        assert_eq!(out3, Path::new("src/models/order.py"));
+
+        // Regular .json without .vespertide suffix still works
+        let rel_path4 = Path::new("item.json");
+        let out4 = build_output_path(root, rel_path4, Orm::SeaOrm);
+        assert_eq!(out4, Path::new("src/models/item.rs"));
+    }
+
+    #[test]
+    #[serial]
+    fn ensure_mod_chain_strips_vespertide_suffix() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("src/models");
+        fs::create_dir_all(&root).unwrap();
+
+        // File with .vespertide suffix should produce mod declaration without it
+        ensure_mod_chain(&root, Path::new("user.vespertide.json")).unwrap();
+
+        let root_mod = fs::read_to_string(root.join("mod.rs")).unwrap();
+        // Should be "pub mod user;" not "pub mod user_vespertide;"
+        assert!(root_mod.contains("pub mod user;"));
+        assert!(!root_mod.contains("user_vespertide"));
+
+        // Nested path with .vespertide suffix
+        ensure_mod_chain(&root, Path::new("blog/post.vespertide.json")).unwrap();
+        let root_mod = fs::read_to_string(root.join("mod.rs")).unwrap();
+        let blog_mod = fs::read_to_string(root.join("blog/mod.rs")).unwrap();
+        assert!(root_mod.contains("pub mod blog;"));
+        assert!(blog_mod.contains("pub mod post;"));
+        assert!(!blog_mod.contains("post_vespertide"));
     }
 }
