@@ -20,7 +20,7 @@ pub struct SeaOrmConfig {
     #[serde(default = "default_extra_enum_derives")]
     pub extra_enum_derives: Vec<String>,
     /// Additional derive macros to add to generated entity model types.
-    #[serde(default)]
+    #[serde(default = "default_extra_model_derives")]
     pub extra_model_derives: Vec<String>,
     /// Naming case for serde rename_all attribute on generated enums.
     /// Default: `Camel` (generates `#[serde(rename_all = "camelCase")]`)
@@ -29,6 +29,10 @@ pub struct SeaOrmConfig {
 }
 
 fn default_extra_enum_derives() -> Vec<String> {
+    vec!["vespera::Schema".to_string()]
+}
+
+fn default_extra_model_derives() -> Vec<String> {
     vec!["vespera::Schema".to_string()]
 }
 

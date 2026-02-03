@@ -108,9 +108,7 @@ pub fn render_entity_with_config(
         "Debug",
         "PartialEq",
         "Eq",
-        "DeriveEntityModel",
-        "Serialize",
-        "Deserialize",
+        "DeriveEntityModel"
     ];
     let extra_model_derives: Vec<&str> = config
         .extra_model_derives()
