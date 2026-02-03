@@ -111,6 +111,9 @@ fn build_output_path(root: &Path, rel_path: &Path, orm: Orm) -> PathBuf {
             (file_name, "")
         };
 
+        // Strip .vespertide suffix if present (e.g., "user.vespertide" -> "user")
+        let stem = strip_vespertide_suffix(stem);
+
         let sanitized = sanitize_filename(stem);
         let ext = match orm {
             Orm::SeaOrm => "rs",
@@ -134,6 +137,12 @@ fn sanitize_filename(name: &str) -> String {
         .collect::<String>()
 }
 
+/// Strip `.vespertide` suffix from a filename stem.
+/// E.g., "user.vespertide" -> "user", "user" -> "user"
+fn strip_vespertide_suffix(stem: &str) -> &str {
+    stem.strip_suffix(".vespertide").unwrap_or(stem)
+}
+
 fn load_models_recursive(base: &Path) -> Result<Vec<(TableDef, PathBuf)>> {
     let mut out = Vec::new();
     if !base.exists() {
@@ -151,6 +160,7 @@ fn ensure_mod_chain(root: &Path, rel_path: &Path) -> Result<()> {
         .filter_map(|c| {
             c.as_os_str()
                 .to_str()
+                .map(strip_vespertide_suffix)
                 .map(|s| sanitize_filename(s).to_string())
         })
         .collect();
@@ -487,6 +497,35 @@ mod tests {
 
         let out_py = build_output_path(root, rel_path, Orm::SqlAlchemy);
         assert_eq!(out_py, Path::new("src/models/users.py"));
+    }
+
+    #[test]
+    fn build_output_path_strips_vespertide_suffix() {
+        use std::path::Path;
+        let root = Path::new("src/models");
+
+        // user.vespertide.json -> user.rs (not user_vespertide.rs)
+        let rel_path = Path::new("user.vespertide.json");
+        let out = build_output_path(root, rel_path, Orm::SeaOrm);
+        assert_eq!(out, Path::new("src/models/user.rs"));
+
+        // Nested path
+        let rel_path2 = Path::new("blog/post.vespertide.yaml");
+        let out2 = build_output_path(root, rel_path2, Orm::SeaOrm);
+        assert_eq!(out2, Path::new("src/models/blog/post.rs"));
+
+        // Python export
+        let out_py = build_output_path(root, rel_path, Orm::SqlAlchemy);
+        assert_eq!(out_py, Path::new("src/models/user.py"));
+    }
+
+    #[rstest]
+    #[case("user.vespertide", "user")]
+    #[case("user", "user")]
+    #[case("user.vespertide.extra", "user.vespertide.extra")]
+    #[case("", "")]
+    fn test_strip_vespertide_suffix(#[case] input: &str, #[case] expected: &str) {
+        assert_eq!(strip_vespertide_suffix(input), expected);
     }
 
     #[test]
