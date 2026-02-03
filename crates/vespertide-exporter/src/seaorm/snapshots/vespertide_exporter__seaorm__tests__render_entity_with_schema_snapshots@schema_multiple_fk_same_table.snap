@@ -18,4 +18,5 @@ pub struct Model {
     pub used_by_user: HasOne<super::user::Entity>,
 }
 
+vespera::schema_type!(Schema from Model, name = "PostSchema");
 impl ActiveModelBehavior for ActiveModel {}

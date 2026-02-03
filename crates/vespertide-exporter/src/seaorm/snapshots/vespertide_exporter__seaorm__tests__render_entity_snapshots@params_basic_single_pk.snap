@@ -13,4 +13,5 @@ pub struct Model {
     pub display_name: Option<String>,
 }
 
+vespera::schema_type!(Schema from Model, name = "UsersSchema");
 impl ActiveModelBehavior for ActiveModel {}

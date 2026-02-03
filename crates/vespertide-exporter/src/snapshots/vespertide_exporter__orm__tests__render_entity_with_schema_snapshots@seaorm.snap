@@ -12,4 +12,5 @@ pub struct Model {
     pub id: i32,
 }
 
+vespera::schema_type!(Schema from Model, name = "TestSchema");
 impl ActiveModelBehavior for ActiveModel {}

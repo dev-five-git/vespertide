@@ -156,6 +156,15 @@ pub fn render_entity_with_config(
     lines.push(String::new());
     render_indexes(&mut lines, &table.constraints);
 
+    // Generate vespera::schema_type! macro if enabled
+    if config.vespera_schema_type() {
+        let pascal_name = to_pascal_case(&table.name);
+        lines.push(format!(
+            "vespera::schema_type!(Schema from Model, name = \"{}Schema\");",
+            pascal_name
+        ));
+    }
+
     lines.push("impl ActiveModelBehavior for ActiveModel {}".into());
 
     lines.push(String::new());

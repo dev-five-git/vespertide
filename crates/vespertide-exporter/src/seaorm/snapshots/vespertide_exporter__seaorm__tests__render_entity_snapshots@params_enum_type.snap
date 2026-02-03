@@ -26,4 +26,5 @@ pub struct Model {
     pub status: OrderStatus,
 }
 
+vespera::schema_type!(Schema from Model, name = "OrdersSchema");
 impl ActiveModelBehavior for ActiveModel {}

@@ -28,4 +28,5 @@ pub struct Model {
     pub priority: Option<TaskPriority>,
 }
 
+vespera::schema_type!(Schema from Model, name = "TasksSchema");
 impl ActiveModelBehavior for ActiveModel {}

@@ -39,4 +39,5 @@ pub struct Model {
     pub availability: AvailabilityStatus,
 }
 
+vespera::schema_type!(Schema from Model, name = "ProductsSchema");
 impl ActiveModelBehavior for ActiveModel {}

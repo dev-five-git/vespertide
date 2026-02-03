@@ -16,4 +16,5 @@ pub struct Model {
     pub updated_by_user: HasOne<super::settings::Entity>,
 }
 
+vespera::schema_type!(Schema from Model, name = "UserSchema");
 impl ActiveModelBehavior for ActiveModel {}

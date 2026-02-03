@@ -16,4 +16,5 @@ pub struct Model {
     pub backup_user_profiles: HasMany<super::profile::Entity>,
 }
 
+vespera::schema_type!(Schema from Model, name = "UserSchema");
 impl ActiveModelBehavior for ActiveModel {}

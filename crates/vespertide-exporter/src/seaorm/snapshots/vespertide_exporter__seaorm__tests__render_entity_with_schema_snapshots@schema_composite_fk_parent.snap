@@ -18,4 +18,5 @@ pub struct Model {
     pub child_manies: HasMany<super::child_many::Entity>,
 }
 
+vespera::schema_type!(Schema from Model, name = "ParentSchema");
 impl ActiveModelBehavior for ActiveModel {}
