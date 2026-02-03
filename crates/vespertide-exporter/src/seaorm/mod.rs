@@ -103,13 +103,7 @@ pub fn render_entity_with_config(
     }
 
     // Build model derive line with optional extra derives
-    let mut model_derives = vec![
-        "Clone",
-        "Debug",
-        "PartialEq",
-        "Eq",
-        "DeriveEntityModel"
-    ];
+    let mut model_derives = vec!["Clone", "Debug", "PartialEq", "Eq", "DeriveEntityModel"];
     let extra_model_derives: Vec<&str> = config
         .extra_model_derives()
         .iter()
