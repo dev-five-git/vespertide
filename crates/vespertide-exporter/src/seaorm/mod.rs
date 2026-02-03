@@ -86,10 +86,12 @@ pub fn render_entity_with_config(
     let indexed_columns = single_column_index_set(&table.constraints);
 
     // Check if any columns use enum types (enums derive Serialize/Deserialize)
-    let has_enums = table
-        .columns
-        .iter()
-        .any(|c| matches!(c.r#type, ColumnType::Complex(ComplexColumnType::Enum { .. })));
+    let has_enums = table.columns.iter().any(|c| {
+        matches!(
+            c.r#type,
+            ColumnType::Complex(ComplexColumnType::Enum { .. })
+        )
+    });
 
     let mut lines: Vec<String> = Vec::new();
     lines.push("use sea_orm::entity::prelude::*;".into());
@@ -111,13 +113,7 @@ pub fn render_entity_with_config(
     }
 
     // Build model derive line with optional extra derives
-    let mut model_derives = vec![
-        "Clone",
-        "Debug",
-        "PartialEq",
-        "Eq",
-        "DeriveEntityModel",
-    ];
+    let mut model_derives = vec!["Clone", "Debug", "PartialEq", "Eq", "DeriveEntityModel"];
     let extra_model_derives: Vec<&str> = config
         .extra_model_derives()
         .iter()
