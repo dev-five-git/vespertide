@@ -43,7 +43,10 @@
         "extraEnumDerives": [
           "vespera::Schema"
         ],
-        "extraModelDerives": []
+        "extraModelDerives": [
+          "vespera::Schema"
+        ],
+        "modelNamingCase": "camel"
       }
     },
     "tableNamingCase": {
@@ -97,10 +100,17 @@
         "extraModelDerives": {
           "description": "Additional derive macros to add to generated entity model types.",
           "type": "array",
-          "default": [],
+          "default": [
+            "vespera::Schema"
+          ],
           "items": {
             "type": "string"
           }
+        },
+        "modelNamingCase": {
+          "description": "Naming case for serde rename_all attribute on generated models.\nDefault: `Camel` (generates `#[serde(rename_all = \"camelCase\")]`)",
+          "$ref": "#/$defs/NameCase",
+          "default": "camel"
         }
       }
     }

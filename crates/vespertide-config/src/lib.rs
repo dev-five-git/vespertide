@@ -41,7 +41,7 @@ mod tests {
     fn seaorm_config_default_has_vespera_schema() {
         let cfg = SeaOrmConfig::default();
         assert_eq!(cfg.extra_enum_derives(), &["vespera::Schema".to_string()]);
-        assert!(cfg.extra_model_derives().is_empty());
+        assert_eq!(cfg.extra_model_derives(), &["vespera::Schema".to_string()]);
     }
 
     #[test]
@@ -70,7 +70,8 @@ mod tests {
         let json = r#"{}"#;
         let cfg: SeaOrmConfig = serde_json::from_str(json).unwrap();
         assert_eq!(cfg.extra_enum_derives(), &["vespera::Schema".to_string()]);
-        assert!(cfg.extra_model_derives().is_empty());
+        assert_eq!(cfg.extra_model_derives(), &["vespera::Schema".to_string()]);
+        assert_eq!(cfg.model_naming_case(), NameCase::Camel);
     }
 
     #[test]

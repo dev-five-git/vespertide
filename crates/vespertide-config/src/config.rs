@@ -26,6 +26,10 @@ pub struct SeaOrmConfig {
     /// Default: `Camel` (generates `#[serde(rename_all = "camelCase")]`)
     #[serde(default = "default_enum_naming_case")]
     pub enum_naming_case: NameCase,
+    /// Naming case for serde rename_all attribute on generated models.
+    /// Default: `Camel` (generates `#[serde(rename_all = "camelCase")]`)
+    #[serde(default = "default_model_naming_case")]
+    pub model_naming_case: NameCase,
 }
 
 fn default_extra_enum_derives() -> Vec<String> {
@@ -40,12 +44,17 @@ fn default_enum_naming_case() -> NameCase {
     NameCase::Camel
 }
 
+fn default_model_naming_case() -> NameCase {
+    NameCase::Camel
+}
+
 impl Default for SeaOrmConfig {
     fn default() -> Self {
         Self {
             extra_enum_derives: default_extra_enum_derives(),
-            extra_model_derives: Vec::new(),
+            extra_model_derives: default_extra_model_derives(),
             enum_naming_case: default_enum_naming_case(),
+            model_naming_case: default_model_naming_case(),
         }
     }
 }
@@ -64,6 +73,11 @@ impl SeaOrmConfig {
     /// Get the naming case for serde rename_all attribute on generated enums.
     pub fn enum_naming_case(&self) -> NameCase {
         self.enum_naming_case
+    }
+
+    /// Get the naming case for serde rename_all attribute on generated models.
+    pub fn model_naming_case(&self) -> NameCase {
+        self.model_naming_case
     }
 }
 
@@ -195,7 +209,11 @@ mod tests {
             config.seaorm.extra_enum_derives,
             vec!["vespera::Schema".to_string()]
         );
-        assert!(config.seaorm.extra_model_derives.is_empty());
+        assert_eq!(
+            config.seaorm.extra_model_derives,
+            vec!["vespera::Schema".to_string()]
+        );
+        assert_eq!(config.seaorm.model_naming_case, NameCase::Camel);
         assert_eq!(config.prefix, "");
     }
 

@@ -31,6 +31,7 @@ pub enum AvailabilityStatus {
 
 #[sea_orm::model]
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 #[sea_orm(table_name = "products")]
 pub struct Model {
     #[sea_orm(primary_key)]

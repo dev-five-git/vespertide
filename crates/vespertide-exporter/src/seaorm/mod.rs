@@ -103,7 +103,15 @@ pub fn render_entity_with_config(
     }
 
     // Build model derive line with optional extra derives
-    let mut model_derives = vec!["Clone", "Debug", "PartialEq", "Eq", "DeriveEntityModel"];
+    let mut model_derives = vec![
+        "Clone",
+        "Debug",
+        "PartialEq",
+        "Eq",
+        "DeriveEntityModel",
+        "Serialize",
+        "Deserialize",
+    ];
     let extra_model_derives: Vec<&str> = config
         .extra_model_derives()
         .iter()
@@ -120,6 +128,10 @@ pub fn render_entity_with_config(
 
     lines.push("#[sea_orm::model]".into());
     lines.push(format!("#[derive({})]", model_derives.join(", ")));
+    lines.push(format!(
+        "#[serde(rename_all = \"{}\")]",
+        config.model_naming_case().serde_rename_all()
+    ));
     lines.push(format!(
         "#[sea_orm(table_name = \"{}{}\")]",
         prefix, table.name
