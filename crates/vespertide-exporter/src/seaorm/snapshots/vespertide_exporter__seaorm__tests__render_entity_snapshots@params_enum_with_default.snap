@@ -31,4 +31,5 @@ pub struct Model {
     pub is_archived: bool,
 }
 
+vespera::schema_type!(Schema from Model, name = "TasksSchema");
 impl ActiveModelBehavior for ActiveModel {}

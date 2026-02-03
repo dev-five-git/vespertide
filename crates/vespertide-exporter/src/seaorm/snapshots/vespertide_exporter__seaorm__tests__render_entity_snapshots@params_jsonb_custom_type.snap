@@ -17,4 +17,5 @@ pub struct Model {
     pub jsonb_nullable: Option<Json>,
 }
 
+vespera::schema_type!(Schema from Model, name = "JsonStructSchema");
 impl ActiveModelBehavior for ActiveModel {}

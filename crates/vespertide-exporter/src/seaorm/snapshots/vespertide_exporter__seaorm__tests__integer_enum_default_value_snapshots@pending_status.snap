@@ -24,4 +24,5 @@ pub struct Model {
     pub status: TaskStatus,
 }
 
+vespera::schema_type!(Schema from Model, name = "TasksSchema");
 impl ActiveModelBehavior for ActiveModel {}

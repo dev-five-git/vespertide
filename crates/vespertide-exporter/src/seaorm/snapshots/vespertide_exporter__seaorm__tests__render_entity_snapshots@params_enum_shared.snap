@@ -27,4 +27,5 @@ pub struct Model {
     pub review_status: Option<DocStatus>,
 }
 
+vespera::schema_type!(Schema from Model, name = "DocumentsSchema");
 impl ActiveModelBehavior for ActiveModel {}

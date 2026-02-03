@@ -28,4 +28,5 @@ pub struct Model {
     pub severity: EventSeverity,
 }
 
+vespera::schema_type!(Schema from Model, name = "EventsSchema");
 impl ActiveModelBehavior for ActiveModel {}

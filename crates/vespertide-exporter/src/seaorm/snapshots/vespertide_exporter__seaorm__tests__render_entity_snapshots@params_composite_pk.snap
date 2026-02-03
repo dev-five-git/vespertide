@@ -14,4 +14,5 @@ pub struct Model {
     pub tenant_id: i64,
 }
 
+vespera::schema_type!(Schema from Model, name = "AccountsSchema");
 impl ActiveModelBehavior for ActiveModel {}

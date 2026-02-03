@@ -16,4 +16,5 @@ pub struct Model {
     pub customers: HasOne<super::customers::Entity>,
 }
 
+vespera::schema_type!(Schema from Model, name = "InvoicesSchema");
 impl ActiveModelBehavior for ActiveModel {}

@@ -26,6 +26,10 @@ pub struct SeaOrmConfig {
     /// Default: `Camel` (generates `#[serde(rename_all = "camelCase")]`)
     #[serde(default = "default_enum_naming_case")]
     pub enum_naming_case: NameCase,
+    /// Generate `vespera::schema_type!` macro invocation for each entity.
+    /// Default: `true`
+    #[serde(default = "default_vespera_schema_type")]
+    pub vespera_schema_type: bool,
 }
 
 fn default_extra_enum_derives() -> Vec<String> {
@@ -36,12 +40,17 @@ fn default_enum_naming_case() -> NameCase {
     NameCase::Camel
 }
 
+fn default_vespera_schema_type() -> bool {
+    true
+}
+
 impl Default for SeaOrmConfig {
     fn default() -> Self {
         Self {
             extra_enum_derives: default_extra_enum_derives(),
             extra_model_derives: Vec::new(),
             enum_naming_case: default_enum_naming_case(),
+            vespera_schema_type: default_vespera_schema_type(),
         }
     }
 }
@@ -60,6 +69,11 @@ impl SeaOrmConfig {
     /// Get the naming case for serde rename_all attribute on generated enums.
     pub fn enum_naming_case(&self) -> NameCase {
         self.enum_naming_case
+    }
+
+    /// Whether to generate `vespera::schema_type!` macro invocation for each entity.
+    pub fn vespera_schema_type(&self) -> bool {
+        self.vespera_schema_type
     }
 }
 
@@ -192,6 +206,7 @@ mod tests {
             vec!["vespera::Schema".to_string()]
         );
         assert!(config.seaorm.extra_model_derives.is_empty());
+        assert!(config.seaorm.vespera_schema_type);
         assert_eq!(config.prefix, "");
     }
 

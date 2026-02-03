@@ -43,7 +43,8 @@
         "extraEnumDerives": [
           "vespera::Schema"
         ],
-        "extraModelDerives": []
+        "extraModelDerives": [],
+        "vesperaSchemaType": true
       }
     },
     "tableNamingCase": {
@@ -101,6 +102,11 @@
           "items": {
             "type": "string"
           }
+        },
+        "vesperaSchemaType": {
+          "description": "Generate `vespera::schema_type!` macro invocation for each entity.\nDefault: `true`",
+          "type": "boolean",
+          "default": true
         }
       }
     }

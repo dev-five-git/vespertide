@@ -30,4 +30,5 @@ pub struct Model {
 // Index definitions (SeaORM uses Statement builders externally)
 // (unnamed) on [article_id]
 // (unnamed) on [user_id]
+vespera::schema_type!(Schema from Model, name = "ArticleUserSchema");
 impl ActiveModelBehavior for ActiveModel {}

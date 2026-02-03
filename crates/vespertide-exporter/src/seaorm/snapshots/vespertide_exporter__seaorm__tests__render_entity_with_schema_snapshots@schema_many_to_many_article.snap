@@ -16,4 +16,5 @@ pub struct Model {
     pub users: HasMany<super::user::Entity>,
 }
 
+vespera::schema_type!(Schema from Model, name = "ArticleSchema");
 impl ActiveModelBehavior for ActiveModel {}
