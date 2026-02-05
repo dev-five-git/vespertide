@@ -554,8 +554,13 @@ fn relation_field_defs_with_schema(table: &TableDef, schema: &[TableDef]) -> Vec
     }
 
     // has_one/has_many relations (other tables have FK to this table)
-    let reverse_relations =
-        reverse_relation_field_defs(table, schema, &mut used, &entity_count, &mut used_relation_enums);
+    let reverse_relations = reverse_relation_field_defs(
+        table,
+        schema,
+        &mut used,
+        &entity_count,
+        &mut used_relation_enums,
+    );
     out.extend(reverse_relations);
 
     out
@@ -836,15 +841,26 @@ fn reverse_relation_field_defs(
     let mut out = Vec::new();
 
     for rel in relations {
-        let relation_type = if rel.is_one_to_one { "has_one" } else { "has_many" };
-        let rust_type = if rel.is_one_to_one { "HasOne" } else { "HasMany" };
+        let relation_type = if rel.is_one_to_one {
+            "has_one"
+        } else {
+            "has_many"
+        };
+        let rust_type = if rel.is_one_to_one {
+            "HasOne"
+        } else {
+            "HasMany"
+        };
         let field_name = unique_name(&rel.field_base, used);
 
         // Determine if we need relation_enum:
         // 1. Multiple FKs from same source table, OR
         // 2. Multiple relations targeting the same entity (across ALL relations including forward)
         let needs_relation_enum = rel.has_multiple_fks
-            || entity_count.get(&rel.target_entity).map(|c| *c > 1).unwrap_or(false);
+            || entity_count
+                .get(&rel.target_entity)
+                .map(|c| *c > 1)
+                .unwrap_or(false);
 
         let attr = if needs_relation_enum {
             // When multiple HasMany/HasOne target the same Entity, ALL need `via`

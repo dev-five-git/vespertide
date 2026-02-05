@@ -21,10 +21,13 @@ pub struct Model {
     pub articles: HasMany<super::article::Entity>,
     #[sea_orm(has_many)]
     pub user_media_roles: HasMany<super::user_media_role::Entity>,
-    #[sea_orm(has_many, relation_enum = "UserViaUserMediaRole", via = "user_media_role")]
+    #[sea_orm(
+        has_many,
+        relation_enum = "UserViaUserMediaRole",
+        via = "user_media_role"
+    )]
     pub users_via_user_media_role: HasMany<super::user::Entity>,
 }
-
 
 // Index definitions (SeaORM uses Statement builders externally)
 // (unnamed) on [owner_id]
