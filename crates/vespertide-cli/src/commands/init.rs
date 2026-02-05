@@ -1,10 +1,11 @@
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
 use colored::Colorize;
+use tokio::fs;
 use vespertide_config::VespertideConfig;
 
-pub fn cmd_init() -> Result<()> {
+pub async fn cmd_init() -> Result<()> {
     let path = PathBuf::from("vespertide.json");
     if path.exists() {
         bail!("vespertide.json already exists");
@@ -12,7 +13,9 @@ pub fn cmd_init() -> Result<()> {
 
     let config = VespertideConfig::default();
     let json = serde_json::to_string_pretty(&config).context("serialize default config")?;
-    fs::write(&path, json).context("write vespertide.json")?;
+    fs::write(&path, json)
+        .await
+        .context("write vespertide.json")?;
     println!(
         "{} {}",
         "created".bright_green().bold(),
@@ -45,24 +48,24 @@ mod tests {
         }
     }
 
-    #[test]
+    #[tokio::test]
     #[serial_test::serial]
-    fn cmd_init_creates_config() {
+    async fn cmd_init_creates_config() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
-        cmd_init().unwrap();
+        cmd_init().await.unwrap();
         assert!(PathBuf::from("vespertide.json").exists());
     }
 
-    #[test]
+    #[tokio::test]
     #[serial_test::serial]
-    fn cmd_init_fails_when_exists() {
+    async fn cmd_init_fails_when_exists() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
-        cmd_init().unwrap();
-        let err = cmd_init().unwrap_err();
+        cmd_init().await.unwrap();
+        let err = cmd_init().await.unwrap_err();
         assert!(err.to_string().contains("already exists"));
     }
 }

@@ -1,7 +1,9 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, vespera::Schema)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, vespera::Schema,
+)]
 #[serde(rename_all = "camelCase")]
 #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "article_user_role")]
 pub enum Role {
@@ -32,7 +34,6 @@ pub struct Model {
     #[sea_orm(belongs_to, from = "user_id", to = "id")]
     pub user: HasOne<super::user::Entity>,
 }
-
 
 // Index definitions (SeaORM uses Statement builders externally)
 // (unnamed) on [user_id]

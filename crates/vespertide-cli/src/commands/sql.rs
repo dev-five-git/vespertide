@@ -5,7 +5,7 @@ use vespertide_query::{DatabaseBackend, build_plan_queries};
 
 use crate::utils::{load_config, load_migrations, load_models};
 
-pub fn cmd_sql(backend: DatabaseBackend) -> Result<()> {
+pub async fn cmd_sql(backend: DatabaseBackend) -> Result<()> {
     let config = load_config()?;
     let current_models = load_models(&config)?;
     let applied_plans = load_migrations(&config)?;
@@ -178,48 +178,48 @@ mod tests {
         fs::write(path, serde_json::to_string_pretty(&table).unwrap()).unwrap();
     }
 
-    #[test]
+    #[tokio::test]
     #[serial]
-    fn cmd_sql_emits_queries_postgres() {
+    async fn cmd_sql_emits_queries_postgres() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
         let _cfg = write_config();
         write_model("users");
 
-        let result = cmd_sql(DatabaseBackend::Postgres);
+        let result = cmd_sql(DatabaseBackend::Postgres).await;
         assert!(result.is_ok());
     }
 
-    #[test]
+    #[tokio::test]
     #[serial]
-    fn cmd_sql_emits_queries_mysql() {
+    async fn cmd_sql_emits_queries_mysql() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
         let _cfg = write_config();
         write_model("users");
 
-        let result = cmd_sql(DatabaseBackend::MySql);
+        let result = cmd_sql(DatabaseBackend::MySql).await;
         assert!(result.is_ok());
     }
 
-    #[test]
+    #[tokio::test]
     #[serial]
-    fn cmd_sql_emits_queries_sqlite() {
+    async fn cmd_sql_emits_queries_sqlite() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
         let _cfg = write_config();
         write_model("users");
 
-        let result = cmd_sql(DatabaseBackend::Sqlite);
+        let result = cmd_sql(DatabaseBackend::Sqlite).await;
         assert!(result.is_ok());
     }
 
-    #[test]
+    #[tokio::test]
     #[serial]
-    fn cmd_sql_no_changes_postgres() {
+    async fn cmd_sql_no_changes_postgres() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
@@ -253,13 +253,13 @@ mod tests {
         let path = cfg.migrations_dir().join("0001_init.json");
         fs::write(path, serde_json::to_string_pretty(&plan).unwrap()).unwrap();
 
-        let result = cmd_sql(DatabaseBackend::Postgres);
+        let result = cmd_sql(DatabaseBackend::Postgres).await;
         assert!(result.is_ok());
     }
 
-    #[test]
+    #[tokio::test]
     #[serial]
-    fn cmd_sql_no_changes_mysql() {
+    async fn cmd_sql_no_changes_mysql() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
@@ -293,13 +293,13 @@ mod tests {
         let path = cfg.migrations_dir().join("0001_init.json");
         fs::write(path, serde_json::to_string_pretty(&plan).unwrap()).unwrap();
 
-        let result = cmd_sql(DatabaseBackend::MySql);
+        let result = cmd_sql(DatabaseBackend::MySql).await;
         assert!(result.is_ok());
     }
 
-    #[test]
+    #[tokio::test]
     #[serial]
-    fn cmd_sql_no_changes_sqlite() {
+    async fn cmd_sql_no_changes_sqlite() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
@@ -333,13 +333,13 @@ mod tests {
         let path = cfg.migrations_dir().join("0001_init.json");
         fs::write(path, serde_json::to_string_pretty(&plan).unwrap()).unwrap();
 
-        let result = cmd_sql(DatabaseBackend::Sqlite);
+        let result = cmd_sql(DatabaseBackend::Sqlite).await;
         assert!(result.is_ok());
     }
 
-    #[test]
+    #[tokio::test]
     #[serial]
-    fn emit_sql_prints_created_at_and_comment_postgres() {
+    async fn emit_sql_prints_created_at_and_comment_postgres() {
         let plan = MigrationPlan {
             comment: Some("with comment".into()),
             created_at: Some("2024-01-02T00:00:00Z".into()),
@@ -353,9 +353,9 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[test]
+    #[tokio::test]
     #[serial]
-    fn emit_sql_prints_created_at_and_comment_mysql() {
+    async fn emit_sql_prints_created_at_and_comment_mysql() {
         let plan = MigrationPlan {
             comment: Some("with comment".into()),
             created_at: Some("2024-01-02T00:00:00Z".into()),
@@ -369,9 +369,9 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[test]
+    #[tokio::test]
     #[serial]
-    fn emit_sql_prints_created_at_and_comment_sqlite() {
+    async fn emit_sql_prints_created_at_and_comment_sqlite() {
         let plan = MigrationPlan {
             comment: Some("with comment".into()),
             created_at: Some("2024-01-02T00:00:00Z".into()),
@@ -385,9 +385,9 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[test]
+    #[tokio::test]
     #[serial]
-    fn emit_sql_multiple_queries() {
+    async fn emit_sql_multiple_queries() {
         let plan = MigrationPlan {
             comment: None,
             created_at: None,
@@ -422,9 +422,9 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[test]
+    #[tokio::test]
     #[serial]
-    fn emit_sql_multiple_queries_per_action() {
+    async fn emit_sql_multiple_queries_per_action() {
         // Test case where a single action generates multiple queries (e.g., SQLite constraint addition)
         // This should trigger the queries.len() > 1 branch (line 89)
         let tmp = tempdir().unwrap();

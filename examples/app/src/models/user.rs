@@ -26,7 +26,6 @@ pub struct Model {
     pub medias_1: HasMany<super::media::Entity>,
 }
 
-
 // Index definitions (SeaORM uses Statement builders externally)
 // (unnamed) on [email]
 vespera::schema_type!(Schema from Model, name = "UserSchema");

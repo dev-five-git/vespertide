@@ -6,7 +6,7 @@ use vespertide_query::{DatabaseBackend, build_plan_queries};
 
 use crate::utils::load_migrations;
 
-pub fn cmd_log(backend: DatabaseBackend) -> Result<()> {
+pub async fn cmd_log(backend: DatabaseBackend) -> Result<()> {
     let config = load_config()?;
     let plans = load_migrations(&config)?;
 
@@ -149,9 +149,9 @@ mod tests {
         fs::write(path, serde_json::to_string_pretty(&plan).unwrap()).unwrap();
     }
 
-    #[test]
+    #[tokio::test]
     #[serial_test::serial]
-    fn cmd_log_with_single_migration_postgres() {
+    async fn cmd_log_with_single_migration_postgres() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
@@ -159,13 +159,13 @@ mod tests {
         write_config(&cfg);
         write_migration(&cfg);
 
-        let result = cmd_log(DatabaseBackend::Postgres);
+        let result = cmd_log(DatabaseBackend::Postgres).await;
         assert!(result.is_ok());
     }
 
-    #[test]
+    #[tokio::test]
     #[serial_test::serial]
-    fn cmd_log_with_single_migration_mysql() {
+    async fn cmd_log_with_single_migration_mysql() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
@@ -173,13 +173,13 @@ mod tests {
         write_config(&cfg);
         write_migration(&cfg);
 
-        let result = cmd_log(DatabaseBackend::MySql);
+        let result = cmd_log(DatabaseBackend::MySql).await;
         assert!(result.is_ok());
     }
 
-    #[test]
+    #[tokio::test]
     #[serial_test::serial]
-    fn cmd_log_with_single_migration_sqlite() {
+    async fn cmd_log_with_single_migration_sqlite() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
@@ -187,13 +187,13 @@ mod tests {
         write_config(&cfg);
         write_migration(&cfg);
 
-        let result = cmd_log(DatabaseBackend::Sqlite);
+        let result = cmd_log(DatabaseBackend::Sqlite).await;
         assert!(result.is_ok());
     }
 
-    #[test]
+    #[tokio::test]
     #[serial_test::serial]
-    fn cmd_log_no_migrations_postgres() {
+    async fn cmd_log_no_migrations_postgres() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
@@ -201,13 +201,13 @@ mod tests {
         write_config(&cfg);
         fs::create_dir_all(cfg.migrations_dir()).unwrap();
 
-        let result = cmd_log(DatabaseBackend::Postgres);
+        let result = cmd_log(DatabaseBackend::Postgres).await;
         assert!(result.is_ok());
     }
 
-    #[test]
+    #[tokio::test]
     #[serial_test::serial]
-    fn cmd_log_no_migrations_mysql() {
+    async fn cmd_log_no_migrations_mysql() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
@@ -215,13 +215,13 @@ mod tests {
         write_config(&cfg);
         fs::create_dir_all(cfg.migrations_dir()).unwrap();
 
-        let result = cmd_log(DatabaseBackend::MySql);
+        let result = cmd_log(DatabaseBackend::MySql).await;
         assert!(result.is_ok());
     }
 
-    #[test]
+    #[tokio::test]
     #[serial_test::serial]
-    fn cmd_log_no_migrations_sqlite() {
+    async fn cmd_log_no_migrations_sqlite() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
@@ -229,13 +229,13 @@ mod tests {
         write_config(&cfg);
         fs::create_dir_all(cfg.migrations_dir()).unwrap();
 
-        let result = cmd_log(DatabaseBackend::Sqlite);
+        let result = cmd_log(DatabaseBackend::Sqlite).await;
         assert!(result.is_ok());
     }
 
-    #[test]
+    #[tokio::test]
     #[serial_test::serial]
-    fn cmd_log_with_multiple_sql_statements() {
+    async fn cmd_log_with_multiple_sql_statements() {
         use vespertide_core::schema::primary_key::PrimaryKeySyntax;
         use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
 
@@ -279,7 +279,7 @@ mod tests {
 
         // SQLite backend will generate multiple SQL statements for ModifyColumnType (table recreation)
         // This exercises line 84 where sql_statements.len() > 1
-        let result = cmd_log(DatabaseBackend::Sqlite);
+        let result = cmd_log(DatabaseBackend::Sqlite).await;
         assert!(result.is_ok());
     }
 }

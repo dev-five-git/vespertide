@@ -5,7 +5,7 @@ use vespertide_planner::plan_next_migration;
 use crate::utils::{load_config, load_migrations, load_models};
 use vespertide_core::MigrationAction;
 
-pub fn cmd_diff() -> Result<()> {
+pub async fn cmd_diff() -> Result<()> {
     let config = load_config()?;
     let current_models = load_models(&config)?;
     let applied_plans = load_migrations(&config)?;
@@ -568,7 +568,8 @@ mod tests {
 
     #[rstest]
     #[serial]
-    fn cmd_diff_with_model_and_no_migrations() {
+    #[tokio::test]
+    async fn cmd_diff_with_model_and_no_migrations() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
@@ -576,13 +577,14 @@ mod tests {
         write_model("users");
         fs::create_dir_all("migrations").unwrap();
 
-        let result = cmd_diff();
+        let result = cmd_diff().await;
         assert!(result.is_ok());
     }
 
     #[rstest]
     #[serial]
-    fn cmd_diff_when_no_changes() {
+    #[tokio::test]
+    async fn cmd_diff_when_no_changes() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
@@ -591,7 +593,7 @@ mod tests {
         fs::create_dir_all("models").unwrap();
         fs::create_dir_all("migrations").unwrap();
 
-        let result = cmd_diff();
+        let result = cmd_diff().await;
         assert!(result.is_ok());
     }
 

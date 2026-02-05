@@ -84,17 +84,18 @@ enum Commands {
 }
 
 #[cfg(not(tarpaulin_include))]
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Some(Commands::Diff) => cmd_diff(),
-        Some(Commands::Sql { backend }) => cmd_sql(backend.into()),
-        Some(Commands::Log { backend }) => cmd_log(backend.into()),
-        Some(Commands::New { name, format }) => cmd_new(name, format),
-        Some(Commands::Status) => cmd_status(),
-        Some(Commands::Revision { message, fill_with }) => cmd_revision(message, fill_with),
-        Some(Commands::Init) => cmd_init(),
-        Some(Commands::Export { orm, export_dir }) => cmd_export(orm, export_dir),
+        Some(Commands::Diff) => cmd_diff().await,
+        Some(Commands::Sql { backend }) => cmd_sql(backend.into()).await,
+        Some(Commands::Log { backend }) => cmd_log(backend.into()).await,
+        Some(Commands::New { name, format }) => cmd_new(name, format).await,
+        Some(Commands::Status) => cmd_status().await,
+        Some(Commands::Revision { message, fill_with }) => cmd_revision(message, fill_with).await,
+        Some(Commands::Init) => cmd_init().await,
+        Some(Commands::Export { orm, export_dir }) => cmd_export(orm, export_dir).await,
         None => {
             // No subcommand: show help and exit successfully.
             Cli::command().print_help()?;

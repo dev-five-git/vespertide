@@ -678,12 +678,17 @@ fn reverse_relation_field_defs(
                     let attr = if has_multiple_fks {
                         let base_relation_enum = generate_relation_enum_name(columns);
                         // Ensure relation_enum is unique across all reverse relations
-                        let relation_enum_name = if used_relation_enums.contains(&base_relation_enum) {
-                            // Append source table name to make it unique
-                            format!("{}{}", base_relation_enum, to_pascal_case(&other_table.name))
-                        } else {
-                            base_relation_enum.clone()
-                        };
+                        let relation_enum_name =
+                            if used_relation_enums.contains(&base_relation_enum) {
+                                // Append source table name to make it unique
+                                format!(
+                                    "{}{}",
+                                    base_relation_enum,
+                                    to_pascal_case(&other_table.name)
+                                )
+                            } else {
+                                base_relation_enum.clone()
+                            };
                         used_relation_enums.insert(relation_enum_name.clone());
                         format!(
                             "    #[sea_orm({relation_type}, relation_enum = \"{relation_enum_name}\", via_rel = \"{relation_enum_name}\")]"
