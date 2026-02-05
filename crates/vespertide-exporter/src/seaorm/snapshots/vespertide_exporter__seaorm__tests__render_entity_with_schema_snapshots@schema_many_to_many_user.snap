@@ -13,7 +13,7 @@ pub struct Model {
     #[sea_orm(has_many)]
     pub article_users: HasMany<super::article_user::Entity>,
     #[sea_orm(has_many, via = "article_user")]
-    pub articles: HasMany<super::article::Entity>,
+    pub articles_via_article_user: HasMany<super::article::Entity>,
 }
 
 vespera::schema_type!(Schema from Model, name = "UserSchema");

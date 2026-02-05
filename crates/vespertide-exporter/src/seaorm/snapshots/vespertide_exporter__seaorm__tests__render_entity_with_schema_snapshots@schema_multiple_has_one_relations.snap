@@ -10,9 +10,9 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: Uuid,
-    #[sea_orm(has_one, relation_enum = "CreatedByUser", via_rel = "CreatedByUser")]
+    #[sea_orm(has_one, relation_enum = "Settings", via = "settings")]
     pub created_by_user: HasOne<super::settings::Entity>,
-    #[sea_orm(has_one, relation_enum = "UpdatedByUser", via_rel = "UpdatedByUser")]
+    #[sea_orm(has_one, relation_enum = "UpdatedByUser", via = "settings")]
     pub updated_by_user: HasOne<super::settings::Entity>,
 }
 
