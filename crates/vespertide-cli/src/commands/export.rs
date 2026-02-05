@@ -44,12 +44,15 @@ pub fn cmd_export(orm: OrmArg, export_dir: Option<PathBuf>) -> Result<()> {
         .collect::<Result<Vec<_>, _>>()?;
 
     let target_root = resolve_export_dir(export_dir, &config);
+    
+    // Clean the export directory before regenerating
+    let orm_kind: Orm = orm.into();
+    clean_export_dir(&target_root, orm_kind)?;
+    
     if !target_root.exists() {
         fs::create_dir_all(&target_root)
             .with_context(|| format!("create export dir {}", target_root.display()))?;
     }
-
-    let orm_kind: Orm = orm.into();
 
     // Extract all tables for schema context (used for FK chain resolution)
     let all_tables: Vec<TableDef> = normalized_models.iter().map(|(t, _)| t.clone()).collect();
@@ -87,6 +90,50 @@ fn resolve_export_dir(export_dir: Option<PathBuf>, config: &VespertideConfig) ->
     }
     // Prefer explicit model_export_dir from config, fallback to default inside config.
     config.model_export_dir().to_path_buf()
+}
+
+/// Clean the export directory by removing all generated files.
+/// This ensures no stale files remain from previous exports.
+fn clean_export_dir(root: &Path, orm: Orm) -> Result<()> {
+    if !root.exists() {
+        return Ok(());
+    }
+
+    let ext = match orm {
+        Orm::SeaOrm => "rs",
+        Orm::SqlAlchemy | Orm::SqlModel => "py",
+    };
+
+    clean_dir_recursive(root, ext)?;
+    Ok(())
+}
+
+/// Recursively remove files with the given extension and empty directories.
+fn clean_dir_recursive(dir: &Path, ext: &str) -> Result<()> {
+    if !dir.is_dir() {
+        return Ok(());
+    }
+
+    let entries: Vec<_> = fs::read_dir(dir)
+        .with_context(|| format!("read dir {}", dir.display()))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    for entry in entries {
+        let path = entry.path();
+        if path.is_dir() {
+            clean_dir_recursive(&path, ext)?;
+            // Remove empty directories
+            if fs::read_dir(&path)?.next().is_none() {
+                fs::remove_dir(&path)
+                    .with_context(|| format!("remove empty dir {}", path.display()))?;
+            }
+        } else if path.extension().and_then(|e| e.to_str()) == Some(ext) {
+            fs::remove_file(&path)
+                .with_context(|| format!("remove file {}", path.display()))?;
+        }
+    }
+
+    Ok(())
 }
 
 fn build_output_path(root: &Path, rel_path: &Path, orm: Orm) -> PathBuf {

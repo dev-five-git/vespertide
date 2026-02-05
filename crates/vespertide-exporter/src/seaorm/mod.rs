@@ -579,6 +579,8 @@ fn reverse_relation_field_defs(
     used: &mut HashSet<String>,
 ) -> Vec<String> {
     let mut out = Vec::new();
+    // Track used relation_enum names to ensure uniqueness across all reverse relations
+    let mut used_relation_enums: HashSet<String> = HashSet::new();
 
     // First, count how many FKs from each table reference this table
     let mut fk_count_per_table: std::collections::HashMap<String, usize> =
@@ -674,7 +676,15 @@ fn reverse_relation_field_defs(
 
                     // Generate relation_enum name if there are multiple FKs to this table
                     let attr = if has_multiple_fks {
-                        let relation_enum_name = generate_relation_enum_name(columns);
+                        let base_relation_enum = generate_relation_enum_name(columns);
+                        // Ensure relation_enum is unique across all reverse relations
+                        let relation_enum_name = if used_relation_enums.contains(&base_relation_enum) {
+                            // Append source table name to make it unique
+                            format!("{}{}", base_relation_enum, to_pascal_case(&other_table.name))
+                        } else {
+                            base_relation_enum.clone()
+                        };
+                        used_relation_enums.insert(relation_enum_name.clone());
                         format!(
                             "    #[sea_orm({relation_type}, relation_enum = \"{relation_enum_name}\", via_rel = \"{relation_enum_name}\")]"
                         )

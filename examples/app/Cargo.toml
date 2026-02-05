@@ -9,3 +9,5 @@ vespertide = { path = "../../crates/vespertide" }
 tokio = { version = "1", features = ["full"] }
 sea-orm = { version = "2.0.0-rc.30", features = ["sqlx-sqlite", "sqlx-postgres", "runtime-tokio-native-tls", "macros"] }
 anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+vespera = "0.1"
