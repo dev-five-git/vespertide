@@ -1,8 +1,7 @@
 use sea_orm::entity::prelude::*;
-use serde::{Deserialize, Serialize};
 
 #[sea_orm::model]
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "user")]
 pub struct Model {
     #[sea_orm(primary_key, default_value = "gen_random_uuid()")]
@@ -30,4 +29,5 @@ pub struct Model {
 
 // Index definitions (SeaORM uses Statement builders externally)
 // (unnamed) on [email]
+vespera::schema_type!(Schema from Model, name = "UserSchema");
 impl ActiveModelBehavior for ActiveModel {}

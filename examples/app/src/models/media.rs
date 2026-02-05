@@ -1,8 +1,7 @@
 use sea_orm::entity::prelude::*;
-use serde::{Deserialize, Serialize};
 
 #[sea_orm::model]
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "media")]
 pub struct Model {
     /// hello
@@ -29,4 +28,5 @@ pub struct Model {
 
 // Index definitions (SeaORM uses Statement builders externally)
 // (unnamed) on [owner_id]
+vespera::schema_type!(Schema from Model, name = "MediaSchema");
 impl ActiveModelBehavior for ActiveModel {}

@@ -2,6 +2,7 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, vespera::Schema)]
+#[serde(rename_all = "camelCase")]
 #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "article_status")]
 pub enum Status {
     #[sea_orm(string_value = "draft")]
@@ -15,7 +16,7 @@ pub enum Status {
 }
 
 #[sea_orm::model]
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "article")]
 pub struct Model {
     #[sea_orm(primary_key)]
@@ -45,4 +46,5 @@ pub struct Model {
 // Index definitions (SeaORM uses Statement builders externally)
 // (unnamed) on [status]
 // (unnamed) on [published_at]
+vespera::schema_type!(Schema from Model, name = "ArticleSchema");
 impl ActiveModelBehavior for ActiveModel {}
