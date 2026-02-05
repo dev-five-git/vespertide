@@ -10,9 +10,9 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: Uuid,
-    #[sea_orm(has_many, relation_enum = "PreferredUser", via_rel = "PreferredUser")]
+    #[sea_orm(has_many, relation_enum = "Profile", via = "profile")]
     pub preferred_user_profiles: HasMany<super::profile::Entity>,
-    #[sea_orm(has_many, relation_enum = "BackupUser", via_rel = "BackupUser")]
+    #[sea_orm(has_many, relation_enum = "BackupUser", via = "profile")]
     pub backup_user_profiles: HasMany<super::profile::Entity>,
 }
 

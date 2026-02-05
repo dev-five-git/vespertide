@@ -1,0 +1,24 @@
+---
+source: crates/vespertide-exporter/src/seaorm/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "user")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: Uuid,
+    #[sea_orm(has_many)]
+    pub user_media_roles: HasMany<super::user_media_role::Entity>,
+    #[sea_orm(has_many, relation_enum = "MediaViaUserMediaRole", via = "user_media_role")]
+    pub medias_via_user_media_role: HasMany<super::media::Entity>,
+    #[sea_orm(has_many)]
+    pub user_media_favorites: HasMany<super::user_media_favorite::Entity>,
+    #[sea_orm(has_many, relation_enum = "MediaViaUserMediaFavorite", via = "user_media_favorite")]
+    pub medias_via_user_media_favorite: HasMany<super::media::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "UserSchema");
+impl ActiveModelBehavior for ActiveModel {}

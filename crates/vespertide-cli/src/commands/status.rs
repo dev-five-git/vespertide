@@ -5,7 +5,7 @@ use vespertide_planner::schema_from_plans;
 use crate::utils::{load_config, load_migrations, load_models};
 use std::collections::HashSet;
 
-pub fn cmd_status() -> Result<()> {
+pub async fn cmd_status() -> Result<()> {
     let config = load_config()?;
     let current_models = load_models(&config)?;
     let applied_plans = load_migrations(&config)?;
@@ -248,9 +248,9 @@ mod tests {
         fs::write(path, serde_json::to_string_pretty(&plan).unwrap()).unwrap();
     }
 
-    #[test]
+    #[tokio::test]
     #[serial]
-    fn cmd_status_with_matching_schema() {
+    async fn cmd_status_with_matching_schema() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
@@ -258,36 +258,36 @@ mod tests {
         write_model("users");
         write_migration(&cfg);
 
-        cmd_status().unwrap();
+        cmd_status().await.unwrap();
     }
 
-    #[test]
+    #[tokio::test]
     #[serial]
-    fn cmd_status_no_models_no_migrations_prints_message() {
+    async fn cmd_status_no_models_no_migrations_prints_message() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
         let cfg = write_config();
         fs::create_dir_all(cfg.models_dir()).unwrap(); // empty models dir
         fs::create_dir_all(cfg.migrations_dir()).unwrap(); // empty migrations dir
 
-        cmd_status().unwrap();
+        cmd_status().await.unwrap();
     }
 
-    #[test]
+    #[tokio::test]
     #[serial]
-    fn cmd_status_models_no_migrations_prints_hint() {
+    async fn cmd_status_models_no_migrations_prints_hint() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
         let cfg = write_config();
         write_model("users");
         fs::create_dir_all(cfg.migrations_dir()).unwrap();
 
-        cmd_status().unwrap();
+        cmd_status().await.unwrap();
     }
 
-    #[test]
+    #[tokio::test]
     #[serial]
-    fn cmd_status_differs_prints_diff_hint() {
+    async fn cmd_status_differs_prints_diff_hint() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
@@ -297,12 +297,12 @@ mod tests {
         write_model("posts");
         write_migration(&cfg); // baseline only has users
 
-        cmd_status().unwrap();
+        cmd_status().await.unwrap();
     }
 
-    #[test]
+    #[tokio::test]
     #[serial]
-    fn cmd_status_model_with_description() {
+    async fn cmd_status_model_with_description() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
@@ -333,6 +333,6 @@ mod tests {
         let path = cfg.models_dir().join("users.json");
         fs::write(path, serde_json::to_string_pretty(&table).unwrap()).unwrap();
 
-        cmd_status().unwrap();
+        cmd_status().await.unwrap();
     }
 }

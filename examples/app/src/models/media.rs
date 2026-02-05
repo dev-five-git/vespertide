@@ -1,8 +1,7 @@
 use sea_orm::entity::prelude::*;
-use serde::{Deserialize, Serialize};
 
 #[sea_orm::model]
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "media")]
 pub struct Model {
     /// hello
@@ -16,17 +15,21 @@ pub struct Model {
     #[sea_orm(default_value = "now()")]
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: Option<DateTimeWithTimeZone>,
-    #[sea_orm(belongs_to, from = "owner_id", to = "id")]
+    #[sea_orm(belongs_to, relation_enum = "Owner", from = "owner_id", to = "id")]
     pub owner: HasOne<super::user::Entity>,
     #[sea_orm(has_many)]
     pub articles: HasMany<super::article::Entity>,
     #[sea_orm(has_many)]
     pub user_media_roles: HasMany<super::user_media_role::Entity>,
-    #[sea_orm(has_many, via = "user_media_role")]
-    pub users: HasMany<super::user::Entity>,
+    #[sea_orm(
+        has_many,
+        relation_enum = "UserViaUserMediaRole",
+        via = "user_media_role"
+    )]
+    pub users_via_user_media_role: HasMany<super::user::Entity>,
 }
-
 
 // Index definitions (SeaORM uses Statement builders externally)
 // (unnamed) on [owner_id]
+vespera::schema_type!(Schema from Model, name = "MediaSchema");
 impl ActiveModelBehavior for ActiveModel {}

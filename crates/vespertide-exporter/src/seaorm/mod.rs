@@ -440,7 +440,35 @@ fn relation_field_defs_with_schema(table: &TableDef, schema: &[TableDef]) -> Vec
     let mut out = Vec::new();
     let mut used = HashSet::new();
 
-    // Group FKs by their target table to detect duplicates
+    // First, collect ALL target entities from both forward and reverse relations
+    // to detect when relation_enum is needed (same entity appears multiple times)
+    let mut all_target_entities: Vec<String> = Vec::new();
+
+    // Collect forward relation targets (belongs_to)
+    for constraint in &table.constraints {
+        if let TableConstraint::ForeignKey {
+            ref_table,
+            ref_columns,
+            ..
+        } = constraint
+        {
+            let (resolved_table, _) = resolve_fk_target(ref_table, ref_columns, schema);
+            all_target_entities.push(resolved_table.to_string());
+        }
+    }
+
+    // Collect reverse relation targets (has_one/has_many)
+    let reverse_targets = collect_reverse_relation_targets(table, schema);
+    all_target_entities.extend(reverse_targets);
+
+    // Count occurrences of each target entity
+    let mut entity_count: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    for entity in &all_target_entities {
+        *entity_count.entry(entity.clone()).or_insert(0) += 1;
+    }
+
+    // Group FKs by their target table to detect duplicates within forward relations
     let mut fk_by_table: std::collections::HashMap<String, Vec<&TableConstraint>> =
         std::collections::HashMap::new();
     for constraint in &table.constraints {
@@ -458,6 +486,9 @@ fn relation_field_defs_with_schema(table: &TableDef, schema: &[TableDef]) -> Vec
         }
     }
 
+    // Track used relation_enum names across all relations
+    let mut used_relation_enums: HashSet<String> = HashSet::new();
+
     // belongs_to relations (this table has FK to other tables)
     for constraint in &table.constraints {
         if let TableConstraint::ForeignKey {
@@ -474,29 +505,40 @@ fn relation_field_defs_with_schema(table: &TableDef, schema: &[TableDef]) -> Vec
             let from = fk_attr_value(columns);
             let to = fk_attr_value(&resolved_columns);
 
-            // Check if there are multiple FKs to the same target table
+            // Check if there are multiple FKs to the same target table (within forward relations)
             let fks_to_this_table = fk_by_table
                 .get(resolved_table)
                 .map(|fks| fks.len())
                 .unwrap_or(0);
 
+            // Check if this target entity appears multiple times across ALL relations
+            let entity_appears_multiple_times = entity_count
+                .get(resolved_table)
+                .map(|c| *c > 1)
+                .unwrap_or(false);
+
             // Smart field name inference from FK column names
-            // Try to use the FK column name (without _id suffix) as the field name
-            // If that doesn't work (conflicts), fall back to table name
             let field_base = if columns.len() == 1 {
-                // For single-column FKs, try to infer from column name
                 infer_field_name_from_fk_column(&columns[0], resolved_table, &to)
             } else {
-                // For composite FKs, use table name
                 sanitize_field_name(resolved_table)
             };
 
             let field_name = unique_name(&field_base, &mut used);
 
-            // Generate relation_enum name if there are multiple FKs to the same table
-            let attr = if fks_to_this_table > 1 {
-                // Generate a unique relation enum name from the FK column(s)
-                let relation_enum_name = generate_relation_enum_name(columns);
+            // Generate relation_enum if:
+            // 1. Multiple FKs to same table within this table's forward relations, OR
+            // 2. This target entity appears in both forward and reverse relations
+            let needs_relation_enum = fks_to_this_table > 1 || entity_appears_multiple_times;
+
+            let attr = if needs_relation_enum {
+                let base_relation_enum = generate_relation_enum_name(columns);
+                let relation_enum_name = if used_relation_enums.contains(&base_relation_enum) {
+                    format!("{}{}", base_relation_enum, to_pascal_case(&table.name))
+                } else {
+                    base_relation_enum.clone()
+                };
+                used_relation_enums.insert(relation_enum_name.clone());
                 format!(
                     "    #[sea_orm(belongs_to, relation_enum = \"{relation_enum_name}\", from = \"{from}\", to = \"{to}\")]"
                 )
@@ -512,7 +554,13 @@ fn relation_field_defs_with_schema(table: &TableDef, schema: &[TableDef]) -> Vec
     }
 
     // has_one/has_many relations (other tables have FK to this table)
-    let reverse_relations = reverse_relation_field_defs(table, schema, &mut used);
+    let reverse_relations = reverse_relation_field_defs(
+        table,
+        schema,
+        &mut used,
+        &entity_count,
+        &mut used_relation_enums,
+    );
     out.extend(reverse_relations);
 
     out
@@ -572,15 +620,131 @@ fn infer_field_name_from_fk_column(fk_column: &str, table_name: &str, to: &str) 
     }
 }
 
+/// Information about a reverse relation to be generated.
+struct ReverseRelation {
+    /// Target entity name (the table that has FK to current table)
+    target_entity: String,
+    /// Whether it's has_one (true) or has_many (false)
+    is_one_to_one: bool,
+    /// Base field name before uniquification
+    field_base: String,
+    /// Base relation_enum name (from FK columns)
+    base_relation_enum: String,
+    /// Source table name (for disambiguation)
+    source_table: String,
+    /// Whether the source table has multiple FKs to current table
+    has_multiple_fks: bool,
+    /// Optional via clause for M2M relations
+    via: Option<String>,
+    /// Whether this is a M2M relation (through junction table)
+    is_m2m: bool,
+}
+
+/// Collect target entities from reverse relations (for counting across all relations).
+fn collect_reverse_relation_targets(table: &TableDef, schema: &[TableDef]) -> Vec<String> {
+    let mut targets = Vec::new();
+
+    for other_table in schema {
+        if other_table.name == table.name {
+            continue;
+        }
+
+        // Get PK columns for junction table detection
+        let other_pk = primary_key_columns(other_table);
+
+        // Check if this is a junction table
+        if let Some(m2m_targets) =
+            collect_many_to_many_targets(table, other_table, &other_pk, schema)
+        {
+            targets.extend(m2m_targets);
+            continue;
+        }
+
+        // Check for direct FK to this table
+        for constraint in &other_table.constraints {
+            if let TableConstraint::ForeignKey { ref_table, .. } = constraint
+                && ref_table == &table.name
+            {
+                targets.push(other_table.name.clone());
+            }
+        }
+    }
+
+    targets
+}
+
+/// Collect target entities from a junction table for M2M relations.
+fn collect_many_to_many_targets(
+    current_table: &TableDef,
+    junction_table: &TableDef,
+    junction_pk: &HashSet<String>,
+    schema: &[TableDef],
+) -> Option<Vec<String>> {
+    if junction_pk.len() < 2 {
+        return None;
+    }
+
+    let fks: Vec<_> = junction_table
+        .constraints
+        .iter()
+        .filter_map(|c| {
+            if let TableConstraint::ForeignKey {
+                columns, ref_table, ..
+            } = c
+            {
+                Some((columns.clone(), ref_table.clone()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if fks.len() < 2 {
+        return None;
+    }
+
+    let all_fk_cols_in_pk = fks
+        .iter()
+        .all(|(cols, _)| cols.iter().all(|c| junction_pk.contains(c)));
+
+    if !all_fk_cols_in_pk {
+        return None;
+    }
+
+    fks.iter()
+        .find(|(_, ref_table)| ref_table == &current_table.name)?;
+
+    let mut targets = Vec::new();
+
+    // Junction table itself
+    targets.push(junction_table.name.clone());
+
+    // Target tables via M2M
+    for (_, ref_table) in &fks {
+        if ref_table == &current_table.name {
+            continue;
+        }
+        let target_exists = schema.iter().any(|t| &t.name == ref_table);
+        if target_exists {
+            targets.push(ref_table.clone());
+        }
+    }
+
+    Some(targets)
+}
+
 /// Generate reverse relation fields (has_one/has_many) for tables that reference this table.
 fn reverse_relation_field_defs(
     table: &TableDef,
     schema: &[TableDef],
     used: &mut HashSet<String>,
+    entity_count: &std::collections::HashMap<String, usize>,
+    used_relation_enums: &mut HashSet<String>,
 ) -> Vec<String> {
-    let mut out = Vec::new();
+    // First pass: collect all reverse relations
+    let mut relations: Vec<ReverseRelation> = Vec::new();
 
-    // First, count how many FKs from each table reference this table
+    // Count how many FKs from each table reference this table
     let mut fk_count_per_table: std::collections::HashMap<String, usize> =
         std::collections::HashMap::new();
     for other_table in schema {
@@ -598,7 +762,7 @@ fn reverse_relation_field_defs(
         }
     }
 
-    // Find all tables that have FK to this table
+    // Collect all relations from all tables
     for other_table in schema {
         if other_table.name == table.name {
             continue;
@@ -610,9 +774,9 @@ fn reverse_relation_field_defs(
 
         // Check if this is a junction table (composite PK with multiple FKs)
         if let Some(m2m_relations) =
-            detect_many_to_many(table, other_table, &other_pk, schema, used)
+            collect_many_to_many_relations(table, other_table, &other_pk, schema)
         {
-            out.extend(m2m_relations);
+            relations.extend(m2m_relations);
             continue;
         }
 
@@ -624,35 +788,25 @@ fn reverse_relation_field_defs(
                 // Check if this FK references our table
                 if ref_table == &table.name {
                     // Determine if it's has_one or has_many
-                    // has_one: FK columns exactly match the entire PK, or have UNIQUE constraint
-                    // has_many: FK columns don't uniquely identify the row
                     let is_one_to_one = if columns.len() == 1 {
                         let col = &columns[0];
-                        // Single column FK: check if it's the entire PK (not just part of composite PK)
-                        // or has a UNIQUE constraint
                         let is_sole_pk = other_pk.len() == 1 && other_pk.contains(col);
                         let is_unique = other_unique.contains(col);
                         is_sole_pk || is_unique
                     } else {
-                        // Composite FK: check if FK columns exactly match the entire PK
                         columns.len() == other_pk.len()
                             && columns.iter().all(|c| other_pk.contains(c))
                     };
 
-                    let relation_type = if is_one_to_one { "has_one" } else { "has_many" };
-                    let rust_type = if is_one_to_one { "HasOne" } else { "HasMany" };
-
-                    // Check if this table has multiple FKs to current table
                     let has_multiple_fks = fk_count_per_table
                         .get(&other_table.name)
                         .map(|count| *count > 1)
                         .unwrap_or(false);
 
                     // Generate base field name
-                    let base = if has_multiple_fks {
-                        // Use relation_enum name to infer field name for multiple FKs
-                        let relation_enum_name = generate_relation_enum_name(columns);
-                        let lowercase_enum = to_snake_case(&relation_enum_name);
+                    let base_relation_enum = generate_relation_enum_name(columns);
+                    let field_base = if has_multiple_fks {
+                        let lowercase_enum = to_snake_case(&base_relation_enum);
                         if is_one_to_one {
                             lowercase_enum
                         } else {
@@ -662,49 +816,102 @@ fn reverse_relation_field_defs(
                                 pluralize(&sanitize_field_name(&other_table.name))
                             )
                         }
+                    } else if is_one_to_one {
+                        sanitize_field_name(&other_table.name)
                     } else {
-                        // Default naming for single FK
-                        if is_one_to_one {
-                            sanitize_field_name(&other_table.name)
-                        } else {
-                            pluralize(&sanitize_field_name(&other_table.name))
-                        }
-                    };
-                    let field_name = unique_name(&base, used);
-
-                    // Generate relation_enum name if there are multiple FKs to this table
-                    let attr = if has_multiple_fks {
-                        let relation_enum_name = generate_relation_enum_name(columns);
-                        format!(
-                            "    #[sea_orm({relation_type}, relation_enum = \"{relation_enum_name}\", via_rel = \"{relation_enum_name}\")]"
-                        )
-                    } else {
-                        format!("    #[sea_orm({relation_type})]")
+                        pluralize(&sanitize_field_name(&other_table.name))
                     };
 
-                    out.push(attr);
-                    out.push(format!(
-                        "    pub {field_name}: {rust_type}<super::{}::Entity>,",
-                        other_table.name
-                    ));
+                    relations.push(ReverseRelation {
+                        target_entity: other_table.name.clone(),
+                        is_one_to_one,
+                        field_base,
+                        base_relation_enum,
+                        source_table: other_table.name.clone(),
+                        has_multiple_fks,
+                        via: None,
+                        is_m2m: false,
+                    });
                 }
             }
         }
     }
 
+    // Second pass: generate output with relation_enum when needed
+    let mut out = Vec::new();
+
+    for rel in relations {
+        let relation_type = if rel.is_one_to_one {
+            "has_one"
+        } else {
+            "has_many"
+        };
+        let rust_type = if rel.is_one_to_one {
+            "HasOne"
+        } else {
+            "HasMany"
+        };
+        let field_name = unique_name(&rel.field_base, used);
+
+        // Determine if we need relation_enum:
+        // 1. Multiple FKs from same source table, OR
+        // 2. Multiple relations targeting the same entity (across ALL relations including forward)
+        let needs_relation_enum = rel.has_multiple_fks
+            || entity_count
+                .get(&rel.target_entity)
+                .map(|c| *c > 1)
+                .unwrap_or(false);
+
+        let attr = if needs_relation_enum {
+            // When multiple HasMany/HasOne target the same Entity, ALL need `via`
+            // - M2M relations: via = junction_table
+            // - Direct FK relations: via = source_table (the table with the FK)
+            let via_value = rel.via.as_ref().unwrap_or(&rel.source_table);
+
+            let relation_enum_name = if rel.is_m2m {
+                // M2M: use {Target}Via{Junction} pattern directly
+                // e.g., "MediaViaUserMediaRole"
+                rel.base_relation_enum.clone()
+            } else {
+                // Direct: use via table name, fall back to FK-based on collision
+                let base_enum = to_pascal_case(via_value);
+                if used_relation_enums.contains(&base_enum) {
+                    rel.base_relation_enum.clone()
+                } else {
+                    base_enum
+                }
+            };
+            used_relation_enums.insert(relation_enum_name.clone());
+
+            format!(
+                "    #[sea_orm({relation_type}, relation_enum = \"{relation_enum_name}\", via = \"{via_value}\")]"
+            )
+        } else if let Some(via) = &rel.via {
+            // No ambiguity - just via without relation_enum
+            format!("    #[sea_orm({relation_type}, via = \"{via}\")]")
+        } else {
+            format!("    #[sea_orm({relation_type})]")
+        };
+
+        out.push(attr);
+        out.push(format!(
+            "    pub {field_name}: {rust_type}<super::{}::Entity>,",
+            rel.target_entity
+        ));
+    }
+
     out
 }
 
-/// Detect if a table is a junction table for many-to-many relationship.
+/// Collect many-to-many relations from a junction table.
 /// Returns Some(relations) if it's a junction table that links current table to other tables,
 /// or None if it's not a junction table.
-fn detect_many_to_many(
+fn collect_many_to_many_relations(
     current_table: &TableDef,
     junction_table: &TableDef,
     junction_pk: &HashSet<String>,
     schema: &[TableDef],
-    used: &mut HashSet<String>,
-) -> Option<Vec<String>> {
+) -> Option<Vec<ReverseRelation>> {
     // Junction table must have composite PK (2+ columns)
     if junction_pk.len() < 2 {
         return None;
@@ -744,20 +951,23 @@ fn detect_many_to_many(
     fks.iter()
         .find(|(_, ref_table)| ref_table == &current_table.name)?;
 
-    // Generate many-to-many relations via this junction table
-    let mut out = Vec::new();
+    let mut relations = Vec::new();
 
-    // First, add has_many to the junction table itself
+    // First, add has_many to the junction table itself (direct relation, not M2M)
     let junction_base = pluralize(&sanitize_field_name(&junction_table.name));
-    let junction_field_name = unique_name(&junction_base, used);
-    out.push("    #[sea_orm(has_many)]".to_string());
-    out.push(format!(
-        "    pub {junction_field_name}: HasMany<super::{}::Entity>,",
-        junction_table.name
-    ));
+    relations.push(ReverseRelation {
+        target_entity: junction_table.name.clone(),
+        is_one_to_one: false,
+        field_base: junction_base,
+        base_relation_enum: to_pascal_case(&junction_table.name),
+        source_table: junction_table.name.clone(),
+        has_multiple_fks: false,
+        via: None,
+        is_m2m: false,
+    });
 
-    // Then add has_many with via for the target tables
-    for (_, ref_table) in &fks {
+    // Then add has_many with via for the target tables (M2M relations)
+    for (_columns, ref_table) in &fks {
         // Skip the FK to the current table itself
         if ref_table == &current_table.name {
             continue;
@@ -769,20 +979,34 @@ fn detect_many_to_many(
             continue;
         }
 
-        // Generate has_many with via
-        let base = pluralize(&sanitize_field_name(ref_table));
-        let field_name = unique_name(&base, used);
+        // M2M field name: {target}_via_{junction} to distinguish from direct relations
+        // e.g., "medias_via_user_media_role" instead of "medias" (which collides with direct FK)
+        let field_base = format!(
+            "{}_via_{}",
+            pluralize(&sanitize_field_name(ref_table)),
+            sanitize_field_name(&junction_table.name)
+        );
+        // M2M relation_enum: {Target}Via{Junction} pattern
+        // e.g., "MediaViaUserMediaRole" for media through user_media_role
+        let base_relation_enum = format!(
+            "{}Via{}",
+            to_pascal_case(ref_table),
+            to_pascal_case(&junction_table.name)
+        );
 
-        out.push(format!(
-            "    #[sea_orm(has_many, via = \"{}\")]",
-            junction_table.name
-        ));
-        out.push(format!(
-            "    pub {field_name}: HasMany<super::{ref_table}::Entity>,",
-        ));
+        relations.push(ReverseRelation {
+            target_entity: ref_table.clone(),
+            is_one_to_one: false,
+            field_base,
+            base_relation_enum,
+            source_table: junction_table.name.clone(),
+            has_multiple_fks: false,
+            via: Some(junction_table.name.clone()),
+            is_m2m: true,
+        });
     }
 
-    Some(out)
+    Some(relations)
 }
 
 /// Simple pluralization for field names (adds 's' suffix).
@@ -2361,6 +2585,7 @@ mod tests {
     #[case("many_to_many_article")]
     #[case("many_to_many_user")]
     #[case("many_to_many_missing_target")]
+    #[case("many_to_many_multiple_junctions")]
     #[case("composite_fk_parent")]
     #[case("not_junction_single_pk")]
     #[case("not_junction_fk_not_in_pk_other")]
@@ -2441,6 +2666,50 @@ mod tests {
                     ],
                 );
                 (article.clone(), vec![article, article_user])
+            }
+            "many_to_many_multiple_junctions" => {
+                // Test case: user has M2M to media via TWO different junction tables
+                // This triggers relation_enum for M2M relations (line 664)
+                let user = table_with_pk(
+                    "user",
+                    vec![col("id", ColumnType::Simple(Uuid))],
+                    vec!["id"],
+                );
+                let media = table_with_pk(
+                    "media",
+                    vec![col("id", ColumnType::Simple(Uuid))],
+                    vec!["id"],
+                );
+                // First junction: user_media_role (e.g., user's role-based access to media)
+                let user_media_role = table_with_pk_and_fk(
+                    "user_media_role",
+                    vec![
+                        col("user_id", ColumnType::Simple(Uuid)),
+                        col("media_id", ColumnType::Simple(Uuid)),
+                    ],
+                    vec!["user_id", "media_id"],
+                    vec![
+                        (vec!["user_id"], "user", vec!["id"]),
+                        (vec!["media_id"], "media", vec!["id"]),
+                    ],
+                );
+                // Second junction: user_media_favorite (e.g., user's favorites)
+                let user_media_favorite = table_with_pk_and_fk(
+                    "user_media_favorite",
+                    vec![
+                        col("user_id", ColumnType::Simple(Uuid)),
+                        col("media_id", ColumnType::Simple(Uuid)),
+                    ],
+                    vec!["user_id", "media_id"],
+                    vec![
+                        (vec!["user_id"], "user", vec!["id"]),
+                        (vec!["media_id"], "media", vec!["id"]),
+                    ],
+                );
+                (
+                    user.clone(),
+                    vec![user, media, user_media_role, user_media_favorite],
+                )
             }
             "composite_fk_parent" => {
                 let parent = table_with_pk(

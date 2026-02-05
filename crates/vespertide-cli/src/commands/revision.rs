@@ -1,11 +1,12 @@
 use std::collections::HashMap;
-use std::fs;
+use std::path::Path;
 
 use anyhow::{Context, Result};
 use chrono::Utc;
 use colored::Colorize;
 use dialoguer::{Input, Select};
 use serde_json::Value;
+use tokio::fs;
 use vespertide_config::FileFormat;
 use vespertide_core::{MigrationAction, MigrationPlan, TableConstraint, TableDef};
 use vespertide_planner::{find_missing_fill_with, plan_next_migration, schema_from_plans};
@@ -262,7 +263,7 @@ fn check_non_nullable_fk_add_columns(plan: &MigrationPlan) -> Result<()> {
     Ok(())
 }
 
-pub fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Result<()> {
+pub async fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Result<()> {
     let config = load_config()?;
     let current_models = load_models(&config)?;
     let applied_plans = load_migrations(&config)?;
@@ -310,7 +311,9 @@ pub fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Result<()> 
 
     let migrations_dir = config.migrations_dir();
     if !migrations_dir.exists() {
-        fs::create_dir_all(migrations_dir).context("create migrations directory")?;
+        fs::create_dir_all(&migrations_dir)
+            .await
+            .context("create migrations directory")?;
     }
 
     let format = config.migration_format();
@@ -324,8 +327,8 @@ pub fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Result<()> 
 
     let schema_url = schema_url_for(format);
     match format {
-        FileFormat::Json => write_json_with_schema(&path, &plan, &schema_url)?,
-        FileFormat::Yaml | FileFormat::Yml => write_yaml(&path, &plan, &schema_url)?,
+        FileFormat::Json => write_json_with_schema(&path, &plan, &schema_url).await?,
+        FileFormat::Yaml | FileFormat::Yml => write_yaml(&path, &plan, &schema_url).await?,
     }
 
     println!(
@@ -364,21 +367,19 @@ fn schema_url_for(format: FileFormat) -> String {
     }
 }
 
-fn write_json_with_schema(
-    path: &std::path::Path,
-    plan: &MigrationPlan,
-    schema_url: &str,
-) -> Result<()> {
+async fn write_json_with_schema(path: &Path, plan: &MigrationPlan, schema_url: &str) -> Result<()> {
     let mut value = serde_json::to_value(plan).context("serialize migration plan to json")?;
     if let Value::Object(ref mut map) = value {
         map.insert("$schema".to_string(), Value::String(schema_url.to_string()));
     }
     let text = serde_json::to_string_pretty(&value).context("stringify json with schema")?;
-    fs::write(path, text).with_context(|| format!("write file: {}", path.display()))?;
+    fs::write(path, text)
+        .await
+        .with_context(|| format!("write file: {}", path.display()))?;
     Ok(())
 }
 
-fn write_yaml(path: &std::path::Path, plan: &MigrationPlan, schema_url: &str) -> Result<()> {
+async fn write_yaml(path: &Path, plan: &MigrationPlan, schema_url: &str) -> Result<()> {
     let mut value = serde_yaml::to_value(plan).context("serialize migration plan to yaml value")?;
     if let serde_yaml::Value::Mapping(ref mut map) = value {
         map.insert(
@@ -387,14 +388,16 @@ fn write_yaml(path: &std::path::Path, plan: &MigrationPlan, schema_url: &str) ->
         );
     }
     let text = serde_yaml::to_string(&value).context("serialize yaml with schema")?;
-    fs::write(path, text).with_context(|| format!("write file: {}", path.display()))?;
+    fs::write(path, text)
+        .await
+        .with_context(|| format!("write file: {}", path.display()))?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{env, fs, path::PathBuf};
+    use std::{env, fs as std_fs, path::PathBuf};
     use tempfile::tempdir;
     use vespertide_config::{FileFormat, VespertideConfig};
     use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType, TableConstraint, TableDef};
@@ -427,13 +430,13 @@ mod tests {
             cfg.migration_format = f;
         }
         let text = serde_json::to_string_pretty(&cfg).unwrap();
-        fs::write("vespertide.json", text).unwrap();
+        std_fs::write("vespertide.json", text).unwrap();
         cfg
     }
 
     fn write_model(name: &str) {
         let models_dir = PathBuf::from("models");
-        fs::create_dir_all(&models_dir).unwrap();
+        std_fs::create_dir_all(&models_dir).unwrap();
         let table = TableDef {
             name: name.to_string(),
             description: None,
@@ -454,41 +457,41 @@ mod tests {
             }],
         };
         let path = models_dir.join(format!("{name}.json"));
-        fs::write(path, serde_json::to_string_pretty(&table).unwrap()).unwrap();
+        std_fs::write(path, serde_json::to_string_pretty(&table).unwrap()).unwrap();
     }
 
-    #[test]
+    #[tokio::test]
     #[serial_test::serial]
-    fn cmd_revision_writes_migration() {
+    async fn cmd_revision_writes_migration() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
         let cfg = write_config();
         write_model("users");
-        fs::create_dir_all(cfg.migrations_dir()).unwrap();
+        std_fs::create_dir_all(cfg.migrations_dir()).unwrap();
 
-        cmd_revision("init".into(), vec![]).unwrap();
+        cmd_revision("init".into(), vec![]).await.unwrap();
 
-        let entries: Vec<_> = fs::read_dir(cfg.migrations_dir()).unwrap().collect();
+        let entries: Vec<_> = std_fs::read_dir(cfg.migrations_dir()).unwrap().collect();
         assert!(!entries.is_empty());
     }
 
-    #[test]
+    #[tokio::test]
     #[serial_test::serial]
-    fn cmd_revision_no_changes_short_circuits() {
+    async fn cmd_revision_no_changes_short_circuits() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
         let cfg = write_config();
         // no models, no migrations -> plan with no actions -> early return
-        assert!(cmd_revision("noop".into(), vec![]).is_ok());
+        assert!(cmd_revision("noop".into(), vec![]).await.is_ok());
         // migrations dir should not be created
         assert!(!cfg.migrations_dir().exists());
     }
 
-    #[test]
+    #[tokio::test]
     #[serial_test::serial]
-    fn cmd_revision_writes_yaml_when_configured() {
+    async fn cmd_revision_writes_yaml_when_configured() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
@@ -496,12 +499,12 @@ mod tests {
         write_model("users");
         // ensure migrations dir absent to exercise create_dir_all branch
         if cfg.migrations_dir().exists() {
-            fs::remove_dir_all(cfg.migrations_dir()).unwrap();
+            std_fs::remove_dir_all(cfg.migrations_dir()).unwrap();
         }
 
-        cmd_revision("yaml".into(), vec![]).unwrap();
+        cmd_revision("yaml".into(), vec![]).await.unwrap();
 
-        let entries: Vec<_> = fs::read_dir(cfg.migrations_dir()).unwrap().collect();
+        let entries: Vec<_> = std_fs::read_dir(cfg.migrations_dir()).unwrap().collect();
         assert!(!entries.is_empty());
         let has_yaml = entries.iter().any(|e| {
             e.as_ref()

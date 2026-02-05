@@ -1,8 +1,15 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, vespera::Schema)]
-#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "user_media_role_role")]
+#[derive(
+    Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, vespera::Schema,
+)]
+#[serde(rename_all = "camelCase")]
+#[sea_orm(
+    rs_type = "String",
+    db_type = "Enum",
+    enum_name = "user_media_role_role"
+)]
 pub enum Role {
     #[sea_orm(string_value = "owner")]
     Owner,
@@ -14,7 +21,7 @@ pub enum Role {
 
 /// hello media role
 #[sea_orm::model]
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "user_media_role")]
 pub struct Model {
     /// hello
@@ -32,9 +39,9 @@ pub struct Model {
     pub media: HasOne<super::media::Entity>,
 }
 
-
 // Index definitions (SeaORM uses Statement builders externally)
 // (unnamed) on [user_id]
 // (unnamed) on [media_id]
 // (unnamed) on [role]
+vespera::schema_type!(Schema from Model, name = "UserMediaRoleSchema");
 impl ActiveModelBehavior for ActiveModel {}
