@@ -395,6 +395,9 @@ mod tests {
 
     #[test]
     fn test_build_relation_enum_name() {
+        // Empty fk_columns - early return
+        assert_eq!(build_relation_enum_name(&[], "user", "id"), "");
+
         // Default FK - empty enum name (not needed or use table name)
         assert_eq!(
             build_relation_enum_name(&["user_id".into()], "user", "id"),

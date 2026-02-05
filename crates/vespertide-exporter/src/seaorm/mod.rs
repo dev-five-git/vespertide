@@ -2585,6 +2585,7 @@ mod tests {
     #[case("many_to_many_article")]
     #[case("many_to_many_user")]
     #[case("many_to_many_missing_target")]
+    #[case("many_to_many_multiple_junctions")]
     #[case("composite_fk_parent")]
     #[case("not_junction_single_pk")]
     #[case("not_junction_fk_not_in_pk_other")]
@@ -2665,6 +2666,50 @@ mod tests {
                     ],
                 );
                 (article.clone(), vec![article, article_user])
+            }
+            "many_to_many_multiple_junctions" => {
+                // Test case: user has M2M to media via TWO different junction tables
+                // This triggers relation_enum for M2M relations (line 664)
+                let user = table_with_pk(
+                    "user",
+                    vec![col("id", ColumnType::Simple(Uuid))],
+                    vec!["id"],
+                );
+                let media = table_with_pk(
+                    "media",
+                    vec![col("id", ColumnType::Simple(Uuid))],
+                    vec!["id"],
+                );
+                // First junction: user_media_role (e.g., user's role-based access to media)
+                let user_media_role = table_with_pk_and_fk(
+                    "user_media_role",
+                    vec![
+                        col("user_id", ColumnType::Simple(Uuid)),
+                        col("media_id", ColumnType::Simple(Uuid)),
+                    ],
+                    vec!["user_id", "media_id"],
+                    vec![
+                        (vec!["user_id"], "user", vec!["id"]),
+                        (vec!["media_id"], "media", vec!["id"]),
+                    ],
+                );
+                // Second junction: user_media_favorite (e.g., user's favorites)
+                let user_media_favorite = table_with_pk_and_fk(
+                    "user_media_favorite",
+                    vec![
+                        col("user_id", ColumnType::Simple(Uuid)),
+                        col("media_id", ColumnType::Simple(Uuid)),
+                    ],
+                    vec!["user_id", "media_id"],
+                    vec![
+                        (vec!["user_id"], "user", vec!["id"]),
+                        (vec!["media_id"], "media", vec!["id"]),
+                    ],
+                );
+                (
+                    user.clone(),
+                    vec![user, media, user_media_role, user_media_favorite],
+                )
             }
             "composite_fk_parent" => {
                 let parent = table_with_pk(

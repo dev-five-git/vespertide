@@ -691,4 +691,119 @@ mod tests {
         assert!(blog_mod.contains("pub mod post;"));
         assert!(!blog_mod.contains("post_vespertide"));
     }
+
+    #[tokio::test]
+    async fn clean_export_dir_removes_rs_files_for_seaorm() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("export_dir");
+        std_fs::create_dir_all(&root).unwrap();
+
+        // Create some .rs files that should be cleaned
+        std_fs::write(root.join("old_model.rs"), "// old rust file").unwrap();
+        std_fs::write(root.join("another.rs"), "// another rust file").unwrap();
+        // Create a non-.rs file that should NOT be cleaned
+        std_fs::write(root.join("keep.txt"), "keep this").unwrap();
+
+        clean_export_dir(&root, Orm::SeaOrm).await.unwrap();
+
+        // .rs files should be gone
+        assert!(!root.join("old_model.rs").exists());
+        assert!(!root.join("another.rs").exists());
+        // .txt file should remain
+        assert!(root.join("keep.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn clean_export_dir_removes_py_files_for_sqlalchemy() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("export_dir");
+        std_fs::create_dir_all(&root).unwrap();
+
+        // Create some .py files that should be cleaned
+        std_fs::write(root.join("old_model.py"), "# old python file").unwrap();
+        // Create a .rs file that should NOT be cleaned
+        std_fs::write(root.join("keep.rs"), "// keep this").unwrap();
+
+        clean_export_dir(&root, Orm::SqlAlchemy).await.unwrap();
+
+        // .py files should be gone
+        assert!(!root.join("old_model.py").exists());
+        // .rs file should remain
+        assert!(root.join("keep.rs").exists());
+    }
+
+    #[tokio::test]
+    async fn clean_export_dir_removes_py_files_for_sqlmodel() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("export_dir");
+        std_fs::create_dir_all(&root).unwrap();
+
+        std_fs::write(root.join("model.py"), "# python file").unwrap();
+
+        clean_export_dir(&root, Orm::SqlModel).await.unwrap();
+
+        assert!(!root.join("model.py").exists());
+    }
+
+    #[tokio::test]
+    async fn clean_export_dir_handles_missing_directory() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("nonexistent_dir");
+
+        // Should not error on missing directory
+        let result = clean_export_dir(&root, Orm::SeaOrm).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn clean_dir_recursive_cleans_subdirectories() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("export_dir");
+        let subdir = root.join("nested");
+        std_fs::create_dir_all(&subdir).unwrap();
+
+        // Create files in root and subdirectory
+        std_fs::write(root.join("root.rs"), "// root").unwrap();
+        std_fs::write(subdir.join("nested.rs"), "// nested").unwrap();
+        std_fs::write(subdir.join("keep.txt"), "keep").unwrap();
+
+        clean_dir_recursive(&root, "rs").await.unwrap();
+
+        // .rs files should be gone
+        assert!(!root.join("root.rs").exists());
+        assert!(!subdir.join("nested.rs").exists());
+        // .txt file should remain
+        assert!(subdir.join("keep.txt").exists());
+        // subdir should still exist (has .txt file)
+        assert!(subdir.exists());
+    }
+
+    #[tokio::test]
+    async fn clean_dir_recursive_removes_empty_subdirectories() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("export_dir");
+        let subdir = root.join("empty_after_clean");
+        std_fs::create_dir_all(&subdir).unwrap();
+
+        // Create only .rs files in subdirectory
+        std_fs::write(subdir.join("only.rs"), "// only").unwrap();
+
+        clean_dir_recursive(&root, "rs").await.unwrap();
+
+        // .rs file should be gone
+        assert!(!subdir.join("only.rs").exists());
+        // Empty subdirectory should be removed
+        assert!(!subdir.exists());
+    }
+
+    #[tokio::test]
+    async fn clean_dir_recursive_handles_non_directory() {
+        let tmp = tempdir().unwrap();
+        let file_path = tmp.path().join("not_a_dir.txt");
+        std_fs::write(&file_path, "content").unwrap();
+
+        // Should not error when called on a file instead of directory
+        let result = clean_dir_recursive(&file_path, "rs").await;
+        assert!(result.is_ok());
+    }
 }
