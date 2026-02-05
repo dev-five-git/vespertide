@@ -1,7 +1,7 @@
 use anyhow::Result;
 use sea_orm::{ConnectOptions, Database};
 use std::time::Duration;
-mod models;
+pub mod models;
 
 #[tokio::main]
 async fn main() -> Result<()> {
