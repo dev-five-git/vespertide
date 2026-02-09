@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql/add_column.rs
+expression: sql
+---
+ALTER TABLE "project" ADD COLUMN "story_index" json NOT NULL DEFAULT '[]'::json
