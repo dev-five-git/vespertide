@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/modify_column_nullable.rs
+expression: sql
+---
+UPDATE "orders" SET "paid_at" = CURRENT_TIMESTAMP WHERE "paid_at" IS NULL
+ALTER TABLE "orders" ALTER COLUMN "paid_at" SET NOT NULL

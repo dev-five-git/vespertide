@@ -4,7 +4,8 @@ use vespertide_core::{ColumnDef, TableDef};
 
 use super::helpers::{
     build_create_enum_type_sql, build_sea_column_def_with_table, build_sqlite_temp_table_create,
-    normalize_enum_default, normalize_fill_with, recreate_indexes_after_rebuild,
+    convert_default_for_backend, normalize_enum_default, normalize_fill_with,
+    recreate_indexes_after_rebuild,
 };
 use super::rename_table::build_rename_table;
 use super::types::{BuiltQuery, DatabaseBackend};
@@ -66,9 +67,11 @@ pub fn build_add_column(
         }
         let normalized_fill = normalize_fill_with(fill_with);
         let fill_expr = if let Some(fill) = normalized_fill.as_deref() {
-            Expr::cust(normalize_enum_default(&column.r#type, fill))
+            let converted = convert_default_for_backend(fill, backend);
+            Expr::cust(normalize_enum_default(&column.r#type, &converted))
         } else if let Some(def) = &column.default {
-            Expr::cust(normalize_enum_default(&column.r#type, &def.to_sql()))
+            let converted = convert_default_for_backend(&def.to_sql(), backend);
+            Expr::cust(normalize_enum_default(&column.r#type, &converted))
         } else {
             Expr::cust("NULL")
         };
@@ -124,6 +127,7 @@ pub fn build_add_column(
 
         // Backfill with provided value
         if let Some(fill) = normalize_fill_with(fill_with) {
+            let fill = convert_default_for_backend(&fill, backend);
             let update_stmt = Query::update()
                 .table(Alias::new(table))
                 .value(Alias::new(&column.name), Expr::cust(fill))
@@ -600,6 +604,70 @@ mod tests {
         );
 
         with_settings!({ snapshot_suffix => format!("empty_string_default_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    /// Test adding NOT NULL column with '[]'::json default on SQLite
+    /// SQLite should strip the ::json cast, MySQL should use CAST(... AS JSON)
+    #[rstest]
+    #[case::postgres(DatabaseBackend::Postgres)]
+    #[case::mysql(DatabaseBackend::MySql)]
+    #[case::sqlite(DatabaseBackend::Sqlite)]
+    fn test_add_column_with_pg_type_cast_default(#[case] backend: DatabaseBackend) {
+        let column = ColumnDef {
+            name: "story_index".into(),
+            r#type: ColumnType::Simple(SimpleColumnType::Json),
+            nullable: false,
+            default: Some("'[]'::json".into()),
+            comment: None,
+            primary_key: None,
+            unique: None,
+            index: None,
+            foreign_key: None,
+        };
+        let current_schema = vec![TableDef {
+            name: "project".into(),
+            description: None,
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        }];
+        let result = build_add_column(&backend, "project", &column, None, &current_schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        // SQLite must NOT contain ::json syntax
+        if backend == DatabaseBackend::Sqlite {
+            assert!(
+                !sql.contains("::json"),
+                "SQLite SQL should not contain ::json cast, got: {}",
+                sql
+            );
+        }
+
+        // MySQL should use CAST syntax
+        if backend == DatabaseBackend::MySql {
+            assert!(
+                !sql.contains("::json"),
+                "MySQL SQL should not contain ::json cast, got: {}",
+                sql
+            );
+        }
+
+        with_settings!({ snapshot_suffix => format!("pg_type_cast_default_{:?}", backend) }, {
             assert_snapshot!(sql);
         });
     }

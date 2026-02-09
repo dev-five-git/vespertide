@@ -1,0 +1,9 @@
+---
+source: crates/vespertide-query/src/sql/modify_column_nullable.rs
+expression: sql
+---
+UPDATE "orders" SET "paid_at" = CURRENT_TIMESTAMP WHERE "paid_at" IS NULL
+CREATE TABLE "orders_temp" ( "id" integer NOT NULL, "paid_at" timestamp_with_timezone_text NOT NULL )
+INSERT INTO "orders_temp" ("id", "paid_at") SELECT "id", "paid_at" FROM "orders"
+DROP TABLE "orders"
+ALTER TABLE "orders_temp" RENAME TO "orders"

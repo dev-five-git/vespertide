@@ -3,8 +3,8 @@ use sea_query::{Alias, Query, Table};
 use vespertide_core::{ColumnDef, TableDef};
 
 use super::helpers::{
-    build_sea_column_def_with_table, build_sqlite_temp_table_create, normalize_fill_with,
-    recreate_indexes_after_rebuild,
+    build_sea_column_def_with_table, build_sqlite_temp_table_create, convert_default_for_backend,
+    normalize_fill_with, recreate_indexes_after_rebuild,
 };
 use super::rename_table::build_rename_table;
 use super::types::{BuiltQuery, DatabaseBackend, RawSql};
@@ -24,6 +24,7 @@ pub fn build_modify_column_nullable(
 
     // If changing to NOT NULL, first update existing NULL values if fill_with is provided
     if !nullable && let Some(fill_value) = normalize_fill_with(fill_with) {
+        let fill_value = convert_default_for_backend(&fill_value, backend);
         let update_sql = match backend {
             DatabaseBackend::Postgres | DatabaseBackend::Sqlite => format!(
                 "UPDATE \"{}\" SET \"{}\" = {} WHERE \"{}\" IS NULL",
@@ -310,6 +311,67 @@ mod tests {
 
         let suffix = format!(
             "{}_with_index",
+            match backend {
+                DatabaseBackend::Postgres => "postgres",
+                DatabaseBackend::MySql => "mysql",
+                DatabaseBackend::Sqlite => "sqlite",
+            }
+        );
+
+        with_settings!({ snapshot_suffix => suffix }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    /// Test fill_with containing NOW() should be converted to CURRENT_TIMESTAMP for all backends
+    #[rstest]
+    #[case::postgres_fill_now(DatabaseBackend::Postgres)]
+    #[case::mysql_fill_now(DatabaseBackend::MySql)]
+    #[case::sqlite_fill_now(DatabaseBackend::Sqlite)]
+    fn test_fill_with_now_converted_to_current_timestamp(#[case] backend: DatabaseBackend) {
+        let schema = vec![table_def(
+            "orders",
+            vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer), false),
+                col(
+                    "paid_at",
+                    ColumnType::Simple(SimpleColumnType::Timestamptz),
+                    true,
+                ),
+            ],
+            vec![],
+        )];
+
+        let result = build_modify_column_nullable(
+            &backend,
+            "orders",
+            "paid_at",
+            false,
+            Some("NOW()"),
+            &schema,
+        );
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        // NOW() should be converted to CURRENT_TIMESTAMP for all backends
+        assert!(
+            !sql.contains("NOW()"),
+            "SQL should not contain NOW(), got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("CURRENT_TIMESTAMP"),
+            "SQL should contain CURRENT_TIMESTAMP, got: {}",
+            sql
+        );
+
+        let suffix = format!(
+            "{}_fill_now",
             match backend {
                 DatabaseBackend::Postgres => "postgres",
                 DatabaseBackend::MySql => "mysql",

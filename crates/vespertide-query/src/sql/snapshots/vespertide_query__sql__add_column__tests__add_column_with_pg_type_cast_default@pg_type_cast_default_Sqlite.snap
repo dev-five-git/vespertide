@@ -1,0 +1,8 @@
+---
+source: crates/vespertide-query/src/sql/add_column.rs
+expression: sql
+---
+CREATE TABLE "project_temp" ( "id" integer NOT NULL, "story_index" json_text NOT NULL DEFAULT '[]' )
+INSERT INTO "project_temp" ("id", "story_index") SELECT "id", '[]' AS "story_index" FROM "project"
+DROP TABLE "project"
+ALTER TABLE "project_temp" RENAME TO "project"

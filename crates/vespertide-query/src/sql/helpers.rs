@@ -189,7 +189,94 @@ pub fn convert_default_for_backend(default: &str, backend: &DatabaseBackend) -> 
         };
     }
 
+    // PostgreSQL-style type casts: 'value'::type or expr::type
+    if let Some((value, cast_type)) = parse_pg_type_cast(default) {
+        return convert_type_cast(&value, &cast_type, backend);
+    }
+
     default.to_string()
+}
+
+/// Parse a PostgreSQL-style type cast expression (e.g., `'[]'::json`, `0::boolean`)
+/// Returns `(value, type)` if parsed, or None if not a type cast.
+fn parse_pg_type_cast(expr: &str) -> Option<(String, String)> {
+    let trimmed = expr.trim();
+
+    // Handle quoted values: 'value'::type
+    if let Some(after_open) = trimmed.strip_prefix('\'') {
+        // Find the closing quote (handle escaped quotes '')
+        let mut i = 0;
+        let bytes = after_open.as_bytes();
+        while i < bytes.len() {
+            if bytes[i] == b'\'' {
+                // Check for escaped quote ''
+                if i + 1 < bytes.len() && bytes[i + 1] == b'\'' {
+                    i += 2;
+                    continue;
+                }
+                // Found closing quote
+                let value_end = i + 1; // index in `after_open`
+                let rest = &after_open[value_end..];
+                if let Some(stripped) = rest.strip_prefix("::") {
+                    let cast_type = stripped.trim().to_lowercase();
+                    if !cast_type.is_empty() {
+                        let value = format!("'{}'", &after_open[..i]);
+                        return Some((value, cast_type));
+                    }
+                }
+                return None;
+            }
+            i += 1;
+        }
+        return None;
+    }
+
+    // Handle unquoted values: expr::type (e.g., 0::boolean, NULL::json)
+    if let Some(pos) = trimmed.find("::") {
+        let value = trimmed[..pos].trim().to_string();
+        let cast_type = trimmed[pos + 2..].trim().to_lowercase();
+        if !value.is_empty() && !cast_type.is_empty() {
+            return Some((value, cast_type));
+        }
+    }
+
+    None
+}
+
+/// Map PostgreSQL type name to MySQL CAST target type
+fn pg_type_to_mysql_cast(pg_type: &str) -> &'static str {
+    match pg_type {
+        "json" | "jsonb" => "JSON",
+        "text" | "varchar" | "char" | "character varying" => "CHAR",
+        "integer" | "int" | "int4" | "smallint" | "int2" => "SIGNED",
+        "bigint" | "int8" => "SIGNED",
+        "real" | "float4" | "double precision" | "float8" => "DECIMAL",
+        "boolean" | "bool" => "UNSIGNED",
+        "date" => "DATE",
+        "time" => "TIME",
+        "timestamp"
+        | "timestamptz"
+        | "timestamp with time zone"
+        | "timestamp without time zone" => "DATETIME",
+        "numeric" | "decimal" => "DECIMAL",
+        "bytea" => "BINARY",
+        _ => "CHAR",
+    }
+}
+
+/// Convert a type cast expression to the appropriate backend syntax
+fn convert_type_cast(value: &str, cast_type: &str, backend: &DatabaseBackend) -> String {
+    match backend {
+        // PostgreSQL: keep native :: syntax
+        DatabaseBackend::Postgres => format!("{}::{}", value, cast_type),
+        // MySQL: CAST(value AS type)
+        DatabaseBackend::MySql => {
+            let mysql_type = pg_type_to_mysql_cast(cast_type);
+            format!("CAST({} AS {})", value, mysql_type)
+        }
+        // SQLite: strip the cast, use raw value (SQLite is dynamically typed)
+        DatabaseBackend::Sqlite => value.to_string(),
+    }
 }
 
 /// Check if the column type is an enum type
@@ -673,6 +760,98 @@ mod tests {
     ) {
         let result = convert_default_for_backend(default, &backend);
         assert_eq!(result, expected);
+    }
+
+    // --- PostgreSQL type cast conversion tests ---
+
+    #[rstest]
+    // JSON type cast: '[]'::json
+    #[case::json_cast_postgres("'[]'::json", DatabaseBackend::Postgres, "'[]'::json")]
+    #[case::json_cast_mysql("'[]'::json", DatabaseBackend::MySql, "CAST('[]' AS JSON)")]
+    #[case::json_cast_sqlite("'[]'::json", DatabaseBackend::Sqlite, "'[]'")]
+    // JSONB type cast: '{}'::jsonb
+    #[case::jsonb_cast_postgres("'{}'::jsonb", DatabaseBackend::Postgres, "'{}'::jsonb")]
+    #[case::jsonb_cast_mysql("'{}'::jsonb", DatabaseBackend::MySql, "CAST('{}' AS JSON)")]
+    #[case::jsonb_cast_sqlite("'{}'::jsonb", DatabaseBackend::Sqlite, "'{}'")]
+    // Text type cast: 'hello'::text
+    #[case::text_cast_postgres("'hello'::text", DatabaseBackend::Postgres, "'hello'::text")]
+    #[case::text_cast_mysql("'hello'::text", DatabaseBackend::MySql, "CAST('hello' AS CHAR)")]
+    #[case::text_cast_sqlite("'hello'::text", DatabaseBackend::Sqlite, "'hello'")]
+    // Integer type cast: 0::integer
+    #[case::int_cast_postgres("0::integer", DatabaseBackend::Postgres, "0::integer")]
+    #[case::int_cast_mysql("0::integer", DatabaseBackend::MySql, "CAST(0 AS SIGNED)")]
+    #[case::int_cast_sqlite("0::integer", DatabaseBackend::Sqlite, "0")]
+    // Boolean type cast: 0::boolean
+    #[case::bool_cast_postgres("0::boolean", DatabaseBackend::Postgres, "0::boolean")]
+    #[case::bool_cast_mysql("0::boolean", DatabaseBackend::MySql, "CAST(0 AS UNSIGNED)")]
+    #[case::bool_cast_sqlite("0::boolean", DatabaseBackend::Sqlite, "0")]
+    // Nested JSON object: '{"key":"value"}'::json
+    #[case::json_obj_cast_postgres(
+        "'{\"key\":\"value\"}'::json",
+        DatabaseBackend::Postgres,
+        "'{\"key\":\"value\"}'::json"
+    )]
+    #[case::json_obj_cast_mysql(
+        "'{\"key\":\"value\"}'::json",
+        DatabaseBackend::MySql,
+        "CAST('{\"key\":\"value\"}' AS JSON)"
+    )]
+    #[case::json_obj_cast_sqlite(
+        "'{\"key\":\"value\"}'::json",
+        DatabaseBackend::Sqlite,
+        "'{\"key\":\"value\"}'"
+    )]
+    // Timestamp type cast: '2024-01-01'::timestamp
+    #[case::timestamp_cast_postgres(
+        "'2024-01-01'::timestamp",
+        DatabaseBackend::Postgres,
+        "'2024-01-01'::timestamp"
+    )]
+    #[case::timestamp_cast_mysql(
+        "'2024-01-01'::timestamp",
+        DatabaseBackend::MySql,
+        "CAST('2024-01-01' AS DATETIME)"
+    )]
+    #[case::timestamp_cast_sqlite(
+        "'2024-01-01'::timestamp",
+        DatabaseBackend::Sqlite,
+        "'2024-01-01'"
+    )]
+    fn test_convert_default_for_backend_type_cast(
+        #[case] default: &str,
+        #[case] backend: DatabaseBackend,
+        #[case] expected: &str,
+    ) {
+        let result = convert_default_for_backend(default, &backend);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_parse_pg_type_cast_no_cast() {
+        // Regular values should not be parsed as type casts
+        assert!(parse_pg_type_cast("'hello'").is_none());
+        assert!(parse_pg_type_cast("42").is_none());
+        assert!(parse_pg_type_cast("NOW()").is_none());
+        assert!(parse_pg_type_cast("CURRENT_TIMESTAMP").is_none());
+    }
+
+    #[test]
+    fn test_parse_pg_type_cast_valid() {
+        let (value, cast_type) = parse_pg_type_cast("'[]'::json").unwrap();
+        assert_eq!(value, "'[]'");
+        assert_eq!(cast_type, "json");
+
+        let (value, cast_type) = parse_pg_type_cast("0::boolean").unwrap();
+        assert_eq!(value, "0");
+        assert_eq!(cast_type, "boolean");
+    }
+
+    #[test]
+    fn test_parse_pg_type_cast_escaped_quotes() {
+        // Value with escaped quotes: 'it''s'::text
+        let (value, cast_type) = parse_pg_type_cast("'it''s'::text").unwrap();
+        assert_eq!(value, "'it''s'");
+        assert_eq!(cast_type, "text");
     }
 
     #[test]
