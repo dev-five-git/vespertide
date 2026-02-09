@@ -855,6 +855,27 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_pg_type_cast_unterminated_quote() {
+        // Unterminated quoted string should return None (line 203)
+        assert!(parse_pg_type_cast("'unclosed").is_none());
+        assert!(parse_pg_type_cast("'no close quote::json").is_none());
+    }
+
+    #[rstest]
+    #[case::numeric("'0.5'::numeric", DatabaseBackend::MySql, "CAST('0.5' AS DECIMAL)")]
+    #[case::decimal("'1.23'::decimal", DatabaseBackend::MySql, "CAST('1.23' AS DECIMAL)")]
+    #[case::bytea("'\\xDE'::bytea", DatabaseBackend::MySql, "CAST('\\xDE' AS BINARY)")]
+    #[case::unknown("'x'::citext", DatabaseBackend::MySql, "CAST('x' AS CHAR)")]
+    fn test_convert_default_for_backend_type_cast_extra(
+        #[case] default: &str,
+        #[case] backend: DatabaseBackend,
+        #[case] expected: &str,
+    ) {
+        let result = convert_default_for_backend(default, &backend);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
     fn test_is_enum_type_true() {
         use vespertide_core::EnumValues;
 
