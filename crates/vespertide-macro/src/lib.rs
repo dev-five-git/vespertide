@@ -11,7 +11,7 @@ use vespertide_loader::{
     load_config_or_default, load_migrations_at_compile_time, load_models_at_compile_time,
 };
 use vespertide_planner::apply_action;
-use vespertide_query::{DatabaseBackend, build_plan_queries};
+use vespertide_query::{build_plan_queries, DatabaseBackend};
 
 struct MacroInput {
     pool: Expr,
@@ -60,6 +60,7 @@ pub(crate) fn build_migration_block(
     verbose: bool,
 ) -> Result<proc_macro2::TokenStream, String> {
     let version = migration.version;
+    let migration_id = &migration.id;
 
     // Use the current baseline schema (from all previous migrations)
     let queries = build_plan_queries(migration, baseline_schema).map_err(|e| {
@@ -148,10 +149,22 @@ pub(crate) fn build_migration_block(
 
         quote! {
             if __version < #version {
+                // Validate migration id against database if version already tracked
+                if let Some(db_id) = __version_ids.get(&#version) {
+                    let expected_id: &str = #migration_id;
+                    if !expected_id.is_empty() && !db_id.is_empty() && db_id != expected_id {
+                        return Err(::vespertide::MigrationError::IdMismatch {
+                            version: #version,
+                            expected: expected_id.to_string(),
+                            found: db_id.clone(),
+                        });
+                    }
+                }
+
                 eprintln!("[vespertide] Applying migration {} ({})", #version_str, #comment_str);
                 #(#action_blocks)*
 
-                let insert_sql = format!("INSERT INTO {q}{}{q} (version) VALUES ({})", __version_table, #version);
+                let insert_sql = format!("INSERT INTO {q}{}{q} (version, id) VALUES ({}, '{}')", __version_table, #version, #migration_id);
                 let stmt = sea_orm::Statement::from_string(backend, insert_sql);
                 __txn.execute_raw(stmt).await.map_err(|e| {
                     ::vespertide::MigrationError::DatabaseError(format!("Failed to insert version: {}", e))
@@ -180,6 +193,18 @@ pub(crate) fn build_migration_block(
 
         quote! {
             if __version < #version {
+                // Validate migration id against database if version already tracked
+                if let Some(db_id) = __version_ids.get(&#version) {
+                    let expected_id: &str = #migration_id;
+                    if !expected_id.is_empty() && !db_id.is_empty() && db_id != expected_id {
+                        return Err(::vespertide::MigrationError::IdMismatch {
+                            version: #version,
+                            expected: expected_id.to_string(),
+                            found: db_id.clone(),
+                        });
+                    }
+                }
+
                 let sqls: &[&str] = match backend {
                     sea_orm::DatabaseBackend::Postgres => &[#(#pg_sqls),*],
                     sea_orm::DatabaseBackend::MySql => &[#(#mysql_sqls),*],
@@ -196,7 +221,7 @@ pub(crate) fn build_migration_block(
                     }
                 }
 
-                let insert_sql = format!("INSERT INTO {q}{}{q} (version) VALUES ({})", __version_table, #version);
+                let insert_sql = format!("INSERT INTO {q}{}{q} (version, id) VALUES ({}, '{}')", __version_table, #version, #migration_id);
                 let stmt = sea_orm::Statement::from_string(backend, insert_sql);
                 __txn.execute_raw(stmt).await.map_err(|e| {
                     ::vespertide::MigrationError::DatabaseError(format!("Failed to insert version: {}", e))
@@ -232,13 +257,23 @@ fn generate_migration_code(
 
             // Create version table if it does not exist (outside transaction)
             let create_table_sql = format!(
-                "CREATE TABLE IF NOT EXISTS {q}{}{q} (version INTEGER PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
+                "CREATE TABLE IF NOT EXISTS {q}{}{q} (version INTEGER PRIMARY KEY, id TEXT DEFAULT '', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
                 __version_table
             );
             let stmt = sea_orm::Statement::from_string(backend, create_table_sql);
             __pool.execute_raw(stmt).await.map_err(|e| {
                 ::vespertide::MigrationError::DatabaseError(format!("Failed to create version table: {}", e))
             })?;
+
+            // Add id column for existing tables that don't have it yet (backward compatibility).
+            // We use a try-and-ignore approach: if the column already exists, the ALTER will fail
+            // and we simply ignore the error.
+            let alter_sql = format!(
+                "ALTER TABLE {q}{}{q} ADD COLUMN id TEXT DEFAULT ''",
+                __version_table
+            );
+            let stmt = sea_orm::Statement::from_string(backend, alter_sql);
+            let _ = __pool.execute_raw(stmt).await;
 
             // Single transaction for the entire migration process.
             // This prevents race conditions when multiple connections exist
@@ -257,6 +292,21 @@ fn generate_migration_code(
             let __version = version_result
                 .and_then(|row| row.try_get::<i32>("", "version").ok())
                 .unwrap_or(0) as u32;
+
+            // Load all existing (version, id) pairs for id mismatch validation
+            let select_ids_sql = format!("SELECT version, id FROM {q}{}{q}", __version_table);
+            let stmt = sea_orm::Statement::from_string(backend, select_ids_sql);
+            let id_rows = __txn.query_all_raw(stmt).await.map_err(|e| {
+                ::vespertide::MigrationError::DatabaseError(format!("Failed to read version ids: {}", e))
+            })?;
+
+            let mut __version_ids = std::collections::HashMap::<u32, String>::new();
+            for row in &id_rows {
+                if let Ok(v) = row.try_get::<i32>("", "version") {
+                    let id = row.try_get::<String>("", "id").unwrap_or_default();
+                    __version_ids.insert(v as u32, id);
+                }
+            }
 
             #verbose_current_version
 
@@ -475,6 +525,7 @@ mod tests {
     #[test]
     fn test_build_migration_block_create_table() {
         let migration = MigrationPlan {
+            id: String::new(),
             version: 1,
             comment: None,
             created_at: None,
@@ -505,6 +556,7 @@ mod tests {
     fn test_build_migration_block_add_column() {
         // First create the table
         let create_migration = MigrationPlan {
+            id: String::new(),
             version: 1,
             comment: None,
             created_at: None,
@@ -520,6 +572,7 @@ mod tests {
 
         // Now add a column
         let add_column_migration = MigrationPlan {
+            id: String::new(),
             version: 2,
             comment: None,
             created_at: None,
@@ -553,6 +606,7 @@ mod tests {
     #[test]
     fn test_build_migration_block_multiple_actions() {
         let migration = MigrationPlan {
+            id: String::new(),
             version: 1,
             comment: None,
             created_at: None,
@@ -584,6 +638,7 @@ mod tests {
 
         // Create a simple migration block
         let migration = MigrationPlan {
+            id: String::new(),
             version: 1,
             comment: None,
             created_at: None,
@@ -628,6 +683,7 @@ mod tests {
         let mut baseline = Vec::new();
 
         let migration1 = MigrationPlan {
+            id: String::new(),
             version: 1,
             comment: None,
             created_at: None,
@@ -640,6 +696,7 @@ mod tests {
         let block1 = build_migration_block(&migration1, &mut baseline, false).unwrap();
 
         let migration2 = MigrationPlan {
+            id: String::new(),
             version: 2,
             comment: None,
             created_at: None,
@@ -662,6 +719,7 @@ mod tests {
     #[test]
     fn test_build_migration_block_generates_all_backends() {
         let migration = MigrationPlan {
+            id: String::new(),
             version: 1,
             comment: None,
             created_at: None,
@@ -688,6 +746,7 @@ mod tests {
     fn test_build_migration_block_with_delete_table() {
         // First create the table
         let create_migration = MigrationPlan {
+            id: String::new(),
             version: 1,
             comment: None,
             created_at: None,
@@ -704,6 +763,7 @@ mod tests {
 
         // Now delete it
         let delete_migration = MigrationPlan {
+            id: String::new(),
             version: 2,
             comment: None,
             created_at: None,
@@ -724,6 +784,7 @@ mod tests {
     #[test]
     fn test_build_migration_block_with_index() {
         let migration = MigrationPlan {
+            id: String::new(),
             version: 1,
             comment: None,
             created_at: None,
@@ -761,6 +822,7 @@ mod tests {
     fn test_build_migration_block_error_nonexistent_table() {
         // Try to add column to a table that doesn't exist - should fail
         let migration = MigrationPlan {
+            id: String::new(),
             version: 1,
             comment: None,
             created_at: None,
@@ -867,6 +929,7 @@ mod tests {
     #[test]
     fn test_build_migration_block_verbose_create_table() {
         let migration = MigrationPlan {
+            id: String::new(),
             version: 1,
             comment: Some("initial setup".into()),
             created_at: None,
@@ -892,6 +955,7 @@ mod tests {
     #[test]
     fn test_build_migration_block_verbose_multiple_actions() {
         let migration = MigrationPlan {
+            id: String::new(),
             version: 1,
             comment: None,
             created_at: None,
@@ -924,6 +988,7 @@ mod tests {
     fn test_build_migration_block_verbose_add_column() {
         // Create table first
         let create = MigrationPlan {
+            id: String::new(),
             version: 1,
             comment: None,
             created_at: None,
@@ -938,6 +1003,7 @@ mod tests {
 
         // Add column in verbose mode
         let add_col = MigrationPlan {
+            id: String::new(),
             version: 2,
             comment: Some("add email".into()),
             created_at: None,
@@ -971,6 +1037,7 @@ mod tests {
         let version_table = "test_versions";
 
         let migration = MigrationPlan {
+            id: String::new(),
             version: 1,
             comment: None,
             created_at: None,

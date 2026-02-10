@@ -303,6 +303,7 @@ pub async fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Resul
         prompt_enum_value,
     )?;
 
+    plan.id = uuid::Uuid::new_v4().to_string();
     plan.comment = Some(message);
     if plan.created_at.is_none() {
         // Record creation time in RFC3339 (UTC).
@@ -517,14 +518,15 @@ mod tests {
         assert!(has_yaml);
     }
 
-    #[test]
-    fn check_non_nullable_fk_add_column_fails() {
-        use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
-        let plan = MigrationPlan {
-            comment: None,
-            created_at: None,
-            version: 2,
-            actions: vec![
+     #[test]
+     fn check_non_nullable_fk_add_column_fails() {
+         use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
+         let plan = MigrationPlan {
+             id: String::new(),
+             comment: None,
+             created_at: None,
+             version: 2,
+             actions: vec![
                 MigrationAction::AddColumn {
                     table: "post".into(),
                     column: Box::new(ColumnDef {
@@ -563,14 +565,15 @@ mod tests {
         assert!(msg.contains("post"), "error should mention table: {msg}");
     }
 
-    #[test]
-    fn check_nullable_fk_add_column_ok() {
-        use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
-        let plan = MigrationPlan {
-            comment: None,
-            created_at: None,
-            version: 2,
-            actions: vec![
+     #[test]
+     fn check_nullable_fk_add_column_ok() {
+         use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
+         let plan = MigrationPlan {
+             id: String::new(),
+             comment: None,
+             created_at: None,
+             version: 2,
+             actions: vec![
                 MigrationAction::AddColumn {
                     table: "post".into(),
                     column: Box::new(ColumnDef {
@@ -602,15 +605,16 @@ mod tests {
         assert!(check_non_nullable_fk_add_columns(&plan).is_ok());
     }
 
-    #[test]
-    fn check_non_nullable_no_fk_passes() {
-        // Regular non-nullable column without FK should NOT be blocked
-        use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
-        let plan = MigrationPlan {
-            comment: None,
-            created_at: None,
-            version: 2,
-            actions: vec![MigrationAction::AddColumn {
+     #[test]
+     fn check_non_nullable_no_fk_passes() {
+         // Regular non-nullable column without FK should NOT be blocked
+         use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
+         let plan = MigrationPlan {
+             id: String::new(),
+             comment: None,
+             created_at: None,
+             version: 2,
+             actions: vec![MigrationAction::AddColumn {
                 table: "post".into(),
                 column: Box::new(ColumnDef {
                     name: "user_id1".into(),
@@ -666,15 +670,16 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_apply_fill_with_to_plan_add_column() {
-        use vespertide_core::MigrationPlan;
+     #[test]
+     fn test_apply_fill_with_to_plan_add_column() {
+         use vespertide_core::MigrationPlan;
 
-        let mut plan = MigrationPlan {
-            comment: None,
-            created_at: None,
-            version: 1,
-            actions: vec![MigrationAction::AddColumn {
+         let mut plan = MigrationPlan {
+             id: String::new(),
+             comment: None,
+             created_at: None,
+             version: 1,
+             actions: vec![MigrationAction::AddColumn {
                 table: "users".into(),
                 column: Box::new(ColumnDef {
                     name: "email".into(),
@@ -707,15 +712,16 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_apply_fill_with_to_plan_modify_column_nullable() {
-        use vespertide_core::MigrationPlan;
+     #[test]
+     fn test_apply_fill_with_to_plan_modify_column_nullable() {
+         use vespertide_core::MigrationPlan;
 
-        let mut plan = MigrationPlan {
-            comment: None,
-            created_at: None,
-            version: 1,
-            actions: vec![MigrationAction::ModifyColumnNullable {
+         let mut plan = MigrationPlan {
+             id: String::new(),
+             comment: None,
+             created_at: None,
+             version: 1,
+             actions: vec![MigrationAction::ModifyColumnNullable {
                 table: "users".into(),
                 column: "status".into(),
                 nullable: false,
@@ -739,15 +745,16 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_apply_fill_with_to_plan_skips_existing_fill_with() {
-        use vespertide_core::MigrationPlan;
+     #[test]
+     fn test_apply_fill_with_to_plan_skips_existing_fill_with() {
+         use vespertide_core::MigrationPlan;
 
-        let mut plan = MigrationPlan {
-            comment: None,
-            created_at: None,
-            version: 1,
-            actions: vec![MigrationAction::AddColumn {
+         let mut plan = MigrationPlan {
+             id: String::new(),
+             comment: None,
+             created_at: None,
+             version: 1,
+             actions: vec![MigrationAction::AddColumn {
                 table: "users".into(),
                 column: Box::new(ColumnDef {
                     name: "email".into(),
@@ -781,15 +788,16 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_apply_fill_with_to_plan_no_match() {
-        use vespertide_core::MigrationPlan;
+     #[test]
+     fn test_apply_fill_with_to_plan_no_match() {
+         use vespertide_core::MigrationPlan;
 
-        let mut plan = MigrationPlan {
-            comment: None,
-            created_at: None,
-            version: 1,
-            actions: vec![MigrationAction::AddColumn {
+         let mut plan = MigrationPlan {
+             id: String::new(),
+             comment: None,
+             created_at: None,
+             version: 1,
+             actions: vec![MigrationAction::AddColumn {
                 table: "users".into(),
                 column: Box::new(ColumnDef {
                     name: "email".into(),
@@ -823,15 +831,16 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_apply_fill_with_to_plan_multiple_actions() {
-        use vespertide_core::MigrationPlan;
+     #[test]
+     fn test_apply_fill_with_to_plan_multiple_actions() {
+         use vespertide_core::MigrationPlan;
 
-        let mut plan = MigrationPlan {
-            comment: None,
-            created_at: None,
-            version: 1,
-            actions: vec![
+         let mut plan = MigrationPlan {
+             id: String::new(),
+             comment: None,
+             created_at: None,
+             version: 1,
+             actions: vec![
                 MigrationAction::AddColumn {
                     table: "users".into(),
                     column: Box::new(ColumnDef {
@@ -883,15 +892,16 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_apply_fill_with_to_plan_other_actions_ignored() {
-        use vespertide_core::MigrationPlan;
+     #[test]
+     fn test_apply_fill_with_to_plan_other_actions_ignored() {
+         use vespertide_core::MigrationPlan;
 
-        let mut plan = MigrationPlan {
-            comment: None,
-            created_at: None,
-            version: 1,
-            actions: vec![MigrationAction::DeleteColumn {
+         let mut plan = MigrationPlan {
+             id: String::new(),
+             comment: None,
+             created_at: None,
+             version: 1,
+             actions: vec![MigrationAction::DeleteColumn {
                 table: "users".into(),
                 column: "old_column".into(),
             }],
@@ -1144,15 +1154,16 @@ mod tests {
         let _: fn(&str, &str) -> Result<String> = prompt_fill_with_value;
     }
 
-    #[test]
-    fn test_handle_missing_fill_with_collects_and_applies() {
-        use vespertide_core::MigrationPlan;
+     #[test]
+     fn test_handle_missing_fill_with_collects_and_applies() {
+         use vespertide_core::MigrationPlan;
 
-        let mut plan = MigrationPlan {
-            comment: None,
-            created_at: None,
-            version: 1,
-            actions: vec![MigrationAction::AddColumn {
+         let mut plan = MigrationPlan {
+             id: String::new(),
+             comment: None,
+             created_at: None,
+             version: 1,
+             actions: vec![MigrationAction::AddColumn {
                 table: "users".into(),
                 column: Box::new(ColumnDef {
                     name: "email".into(),
@@ -1200,16 +1211,17 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_handle_missing_fill_with_no_missing() {
-        use vespertide_core::MigrationPlan;
+     #[test]
+     fn test_handle_missing_fill_with_no_missing() {
+         use vespertide_core::MigrationPlan;
 
-        // Plan with no missing fill_with values (nullable column)
-        let mut plan = MigrationPlan {
-            comment: None,
-            created_at: None,
-            version: 1,
-            actions: vec![MigrationAction::AddColumn {
+         // Plan with no missing fill_with values (nullable column)
+         let mut plan = MigrationPlan {
+             id: String::new(),
+             comment: None,
+             created_at: None,
+             version: 1,
+             actions: vec![MigrationAction::AddColumn {
                 table: "users".into(),
                 column: Box::new(ColumnDef {
                     name: "email".into(),
@@ -1244,15 +1256,16 @@ mod tests {
         assert!(fill_values.is_empty());
     }
 
-    #[test]
-    fn test_handle_missing_fill_with_prompt_error() {
-        use vespertide_core::MigrationPlan;
+     #[test]
+     fn test_handle_missing_fill_with_prompt_error() {
+         use vespertide_core::MigrationPlan;
 
-        let mut plan = MigrationPlan {
-            comment: None,
-            created_at: None,
-            version: 1,
-            actions: vec![MigrationAction::AddColumn {
+         let mut plan = MigrationPlan {
+             id: String::new(),
+             comment: None,
+             created_at: None,
+             version: 1,
+             actions: vec![MigrationAction::AddColumn {
                 table: "users".into(),
                 column: Box::new(ColumnDef {
                     name: "email".into(),
@@ -1294,15 +1307,16 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_handle_missing_fill_with_multiple_columns() {
-        use vespertide_core::MigrationPlan;
+     #[test]
+     fn test_handle_missing_fill_with_multiple_columns() {
+         use vespertide_core::MigrationPlan;
 
-        let mut plan = MigrationPlan {
-            comment: None,
-            created_at: None,
-            version: 1,
-            actions: vec![
+         let mut plan = MigrationPlan {
+             id: String::new(),
+             comment: None,
+             created_at: None,
+             version: 1,
+             actions: vec![
                 MigrationAction::AddColumn {
                     table: "users".into(),
                     column: Box::new(ColumnDef {

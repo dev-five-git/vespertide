@@ -3,12 +3,13 @@ use vespertide_core::{
     ColumnDef, ColumnType, ComplexColumnType, EnumValues, MigrationAction, MigrationPlan,
     SimpleColumnType, TableDef,
 };
-use vespertide_query::{DatabaseBackend, build_plan_queries};
+use vespertide_query::{build_plan_queries, DatabaseBackend};
 
 #[test]
 fn test_enum_value_change_generates_correct_sql() {
     // Simulate migration 0003: changing enum from ["active", "inactive"] to ["active", "inactive", "pending"]
     let plan = MigrationPlan {
+        id: String::new(),
         comment: Some("Fix enum".into()),
         created_at: Some("2025-12-17T07:57:14Z".into()),
         version: 3,

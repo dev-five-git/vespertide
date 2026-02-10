@@ -1,10 +1,10 @@
 use vespertide_core::{MigrationAction, MigrationPlan, TableDef};
 use vespertide_planner::apply_action;
 
-use crate::DatabaseBackend;
 use crate::error::QueryError;
-use crate::sql::BuiltQuery;
 use crate::sql::build_action_queries_with_pending;
+use crate::sql::BuiltQuery;
+use crate::DatabaseBackend;
 
 pub struct PlanQueries {
     pub action: MigrationAction,
@@ -119,6 +119,7 @@ mod tests {
     #[rstest]
     #[case::empty(
         MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -128,6 +129,7 @@ mod tests {
     )]
     #[case::single_action(
         MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -139,6 +141,7 @@ mod tests {
     )]
     #[case::multiple_actions(
         MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -190,6 +193,7 @@ mod tests {
         col_with_unique.unique = Some(vespertide_core::StrOrBoolOrArray::Bool(true));
 
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -235,6 +239,7 @@ mod tests {
         col_with_index.index = Some(vespertide_core::StrOrBoolOrArray::Bool(true));
 
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -270,6 +275,7 @@ mod tests {
     #[test]
     fn test_build_plan_queries_sql_content() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -372,6 +378,7 @@ mod tests {
             });
         }
         MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -393,6 +400,7 @@ mod tests {
             column: "category_id".into(),
         });
         MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -702,6 +710,7 @@ mod tests {
         ];
 
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,

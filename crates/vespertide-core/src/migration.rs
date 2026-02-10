@@ -9,4 +9,10 @@ pub enum MigrationError {
     NotImplemented,
     #[error("database error: {0}")]
     DatabaseError(String),
+    #[error("migration id mismatch for version {version}: expected '{expected}', found '{found}' in database")]
+    IdMismatch {
+        version: u32,
+        expected: String,
+        found: String,
+    },
 }

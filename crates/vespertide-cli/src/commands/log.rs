@@ -133,21 +133,22 @@ mod tests {
         fs::write("vespertide.json", text).unwrap();
     }
 
-    fn write_migration(cfg: &VespertideConfig) {
-        fs::create_dir_all(cfg.migrations_dir()).unwrap();
-        let plan = MigrationPlan {
-            comment: Some("init".into()),
-            created_at: Some("2024-01-01T00:00:00Z".into()),
-            version: 1,
-            actions: vec![MigrationAction::CreateTable {
-                table: "users".into(),
-                columns: vec![],
-                constraints: vec![],
-            }],
-        };
-        let path = cfg.migrations_dir().join("0001_init.json");
-        fs::write(path, serde_json::to_string_pretty(&plan).unwrap()).unwrap();
-    }
+     fn write_migration(cfg: &VespertideConfig) {
+         fs::create_dir_all(cfg.migrations_dir()).unwrap();
+         let plan = MigrationPlan {
+             id: String::new(),
+             comment: Some("init".into()),
+             created_at: Some("2024-01-01T00:00:00Z".into()),
+             version: 1,
+             actions: vec![MigrationAction::CreateTable {
+                 table: "users".into(),
+                 columns: vec![],
+                 constraints: vec![],
+             }],
+         };
+         let path = cfg.migrations_dir().join("0001_init.json");
+         fs::write(path, serde_json::to_string_pretty(&plan).unwrap()).unwrap();
+     }
 
     #[tokio::test]
     #[serial_test::serial]
@@ -246,12 +247,13 @@ mod tests {
         write_config(&cfg);
         fs::create_dir_all(cfg.migrations_dir()).unwrap();
 
-        // Create a migration with ModifyColumnType for SQLite, which generates multiple SQL statements
-        let plan = MigrationPlan {
-            comment: Some("modify column type".into()),
-            created_at: Some("2024-01-01T00:00:00Z".into()),
-            version: 1,
-            actions: vec![
+         // Create a migration with ModifyColumnType for SQLite, which generates multiple SQL statements
+         let plan = MigrationPlan {
+             id: String::new(),
+             comment: Some("modify column type".into()),
+             created_at: Some("2024-01-01T00:00:00Z".into()),
+             version: 1,
+             actions: vec![
                 MigrationAction::CreateTable {
                     table: "users".into(),
                     columns: vec![ColumnDef {

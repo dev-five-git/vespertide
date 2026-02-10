@@ -6,6 +6,10 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct MigrationPlan {
+    /// Unique identifier for this migration (UUID format).
+    /// Defaults to empty string for backward compatibility with old migration files.
+    #[serde(default)]
+    pub id: String,
     pub comment: Option<String>,
     #[serde(default)]
     pub created_at: Option<String>,
@@ -810,6 +814,7 @@ mod tests {
     #[test]
     fn test_migration_plan_with_prefix() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: Some("test".into()),
             created_at: None,
             version: 1,

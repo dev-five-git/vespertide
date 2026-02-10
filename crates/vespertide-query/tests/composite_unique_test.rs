@@ -1,14 +1,15 @@
 use vespertide_core::{
-    ColumnDef, ColumnType, MigrationAction, MigrationPlan, SimpleColumnType,
-    schema::StrOrBoolOrArray,
+    schema::StrOrBoolOrArray, ColumnDef, ColumnType, MigrationAction, MigrationPlan,
+    SimpleColumnType,
 };
-use vespertide_query::{DatabaseBackend, build_plan_queries};
+use vespertide_query::{build_plan_queries, DatabaseBackend};
 
 #[test]
 fn test_composite_unique_constraint_generates_single_index() {
     // Test that multiple columns with the same unique constraint name
     // generate a single composite unique index, not separate indexes per column
     let plan = MigrationPlan {
+        id: String::new(),
         version: 1,
         comment: Some("Test composite unique".into()),
         created_at: None,

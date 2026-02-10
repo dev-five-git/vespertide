@@ -612,6 +612,7 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
     sort_enum_default_dependencies(&mut actions, &from_map);
 
     Ok(MigrationPlan {
+        id: String::new(),
         comment: None,
         created_at: None,
         version: 0,
