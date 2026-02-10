@@ -4,7 +4,7 @@ mod test_utils {
         ColumnDef, ColumnType, ComplexColumnType, EnumValues, MigrationAction, MigrationPlan,
         SimpleColumnType,
     };
-    use vespertide_query::{build_plan_queries, DatabaseBackend};
+    use vespertide_query::{DatabaseBackend, build_plan_queries};
     #[test]
     fn test_table_prefixed_enum_names() {
         // Test that enum types are created with table-prefixed names to avoid conflicts

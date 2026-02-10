@@ -1,8 +1,8 @@
 use vespertide_core::{
-    schema::StrOrBoolOrArray, ColumnDef, ColumnType, MigrationAction, MigrationPlan,
-    SimpleColumnType,
+    ColumnDef, ColumnType, MigrationAction, MigrationPlan, SimpleColumnType,
+    schema::StrOrBoolOrArray,
 };
-use vespertide_query::{build_plan_queries, DatabaseBackend};
+use vespertide_query::{DatabaseBackend, build_plan_queries};
 
 #[test]
 fn test_composite_unique_constraint_generates_single_index() {

@@ -222,32 +222,32 @@ mod tests {
         fs::write(path, serde_json::to_string_pretty(&table).unwrap()).unwrap();
     }
 
-     fn write_migration(cfg: &VespertideConfig) {
-         fs::create_dir_all(cfg.migrations_dir()).unwrap();
-         let plan = MigrationPlan {
-             id: String::new(),
-             comment: Some("init".into()),
-             created_at: Some("2024-01-01T00:00:00Z".into()),
-             version: 1,
-             actions: vec![MigrationAction::CreateTable {
-                 table: "users".into(),
-                 columns: vec![ColumnDef {
-                     name: "id".into(),
-                     r#type: ColumnType::Simple(SimpleColumnType::Integer),
-                     nullable: false,
-                     default: None,
-                     comment: None,
-                     primary_key: None,
-                     unique: None,
-                     index: None,
-                     foreign_key: None,
-                 }],
-                 constraints: vec![],
-             }],
-         };
-         let path = cfg.migrations_dir().join("0001_init.json");
-         fs::write(path, serde_json::to_string_pretty(&plan).unwrap()).unwrap();
-     }
+    fn write_migration(cfg: &VespertideConfig) {
+        fs::create_dir_all(cfg.migrations_dir()).unwrap();
+        let plan = MigrationPlan {
+            id: String::new(),
+            comment: Some("init".into()),
+            created_at: Some("2024-01-01T00:00:00Z".into()),
+            version: 1,
+            actions: vec![MigrationAction::CreateTable {
+                table: "users".into(),
+                columns: vec![ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                }],
+                constraints: vec![],
+            }],
+        };
+        let path = cfg.migrations_dir().join("0001_init.json");
+        fs::write(path, serde_json::to_string_pretty(&plan).unwrap()).unwrap();
+    }
 
     #[tokio::test]
     #[serial]

@@ -109,8 +109,8 @@ mod tests {
     use tempfile::tempdir;
     use vespertide_config::VespertideConfig;
     use vespertide_core::{
-        schema::foreign_key::ForeignKeySyntax, ColumnDef, ColumnType, MigrationPlan,
-        SimpleColumnType, TableConstraint, TableDef,
+        ColumnDef, ColumnType, MigrationPlan, SimpleColumnType, TableConstraint, TableDef,
+        schema::foreign_key::ForeignKeySyntax,
     };
 
     struct CwdGuard {
