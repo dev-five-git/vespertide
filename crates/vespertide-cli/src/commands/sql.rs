@@ -227,6 +227,7 @@ mod tests {
         write_model("users");
 
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -267,6 +268,7 @@ mod tests {
         write_model("users");
 
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -307,6 +309,7 @@ mod tests {
         write_model("users");
 
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -341,6 +344,7 @@ mod tests {
     #[serial]
     async fn emit_sql_prints_created_at_and_comment_postgres() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: Some("with comment".into()),
             created_at: Some("2024-01-02T00:00:00Z".into()),
             version: 1,
@@ -357,6 +361,7 @@ mod tests {
     #[serial]
     async fn emit_sql_prints_created_at_and_comment_mysql() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: Some("with comment".into()),
             created_at: Some("2024-01-02T00:00:00Z".into()),
             version: 1,
@@ -373,6 +378,7 @@ mod tests {
     #[serial]
     async fn emit_sql_prints_created_at_and_comment_sqlite() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: Some("with comment".into()),
             created_at: Some("2024-01-02T00:00:00Z".into()),
             version: 1,
@@ -389,6 +395,7 @@ mod tests {
     #[serial]
     async fn emit_sql_multiple_queries() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -434,6 +441,7 @@ mod tests {
 
         // Create a migration that adds a NOT NULL column in SQLite, which generates multiple queries
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,

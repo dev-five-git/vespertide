@@ -226,12 +226,14 @@ mod tests {
 
         fs::create_dir_all("migrations").unwrap();
         let plan1 = MigrationPlan {
+            id: String::new(),
             comment: Some("first".into()),
             created_at: None,
             version: 2,
             actions: vec![],
         };
         let plan0 = MigrationPlan {
+            id: String::new(),
             comment: Some("zero".into()),
             created_at: None,
             version: 1,

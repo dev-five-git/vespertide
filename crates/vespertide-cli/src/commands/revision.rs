@@ -303,6 +303,7 @@ pub async fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Resul
         prompt_enum_value,
     )?;
 
+    plan.id = uuid::Uuid::new_v4().to_string();
     plan.comment = Some(message);
     if plan.created_at.is_none() {
         // Record creation time in RFC3339 (UTC).
@@ -521,6 +522,7 @@ mod tests {
     fn check_non_nullable_fk_add_column_fails() {
         use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 2,
@@ -567,6 +569,7 @@ mod tests {
     fn check_nullable_fk_add_column_ok() {
         use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 2,
@@ -607,6 +610,7 @@ mod tests {
         // Regular non-nullable column without FK should NOT be blocked
         use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 2,
@@ -671,6 +675,7 @@ mod tests {
         use vespertide_core::MigrationPlan;
 
         let mut plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -712,6 +717,7 @@ mod tests {
         use vespertide_core::MigrationPlan;
 
         let mut plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -744,6 +750,7 @@ mod tests {
         use vespertide_core::MigrationPlan;
 
         let mut plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -786,6 +793,7 @@ mod tests {
         use vespertide_core::MigrationPlan;
 
         let mut plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -828,6 +836,7 @@ mod tests {
         use vespertide_core::MigrationPlan;
 
         let mut plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -888,6 +897,7 @@ mod tests {
         use vespertide_core::MigrationPlan;
 
         let mut plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1149,6 +1159,7 @@ mod tests {
         use vespertide_core::MigrationPlan;
 
         let mut plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1206,6 +1217,7 @@ mod tests {
 
         // Plan with no missing fill_with values (nullable column)
         let mut plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1249,6 +1261,7 @@ mod tests {
         use vespertide_core::MigrationPlan;
 
         let mut plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1299,6 +1312,7 @@ mod tests {
         use vespertide_core::MigrationPlan;
 
         let mut plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,

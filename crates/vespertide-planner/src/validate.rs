@@ -851,6 +851,7 @@ mod tests {
         use vespertide_core::{ColumnDef, ColumnType, MigrationAction, MigrationPlan};
 
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -887,6 +888,7 @@ mod tests {
         use vespertide_core::{ColumnDef, ColumnType, MigrationAction, MigrationPlan};
 
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -916,6 +918,7 @@ mod tests {
         use vespertide_core::{ColumnDef, ColumnType, MigrationAction, MigrationPlan};
 
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -945,6 +948,7 @@ mod tests {
         use vespertide_core::{ColumnDef, ColumnType, MigrationAction, MigrationPlan};
 
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1149,6 +1153,7 @@ mod tests {
     #[test]
     fn validate_migration_plan_modify_nullable_to_non_nullable_missing_fill_with() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1174,6 +1179,7 @@ mod tests {
     #[test]
     fn validate_migration_plan_modify_nullable_to_non_nullable_with_fill_with() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1193,6 +1199,7 @@ mod tests {
     fn validate_migration_plan_modify_non_nullable_to_nullable() {
         // Changing from non-nullable to nullable does NOT require fill_with
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1211,6 +1218,7 @@ mod tests {
     #[test]
     fn validate_enum_add_column_invalid_default() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1255,6 +1263,7 @@ mod tests {
     #[test]
     fn validate_enum_add_column_invalid_fill_with() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1299,6 +1308,7 @@ mod tests {
     #[test]
     fn validate_enum_add_column_valid_default_quoted() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1333,6 +1343,7 @@ mod tests {
     #[test]
     fn validate_enum_add_column_valid_default_unquoted() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1367,6 +1378,7 @@ mod tests {
     #[test]
     fn validate_enum_add_column_valid_fill_with() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1456,6 +1468,7 @@ mod tests {
     #[test]
     fn validate_enum_integer_add_column_valid() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1499,6 +1512,7 @@ mod tests {
     #[test]
     fn validate_enum_integer_add_column_invalid() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1553,6 +1567,7 @@ mod tests {
     fn validate_enum_null_value_skipped() {
         // NULL values should be allowed and skipped during validation
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1584,6 +1599,7 @@ mod tests {
     fn validate_enum_sql_expression_skipped() {
         // SQL expressions like function calls should be skipped
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1616,6 +1632,7 @@ mod tests {
         // Empty string fill_with should be skipped during enum validation
         // (converted to '' by to_sql, which is empty after trimming)
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1648,6 +1665,7 @@ mod tests {
     #[test]
     fn find_missing_fill_with_add_column_not_null_no_default() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1679,6 +1697,7 @@ mod tests {
     #[test]
     fn find_missing_fill_with_add_column_with_default() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1706,6 +1725,7 @@ mod tests {
     #[test]
     fn find_missing_fill_with_add_column_nullable() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1733,6 +1753,7 @@ mod tests {
     #[test]
     fn find_missing_fill_with_add_column_with_fill_with() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1760,6 +1781,7 @@ mod tests {
     #[test]
     fn find_missing_fill_with_modify_nullable_to_not_null() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1783,6 +1805,7 @@ mod tests {
     #[test]
     fn find_missing_fill_with_modify_to_nullable() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1801,6 +1824,7 @@ mod tests {
     #[test]
     fn find_missing_fill_with_modify_not_null_with_fill_with() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1837,6 +1861,7 @@ mod tests {
         }];
 
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1876,6 +1901,7 @@ mod tests {
         }];
 
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1895,6 +1921,7 @@ mod tests {
     #[test]
     fn find_missing_fill_with_multiple_actions() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -1951,6 +1978,7 @@ mod tests {
     #[test]
     fn find_missing_fill_with_other_actions_ignored() {
         let plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,

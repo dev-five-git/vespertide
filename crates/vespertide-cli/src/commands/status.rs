@@ -225,6 +225,7 @@ mod tests {
     fn write_migration(cfg: &VespertideConfig) {
         fs::create_dir_all(cfg.migrations_dir()).unwrap();
         let plan = MigrationPlan {
+            id: String::new(),
             comment: Some("init".into()),
             created_at: Some("2024-01-01T00:00:00Z".into()),
             version: 1,

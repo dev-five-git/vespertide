@@ -9,6 +9,7 @@ mod test_utils {
     fn test_table_prefixed_enum_names() {
         // Test that enum types are created with table-prefixed names to avoid conflicts
         let plan = MigrationPlan {
+            id: String::new(),
             version: 1,
             comment: Some("Test enum naming".into()),
             created_at: None,

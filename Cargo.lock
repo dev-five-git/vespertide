@@ -3283,6 +3283,7 @@ version = "1.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee48d38b119b0cd71fe4141b30f5ba9c7c5d9f4e7a3a8b4a674e4b6ef789976f"
 dependencies = [
+ "getrandom 0.3.4",
  "js-sys",
  "serde_core",
  "wasm-bindgen",
@@ -3342,7 +3343,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide"
-version = "0.1.43"
+version = "0.1.44"
 dependencies = [
  "vespertide-core",
  "vespertide-macro",
@@ -3350,7 +3351,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-cli"
-version = "0.1.43"
+version = "0.1.44"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -3368,6 +3369,7 @@ dependencies = [
  "serial_test",
  "tempfile",
  "tokio",
+ "uuid",
  "vespertide-config",
  "vespertide-core",
  "vespertide-exporter",
@@ -3378,7 +3380,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-config"
-version = "0.1.43"
+version = "0.1.44"
 dependencies = [
  "clap",
  "schemars",
@@ -3388,7 +3390,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-core"
-version = "0.1.43"
+version = "0.1.44"
 dependencies = [
  "rstest",
  "schemars",
@@ -3400,7 +3402,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-exporter"
-version = "0.1.43"
+version = "0.1.44"
 dependencies = [
  "insta",
  "rstest",
@@ -3412,7 +3414,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-loader"
-version = "0.1.43"
+version = "0.1.44"
 dependencies = [
  "anyhow",
  "rstest",
@@ -3427,7 +3429,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-macro"
-version = "0.1.43"
+version = "0.1.44"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3444,11 +3446,11 @@ dependencies = [
 
 [[package]]
 name = "vespertide-naming"
-version = "0.1.43"
+version = "0.1.44"
 
 [[package]]
 name = "vespertide-planner"
-version = "0.1.43"
+version = "0.1.44"
 dependencies = [
  "insta",
  "rstest",
@@ -3459,7 +3461,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-query"
-version = "0.1.43"
+version = "0.1.44"
 dependencies = [
  "insta",
  "rstest",

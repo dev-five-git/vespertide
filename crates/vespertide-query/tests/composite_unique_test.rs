@@ -9,6 +9,7 @@ fn test_composite_unique_constraint_generates_single_index() {
     // Test that multiple columns with the same unique constraint name
     // generate a single composite unique index, not separate indexes per column
     let plan = MigrationPlan {
+        id: String::new(),
         version: 1,
         comment: Some("Test composite unique".into()),
         created_at: None,

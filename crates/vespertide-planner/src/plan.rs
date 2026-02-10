@@ -70,6 +70,7 @@ mod tests {
     #[rstest]
     fn plan_next_migration_sets_next_version() {
         let applied = vec![MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,

@@ -48,6 +48,7 @@ mod tests {
     #[rstest]
     #[case::create_only(
         vec![MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -66,6 +67,7 @@ mod tests {
     #[case::create_and_add_column(
         vec![
             MigrationPlan {
+                id: String::new(),
                 comment: None,
                 created_at: None,
                 version: 1,
@@ -76,6 +78,7 @@ mod tests {
                 }],
             },
             MigrationPlan {
+                id: String::new(),
                 comment: None,
                 created_at: None,
                 version: 2,
@@ -98,6 +101,7 @@ mod tests {
     #[case::create_add_column_and_index(
         vec![
             MigrationPlan {
+                id: String::new(),
                 comment: None,
                 created_at: None,
                 version: 1,
@@ -108,6 +112,7 @@ mod tests {
                 }],
             },
             MigrationPlan {
+                id: String::new(),
                 comment: None,
                 created_at: None,
                 version: 2,
@@ -118,6 +123,7 @@ mod tests {
                 }],
             },
             MigrationPlan {
+                id: String::new(),
                 comment: None,
                 created_at: None,
                 version: 3,
@@ -162,6 +168,7 @@ mod tests {
 
         // Simulate migration 0001: CreateTable with both inline unique and table-level constraint
         let create_plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 1,
@@ -187,6 +194,7 @@ mod tests {
 
         // Migration 0002: RemoveConstraint
         let remove_plan = MigrationPlan {
+            id: String::new(),
             comment: None,
             created_at: None,
             version: 2,
