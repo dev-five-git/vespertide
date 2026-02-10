@@ -1,6 +1,6 @@
 [package]
 name = "vespertide-cli"
-version = "0.1.44"
+version = "0.1.45"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
