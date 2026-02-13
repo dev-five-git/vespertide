@@ -301,6 +301,9 @@ fn format_default_value(value: &StringOrBool, column_type: &ColumnType) -> Strin
         trimmed
     };
 
+    // Escape double quotes for embedding in Rust attribute strings
+    let escaped = cleaned.replace('"', "\\\"");
+
     // Format based on column type
     match column_type {
         // Numeric types: no quotes
@@ -320,7 +323,7 @@ fn format_default_value(value: &StringOrBool, column_type: &ColumnType) -> Strin
             match values {
                 EnumValues::String(_) => {
                     // String enum: use the string value as-is with quotes
-                    format!("default_value = \"{}\"", cleaned)
+                    format!("default_value = \"{}\"", escaped)
                 }
                 EnumValues::Integer(int_values) => {
                     // Integer enum: can be either a number or a variant name
@@ -342,7 +345,7 @@ fn format_default_value(value: &StringOrBool, column_type: &ColumnType) -> Strin
         }
         // All other types: use quotes
         _ => {
-            format!("default_value = \"{}\"", cleaned)
+            format!("default_value = \"{}\"", escaped)
         }
     }
 }
@@ -3375,5 +3378,31 @@ mod tests {
         let result = exporter.render_entity(&table).unwrap();
         // Should have original table name without prefix
         assert!(result.contains("#[sea_orm(table_name = \"users\")]"));
+    }
+
+    #[test]
+    fn test_json_default_value_escapes_double_quotes() {
+        let table = TableDef {
+            name: "configs".into(),
+            description: None,
+            columns: vec![ColumnDef {
+                name: "data".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Json),
+                nullable: false,
+                default: Some(r#"{"hello": "world"}"#.into()),
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        };
+        let rendered = render_entity(&table);
+        assert!(
+            rendered.contains(r#"default_value = "{\"hello\": \"world\"}"#),
+            "Expected escaped quotes in default_value, got: {}",
+            rendered
+        );
     }
 }

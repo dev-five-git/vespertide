@@ -435,13 +435,15 @@ fn render_column(
     // Default value
     if let Some(ref default) = col.default {
         let default_str = default.to_sql();
+        // Escape double quotes for embedding in Python strings
+        let escaped = default_str.replace('"', "\\\"");
         // Check if it's a function call or literal
         if default_str.contains('(') {
-            attrs.push(format!("server_default=text(\"{}\")", default_str));
+            attrs.push(format!("server_default=text(\"{}\")", escaped));
         } else if default_str.starts_with('\'') || default_str.starts_with('"') {
             attrs.push(format!("server_default={}", default_str));
         } else {
-            attrs.push(format!("server_default=\"{}\"", default_str));
+            attrs.push(format!("server_default=\"{}\"", escaped));
         }
     }
 
@@ -1483,5 +1485,38 @@ mod tests {
         assert!(!used2.needs_optional);
         used2.add_column_type(&ColumnType::Simple(SimpleColumnType::Integer), true);
         assert!(used2.needs_optional);
+    }
+
+    #[test]
+    fn test_json_default_value_escapes_double_quotes() {
+        let table = TableDef {
+            name: "configs".into(),
+            description: None,
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ColumnDef {
+                    name: "data".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Json),
+                    nullable: false,
+                    default: Some(r#"{"hello": "world"}"#.into()),
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
+        };
+
+        let result = render_entity(&table).unwrap();
+        assert!(
+            result.contains(r#"server_default="{\"hello\": \"world\"}"#),
+            "Expected escaped quotes in server_default, got: {}",
+            result
+        );
     }
 }
