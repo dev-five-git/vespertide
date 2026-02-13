@@ -374,11 +374,13 @@ fn render_column(
     // Default value handling
     if let Some(ref default) = col.default {
         let default_str = default.to_sql();
+        // Escape double quotes for embedding in Python strings
+        let escaped = default_str.replace('"', "\\\"");
         // For server-side defaults, use sa_column_kwargs
         if default_str.contains('(') {
             field_args.push(format!(
                 "sa_column_kwargs={{\"server_default\": text(\"{}\")}}",
-                default_str
+                escaped
             ));
         } else if default_str == "true" {
             field_args.push("default=True".into());
@@ -387,14 +389,15 @@ fn render_column(
         } else if default_str.starts_with('\'') || default_str.starts_with('"') {
             // String literal - strip quotes for Python
             let stripped = default_str.trim_matches(|c| c == '\'' || c == '"');
-            field_args.push(format!("default=\"{}\"", stripped));
+            let stripped_escaped = stripped.replace('"', "\\\"");
+            field_args.push(format!("default=\"{}\"", stripped_escaped));
         } else if default_str.parse::<f64>().is_ok() {
             field_args.push(format!("default={}", default_str));
         } else {
             // Assume it's a server default
             field_args.push(format!(
                 "sa_column_kwargs={{\"server_default\": text(\"{}\")}}",
-                default_str
+                escaped
             ));
         }
     } else if col.nullable {
@@ -1342,5 +1345,38 @@ mod tests {
         assert!(!used.needs_optional);
         used.add_column_type(&ColumnType::Simple(SimpleColumnType::Integer), true);
         assert!(used.needs_optional);
+    }
+
+    #[test]
+    fn test_json_default_value_escapes_double_quotes() {
+        let table = TableDef {
+            name: "configs".into(),
+            description: None,
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ColumnDef {
+                    name: "data".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Json),
+                    nullable: false,
+                    default: Some(r#"{"hello": "world"}"#.into()),
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
+        };
+
+        let result = render_entity(&table).unwrap();
+        assert!(
+            result.contains(r#"server_default": text("{\"hello\": \"world\"}"#),
+            "Expected escaped quotes in server_default, got: {}",
+            result
+        );
     }
 }
