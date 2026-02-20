@@ -422,6 +422,32 @@ pub fn validate_migration_plan(plan: &MigrationPlan) -> Result<(), PlannerError>
                     return Err(PlannerError::MissingFillWith(table.clone(), column.clone()));
                 }
             }
+            MigrationAction::ModifyColumnType {
+                table,
+                column,
+                new_type,
+                fill_with,
+            } => {
+                // Validate that fill_with replacement values are valid enum values in the NEW type
+                if let (
+                    Some(fw),
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name, values, ..
+                    }),
+                ) = (fill_with, new_type)
+                {
+                    for replacement in fw.values() {
+                        validate_enum_value(
+                            replacement,
+                            name,
+                            values,
+                            table,
+                            column,
+                            "fill_with",
+                        )?;
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -519,6 +545,96 @@ pub fn find_missing_fill_with(
                 }
             }
             _ => {}
+        }
+    }
+
+    missing
+}
+
+/// Information about a ModifyColumnType action that removes enum values and needs fill_with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnumFillWithRequired {
+    /// Index of the action in the migration plan.
+    pub action_index: usize,
+    /// Table name.
+    pub table: String,
+    /// Column name.
+    pub column: String,
+    /// Removed enum values that need replacement mappings.
+    pub removed_values: Vec<String>,
+    /// Remaining valid enum values (for selection UI).
+    pub remaining_values: Vec<String>,
+}
+
+/// Find all ModifyColumnType actions that remove string enum values but lack fill_with mappings.
+///
+/// `current_schema` is the baseline schema (from applied migrations) used to look up
+/// the old enum type. Returns a list of actions that need fill_with mappings.
+pub fn find_missing_enum_fill_with(
+    plan: &MigrationPlan,
+    current_schema: &[TableDef],
+) -> Vec<EnumFillWithRequired> {
+    let mut missing = Vec::new();
+
+    for (idx, action) in plan.actions.iter().enumerate() {
+        if let MigrationAction::ModifyColumnType {
+            table,
+            column,
+            new_type,
+            fill_with,
+        } = action
+        {
+            // Only applies to string enum → string enum changes
+            let old_type = current_schema
+                .iter()
+                .find(|t| t.name == *table)
+                .and_then(|t| t.columns.iter().find(|c| c.name == *column))
+                .map(|c| &c.r#type);
+
+            if let (
+                Some(ColumnType::Complex(ComplexColumnType::Enum {
+                    values: EnumValues::String(old_values),
+                    ..
+                })),
+                ColumnType::Complex(ComplexColumnType::Enum {
+                    values: EnumValues::String(new_values),
+                    ..
+                }),
+            ) = (old_type, new_type)
+            {
+                // Find removed values (in old but not in new)
+                let removed: Vec<String> = old_values
+                    .iter()
+                    .filter(|v| !new_values.contains(v))
+                    .cloned()
+                    .collect();
+
+                if removed.is_empty() {
+                    continue;
+                }
+
+                // Check if fill_with covers all removed values
+                let all_covered = match fill_with {
+                    Some(fw) => removed.iter().all(|r| fw.contains_key(r)),
+                    None => false,
+                };
+
+                if !all_covered {
+                    // Filter to only uncovered removed values
+                    let uncovered: Vec<String> = match fill_with {
+                        Some(fw) => removed.into_iter().filter(|r| !fw.contains_key(r)).collect(),
+                        None => removed,
+                    };
+
+                    missing.push(EnumFillWithRequired {
+                        action_index: idx,
+                        table: table.clone(),
+                        column: column.clone(),
+                        removed_values: uncovered,
+                        remaining_values: new_values.clone(),
+                    });
+                }
+            }
         }
     }
 

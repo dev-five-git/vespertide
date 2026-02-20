@@ -1,4 +1,6 @@
-use sea_query::{Alias, ColumnDef as SeaColumnDef, Query, Table};
+use std::collections::BTreeMap;
+
+use sea_query::{Alias, ColumnDef as SeaColumnDef, Expr, Query, Table};
 
 use vespertide_core::{ColumnType, ComplexColumnType, TableDef};
 
@@ -10,11 +12,32 @@ use super::rename_table::build_rename_table;
 use super::types::{BuiltQuery, DatabaseBackend};
 use crate::error::QueryError;
 
+/// Build UPDATE statements for fill_with mappings (removed enum values → replacement values).
+/// Each entry generates: UPDATE "table" SET "column" = 'replacement' WHERE "column" = 'removed_value'
+fn build_fill_with_updates(
+    table: &str,
+    column: &str,
+    fill_with: &BTreeMap<String, String>,
+) -> Vec<BuiltQuery> {
+    fill_with
+        .iter()
+        .map(|(removed_value, replacement)| {
+            let update_stmt = Query::update()
+                .table(Alias::new(table))
+                .value(Alias::new(column), Expr::cust(replacement))
+                .and_where(Expr::col(Alias::new(column)).eq(removed_value.as_str()))
+                .to_owned();
+            BuiltQuery::Update(Box::new(update_stmt))
+        })
+        .collect()
+}
+
 pub fn build_modify_column_type(
     backend: &DatabaseBackend,
     table: &str,
     column: &str,
     new_type: &ColumnType,
+    fill_with: Option<&BTreeMap<String, String>>,
     current_schema: &[TableDef],
 ) -> Result<Vec<BuiltQuery>, QueryError> {
     // SQLite does not support direct column type modification, so use temporary table approach
@@ -78,7 +101,14 @@ pub fn build_modify_column_type(
         // 5. Recreate indexes (both regular and UNIQUE)
         let index_queries = recreate_indexes_after_rebuild(table, &table_def.constraints, &[]);
 
-        let mut queries = vec![create_query, insert_query, drop_query, rename_query];
+        let mut queries = Vec::new();
+
+        // Insert fill_with UPDATE statements before table recreation
+        if let Some(fw) = fill_with {
+            queries.extend(build_fill_with_updates(table, column, fw));
+        }
+
+        queries.extend([create_query, insert_query, drop_query, rename_query]);
         queries.extend(index_queries);
 
         Ok(queries)
@@ -120,6 +150,11 @@ pub fn build_modify_column_type(
                 // Use table-prefixed enum type names
                 let type_name = super::helpers::build_enum_type_name(table, enum_name);
                 let temp_type_name = format!("{}_new", type_name);
+
+                // 0. INSERT fill_with UPDATEs before any type changes (rows still have old enum type)
+                if let Some(fw) = fill_with {
+                    queries.extend(build_fill_with_updates(table, column, fw));
+                }
 
                 // Check if column has a DEFAULT value that needs to be handled
                 let column_default = current_schema
@@ -188,6 +223,11 @@ pub fn build_modify_column_type(
             }
         } else {
             // Standard column type modification
+
+            // Insert fill_with UPDATEs before any ALTER
+            if let Some(fw) = fill_with {
+                queries.extend(build_fill_with_updates(table, column, fw));
+            }
 
             // If new type is an enum and different from old, create the type first (PostgreSQL only)
             if let ColumnType::Complex(ComplexColumnType::Enum { name: new_name, .. }) = new_type {
@@ -334,6 +374,7 @@ mod tests {
             "users",
             "age",
             &ColumnType::Complex(ComplexColumnType::Varchar { length: 50 }),
+            None,
             &current_schema,
         );
 
@@ -367,6 +408,7 @@ mod tests {
             "nonexistent_table",
             "age",
             &ColumnType::Simple(SimpleColumnType::BigInt),
+            None,
             &[],
         );
         assert!(result.is_err());
@@ -401,6 +443,7 @@ mod tests {
             "users",
             "nonexistent_column",
             &ColumnType::Simple(SimpleColumnType::BigInt),
+            None,
             &current_schema,
         );
         assert!(result.is_err());
@@ -467,6 +510,7 @@ mod tests {
             "users",
             "age",
             &ColumnType::Simple(SimpleColumnType::BigInt),
+            None,
             &current_schema,
         )
         .unwrap();
@@ -546,6 +590,7 @@ mod tests {
             "users",
             "email",
             &ColumnType::Complex(ComplexColumnType::Varchar { length: 255 }),
+            None,
             &current_schema,
         )
         .unwrap();
@@ -753,7 +798,7 @@ mod tests {
         }];
 
         let result =
-            build_modify_column_type(&backend, "users", "status", &new_type, &current_schema)
+            build_modify_column_type(&backend, "users", "status", &new_type, None, &current_schema)
                 .unwrap();
 
         let sql = result
@@ -817,6 +862,7 @@ mod tests {
             "reservation_session",
             "status",
             &new_type,
+            None,
             &current_schema,
         )
         .unwrap();
@@ -873,6 +919,7 @@ mod tests {
                 name: "status_type".into(),
                 values: EnumValues::String(vec!["active".into(), "inactive".into()]),
             }),
+            None,
             &[], // Empty schema - old_type will be None
         );
 

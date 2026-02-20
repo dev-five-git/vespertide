@@ -3,7 +3,7 @@ use vespertide_core::{
     ColumnDef, ColumnType, ComplexColumnType, EnumValues, MigrationAction, MigrationPlan,
     SimpleColumnType, TableDef,
 };
-use vespertide_query::{DatabaseBackend, build_plan_queries};
+use vespertide_query::{build_plan_queries, DatabaseBackend};
 
 #[test]
 fn test_enum_value_change_generates_correct_sql() {
@@ -24,6 +24,7 @@ fn test_enum_value_change_generates_correct_sql() {
                     "pending".into(),
                 ]),
             }),
+            fill_with: None,
         }],
     };
 

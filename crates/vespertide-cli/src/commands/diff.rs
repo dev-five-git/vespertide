@@ -85,6 +85,7 @@ fn format_action(action: &MigrationAction) -> String {
             table,
             column,
             new_type,
+            ..
         } => {
             format!(
                 "{} {}.{} {} {}",
@@ -329,6 +330,7 @@ mod tests {
             table: "users".into(),
             column: "id".into(),
             new_type: ColumnType::Simple(SimpleColumnType::Integer),
+            fill_with: None,
         },
         format!("{} {}.{} {} {}", "Modify column type:".bright_yellow(), "users".bright_cyan(), "id".bright_cyan().bold(), "->".bright_white(), "integer".bright_cyan().bold())
     )]

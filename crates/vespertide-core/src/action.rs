@@ -1,6 +1,7 @@
 use crate::schema::{ColumnDef, ColumnName, ColumnType, TableConstraint, TableName};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -47,6 +48,10 @@ pub enum MigrationAction {
         table: TableName,
         column: ColumnName,
         new_type: ColumnType,
+        /// Mapping of removed enum values to replacement values for safe enum value removal.
+        /// e.g., {"cancelled": "'pending'"} generates UPDATE before type change.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        fill_with: Option<BTreeMap<String, String>>,
     },
     ModifyColumnNullable {
         table: TableName,
@@ -146,10 +151,12 @@ impl MigrationAction {
                 table,
                 column,
                 new_type,
+                fill_with,
             } => MigrationAction::ModifyColumnType {
                 table: format!("{}{}", prefix, table),
                 column,
                 new_type,
+                fill_with,
             },
             MigrationAction::ModifyColumnNullable {
                 table,
@@ -403,6 +410,7 @@ mod tests {
             table: "users".into(),
             column: "age".into(),
             new_type: ColumnType::Simple(SimpleColumnType::Integer),
+            fill_with: None,
         },
         "ModifyColumnType: users.age"
     )]
@@ -893,12 +901,14 @@ mod tests {
             table: "users".into(),
             column: "age".into(),
             new_type: ColumnType::Simple(SimpleColumnType::BigInt),
+            fill_with: None,
         };
         let prefixed = action.with_prefix("myapp_");
         if let MigrationAction::ModifyColumnType {
             table,
             column,
             new_type,
+            fill_with,
         } = prefixed
         {
             assert_eq!(table.as_str(), "myapp_users");
@@ -907,6 +917,7 @@ mod tests {
                 new_type,
                 ColumnType::Simple(SimpleColumnType::BigInt)
             ));
+            assert_eq!(fill_with, None);
         } else {
             panic!("Expected ModifyColumnType");
         }

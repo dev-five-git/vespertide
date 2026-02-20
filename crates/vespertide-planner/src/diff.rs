@@ -361,6 +361,7 @@ fn sort_enum_default_dependencies(
                 table,
                 column,
                 new_type,
+                ..
             } => {
                 type_changes.insert((table.as_str(), column.as_str()), (i, new_type));
             }
@@ -488,6 +489,7 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
                         table: name.to_string(),
                         column: col.to_string(),
                         new_type: to_def.r#type.clone(),
+                        fill_with: None,
                     });
                 }
             }
@@ -747,6 +749,7 @@ mod tests {
             table: "users".into(),
             column: "id".into(),
             new_type: ColumnType::Simple(SimpleColumnType::Text),
+            fill_with: None,
         }]
     )]
     #[case::remove_index(
