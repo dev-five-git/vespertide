@@ -273,6 +273,7 @@ mod tests {
                     table: "users".into(),
                     column: "id".into(),
                     new_type: ColumnType::Simple(SimpleColumnType::BigInt),
+                    fill_with: None,
                 },
             ],
         };

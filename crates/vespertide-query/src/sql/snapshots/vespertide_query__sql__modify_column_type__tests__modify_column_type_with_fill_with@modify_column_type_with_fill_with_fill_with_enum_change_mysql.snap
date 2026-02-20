@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/modify_column_type.rs
+expression: sql
+---
+UPDATE `users` SET `status` = 'inactive' WHERE `status` = 'banned';
+ALTER TABLE `users` MODIFY COLUMN `status` ENUM('active', 'inactive')

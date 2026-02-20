@@ -89,7 +89,15 @@ pub fn build_action_queries_with_pending(
             table,
             column,
             new_type,
-        } => build_modify_column_type(backend, table, column, new_type, current_schema),
+            fill_with,
+        } => build_modify_column_type(
+            backend,
+            table,
+            column,
+            new_type,
+            fill_with.as_ref(),
+            current_schema,
+        ),
 
         MigrationAction::ModifyColumnNullable {
             table,
@@ -450,6 +458,7 @@ mod tests {
             table: "users".into(),
             column: "age".into(),
             new_type: ColumnType::Simple(SimpleColumnType::BigInt),
+            fill_with: None,
         };
         let current_schema = vec![TableDef {
             name: "users".into(),

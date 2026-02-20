@@ -24,6 +24,7 @@ fn test_enum_value_change_generates_correct_sql() {
                     "pending".into(),
                 ]),
             }),
+            fill_with: None,
         }],
     };
 

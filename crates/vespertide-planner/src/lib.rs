@@ -11,5 +11,6 @@ pub use error::PlannerError;
 pub use plan::{plan_next_migration, plan_next_migration_with_baseline};
 pub use schema::schema_from_plans;
 pub use validate::{
-    FillWithRequired, find_missing_fill_with, validate_migration_plan, validate_schema,
+    EnumFillWithRequired, FillWithRequired, find_missing_enum_fill_with, find_missing_fill_with,
+    validate_migration_plan, validate_schema,
 };

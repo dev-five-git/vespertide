@@ -422,6 +422,23 @@ pub fn validate_migration_plan(plan: &MigrationPlan) -> Result<(), PlannerError>
                     return Err(PlannerError::MissingFillWith(table.clone(), column.clone()));
                 }
             }
+            MigrationAction::ModifyColumnType {
+                table,
+                column,
+                new_type,
+                fill_with,
+            } => {
+                // Validate that fill_with replacement values are valid enum values in the NEW type
+                if let (
+                    Some(fw),
+                    ColumnType::Complex(ComplexColumnType::Enum { name, values, .. }),
+                ) = (fill_with, new_type)
+                {
+                    for replacement in fw.values() {
+                        validate_enum_value(replacement, name, values, table, column, "fill_with")?;
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -519,6 +536,99 @@ pub fn find_missing_fill_with(
                 }
             }
             _ => {}
+        }
+    }
+
+    missing
+}
+
+/// Information about a ModifyColumnType action that removes enum values and needs fill_with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnumFillWithRequired {
+    /// Index of the action in the migration plan.
+    pub action_index: usize,
+    /// Table name.
+    pub table: String,
+    /// Column name.
+    pub column: String,
+    /// Removed enum values that need replacement mappings.
+    pub removed_values: Vec<String>,
+    /// Remaining valid enum values (for selection UI).
+    pub remaining_values: Vec<String>,
+}
+
+/// Find all ModifyColumnType actions that remove string enum values but lack fill_with mappings.
+///
+/// `current_schema` is the baseline schema (from applied migrations) used to look up
+/// the old enum type. Returns a list of actions that need fill_with mappings.
+pub fn find_missing_enum_fill_with(
+    plan: &MigrationPlan,
+    current_schema: &[TableDef],
+) -> Vec<EnumFillWithRequired> {
+    let mut missing = Vec::new();
+
+    for (idx, action) in plan.actions.iter().enumerate() {
+        if let MigrationAction::ModifyColumnType {
+            table,
+            column,
+            new_type,
+            fill_with,
+        } = action
+        {
+            // Only applies to string enum → string enum changes
+            let old_type = current_schema
+                .iter()
+                .find(|t| t.name == *table)
+                .and_then(|t| t.columns.iter().find(|c| c.name == *column))
+                .map(|c| &c.r#type);
+
+            if let (
+                Some(ColumnType::Complex(ComplexColumnType::Enum {
+                    values: EnumValues::String(old_values),
+                    ..
+                })),
+                ColumnType::Complex(ComplexColumnType::Enum {
+                    values: EnumValues::String(new_values),
+                    ..
+                }),
+            ) = (old_type, new_type)
+            {
+                // Find removed values (in old but not in new)
+                let removed: Vec<String> = old_values
+                    .iter()
+                    .filter(|v| !new_values.contains(v))
+                    .cloned()
+                    .collect();
+
+                if removed.is_empty() {
+                    continue;
+                }
+
+                // Check if fill_with covers all removed values
+                let all_covered = match fill_with {
+                    Some(fw) => removed.iter().all(|r| fw.contains_key(r)),
+                    None => false,
+                };
+
+                if !all_covered {
+                    // Filter to only uncovered removed values
+                    let uncovered: Vec<String> = match fill_with {
+                        Some(fw) => removed
+                            .into_iter()
+                            .filter(|r| !fw.contains_key(r))
+                            .collect(),
+                        None => removed,
+                    };
+
+                    missing.push(EnumFillWithRequired {
+                        action_index: idx,
+                        table: table.clone(),
+                        column: column.clone(),
+                        removed_values: uncovered,
+                        remaining_values: new_values.clone(),
+                    });
+                }
+            }
         }
     }
 
@@ -2069,5 +2179,274 @@ mod tests {
             result.is_ok(),
             "Bool primary key should not trigger auto_increment validation"
         );
+    }
+
+    // ── find_missing_enum_fill_with tests ──────────────────────────────
+
+    fn string_enum(name: &str, values: Vec<&str>) -> ColumnType {
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: name.into(),
+            values: EnumValues::String(values.into_iter().map(|s| s.to_string()).collect()),
+        })
+    }
+
+    #[test]
+    fn find_missing_enum_fill_with_detects_removed_values() {
+        let plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![MigrationAction::ModifyColumnType {
+                table: "orders".into(),
+                column: "status".into(),
+                new_type: string_enum("order_status", vec!["pending", "shipped"]),
+                fill_with: None,
+            }],
+        };
+        let baseline = vec![table(
+            "orders",
+            vec![col(
+                "status",
+                string_enum("order_status", vec!["pending", "shipped", "cancelled"]),
+            )],
+            vec![],
+        )];
+
+        let missing = find_missing_enum_fill_with(&plan, &baseline);
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].table, "orders");
+        assert_eq!(missing[0].column, "status");
+        assert_eq!(missing[0].removed_values, vec!["cancelled"]);
+        assert_eq!(missing[0].remaining_values, vec!["pending", "shipped"]);
+    }
+
+    #[test]
+    fn find_missing_enum_fill_with_ignores_additions_only() {
+        let plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![MigrationAction::ModifyColumnType {
+                table: "orders".into(),
+                column: "status".into(),
+                new_type: string_enum("order_status", vec!["pending", "shipped", "delivered"]),
+                fill_with: None,
+            }],
+        };
+        let baseline = vec![table(
+            "orders",
+            vec![col(
+                "status",
+                string_enum("order_status", vec!["pending", "shipped"]),
+            )],
+            vec![],
+        )];
+
+        let missing = find_missing_enum_fill_with(&plan, &baseline);
+        assert!(
+            missing.is_empty(),
+            "Adding values should not trigger fill_with"
+        );
+    }
+
+    #[test]
+    fn find_missing_enum_fill_with_skips_already_covered() {
+        let mut fw = std::collections::BTreeMap::new();
+        fw.insert("cancelled".to_string(), "pending".to_string());
+
+        let plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![MigrationAction::ModifyColumnType {
+                table: "orders".into(),
+                column: "status".into(),
+                new_type: string_enum("order_status", vec!["pending", "shipped"]),
+                fill_with: Some(fw),
+            }],
+        };
+        let baseline = vec![table(
+            "orders",
+            vec![col(
+                "status",
+                string_enum("order_status", vec!["pending", "shipped", "cancelled"]),
+            )],
+            vec![],
+        )];
+
+        let missing = find_missing_enum_fill_with(&plan, &baseline);
+        assert!(
+            missing.is_empty(),
+            "All removed values are covered by fill_with"
+        );
+    }
+
+    #[test]
+    fn find_missing_enum_fill_with_reports_partially_covered() {
+        let mut fw = std::collections::BTreeMap::new();
+        fw.insert("cancelled".to_string(), "pending".to_string());
+
+        let plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![MigrationAction::ModifyColumnType {
+                table: "orders".into(),
+                column: "status".into(),
+                new_type: string_enum("order_status", vec!["pending"]),
+                fill_with: Some(fw),
+            }],
+        };
+        let baseline = vec![table(
+            "orders",
+            vec![col(
+                "status",
+                string_enum("order_status", vec!["pending", "shipped", "cancelled"]),
+            )],
+            vec![],
+        )];
+
+        let missing = find_missing_enum_fill_with(&plan, &baseline);
+        assert_eq!(missing.len(), 1);
+        assert_eq!(
+            missing[0].removed_values,
+            vec!["shipped"],
+            "Only uncovered value should be reported"
+        );
+    }
+
+    #[test]
+    fn find_missing_enum_fill_with_ignores_integer_enums() {
+        let old_type = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "priority".into(),
+            values: EnumValues::Integer(vec![
+                NumValue {
+                    name: "low".into(),
+                    value: 0,
+                },
+                NumValue {
+                    name: "high".into(),
+                    value: 1,
+                },
+            ]),
+        });
+        let new_type = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "priority".into(),
+            values: EnumValues::Integer(vec![NumValue {
+                name: "high".into(),
+                value: 1,
+            }]),
+        });
+
+        let plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![MigrationAction::ModifyColumnType {
+                table: "tasks".into(),
+                column: "priority".into(),
+                new_type,
+                fill_with: None,
+            }],
+        };
+        let baseline = vec![table("tasks", vec![col("priority", old_type)], vec![])];
+
+        let missing = find_missing_enum_fill_with(&plan, &baseline);
+        assert!(
+            missing.is_empty(),
+            "Integer enum changes should not trigger fill_with"
+        );
+    }
+
+    #[test]
+    fn find_missing_enum_fill_with_ignores_non_enum_type_change() {
+        let plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![MigrationAction::ModifyColumnType {
+                table: "users".into(),
+                column: "age".into(),
+                new_type: ColumnType::Simple(SimpleColumnType::BigInt),
+                fill_with: None,
+            }],
+        };
+        let baseline = vec![table(
+            "users",
+            vec![col("age", ColumnType::Simple(SimpleColumnType::Integer))],
+            vec![],
+        )];
+
+        let missing = find_missing_enum_fill_with(&plan, &baseline);
+        assert!(
+            missing.is_empty(),
+            "Non-enum type changes should not trigger fill_with"
+        );
+    }
+
+    #[test]
+    fn validate_modify_column_type_fill_with_invalid_replacement() {
+        let mut fw = std::collections::BTreeMap::new();
+        fw.insert("cancelled".to_string(), "nonexistent_value".to_string());
+
+        let plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![MigrationAction::ModifyColumnType {
+                table: "orders".into(),
+                column: "status".into(),
+                new_type: ColumnType::Complex(ComplexColumnType::Enum {
+                    name: "order_status".into(),
+                    values: EnumValues::String(vec!["pending".into(), "shipped".into()]),
+                }),
+                fill_with: Some(fw),
+            }],
+        };
+
+        let result = validate_migration_plan(&plan);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            PlannerError::InvalidEnumDefault(err) => {
+                assert_eq!(err.enum_name, "order_status");
+                assert_eq!(err.table_name, "orders");
+                assert_eq!(err.column_name, "status");
+                assert_eq!(err.value_type, "fill_with");
+                assert_eq!(err.value, "nonexistent_value");
+            }
+            err => panic!("expected InvalidEnumDefault error, got {:?}", err),
+        }
+    }
+
+    #[test]
+    fn validate_modify_column_type_fill_with_valid_replacement() {
+        let mut fw = std::collections::BTreeMap::new();
+        fw.insert("cancelled".to_string(), "pending".to_string());
+
+        let plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![MigrationAction::ModifyColumnType {
+                table: "orders".into(),
+                column: "status".into(),
+                new_type: ColumnType::Complex(ComplexColumnType::Enum {
+                    name: "order_status".into(),
+                    values: EnumValues::String(vec!["pending".into(), "shipped".into()]),
+                }),
+                fill_with: Some(fw),
+            }],
+        };
+
+        let result = validate_migration_plan(&plan);
+        assert!(result.is_ok());
     }
 }

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 use anyhow::{Context, Result};
@@ -9,7 +9,10 @@ use serde_json::Value;
 use tokio::fs;
 use vespertide_config::FileFormat;
 use vespertide_core::{MigrationAction, MigrationPlan, TableConstraint, TableDef};
-use vespertide_planner::{find_missing_fill_with, plan_next_migration, schema_from_plans};
+use vespertide_planner::{
+    EnumFillWithRequired, find_missing_enum_fill_with, find_missing_fill_with, plan_next_migration,
+    schema_from_plans,
+};
 
 use crate::utils::{
     load_config, load_migrations, load_models, migration_filename_with_format_and_pattern,
@@ -128,6 +131,23 @@ fn prompt_enum_value(prompt: &str, enum_values: &[String]) -> Result<String> {
     Ok(format!("'{}'", enum_values[selection]))
 }
 
+/// Prompt for enum value selection and return bare (unquoted) value.
+/// Used by `cmd_revision` for enum fill_with collection where BTreeMap stores bare names.
+#[cfg(not(tarpaulin_include))]
+fn prompt_enum_value_bare(prompt: &str, values: &[String]) -> Result<String> {
+    let selected = prompt_enum_value(prompt, values)?;
+    Ok(strip_enum_quotes(selected))
+}
+
+/// Strip SQL single-quotes from an enum value string.
+/// BTreeMap stores bare enum names; the SQL layer handles quoting via `Expr::val()`.
+fn strip_enum_quotes(value: String) -> String {
+    value
+        .trim_start_matches('\'')
+        .trim_end_matches('\'')
+        .to_string()
+}
+
 /// Collect fill_with values interactively for missing columns.
 /// The `prompt_fn` parameter allows injecting a mock for testing.
 /// The `enum_prompt_fn` parameter handles enum type columns with selection UI.
@@ -226,6 +246,90 @@ where
     Ok(())
 }
 
+/// Collect enum fill_with values interactively for removed enum values.
+/// The `enum_prompt_fn` parameter handles enum type columns with selection UI.
+fn collect_enum_fill_with_values<E>(
+    missing: &[EnumFillWithRequired],
+    enum_prompt_fn: E,
+) -> Result<Vec<(usize, BTreeMap<String, String>)>>
+where
+    E: Fn(&str, &[String]) -> Result<String>,
+{
+    let mut results = Vec::new();
+
+    println!(
+        "\n{} {}",
+        "\u{26a0}".bright_yellow(),
+        "The following enum value removals require replacement mappings:".bright_yellow()
+    );
+    println!("{}", "\u{2500}".repeat(60).bright_black());
+
+    for item in missing {
+        println!(
+            "  {} {}.{}: removing enum values",
+            "\u{2022}".bright_cyan(),
+            item.table.bright_white(),
+            item.column.bright_green()
+        );
+
+        let mut mappings = BTreeMap::new();
+        for removed in &item.removed_values {
+            let prompt = format!(
+                "  Replace '{}' in {}.{} with",
+                removed.bright_red(),
+                item.table.bright_white(),
+                item.column.bright_green()
+            );
+            let value = enum_prompt_fn(&prompt, &item.remaining_values)?;
+            mappings.insert(removed.clone(), value);
+        }
+        results.push((item.action_index, mappings));
+    }
+
+    println!("{}", "\u{2500}".repeat(60).bright_black());
+    Ok(results)
+}
+
+/// Apply collected enum fill_with mappings to the migration plan.
+fn apply_enum_fill_with_to_plan(
+    plan: &mut MigrationPlan,
+    collected: &[(usize, BTreeMap<String, String>)],
+) {
+    for (action_index, mappings) in collected {
+        if let Some(MigrationAction::ModifyColumnType { fill_with, .. }) =
+            plan.actions.get_mut(*action_index)
+        {
+            match fill_with {
+                Some(existing) => {
+                    existing.extend(mappings.clone());
+                }
+                None => {
+                    *fill_with = Some(mappings.clone());
+                }
+            }
+        }
+    }
+}
+
+/// Handle interactive enum fill_with collection if there are missing values.
+fn handle_missing_enum_fill_with<E>(
+    plan: &mut MigrationPlan,
+    current_schema: &[TableDef],
+    enum_prompt_fn: E,
+) -> Result<()>
+where
+    E: Fn(&str, &[String]) -> Result<String>,
+{
+    let missing = find_missing_enum_fill_with(plan, current_schema);
+
+    if !missing.is_empty() {
+        let collected = collect_enum_fill_with_values(&missing, enum_prompt_fn)?;
+        apply_enum_fill_with_to_plan(plan, &collected);
+    }
+
+    Ok(())
+}
+
 /// Check that no AddColumn action adds a non-nullable FK column without a default.
 /// This is logically impossible: existing rows can't satisfy the FK constraint.
 fn check_non_nullable_fk_add_columns(plan: &MigrationPlan) -> Result<()> {
@@ -302,6 +406,9 @@ pub async fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Resul
         prompt_fill_with_value,
         prompt_enum_value,
     )?;
+
+    // Handle any missing enum fill_with values (for removed enum values) interactively
+    handle_missing_enum_fill_with(&mut plan, &baseline_schema, prompt_enum_value_bare)?;
 
     plan.id = uuid::Uuid::new_v4().to_string();
     plan.comment = Some(message);
@@ -1446,5 +1553,241 @@ mod tests {
     #[test]
     fn test_wrap_if_spaces_multiple_spaces() {
         assert_eq!(wrap_if_spaces("a b c".to_string()), "'a b c'");
+    }
+
+    // ── enum fill_with tests ───────────────────────────────────────────
+
+    #[test]
+    fn test_collect_enum_fill_with_values_single_removal() {
+        use vespertide_planner::EnumFillWithRequired;
+
+        let missing = vec![EnumFillWithRequired {
+            action_index: 0,
+            table: "orders".to_string(),
+            column: "status".to_string(),
+            removed_values: vec!["cancelled".to_string()],
+            remaining_values: vec!["pending".to_string(), "shipped".to_string()],
+        }];
+
+        // Mock prompt: always select first remaining value
+        let mock_enum =
+            |_prompt: &str, values: &[String]| -> Result<String> { Ok(values[0].to_string()) };
+
+        let result = collect_enum_fill_with_values(&missing, mock_enum);
+        assert!(result.is_ok());
+        let collected = result.unwrap();
+        assert_eq!(collected.len(), 1);
+        assert_eq!(collected[0].0, 0); // action_index
+        assert_eq!(
+            collected[0].1.get("cancelled"),
+            Some(&"pending".to_string())
+        );
+    }
+
+    #[test]
+    fn test_collect_enum_fill_with_values_multiple_removals() {
+        use vespertide_planner::EnumFillWithRequired;
+
+        let missing = vec![EnumFillWithRequired {
+            action_index: 0,
+            table: "orders".to_string(),
+            column: "status".to_string(),
+            removed_values: vec!["cancelled".to_string(), "draft".to_string()],
+            remaining_values: vec!["pending".to_string(), "shipped".to_string()],
+        }];
+
+        // Mock prompt: always select second remaining value
+        let mock_enum =
+            |_prompt: &str, values: &[String]| -> Result<String> { Ok(values[1].to_string()) };
+
+        let result = collect_enum_fill_with_values(&missing, mock_enum);
+        assert!(result.is_ok());
+        let collected = result.unwrap();
+        assert_eq!(collected[0].1.len(), 2);
+        assert_eq!(
+            collected[0].1.get("cancelled"),
+            Some(&"shipped".to_string())
+        );
+        assert_eq!(collected[0].1.get("draft"), Some(&"shipped".to_string()));
+    }
+
+    #[test]
+    fn test_apply_enum_fill_with_to_plan() {
+        use vespertide_core::{ColumnType, ComplexColumnType, EnumValues};
+
+        let mut plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![MigrationAction::ModifyColumnType {
+                table: "orders".into(),
+                column: "status".into(),
+                new_type: ColumnType::Complex(ComplexColumnType::Enum {
+                    name: "order_status".into(),
+                    values: EnumValues::String(vec!["pending".into(), "shipped".into()]),
+                }),
+                fill_with: None,
+            }],
+        };
+
+        let mut mappings = BTreeMap::new();
+        mappings.insert("cancelled".to_string(), "pending".to_string());
+        let collected = vec![(0usize, mappings)];
+
+        apply_enum_fill_with_to_plan(&mut plan, &collected);
+
+        if let MigrationAction::ModifyColumnType { fill_with, .. } = &plan.actions[0] {
+            let fw = fill_with.as_ref().expect("fill_with should be set");
+            assert_eq!(fw.get("cancelled"), Some(&"pending".to_string()));
+        } else {
+            panic!("Expected ModifyColumnType");
+        }
+    }
+
+    #[test]
+    fn test_handle_missing_enum_fill_with_collects_and_applies() {
+        use vespertide_core::{ColumnDef, ColumnType, ComplexColumnType, EnumValues};
+
+        let mut plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![MigrationAction::ModifyColumnType {
+                table: "orders".into(),
+                column: "status".into(),
+                new_type: ColumnType::Complex(ComplexColumnType::Enum {
+                    name: "order_status".into(),
+                    values: EnumValues::String(vec!["pending".into(), "shipped".into()]),
+                }),
+                fill_with: None,
+            }],
+        };
+
+        let baseline = vec![TableDef {
+            name: "orders".into(),
+            description: None,
+            columns: vec![ColumnDef {
+                name: "status".into(),
+                r#type: ColumnType::Complex(ComplexColumnType::Enum {
+                    name: "order_status".into(),
+                    values: EnumValues::String(vec![
+                        "pending".into(),
+                        "shipped".into(),
+                        "cancelled".into(),
+                    ]),
+                }),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        }];
+
+        // Mock: always select first remaining value
+        let mock_enum =
+            |_prompt: &str, values: &[String]| -> Result<String> { Ok(values[0].to_string()) };
+
+        let result = handle_missing_enum_fill_with(&mut plan, &baseline, mock_enum);
+        assert!(result.is_ok());
+
+        if let MigrationAction::ModifyColumnType { fill_with, .. } = &plan.actions[0] {
+            let fw = fill_with.as_ref().expect("fill_with should be populated");
+            assert_eq!(fw.get("cancelled"), Some(&"pending".to_string()));
+        } else {
+            panic!("Expected ModifyColumnType");
+        }
+    }
+
+    #[test]
+    fn test_handle_missing_enum_fill_with_no_missing() {
+        let mut plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![],
+        };
+
+        let mock_enum = |_prompt: &str, _values: &[String]| -> Result<String> {
+            panic!("Should not be called when nothing is missing");
+        };
+
+        let result = handle_missing_enum_fill_with(&mut plan, &[], mock_enum);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_apply_enum_fill_with_to_plan_extends_existing() {
+        use vespertide_core::{ColumnType, ComplexColumnType, EnumValues};
+
+        // Start with a fill_with that already has one entry
+        let mut existing_fw = BTreeMap::new();
+        existing_fw.insert("draft".to_string(), "pending".to_string());
+
+        let mut plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![MigrationAction::ModifyColumnType {
+                table: "orders".into(),
+                column: "status".into(),
+                new_type: ColumnType::Complex(ComplexColumnType::Enum {
+                    name: "order_status".into(),
+                    values: EnumValues::String(vec!["pending".into(), "shipped".into()]),
+                }),
+                fill_with: Some(existing_fw),
+            }],
+        };
+
+        // Collect additional mappings
+        let mut new_mappings = BTreeMap::new();
+        new_mappings.insert("cancelled".to_string(), "shipped".to_string());
+        let collected = vec![(0usize, new_mappings)];
+
+        apply_enum_fill_with_to_plan(&mut plan, &collected);
+
+        if let MigrationAction::ModifyColumnType { fill_with, .. } = &plan.actions[0] {
+            let fw = fill_with.as_ref().expect("fill_with should be set");
+            // Original entry preserved
+            assert_eq!(fw.get("draft"), Some(&"pending".to_string()));
+            // New entry added
+            assert_eq!(fw.get("cancelled"), Some(&"shipped".to_string()));
+            // Total 2 entries
+            assert_eq!(fw.len(), 2);
+        } else {
+            panic!("Expected ModifyColumnType");
+        }
+    }
+
+    #[test]
+    fn test_strip_enum_quotes_with_quotes() {
+        assert_eq!(strip_enum_quotes("'active'".to_string()), "active");
+    }
+
+    #[test]
+    fn test_strip_enum_quotes_bare_value() {
+        assert_eq!(strip_enum_quotes("active".to_string()), "active");
+    }
+
+    #[test]
+    fn test_strip_enum_quotes_empty() {
+        assert_eq!(strip_enum_quotes(String::new()), "");
+    }
+
+    #[test]
+    fn test_strip_enum_quotes_only_leading() {
+        assert_eq!(strip_enum_quotes("'active".to_string()), "active");
+    }
+
+    #[test]
+    fn test_strip_enum_quotes_only_trailing() {
+        assert_eq!(strip_enum_quotes("active'".to_string()), "active");
     }
 }

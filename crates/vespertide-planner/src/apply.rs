@@ -103,6 +103,7 @@ pub fn apply_action(
             table,
             column,
             new_type,
+            ..
         } => {
             let tbl = schema
                 .iter_mut()
@@ -641,6 +642,7 @@ mod tests {
                 table: "users".into(),
                 column: "id".into(),
                 new_type: ColumnType::Simple(SimpleColumnType::Text),
+                fill_with: None,
             },
             MigrationAction::AddConstraint {
                 table: "users".into(),
