@@ -131,6 +131,23 @@ fn prompt_enum_value(prompt: &str, enum_values: &[String]) -> Result<String> {
     Ok(format!("'{}'", enum_values[selection]))
 }
 
+/// Prompt for enum value selection and return bare (unquoted) value.
+/// Used by `cmd_revision` for enum fill_with collection where BTreeMap stores bare names.
+#[cfg(not(tarpaulin_include))]
+fn prompt_enum_value_bare(prompt: &str, values: &[String]) -> Result<String> {
+    let selected = prompt_enum_value(prompt, values)?;
+    Ok(strip_enum_quotes(selected))
+}
+
+/// Strip SQL single-quotes from an enum value string.
+/// BTreeMap stores bare enum names; the SQL layer handles quoting via `Expr::val()`.
+fn strip_enum_quotes(value: String) -> String {
+    value
+        .trim_start_matches('\'')
+        .trim_end_matches('\'')
+        .to_string()
+}
+
 /// Collect fill_with values interactively for missing columns.
 /// The `prompt_fn` parameter allows injecting a mock for testing.
 /// The `enum_prompt_fn` parameter handles enum type columns with selection UI.
@@ -391,14 +408,7 @@ pub async fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Resul
     )?;
 
     // Handle any missing enum fill_with values (for removed enum values) interactively
-    handle_missing_enum_fill_with(&mut plan, &baseline_schema, |prompt, values| {
-        let selected = prompt_enum_value(prompt, values)?;
-        // Strip SQL quotes — BTreeMap stores bare enum names, SQL layer handles quoting
-        Ok(selected
-            .trim_start_matches('\'')
-            .trim_end_matches('\'')
-            .to_string())
-    })?;
+    handle_missing_enum_fill_with(&mut plan, &baseline_schema, prompt_enum_value_bare)?;
 
     plan.id = uuid::Uuid::new_v4().to_string();
     plan.comment = Some(message);
@@ -1754,5 +1764,30 @@ mod tests {
         } else {
             panic!("Expected ModifyColumnType");
         }
+    }
+
+    #[test]
+    fn test_strip_enum_quotes_with_quotes() {
+        assert_eq!(strip_enum_quotes("'active'".to_string()), "active");
+    }
+
+    #[test]
+    fn test_strip_enum_quotes_bare_value() {
+        assert_eq!(strip_enum_quotes("active".to_string()), "active");
+    }
+
+    #[test]
+    fn test_strip_enum_quotes_empty() {
+        assert_eq!(strip_enum_quotes(String::new()), "");
+    }
+
+    #[test]
+    fn test_strip_enum_quotes_only_leading() {
+        assert_eq!(strip_enum_quotes("'active".to_string()), "active");
+    }
+
+    #[test]
+    fn test_strip_enum_quotes_only_trailing() {
+        assert_eq!(strip_enum_quotes("active'".to_string()), "active");
     }
 }
