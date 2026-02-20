@@ -2254,7 +2254,7 @@ mod tests {
     #[test]
     fn find_missing_enum_fill_with_skips_already_covered() {
         let mut fw = std::collections::BTreeMap::new();
-        fw.insert("cancelled".to_string(), "'pending'".to_string());
+        fw.insert("cancelled".to_string(), "pending".to_string());
 
         let plan = MigrationPlan {
             id: String::new(),
@@ -2287,7 +2287,7 @@ mod tests {
     #[test]
     fn find_missing_enum_fill_with_reports_partially_covered() {
         let mut fw = std::collections::BTreeMap::new();
-        fw.insert("cancelled".to_string(), "'pending'".to_string());
+        fw.insert("cancelled".to_string(), "pending".to_string());
 
         let plan = MigrationPlan {
             id: String::new(),
@@ -2388,5 +2388,65 @@ mod tests {
             missing.is_empty(),
             "Non-enum type changes should not trigger fill_with"
         );
+    }
+
+    #[test]
+    fn validate_modify_column_type_fill_with_invalid_replacement() {
+        let mut fw = std::collections::BTreeMap::new();
+        fw.insert("cancelled".to_string(), "nonexistent_value".to_string());
+
+        let plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![MigrationAction::ModifyColumnType {
+                table: "orders".into(),
+                column: "status".into(),
+                new_type: ColumnType::Complex(ComplexColumnType::Enum {
+                    name: "order_status".into(),
+                    values: EnumValues::String(vec!["pending".into(), "shipped".into()]),
+                }),
+                fill_with: Some(fw),
+            }],
+        };
+
+        let result = validate_migration_plan(&plan);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            PlannerError::InvalidEnumDefault(err) => {
+                assert_eq!(err.enum_name, "order_status");
+                assert_eq!(err.table_name, "orders");
+                assert_eq!(err.column_name, "status");
+                assert_eq!(err.value_type, "fill_with");
+                assert_eq!(err.value, "nonexistent_value");
+            }
+            err => panic!("expected InvalidEnumDefault error, got {:?}", err),
+        }
+    }
+
+    #[test]
+    fn validate_modify_column_type_fill_with_valid_replacement() {
+        let mut fw = std::collections::BTreeMap::new();
+        fw.insert("cancelled".to_string(), "pending".to_string());
+
+        let plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![MigrationAction::ModifyColumnType {
+                table: "orders".into(),
+                column: "status".into(),
+                new_type: ColumnType::Complex(ComplexColumnType::Enum {
+                    name: "order_status".into(),
+                    values: EnumValues::String(vec!["pending".into(), "shipped".into()]),
+                }),
+                fill_with: Some(fw),
+            }],
+        };
+
+        let result = validate_migration_plan(&plan);
+        assert!(result.is_ok());
     }
 }

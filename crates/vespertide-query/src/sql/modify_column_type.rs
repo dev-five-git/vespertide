@@ -24,7 +24,7 @@ fn build_fill_with_updates(
         .map(|(removed_value, replacement)| {
             let update_stmt = Query::update()
                 .table(Alias::new(table))
-                .value(Alias::new(column), Expr::cust(replacement))
+                .value(Alias::new(column), Expr::val(replacement.as_str()))
                 .and_where(Expr::col(Alias::new(column)).eq(removed_value.as_str()))
                 .to_owned();
             BuiltQuery::Update(Box::new(update_stmt))
@@ -941,5 +941,96 @@ mod tests {
         assert!(sql.contains("CREATE TYPE"));
         assert!(sql.contains("status_type"));
         assert!(sql.contains("ALTER TABLE"));
+    }
+
+    #[rstest]
+    #[case::fill_with_enum_change_postgres(
+        "fill_with_enum_change_postgres",
+        DatabaseBackend::Postgres,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: EnumValues::String(vec!["active".into(), "inactive".into(), "banned".into()]),
+        }),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
+        })
+    )]
+    #[case::fill_with_enum_change_sqlite(
+        "fill_with_enum_change_sqlite",
+        DatabaseBackend::Sqlite,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: EnumValues::String(vec!["active".into(), "inactive".into(), "banned".into()]),
+        }),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
+        })
+    )]
+    #[case::fill_with_enum_change_mysql(
+        "fill_with_enum_change_mysql",
+        DatabaseBackend::MySql,
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: EnumValues::String(vec!["active".into(), "inactive".into(), "banned".into()]),
+        }),
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
+        })
+    )]
+    fn test_modify_column_type_with_fill_with(
+        #[case] title: &str,
+        #[case] backend: DatabaseBackend,
+        #[case] old_type: ColumnType,
+        #[case] new_type: ColumnType,
+    ) {
+        let mut fill_with_map = std::collections::BTreeMap::new();
+        fill_with_map.insert("banned".to_string(), "inactive".to_string());
+
+        let current_schema = vec![TableDef {
+            name: "users".into(),
+            description: None,
+            columns: vec![ColumnDef {
+                name: "status".into(),
+                r#type: old_type,
+                nullable: true,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        }];
+
+        let result = build_modify_column_type(
+            &backend,
+            "users",
+            "status",
+            &new_type,
+            Some(&fill_with_map),
+            &current_schema,
+        )
+        .unwrap();
+
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<_>>()
+            .join(";\n");
+
+        // All backends should include the UPDATE statement for fill_with
+        assert!(
+            sql.contains("UPDATE"),
+            "Expected UPDATE for fill_with mapping, got: {}",
+            sql
+        );
+
+        with_settings!({ snapshot_suffix => format!("modify_column_type_with_fill_with_{}", title) }, {
+            assert_snapshot!(sql);
+        });
     }
 }

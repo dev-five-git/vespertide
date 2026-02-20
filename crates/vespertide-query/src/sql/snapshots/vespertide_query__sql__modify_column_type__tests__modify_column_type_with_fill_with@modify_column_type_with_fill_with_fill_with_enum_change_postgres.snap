@@ -1,0 +1,9 @@
+---
+source: crates/vespertide-query/src/sql/modify_column_type.rs
+expression: sql
+---
+UPDATE "users" SET "status" = 'inactive' WHERE "status" = 'banned';
+CREATE TYPE "users_status_new" AS ENUM ('active', 'inactive');
+ALTER TABLE "users" ALTER COLUMN "status" TYPE "users_status_new" USING "status"::text::"users_status_new";
+DROP TYPE "users_status";
+ALTER TYPE "users_status_new" RENAME TO "users_status"

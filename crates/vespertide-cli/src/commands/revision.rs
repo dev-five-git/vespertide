@@ -391,7 +391,14 @@ pub async fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Resul
     )?;
 
     // Handle any missing enum fill_with values (for removed enum values) interactively
-    handle_missing_enum_fill_with(&mut plan, &baseline_schema, prompt_enum_value)?;
+    handle_missing_enum_fill_with(&mut plan, &baseline_schema, |prompt, values| {
+        let selected = prompt_enum_value(prompt, values)?;
+        // Strip SQL quotes — BTreeMap stores bare enum names, SQL layer handles quoting
+        Ok(selected
+            .trim_start_matches('\'')
+            .trim_end_matches('\'')
+            .to_string())
+    })?;
 
     plan.id = uuid::Uuid::new_v4().to_string();
     plan.comment = Some(message);
@@ -1554,7 +1561,7 @@ mod tests {
 
         // Mock prompt: always select first remaining value
         let mock_enum =
-            |_prompt: &str, values: &[String]| -> Result<String> { Ok(format!("'{}'", values[0])) };
+            |_prompt: &str, values: &[String]| -> Result<String> { Ok(values[0].to_string()) };
 
         let result = collect_enum_fill_with_values(&missing, mock_enum);
         assert!(result.is_ok());
@@ -1563,7 +1570,7 @@ mod tests {
         assert_eq!(collected[0].0, 0); // action_index
         assert_eq!(
             collected[0].1.get("cancelled"),
-            Some(&"'pending'".to_string())
+            Some(&"pending".to_string())
         );
     }
 
@@ -1581,7 +1588,7 @@ mod tests {
 
         // Mock prompt: always select second remaining value
         let mock_enum =
-            |_prompt: &str, values: &[String]| -> Result<String> { Ok(format!("'{}'", values[1])) };
+            |_prompt: &str, values: &[String]| -> Result<String> { Ok(values[1].to_string()) };
 
         let result = collect_enum_fill_with_values(&missing, mock_enum);
         assert!(result.is_ok());
@@ -1589,9 +1596,9 @@ mod tests {
         assert_eq!(collected[0].1.len(), 2);
         assert_eq!(
             collected[0].1.get("cancelled"),
-            Some(&"'shipped'".to_string())
+            Some(&"shipped".to_string())
         );
-        assert_eq!(collected[0].1.get("draft"), Some(&"'shipped'".to_string()));
+        assert_eq!(collected[0].1.get("draft"), Some(&"shipped".to_string()));
     }
 
     #[test]
@@ -1615,14 +1622,14 @@ mod tests {
         };
 
         let mut mappings = BTreeMap::new();
-        mappings.insert("cancelled".to_string(), "'pending'".to_string());
+        mappings.insert("cancelled".to_string(), "pending".to_string());
         let collected = vec![(0usize, mappings)];
 
         apply_enum_fill_with_to_plan(&mut plan, &collected);
 
         if let MigrationAction::ModifyColumnType { fill_with, .. } = &plan.actions[0] {
             let fw = fill_with.as_ref().expect("fill_with should be set");
-            assert_eq!(fw.get("cancelled"), Some(&"'pending'".to_string()));
+            assert_eq!(fw.get("cancelled"), Some(&"pending".to_string()));
         } else {
             panic!("Expected ModifyColumnType");
         }
@@ -1674,14 +1681,14 @@ mod tests {
 
         // Mock: always select first remaining value
         let mock_enum =
-            |_prompt: &str, values: &[String]| -> Result<String> { Ok(format!("'{}'", values[0])) };
+            |_prompt: &str, values: &[String]| -> Result<String> { Ok(values[0].to_string()) };
 
         let result = handle_missing_enum_fill_with(&mut plan, &baseline, mock_enum);
         assert!(result.is_ok());
 
         if let MigrationAction::ModifyColumnType { fill_with, .. } = &plan.actions[0] {
             let fw = fill_with.as_ref().expect("fill_with should be populated");
-            assert_eq!(fw.get("cancelled"), Some(&"'pending'".to_string()));
+            assert_eq!(fw.get("cancelled"), Some(&"pending".to_string()));
         } else {
             panic!("Expected ModifyColumnType");
         }
@@ -1703,5 +1710,49 @@ mod tests {
 
         let result = handle_missing_enum_fill_with(&mut plan, &[], mock_enum);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_apply_enum_fill_with_to_plan_extends_existing() {
+        use vespertide_core::{ColumnType, ComplexColumnType, EnumValues};
+
+        // Start with a fill_with that already has one entry
+        let mut existing_fw = BTreeMap::new();
+        existing_fw.insert("draft".to_string(), "pending".to_string());
+
+        let mut plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![MigrationAction::ModifyColumnType {
+                table: "orders".into(),
+                column: "status".into(),
+                new_type: ColumnType::Complex(ComplexColumnType::Enum {
+                    name: "order_status".into(),
+                    values: EnumValues::String(vec!["pending".into(), "shipped".into()]),
+                }),
+                fill_with: Some(existing_fw),
+            }],
+        };
+
+        // Collect additional mappings
+        let mut new_mappings = BTreeMap::new();
+        new_mappings.insert("cancelled".to_string(), "shipped".to_string());
+        let collected = vec![(0usize, new_mappings)];
+
+        apply_enum_fill_with_to_plan(&mut plan, &collected);
+
+        if let MigrationAction::ModifyColumnType { fill_with, .. } = &plan.actions[0] {
+            let fw = fill_with.as_ref().expect("fill_with should be set");
+            // Original entry preserved
+            assert_eq!(fw.get("draft"), Some(&"pending".to_string()));
+            // New entry added
+            assert_eq!(fw.get("cancelled"), Some(&"shipped".to_string()));
+            // Total 2 entries
+            assert_eq!(fw.len(), 2);
+        } else {
+            panic!("Expected ModifyColumnType");
+        }
     }
 }
