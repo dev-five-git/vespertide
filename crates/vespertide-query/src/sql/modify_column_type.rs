@@ -797,9 +797,15 @@ mod tests {
             constraints: vec![],
         }];
 
-        let result =
-            build_modify_column_type(&backend, "users", "status", &new_type, None, &current_schema)
-                .unwrap();
+        let result = build_modify_column_type(
+            &backend,
+            "users",
+            "status",
+            &new_type,
+            None,
+            &current_schema,
+        )
+        .unwrap();
 
         let sql = result
             .iter()

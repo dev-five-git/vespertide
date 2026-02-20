@@ -3,7 +3,7 @@ use vespertide_core::{
     ColumnDef, ColumnType, ComplexColumnType, EnumValues, MigrationAction, MigrationPlan,
     SimpleColumnType, TableDef,
 };
-use vespertide_query::{build_plan_queries, DatabaseBackend};
+use vespertide_query::{DatabaseBackend, build_plan_queries};
 
 #[test]
 fn test_enum_value_change_generates_correct_sql() {

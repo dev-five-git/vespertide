@@ -10,8 +10,8 @@ use tokio::fs;
 use vespertide_config::FileFormat;
 use vespertide_core::{MigrationAction, MigrationPlan, TableConstraint, TableDef};
 use vespertide_planner::{
-    find_missing_enum_fill_with, find_missing_fill_with, plan_next_migration, schema_from_plans,
-    EnumFillWithRequired,
+    EnumFillWithRequired, find_missing_enum_fill_with, find_missing_fill_with, plan_next_migration,
+    schema_from_plans,
 };
 
 use crate::utils::{
@@ -1553,16 +1553,18 @@ mod tests {
         }];
 
         // Mock prompt: always select first remaining value
-        let mock_enum = |_prompt: &str, values: &[String]| -> Result<String> {
-            Ok(format!("'{}'", values[0]))
-        };
+        let mock_enum =
+            |_prompt: &str, values: &[String]| -> Result<String> { Ok(format!("'{}'", values[0])) };
 
         let result = collect_enum_fill_with_values(&missing, mock_enum);
         assert!(result.is_ok());
         let collected = result.unwrap();
         assert_eq!(collected.len(), 1);
         assert_eq!(collected[0].0, 0); // action_index
-        assert_eq!(collected[0].1.get("cancelled"), Some(&"'pending'".to_string()));
+        assert_eq!(
+            collected[0].1.get("cancelled"),
+            Some(&"'pending'".to_string())
+        );
     }
 
     #[test]
@@ -1578,15 +1580,17 @@ mod tests {
         }];
 
         // Mock prompt: always select second remaining value
-        let mock_enum = |_prompt: &str, values: &[String]| -> Result<String> {
-            Ok(format!("'{}'", values[1]))
-        };
+        let mock_enum =
+            |_prompt: &str, values: &[String]| -> Result<String> { Ok(format!("'{}'", values[1])) };
 
         let result = collect_enum_fill_with_values(&missing, mock_enum);
         assert!(result.is_ok());
         let collected = result.unwrap();
         assert_eq!(collected[0].1.len(), 2);
-        assert_eq!(collected[0].1.get("cancelled"), Some(&"'shipped'".to_string()));
+        assert_eq!(
+            collected[0].1.get("cancelled"),
+            Some(&"'shipped'".to_string())
+        );
         assert_eq!(collected[0].1.get("draft"), Some(&"'shipped'".to_string()));
     }
 
@@ -1669,9 +1673,8 @@ mod tests {
         }];
 
         // Mock: always select first remaining value
-        let mock_enum = |_prompt: &str, values: &[String]| -> Result<String> {
-            Ok(format!("'{}'", values[0]))
-        };
+        let mock_enum =
+            |_prompt: &str, values: &[String]| -> Result<String> { Ok(format!("'{}'", values[0])) };
 
         let result = handle_missing_enum_fill_with(&mut plan, &baseline, mock_enum);
         assert!(result.is_ok());

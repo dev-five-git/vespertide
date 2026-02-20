@@ -431,20 +431,11 @@ pub fn validate_migration_plan(plan: &MigrationPlan) -> Result<(), PlannerError>
                 // Validate that fill_with replacement values are valid enum values in the NEW type
                 if let (
                     Some(fw),
-                    ColumnType::Complex(ComplexColumnType::Enum {
-                        name, values, ..
-                    }),
+                    ColumnType::Complex(ComplexColumnType::Enum { name, values, .. }),
                 ) = (fill_with, new_type)
                 {
                     for replacement in fw.values() {
-                        validate_enum_value(
-                            replacement,
-                            name,
-                            values,
-                            table,
-                            column,
-                            "fill_with",
-                        )?;
+                        validate_enum_value(replacement, name, values, table, column, "fill_with")?;
                     }
                 }
             }
@@ -622,7 +613,10 @@ pub fn find_missing_enum_fill_with(
                 if !all_covered {
                     // Filter to only uncovered removed values
                     let uncovered: Vec<String> = match fill_with {
-                        Some(fw) => removed.into_iter().filter(|r| !fw.contains_key(r)).collect(),
+                        Some(fw) => removed
+                            .into_iter()
+                            .filter(|r| !fw.contains_key(r))
+                            .collect(),
                         None => removed,
                     };
 
@@ -2212,7 +2206,10 @@ mod tests {
         };
         let baseline = vec![table(
             "orders",
-            vec![col("status", string_enum("order_status", vec!["pending", "shipped", "cancelled"]))],
+            vec![col(
+                "status",
+                string_enum("order_status", vec!["pending", "shipped", "cancelled"]),
+            )],
             vec![],
         )];
 
@@ -2240,12 +2237,18 @@ mod tests {
         };
         let baseline = vec![table(
             "orders",
-            vec![col("status", string_enum("order_status", vec!["pending", "shipped"]))],
+            vec![col(
+                "status",
+                string_enum("order_status", vec!["pending", "shipped"]),
+            )],
             vec![],
         )];
 
         let missing = find_missing_enum_fill_with(&plan, &baseline);
-        assert!(missing.is_empty(), "Adding values should not trigger fill_with");
+        assert!(
+            missing.is_empty(),
+            "Adding values should not trigger fill_with"
+        );
     }
 
     #[test]
@@ -2267,12 +2270,18 @@ mod tests {
         };
         let baseline = vec![table(
             "orders",
-            vec![col("status", string_enum("order_status", vec!["pending", "shipped", "cancelled"]))],
+            vec![col(
+                "status",
+                string_enum("order_status", vec!["pending", "shipped", "cancelled"]),
+            )],
             vec![],
         )];
 
         let missing = find_missing_enum_fill_with(&plan, &baseline);
-        assert!(missing.is_empty(), "All removed values are covered by fill_with");
+        assert!(
+            missing.is_empty(),
+            "All removed values are covered by fill_with"
+        );
     }
 
     #[test]
@@ -2294,13 +2303,20 @@ mod tests {
         };
         let baseline = vec![table(
             "orders",
-            vec![col("status", string_enum("order_status", vec!["pending", "shipped", "cancelled"]))],
+            vec![col(
+                "status",
+                string_enum("order_status", vec!["pending", "shipped", "cancelled"]),
+            )],
             vec![],
         )];
 
         let missing = find_missing_enum_fill_with(&plan, &baseline);
         assert_eq!(missing.len(), 1);
-        assert_eq!(missing[0].removed_values, vec!["shipped"], "Only uncovered value should be reported");
+        assert_eq!(
+            missing[0].removed_values,
+            vec!["shipped"],
+            "Only uncovered value should be reported"
+        );
     }
 
     #[test]
@@ -2308,15 +2324,22 @@ mod tests {
         let old_type = ColumnType::Complex(ComplexColumnType::Enum {
             name: "priority".into(),
             values: EnumValues::Integer(vec![
-                NumValue { name: "low".into(), value: 0 },
-                NumValue { name: "high".into(), value: 1 },
+                NumValue {
+                    name: "low".into(),
+                    value: 0,
+                },
+                NumValue {
+                    name: "high".into(),
+                    value: 1,
+                },
             ]),
         });
         let new_type = ColumnType::Complex(ComplexColumnType::Enum {
             name: "priority".into(),
-            values: EnumValues::Integer(vec![
-                NumValue { name: "high".into(), value: 1 },
-            ]),
+            values: EnumValues::Integer(vec![NumValue {
+                name: "high".into(),
+                value: 1,
+            }]),
         });
 
         let plan = MigrationPlan {
@@ -2334,7 +2357,10 @@ mod tests {
         let baseline = vec![table("tasks", vec![col("priority", old_type)], vec![])];
 
         let missing = find_missing_enum_fill_with(&plan, &baseline);
-        assert!(missing.is_empty(), "Integer enum changes should not trigger fill_with");
+        assert!(
+            missing.is_empty(),
+            "Integer enum changes should not trigger fill_with"
+        );
     }
 
     #[test]
@@ -2358,6 +2384,9 @@ mod tests {
         )];
 
         let missing = find_missing_enum_fill_with(&plan, &baseline);
-        assert!(missing.is_empty(), "Non-enum type changes should not trigger fill_with");
+        assert!(
+            missing.is_empty(),
+            "Non-enum type changes should not trigger fill_with"
+        );
     }
 }
