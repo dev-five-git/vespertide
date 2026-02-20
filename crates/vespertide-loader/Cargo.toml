@@ -1,6 +1,6 @@
 [package]
 name = "vespertide-loader"
-version = "0.1.46"
+version = "0.1.47"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
