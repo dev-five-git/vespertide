@@ -483,8 +483,7 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
             // Modified columns - type changes
             for (col, to_def) in &to_cols {
                 if let Some(from_def) = from_cols.get(col) {
-                    let needs_type_migration =
-                        from_def.r#type.requires_migration(&to_def.r#type);
+                    let needs_type_migration = from_def.r#type.requires_migration(&to_def.r#type);
 
                     // Detect string enum name changes even when values are identical.
                     // The PostgreSQL enum type name is derived from the enum name
@@ -883,7 +882,6 @@ mod tests {
             );
         }
 
-
         #[test]
         fn integer_enum_name_changed_no_migration() {
             // Integer enum name changed - should NOT generate migration
@@ -1059,6 +1057,306 @@ mod tests {
         }
     }
 
+    // Tests for detecting enum name changes
+    mod enum_name_change {
+        use super::*;
+        use vespertide_core::{ComplexColumnType, EnumValues, NumValue};
+
+        #[test]
+        fn same_enum_name_and_values_no_migration() {
+            // Identical enum - no migration needed
+            let schema = vec![table(
+                "orders",
+                vec![col(
+                    "status",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "order_status".into(),
+                        values: EnumValues::String(vec!["active".into(), "inactive".into()]),
+                    }),
+                )],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&schema, &schema).unwrap();
+            assert!(plan.actions.is_empty());
+        }
+
+        #[test]
+        fn string_enum_name_only_changed_detects_rename() {
+            // Only enum name changed, values identical - MUST detect as rename
+            let from = vec![table(
+                "users",
+                vec![col(
+                    "role",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "user_role".into(),
+                        values: EnumValues::String(vec![
+                            "admin".into(),
+                            "member".into(),
+                            "guest".into(),
+                        ]),
+                    }),
+                )],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "users",
+                vec![col(
+                    "role",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "role".into(),
+                        values: EnumValues::String(vec![
+                            "admin".into(),
+                            "member".into(),
+                            "guest".into(),
+                        ]),
+                    }),
+                )],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+            assert_eq!(
+                plan.actions.len(),
+                1,
+                "Expected 1 action, got: {:?}",
+                plan.actions
+            );
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::ModifyColumnType { table, column, new_type, .. }
+                if table == "users" && column == "role"
+                    && matches!(new_type, ColumnType::Complex(ComplexColumnType::Enum { name, .. }) if name == "role")
+            ));
+        }
+
+        #[test]
+        fn multiple_columns_enum_name_changed() {
+            // Multiple columns with enum name changes in same table
+            let from = vec![table(
+                "orders",
+                vec![
+                    col(
+                        "status",
+                        ColumnType::Complex(ComplexColumnType::Enum {
+                            name: "order_status".into(),
+                            values: EnumValues::String(vec!["pending".into(), "shipped".into()]),
+                        }),
+                    ),
+                    col(
+                        "priority",
+                        ColumnType::Complex(ComplexColumnType::Enum {
+                            name: "order_priority".into(),
+                            values: EnumValues::String(vec!["low".into(), "high".into()]),
+                        }),
+                    ),
+                ],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "orders",
+                vec![
+                    col(
+                        "status",
+                        ColumnType::Complex(ComplexColumnType::Enum {
+                            name: "status".into(),
+                            values: EnumValues::String(vec!["pending".into(), "shipped".into()]),
+                        }),
+                    ),
+                    col(
+                        "priority",
+                        ColumnType::Complex(ComplexColumnType::Enum {
+                            name: "priority".into(),
+                            values: EnumValues::String(vec!["low".into(), "high".into()]),
+                        }),
+                    ),
+                ],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+            assert_eq!(
+                plan.actions.len(),
+                2,
+                "Expected 2 actions, got: {:?}",
+                plan.actions
+            );
+            // Both should be ModifyColumnType for enum renames
+            assert!(
+                plan.actions
+                    .iter()
+                    .all(|a| matches!(a, MigrationAction::ModifyColumnType { .. }))
+            );
+        }
+
+        #[test]
+        fn integer_enum_name_changed_ignored() {
+            // Integer enum name change - should be ignored (DB type is always INTEGER)
+            let from = vec![table(
+                "orders",
+                vec![col(
+                    "priority",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "old_priority".into(),
+                        values: EnumValues::Integer(vec![
+                            NumValue {
+                                name: "Low".into(),
+                                value: 0,
+                            },
+                            NumValue {
+                                name: "High".into(),
+                                value: 10,
+                            },
+                        ]),
+                    }),
+                )],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "orders",
+                vec![col(
+                    "priority",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "new_priority".into(),
+                        values: EnumValues::Integer(vec![
+                            NumValue {
+                                name: "Low".into(),
+                                value: 0,
+                            },
+                            NumValue {
+                                name: "High".into(),
+                                value: 10,
+                            },
+                        ]),
+                    }),
+                )],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+            assert!(
+                plan.actions.is_empty(),
+                "Expected no actions for integer enum rename, got: {:?}",
+                plan.actions
+            );
+        }
+
+        #[test]
+        fn enum_name_changed_across_tables() {
+            // Enum name changes detected across different tables
+            let from = vec![
+                table(
+                    "users",
+                    vec![col(
+                        "status",
+                        ColumnType::Complex(ComplexColumnType::Enum {
+                            name: "user_status".into(),
+                            values: EnumValues::String(vec!["active".into(), "banned".into()]),
+                        }),
+                    )],
+                    vec![],
+                ),
+                table(
+                    "orders",
+                    vec![col(
+                        "status",
+                        ColumnType::Complex(ComplexColumnType::Enum {
+                            name: "order_status".into(),
+                            values: EnumValues::String(vec!["pending".into(), "done".into()]),
+                        }),
+                    )],
+                    vec![],
+                ),
+            ];
+
+            let to = vec![
+                table(
+                    "users",
+                    vec![col(
+                        "status",
+                        ColumnType::Complex(ComplexColumnType::Enum {
+                            name: "status".into(),
+                            values: EnumValues::String(vec!["active".into(), "banned".into()]),
+                        }),
+                    )],
+                    vec![],
+                ),
+                table(
+                    "orders",
+                    vec![col(
+                        "status",
+                        ColumnType::Complex(ComplexColumnType::Enum {
+                            name: "status".into(),
+                            values: EnumValues::String(vec!["pending".into(), "done".into()]),
+                        }),
+                    )],
+                    vec![],
+                ),
+            ];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+            assert_eq!(
+                plan.actions.len(),
+                2,
+                "Expected 2 actions, got: {:?}",
+                plan.actions
+            );
+            assert!(
+                plan.actions
+                    .iter()
+                    .all(|a| matches!(a, MigrationAction::ModifyColumnType { .. }))
+            );
+        }
+
+        #[test]
+        fn enum_name_changed_with_value_change_single_action() {
+            // Both name AND values changed - should produce only ONE ModifyColumnType
+            // (the value change already triggers it; enum rename doesn't duplicate)
+            let from = vec![table(
+                "orders",
+                vec![col(
+                    "status",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "order_status".into(),
+                        values: EnumValues::String(vec!["pending".into(), "shipped".into()]),
+                    }),
+                )],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "orders",
+                vec![col(
+                    "status",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "status".into(),
+                        values: EnumValues::String(vec![
+                            "pending".into(),
+                            "shipped".into(),
+                            "delivered".into(),
+                        ]),
+                    }),
+                )],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+            // Should be exactly 1 action, not 2 (no duplicate for name + values)
+            assert_eq!(
+                plan.actions.len(),
+                1,
+                "Expected exactly 1 action, got: {:?}",
+                plan.actions
+            );
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::ModifyColumnType { .. }
+            ));
+        }
+    }
     // Tests for enum + default value ordering
     mod enum_default_ordering {
         use super::*;
