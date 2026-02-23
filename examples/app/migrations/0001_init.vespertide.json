@@ -60,6 +60,7 @@
     {
       "columns": [
         {
+          "comment": "hello",
           "default": "gen_random_uuid()",
           "name": "id",
           "nullable": false,
@@ -166,7 +167,7 @@
           "nullable": false,
           "type": {
             "kind": "enum",
-            "name": "article_status",
+            "name": "status",
             "values": [
               "draft",
               "review",
@@ -200,6 +201,7 @@
     {
       "columns": [
         {
+          "comment": "hello",
           "foreign_key": {
             "on_delete": "cascade",
             "on_update": null,
@@ -235,7 +237,7 @@
           "nullable": false,
           "type": {
             "kind": "enum",
-            "name": "media_role",
+            "name": "role",
             "values": [
               "owner",
               "editor",
@@ -295,7 +297,7 @@
           "nullable": false,
           "type": {
             "kind": "enum",
-            "name": "article_user_role",
+            "name": "role",
             "values": [
               "lead",
               "contributor"
@@ -329,7 +331,8 @@
       "type": "create_table"
     }
   ],
-  "comment": "Init",
-  "created_at": "2025-12-19T08:38:59Z",
+  "comment": "init",
+  "created_at": "2026-02-23T12:40:21Z",
+  "id": "3e051b39-2716-438d-bdd0-32e41da4fb47",
   "version": 1
 }

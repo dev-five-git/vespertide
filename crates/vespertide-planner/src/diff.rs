@@ -482,15 +482,39 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
 
             // Modified columns - type changes
             for (col, to_def) in &to_cols {
-                if let Some(from_def) = from_cols.get(col)
-                    && from_def.r#type.requires_migration(&to_def.r#type)
-                {
-                    actions.push(MigrationAction::ModifyColumnType {
-                        table: name.to_string(),
-                        column: col.to_string(),
-                        new_type: to_def.r#type.clone(),
-                        fill_with: None,
-                    });
+                if let Some(from_def) = from_cols.get(col) {
+                    let needs_type_migration =
+                        from_def.r#type.requires_migration(&to_def.r#type);
+
+                    // Detect string enum name changes even when values are identical.
+                    // The PostgreSQL enum type name is derived from the enum name
+                    // (e.g., `{table}_{enum_name}`), so a name change requires
+                    // DROP TYPE old + CREATE TYPE new at the SQL level.
+                    let needs_enum_rename = !needs_type_migration
+                        && matches!(
+                            (&from_def.r#type, &to_def.r#type),
+                            (
+                                ColumnType::Complex(ComplexColumnType::Enum {
+                                    name: old_name,
+                                    values: old_values,
+                                }),
+                                ColumnType::Complex(ComplexColumnType::Enum {
+                                    name: new_name,
+                                    values: new_values,
+                                }),
+                            ) if old_name != new_name
+                                && !old_values.is_integer()
+                                && !new_values.is_integer()
+                        );
+
+                    if needs_type_migration || needs_enum_rename {
+                        actions.push(MigrationAction::ModifyColumnType {
+                            table: name.to_string(),
+                            column: col.to_string(),
+                            new_type: to_def.r#type.clone(),
+                            fill_with: None,
+                        });
+                    }
                 }
             }
 
@@ -859,6 +883,60 @@ mod tests {
             );
         }
 
+
+        #[test]
+        fn integer_enum_name_changed_no_migration() {
+            // Integer enum name changed - should NOT generate migration
+            // because integer enums use INTEGER column type, not a named PG type.
+            let from = vec![table(
+                "orders",
+                vec![col(
+                    "status",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "order_status".into(),
+                        values: EnumValues::Integer(vec![
+                            NumValue {
+                                name: "Pending".into(),
+                                value: 0,
+                            },
+                            NumValue {
+                                name: "Shipped".into(),
+                                value: 1,
+                            },
+                        ]),
+                    }),
+                )],
+                vec![],
+            )];
+
+            let to = vec![table(
+                "orders",
+                vec![col(
+                    "status",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "status".into(),
+                        values: EnumValues::Integer(vec![
+                            NumValue {
+                                name: "Pending".into(),
+                                value: 0,
+                            },
+                            NumValue {
+                                name: "Shipped".into(),
+                                value: 1,
+                            },
+                        ]),
+                    }),
+                )],
+                vec![],
+            )];
+
+            let plan = diff_schemas(&from, &to).unwrap();
+            assert!(
+                plan.actions.is_empty(),
+                "Expected no actions for integer enum name change, got: {:?}",
+                plan.actions
+            );
+        }
         #[test]
         fn string_enum_values_changed_requires_migration() {
             // String enum values changed - SHOULD generate ModifyColumnType
@@ -900,9 +978,9 @@ mod tests {
         }
 
         #[test]
-        fn string_enum_name_changed_same_values_no_migration() {
-            // String enum name changed but values identical - should NOT generate migration
-            // Reproduces the phantom diff: model "status" vs migration "article_status"
+        fn string_enum_name_changed_same_values_requires_migration() {
+            // String enum name changed but values identical - SHOULD generate migration
+            // because the PostgreSQL enum type name is derived from the enum name.
             let from = vec![table(
                 "orders",
                 vec![col(
@@ -914,7 +992,6 @@ mod tests {
                 )],
                 vec![],
             )];
-
             let to = vec![table(
                 "orders",
                 vec![col(
@@ -926,13 +1003,19 @@ mod tests {
                 )],
                 vec![],
             )];
-
             let plan = diff_schemas(&from, &to).unwrap();
-            assert!(
-                plan.actions.is_empty(),
-                "Expected no actions for enum name-only change, got: {:?}",
+            assert_eq!(
+                plan.actions.len(),
+                1,
+                "Expected 1 action for enum name change, got: {:?}",
                 plan.actions
             );
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::ModifyColumnType { table, column, new_type, .. }
+                if table == "orders" && column == "status"
+                    && matches!(new_type, ColumnType::Complex(ComplexColumnType::Enum { name, .. }) if name == "status")
+            ));
         }
 
         #[test]
