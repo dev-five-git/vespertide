@@ -124,56 +124,62 @@ pub fn build_modify_column_type(
             .map(|c| &c.r#type);
 
         // Check if this is an enum-to-enum migration that needs special handling (PostgreSQL only)
+        // Covers both: enum value changes (same name) and enum name changes (different name)
         let needs_enum_migration = if *backend == DatabaseBackend::Postgres {
             matches!(
                 (old_type, new_type),
                 (
                     Some(ColumnType::Complex(ComplexColumnType::Enum { name: old_name, values: old_values })),
                     ColumnType::Complex(ComplexColumnType::Enum { name: new_name, values: new_values })
-                ) if old_name == new_name && old_values != new_values
+                ) if old_name != new_name || old_values != new_values
             )
         } else {
             false
         };
-
         if needs_enum_migration {
-            // Use the safe temp type + USING + RENAME approach for enum value changes
+            // PostgreSQL enum-to-enum migration with USING clause for safe casting
             if let (
                 Some(ColumnType::Complex(ComplexColumnType::Enum {
-                    name: enum_name, ..
+                    name: old_enum_name,
+                    ..
                 })),
                 ColumnType::Complex(ComplexColumnType::Enum {
-                    values: new_values, ..
+                    name: new_enum_name,
+                    values: new_values,
                 }),
             ) = (old_type, new_type)
             {
-                // Use table-prefixed enum type names
-                let type_name = super::helpers::build_enum_type_name(table, enum_name);
-                let temp_type_name = format!("{}_new", type_name);
+                let old_type_name = super::helpers::build_enum_type_name(table, old_enum_name);
+                let new_type_name = super::helpers::build_enum_type_name(table, new_enum_name);
+                let names_differ = old_enum_name != new_enum_name;
 
+                // For same-name changes: create temp type, then rename back
+                // For different-name changes: create final type directly, no rename needed
+                let (target_type_name, needs_rename) = if names_differ {
+                    (new_type_name, false)
+                } else {
+                    (format!("{}_new", old_type_name), true)
+                };
                 // 0. INSERT fill_with UPDATEs before any type changes (rows still have old enum type)
                 if let Some(fw) = fill_with {
                     queries.extend(build_fill_with_updates(table, column, fw));
                 }
-
                 // Check if column has a DEFAULT value that needs to be handled
                 let column_default = current_schema
                     .iter()
                     .find(|t| t.name == table)
                     .and_then(|t| t.columns.iter().find(|c| c.name == column))
                     .and_then(|c| c.default.clone());
-
-                // 1. CREATE TYPE {table}_{enum}_new AS ENUM (new values)
-                let create_temp_values = new_values.to_sql_values().join(", ");
+                // 1. CREATE TYPE target_type AS ENUM (new values)
+                let create_values = new_values.to_sql_values().join(", ");
                 queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
                     format!(
                         "CREATE TYPE \"{}\" AS ENUM ({})",
-                        temp_type_name, create_temp_values
+                        target_type_name, create_values
                     ),
                     String::new(),
                     String::new(),
                 )));
-
                 // 2. DROP DEFAULT if exists (must be done before type change)
                 if column_default.is_some() {
                     queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
@@ -186,26 +192,34 @@ pub fn build_modify_column_type(
                     )));
                 }
 
-                // 3. ALTER TABLE ... ALTER COLUMN ... TYPE {table}_{enum}_new USING {column}::text::{table}_{enum}_new
-                queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(format!("ALTER TABLE \"{}\" ALTER COLUMN \"{}\" TYPE \"{}\" USING \"{}\"::text::\"{}\"", table, column, temp_type_name, column, temp_type_name), String::new(), String::new())));
-
-                // 4. DROP TYPE {table}_{enum}
-                queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
-                    format!("DROP TYPE \"{}\"", type_name),
-                    String::new(),
-                    String::new(),
-                )));
-
-                // 5. ALTER TYPE {table}_{enum}_new RENAME TO {table}_{enum}
+                // 3. ALTER TABLE ... ALTER COLUMN ... TYPE target_type USING col::text::target_type
                 queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
                     format!(
-                        "ALTER TYPE \"{}\" RENAME TO \"{}\"",
-                        temp_type_name, type_name
+                        "ALTER TABLE \"{}\" ALTER COLUMN \"{}\" TYPE \"{}\" USING \"{}\"::text::\"{}\"",
+                        table, column, target_type_name, column, target_type_name
                     ),
                     String::new(),
                     String::new(),
                 )));
 
+                // 4. DROP old enum type
+                queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
+                    format!("DROP TYPE \"{}\"", old_type_name),
+                    String::new(),
+                    String::new(),
+                )));
+
+                // 5. RENAME temp to final (only for same-name value changes)
+                if needs_rename {
+                    queries.push(BuiltQuery::Raw(super::types::RawSql::per_backend(
+                        format!(
+                            "ALTER TYPE \"{}\" RENAME TO \"{}\"",
+                            target_type_name, old_type_name
+                        ),
+                        String::new(),
+                        String::new(),
+                    )));
+                }
                 // 6. Restore DEFAULT if it existed
                 if let Some(default_value) = column_default {
                     // Use normalize_enum_default to properly quote enum values
