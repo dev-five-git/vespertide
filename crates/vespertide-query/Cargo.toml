@@ -1,6 +1,6 @@
 [package]
 name = "vespertide-query"
-version = "0.1.48"
+version = "0.1.49"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
