@@ -586,6 +586,8 @@ fn generate_relation_enum_name(columns: &[String]) -> String {
 
 /// Infer a field name from a single FK column.
 /// For "creator_user_id" with to="id", tries "creator_user" first.
+/// If the FK column still follows common suffix naming like `_id`/`_idx`,
+/// remove those as fallbacks for intuitive relation names.
 /// If that ends with the table name, use the full column name (without the to suffix).
 /// Otherwise, fall back to the table name.
 ///
@@ -593,14 +595,21 @@ fn generate_relation_enum_name(columns: &[String]) -> String {
 /// - FK column: "creator_user_id", table: "user", to: "id" -> "creator_user"
 /// - FK column: "creator_user_idx", table: "user", to: "idx" -> "creator_user"
 /// - FK column: "user_id", table: "user", to: "id" -> "user" (falls back to table name)
+/// - FK column: "order_id", table: "order", to: "order_number" -> "order"
+/// - FK column: "order_idx", table: "order", to: "order_number" -> "order"
 /// - FK column: "org_id", table: "user", to: "id" -> "org"
 fn infer_field_name_from_fk_column(fk_column: &str, table_name: &str, to: &str) -> String {
     let table_lower = table_name.to_lowercase();
 
-    // Remove the "to" suffix from FK column (e.g., "user_id" for to="id", "user_idx" for to="idx")
-    let without_suffix = if fk_column.ends_with(&format!("_{to}")) {
-        let suffix_len = to.len() + 1; // +1 for the underscore
-        &fk_column[..fk_column.len() - suffix_len]
+    // Remove the "to" suffix from FK column (e.g., "user_id" for to="id", "user_idx" for to="idx").
+    // If FK column still uses common suffixes like "*_id"/"*_idx", strip them as fallbacks.
+    let to_suffix = format!("_{to}");
+    let without_suffix = if fk_column.ends_with(&to_suffix) {
+        &fk_column[..fk_column.len() - to_suffix.len()]
+    } else if fk_column.ends_with("_id") {
+        &fk_column[..fk_column.len() - 3]
+    } else if fk_column.ends_with("_idx") {
+        &fk_column[..fk_column.len() - 4]
     } else {
         fk_column
     };
@@ -1397,6 +1406,12 @@ mod helper_tests {
     #[case("creator_user_idx", "user", "idx", "creator_user")]
     #[case("user_idx", "user", "idx", "user")]
     #[case("author_pk", "user", "pk", "author")]
+    // FK column keeps *_id naming while target column is not "id"
+    #[case("order_id", "order", "order_number", "order")]
+    #[case("creator_order_id", "order", "order_number", "creator_order")]
+    // FK column keeps *_idx naming while target column is not "idx"
+    #[case("order_idx", "order", "order_number", "order")]
+    #[case("creator_order_idx", "order", "order_number", "creator_order")]
     fn test_infer_field_name_from_fk_column(
         #[case] fk_column: &str,
         #[case] table_name: &str,
