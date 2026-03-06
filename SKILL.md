@@ -7,12 +7,9 @@ description: Define database schemas in JSON and generate migration plans. Use t
 
 Declarative database schema management. Define tables in JSON, generate typed migrations and SQL.
 
-> **CRITICAL**: Always validate your model against the JSON Schema before committing.
-> Use `$schema` in every model file for IDE validation.
-
 ## Schema Validation (MANDATORY)
 
-**Every model file MUST include the `$schema` field:**
+Every model file MUST include `$schema`. Before saving: ensure no IDE validation errors, then run `vespertide diff`.
 
 ```json
 {
@@ -22,37 +19,16 @@ Declarative database schema management. Define tables in JSON, generate typed mi
 }
 ```
 
-**Before saving any model:**
-1. Ensure `$schema` URL is present
-2. Verify IDE shows no validation errors
-3. Run `vespertide diff` to check for parsing errors
-
-The schema URL provides:
-- Real-time validation in VS Code, WebStorm, etc.
-- Autocompletion for all fields
-- Type checking for column types and constraints
-
----
-
 ## Post-Edit Validation (MANDATORY)
 
-**After EVERY edit to a model file, ALWAYS run these checks:**
+After EVERY model edit, run:
 
 ```bash
-# 1. Check for parsing errors and schema violations
-vespertide diff
-
-# 2. Preview generated SQL to verify correctness
-vespertide sql
+vespertide diff   # Check for parsing errors and expected changes
+vespertide sql    # Preview generated SQL for correctness
 ```
 
-**Verify the output:**
-- `vespertide diff` shows expected changes (no unexpected additions/removals)
-- `vespertide sql` generates valid SQL for your target database
-- IDE shows no red squiggles (schema validation errors)
-- All required fields (`name`, `type`, `nullable`) are present
-
-**Only proceed to `vespertide revision` after verification passes.**
+Only proceed to `vespertide revision` after both pass cleanly.
 
 ---
 
@@ -66,54 +42,86 @@ cargo install vespertide-cli
 
 | Command | Description |
 |---------|-------------|
-| `vespertide init` | Initialize project with `vespertide.json` |
+| `vespertide init` | Initialize `vespertide.json` with defaults |
 | `vespertide new <name>` | Create model template with `$schema` |
-| `vespertide diff` | Show pending changes |
-| `vespertide sql` | Preview SQL for next migration |
-| `vespertide sql --backend mysql` | SQL for specific backend (postgres/mysql/sqlite) |
+| `vespertide new <name> -f yaml` | Create model in specific format (`json`/`yaml`/`yml`) |
+| `vespertide diff` | Show pending changes between migrations and models |
+| `vespertide sql` | Preview SQL for next migration (default: postgres) |
+| `vespertide sql -b mysql` | SQL for specific backend (`postgres`/`mysql`/`sqlite`) |
+| `vespertide log` | Show SQL per applied migration |
+| `vespertide log -b mysql` | Migration log for specific backend |
+| `vespertide status` | Show config and sync overview |
 | `vespertide revision -m "msg"` | Create migration file |
-| `vespertide status` | Show project status |
-| `vespertide log` | List applied migrations |
-| `vespertide export --orm seaorm` | Export to ORM code |
+| `vespertide revision -m "msg" --fill-with table.col=value` | Create migration with fill values (repeatable) |
+| `vespertide export --orm seaorm` | Export to ORM code (`seaorm`/`sqlalchemy`/`sqlmodel`) |
+| `vespertide export --orm seaorm -d out/` | Export to custom directory |
+
+---
+
+## Configuration (`vespertide.json`)
+
+```json
+{
+  "modelsDir": "models",
+  "migrationsDir": "migrations",
+  "tableNamingCase": "snake",
+  "columnNamingCase": "snake",
+  "modelFormat": "json",
+  "migrationFormat": "json",
+  "migrationFilenamePattern": "%04v_%m",
+  "modelExportDir": "src/models",
+  "prefix": "",
+  "seaorm": {
+    "extraEnumDerives": ["vespera::Schema"],
+    "extraModelDerives": [],
+    "enumNamingCase": "camel",
+    "vesperaSchemaType": true
+  }
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `modelsDir` | string | `"models"` | Model JSON files directory |
+| `migrationsDir` | string | `"migrations"` | Migration files directory |
+| `tableNamingCase` | string | `"snake"` | `snake` / `camel` / `pascal` |
+| `columnNamingCase` | string | `"snake"` | `snake` / `camel` / `pascal` |
+| `modelFormat` | string | `"json"` | `json` / `yaml` / `yml` |
+| `migrationFormat` | string | `"json"` | `json` / `yaml` / `yml` |
+| `migrationFilenamePattern` | string | `"%04v_%m"` | `%v`=version, `%m`=message |
+| `modelExportDir` | string | `"src/models"` | ORM export output directory |
+| `prefix` | string | `""` | Prefix for all table names |
+
+**SeaORM Config** (`seaorm` nested object):
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `extraEnumDerives` | string[] | `["vespera::Schema"]` | Extra derives for generated enums |
+| `extraModelDerives` | string[] | `[]` | Extra derives for entity models |
+| `enumNamingCase` | string | `"camel"` | Serde `rename_all` for enums |
+| `vesperaSchemaType` | bool | `true` | Generate `vespera::schema_type!` calls |
 
 ---
 
 ## Exported ORM Files (DO NOT EDIT)
 
-> **CRITICAL**: Files generated by `vespertide export` are AUTO-GENERATED. Never modify them manually.
-
-### Rules
-
-1. **Never manually edit** exported files (SeaORM entities, SQLAlchemy models, etc.)
-2. **Always regenerate** by running `vespertide export --orm <orm_name>`
-3. **Edit source models** in `models/*.json` instead, then re-export
-
-### Workflow
+> **CRITICAL**: Files in `src/models/` (e.g. `src/models/*.rs`, `src/models/*.py`) are AUTO-GENERATED by `vespertide export`. **NEVER manually create or edit these files.** Always edit source models in `models/*.json`, then regenerate:
 
 ```bash
-# 1. Edit your model files (models/*.json)
-# 2. Regenerate ORM code
+# Edit models/*.json -> regenerate
 vespertide export --orm seaorm
-
-# 3. Never touch the generated files after this
 ```
 
----
+## Migration / Revision Files (DO NOT EDIT)
 
-## Migration Files (DO NOT EDIT)
+> **CRITICAL**: Migration files in the `migrations/` directory are AUTO-GENERATED by `vespertide revision`. **NEVER manually create, edit, or modify revision files.** Always edit source models in `models/*.json`, then create a new revision:
 
-> **CRITICAL**: Migration files are AUTO-GENERATED. Never create or modify them manually.
+```bash
+# Edit models/*.json -> create revision
+vespertide revision -m "describe your change"
+```
 
-### Rules
-
-1. **Always use `vespertide revision -m "message"`** to create migrations
-2. **Never manually create** migration JSON files
-3. **Never manually edit** migration JSON files
-4. **Only exception**: Adding `fill_with` values when prompted
-
-### When `fill_with` is Required
-
-When adding a NOT NULL column to an existing table without a default value, the CLI will prompt for a `fill_with` value. This is the ONLY case where you may need to edit the migration:
+**Only exception**: Adding `fill_with` values when prompted (NOT NULL columns without defaults).
 
 ```json
 {
@@ -128,25 +136,6 @@ When adding a NOT NULL column to an existing table without a default value, the 
 }
 ```
 
-The `fill_with` value is used to backfill existing rows during migration.
-
-### Workflow
-
-```bash
-# 1. Edit your model files (models/*.json)
-# 2. Check what changed
-vespertide diff
-
-# 3. Preview SQL
-vespertide sql
-
-# 4. Create migration (auto-generated)
-vespertide revision -m "add status column"
-
-# 5. If prompted for fill_with, provide a value
-# 6. Never touch migration files after this
-```
-
 ---
 
 ## Model Structure
@@ -156,25 +145,17 @@ vespertide revision -m "add status column"
   "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
   "name": "table_name",
   "description": "Optional table description",
-  "columns": [ /* ColumnDef[] */ ]
+  "columns": [ /* ColumnDef[] */ ],
+  "constraints": [ /* Optional: CHECK constraints only */ ]
 }
 ```
 
-> **Note**: `constraints` field is optional. Only add it when you need CHECK constraints.
-
-### Required Fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | string | Table name (snake_case) |
-| `columns` | array | Column definitions |
-
-### Optional Fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `description` | string | Table documentation |
-| `constraints` | array | Table-level constraints (only for CHECK) |
+| Field | Required | Type | Description |
+|-------|----------|------|-------------|
+| `name` | yes | string | Table name (snake_case) |
+| `columns` | yes | array | Column definitions |
+| `description` | no | string | Table documentation |
+| `constraints` | no | array | Table-level constraints (CHECK only) |
 
 ---
 
@@ -183,11 +164,7 @@ vespertide revision -m "add status column"
 ### Required Fields
 
 ```json
-{
-  "name": "column_name",
-  "type": "ColumnType",
-  "nullable": false
-}
+{ "name": "column_name", "type": "ColumnType", "nullable": false }
 ```
 
 ### Optional Fields
@@ -207,106 +184,32 @@ vespertide revision -m "add status column"
 
 ### Simple Types (string values)
 
-| Type | SQL | Use Case |
-|------|-----|----------|
-| `"small_int"` | SMALLINT | Small integers (-32768 to 32767) |
-| `"integer"` | INTEGER | IDs, counts, standard integers |
-| `"big_int"` | BIGINT | Large numbers, timestamps as int |
-| `"real"` | REAL | Single precision float |
-| `"double_precision"` | DOUBLE PRECISION | Double precision float |
-| `"text"` | TEXT | Variable-length strings |
-| `"boolean"` | BOOLEAN | True/false flags |
-| `"date"` | DATE | Date only (no time) |
-| `"time"` | TIME | Time only (no date) |
-| `"timestamp"` | TIMESTAMP | Date/time without timezone |
-| `"timestamptz"` | TIMESTAMPTZ | Date/time with timezone |
-| `"interval"` | INTERVAL | Time duration |
-| `"bytea"` | BYTEA | Binary data |
-| `"uuid"` | UUID | UUIDs |
-| `"json"` | JSON | JSON data (cross-database compatible) |
-| `"inet"` | INET | IPv4/IPv6 address |
-| `"cidr"` | CIDR | Network address |
-| `"macaddr"` | MACADDR | MAC address |
-| `"xml"` | XML | XML data |
+| Type | SQL | Type | SQL |
+|------|-----|------|-----|
+| `"small_int"` | SMALLINT | `"text"` | TEXT |
+| `"integer"` | INTEGER | `"boolean"` | BOOLEAN |
+| `"big_int"` | BIGINT | `"uuid"` | UUID |
+| `"real"` | REAL | `"json"` | JSON |
+| `"double_precision"` | DOUBLE PRECISION | `"bytea"` | BYTEA |
+| `"date"` | DATE | `"inet"` | INET |
+| `"time"` | TIME | `"cidr"` | CIDR |
+| `"timestamp"` | TIMESTAMP | `"macaddr"` | MACADDR |
+| `"timestamptz"` | TIMESTAMPTZ | `"xml"` | XML |
+| `"interval"` | INTERVAL | | |
 
 ### Complex Types (object values)
 
-#### VARCHAR (variable-length string with limit)
-
 ```json
 { "kind": "varchar", "length": 255 }
-```
-
-#### CHAR (fixed-length string)
-
-```json
 { "kind": "char", "length": 2 }
-```
-
-#### NUMERIC/DECIMAL (exact precision)
-
-```json
 { "kind": "numeric", "precision": 10, "scale": 2 }
+{ "kind": "enum", "name": "...", "values": [...] }
+{ "kind": "custom", "custom_type": "..." }
 ```
 
-#### ENUM (STRONGLY RECOMMENDED)
+### Enum Types (RECOMMENDED for status/category fields)
 
-**Use enums instead of text columns with CHECK constraints for status fields, categories, and any fixed set of values.**
-
-**String Enum (PostgreSQL native enum):**
-```json
-{
-  "kind": "enum",
-  "name": "order_status",
-  "values": ["pending", "processing", "shipped", "delivered", "cancelled"]
-}
-```
-
-**Integer Enum (stored as INTEGER, no DB migration needed for new values):**
-```json
-{
-  "kind": "enum",
-  "name": "priority_level",
-  "values": [
-    { "name": "low", "value": 0 },
-    { "name": "medium", "value": 1 },
-    { "name": "high", "value": 2 },
-    { "name": "critical", "value": 3 }
-  ]
-}
-```
-
-> **Why Integer Enums?**
-> - Adding new values requires NO database migration
-> - Application-level enum mapping only
-> - Better for frequently-changing value sets
-> - Works identically across PostgreSQL, MySQL, SQLite
-
-#### Custom Type (AVOID - last resort only)
-
-> **WARNING**: Avoid custom types. They break cross-database compatibility. Use built-in types or redesign your schema.
-
-```json
-{ "kind": "custom", "custom_type": "POINT" }
-{ "kind": "custom", "custom_type": "TSVECTOR" }
-```
-
----
-
-## Enum Best Practices (RECOMMENDED)
-
-### When to Use Enums
-
-| Scenario | Recommended Type |
-|----------|------------------|
-| Status fields (order_status, user_status) | String enum or Integer enum |
-| Categories with fixed values | String enum |
-| Priority/severity levels | Integer enum |
-| Roles with potential expansion | Integer enum |
-| Country/currency codes (ISO) | String enum |
-
-### String Enum Example
-
+**String Enum** (PostgreSQL native enum):
 ```json
 {
   "name": "status",
@@ -320,8 +223,7 @@ vespertide revision -m "add status column"
 }
 ```
 
-### Integer Enum Example
-
+**Integer Enum** (stored as INTEGER -- no DB migration needed for new values):
 ```json
 {
   "name": "role",
@@ -340,35 +242,35 @@ vespertide revision -m "add status column"
 }
 ```
 
-> **Tip**: Leave gaps in integer values (0, 10, 50, 100) to allow inserting new values in between without renumbering.
+> **Tip**: Leave gaps in integer values (0, 10, 50, 100) to allow inserting new values without renumbering.
+
+| Scenario | Recommended Type |
+|----------|------------------|
+| Status fields (order_status, user_status) | String or Integer enum |
+| Categories with fixed values | String enum |
+| Priority/severity levels | Integer enum |
+| Roles with potential expansion | Integer enum |
 
 ---
 
 ## Inline Constraints (PREFERRED)
 
-> **Always define constraints directly on columns.** This is cleaner, more readable, and the recommended pattern.
-> Use table-level `constraints` array ONLY for composite keys or CHECK expressions.
+> Always define constraints on columns. Use table-level `constraints` ONLY for CHECK expressions.
 
 ### Primary Key
 
-Simple:
 ```json
 { "name": "id", "type": "integer", "nullable": false, "primary_key": true }
-```
-
-With auto-increment:
-```json
 { "name": "id", "type": "integer", "nullable": false, "primary_key": { "auto_increment": true } }
 ```
 
 ### Unique
 
-Simple unique:
 ```json
 { "name": "email", "type": "text", "nullable": false, "unique": true }
 ```
 
-Named unique (for composite):
+Named composite unique:
 ```json
 { "name": "tenant_id", "type": "integer", "nullable": false, "unique": ["uq_tenant_user"] },
 { "name": "username", "type": "text", "nullable": false, "unique": ["uq_tenant_user"] }
@@ -376,7 +278,6 @@ Named unique (for composite):
 
 ### Index
 
-Simple index:
 ```json
 { "name": "email", "type": "text", "nullable": false, "index": true }
 ```
@@ -407,47 +308,30 @@ Object syntax (recommended):
 
 Shorthand syntax:
 ```json
+{ "name": "user_id", "type": "integer", "nullable": false, "foreign_key": "user.id", "index": true }
+```
+
+**Reference Actions** (snake_case): `"cascade"`, `"restrict"`, `"set_null"`, `"set_default"`, `"no_action"`
+
+> Always add `"index": true` on foreign key columns for query performance.
+
+### Composite Primary Key (Inline)
+
+Both columns with `"primary_key": true` create a single composite primary key:
+```json
 {
-  "name": "user_id",
-  "type": "integer",
-  "nullable": false,
-  "foreign_key": "user.id",
-  "index": true
+  "columns": [
+    { "name": "user_id", "type": "integer", "nullable": false, "primary_key": true },
+    { "name": "role_id", "type": "integer", "nullable": false, "primary_key": true }
+  ]
 }
 ```
 
-**Reference Actions** (snake_case):
-- `"cascade"` - Delete/update child rows
-- `"restrict"` - Prevent if children exist
-- `"set_null"` - Set to NULL
-- `"set_default"` - Set to default value
-- `"no_action"` - Defer check (PostgreSQL)
-
-> **Always add `"index": true` on foreign key columns** for query performance.
-
 ---
 
-## Table-Level Constraints
+## Table-Level Constraints (CHECK only)
 
-> **IMPORTANT**: Always prefer inline constraints (`primary_key`, `unique`, `index`, `foreign_key` on columns).
-> Table-level `constraints` is ONLY needed for CHECK expressions.
-
-### When Table-Level is Required
-
-| Scenario | Why Inline Won't Work |
-|----------|----------------------|
-| CHECK constraint with expression | No inline equivalent exists |
-
-### Inline Works for Everything Else
-
-| Scenario | Inline Solution |
-|----------|-----------------|
-| Composite primary key | `"primary_key": true` on EACH column |
-| Composite unique | `"unique": ["constraint_name"]` on each column |
-| Composite index | `"index": ["index_name"]` on each column |
-| Foreign key | `"foreign_key": {...}` on the column |
-
-### Syntax (CHECK only)
+> Use inline constraints for everything else (PK, unique, index, FK).
 
 ```json
 "constraints": [
@@ -456,37 +340,6 @@ Shorthand syntax:
 ]
 ```
 
-### What NOT to Put in Table-Level
-
-```json
-// BAD - Use inline instead
-"constraints": [
-  { "type": "primary_key", "columns": ["tenant_id", "user_id"] },  // Use: "primary_key": true on each column
-  { "type": "unique", "columns": ["email"] },                       // Use: "unique": true on column
-  { "type": "foreign_key", "columns": ["user_id"], ... },           // Use: "foreign_key": {...} on column
-  { "type": "index", "columns": ["created_at"] }                    // Use: "index": true on column
-]
-
-// GOOD - Only CHECK constraints
-"constraints": [
-  { "type": "check", "name": "check_amount", "expr": "amount >= 0" }
-]
-```
-
-### Composite Primary Key Example (Inline)
-
-```json
-{
-  "name": "user_role",
-  "columns": [
-    { "name": "user_id", "type": "integer", "nullable": false, "primary_key": true },
-    { "name": "role_id", "type": "integer", "nullable": false, "primary_key": true }
-  ]
-}
-```
-
-Both columns with `"primary_key": true` creates a **single composite primary key** `(user_id, role_id)`.
-
 ---
 
 ## Default Values
@@ -494,18 +347,36 @@ Both columns with `"primary_key": true` creates a **single composite primary key
 | Type | Example | Notes |
 |------|---------|-------|
 | String literal | `"'pending'"` | Single quotes inside string |
-| Boolean | `true` or `false` | Native JSON boolean |
+| Boolean | `true` / `false` | Native JSON boolean |
 | Integer | `0` | Native JSON number |
 | Float | `0.0` | Native JSON number |
 | SQL function | `"NOW()"` | No quotes around function |
 | UUID generation | `"gen_random_uuid()"` | PostgreSQL |
 
-```json
-{ "name": "status", "type": "text", "nullable": false, "default": "'active'" },
-{ "name": "count", "type": "integer", "nullable": false, "default": 0 },
-{ "name": "enabled", "type": "boolean", "nullable": false, "default": true },
-{ "name": "created_at", "type": "timestamptz", "nullable": false, "default": "NOW()" }
+---
+
+## Runtime Migration Macro
+
+Use `vespertide_migration!` to run migrations at application startup:
+
+```toml
+[dependencies]
+vespertide = "0.1"
+sea-orm = { version = "2.0.0-rc", features = ["sqlx-postgres", "runtime-tokio-native-tls", "macros"] }
 ```
+
+```rust
+use sea_orm::Database;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let db = Database::connect("postgres://user:pass@localhost/mydb").await?;
+    vespertide::vespertide_migration!(db).await?;
+    Ok(())
+}
+```
+
+The macro generates database-specific SQL at compile time for zero-runtime overhead.
 
 ---
 
@@ -521,15 +392,11 @@ Both columns with `"primary_key": true` creates a **single composite primary key
     { "name": "id", "type": "integer", "nullable": false, "primary_key": { "auto_increment": true } },
     { "name": "email", "type": "text", "nullable": false, "unique": true, "index": true },
     { "name": "name", "type": { "kind": "varchar", "length": 100 }, "nullable": false },
-    { 
-      "name": "status", 
-      "type": { 
-        "kind": "enum", 
-        "name": "user_status", 
-        "values": ["pending", "active", "suspended", "deleted"] 
-      }, 
-      "nullable": false, 
-      "default": "'pending'" 
+    {
+      "name": "status",
+      "type": { "kind": "enum", "name": "user_status", "values": ["pending", "active", "suspended", "deleted"] },
+      "nullable": false,
+      "default": "'pending'"
     },
     { "name": "metadata", "type": "json", "nullable": true },
     { "name": "created_at", "type": "timestamptz", "nullable": false, "default": "NOW()" },
@@ -538,7 +405,7 @@ Both columns with `"primary_key": true` creates a **single composite primary key
 }
 ```
 
-### Order Table with Integer Enum Priority
+### Order Table with Integer Enum and CHECK
 
 ```json
 {
@@ -546,38 +413,34 @@ Both columns with `"primary_key": true` creates a **single composite primary key
   "name": "order",
   "columns": [
     { "name": "id", "type": "uuid", "nullable": false, "primary_key": true, "default": "gen_random_uuid()" },
-    { 
-      "name": "customer_id", 
-      "type": "integer", 
-      "nullable": false, 
-      "foreign_key": { "ref_table": "customer", "ref_columns": ["id"], "on_delete": "restrict" }, 
-      "index": true 
+    {
+      "name": "customer_id",
+      "type": "integer",
+      "nullable": false,
+      "foreign_key": { "ref_table": "customer", "ref_columns": ["id"], "on_delete": "restrict" },
+      "index": true
     },
     { "name": "total", "type": { "kind": "numeric", "precision": 10, "scale": 2 }, "nullable": false },
-    { 
-      "name": "priority", 
-      "type": { 
-        "kind": "enum", 
-        "name": "order_priority", 
+    {
+      "name": "priority",
+      "type": {
+        "kind": "enum",
+        "name": "order_priority",
         "values": [
           { "name": "low", "value": 0 },
           { "name": "normal", "value": 10 },
           { "name": "high", "value": 20 },
           { "name": "urgent", "value": 30 }
         ]
-      }, 
-      "nullable": false, 
-      "default": 10 
+      },
+      "nullable": false,
+      "default": 10
     },
-    { 
-      "name": "status", 
-      "type": { 
-        "kind": "enum", 
-        "name": "order_status", 
-        "values": ["pending", "confirmed", "shipped", "delivered", "cancelled"] 
-      }, 
-      "nullable": false, 
-      "default": "'pending'" 
+    {
+      "name": "status",
+      "type": { "kind": "enum", "name": "order_status", "values": ["pending", "confirmed", "shipped", "delivered", "cancelled"] },
+      "nullable": false,
+      "default": "'pending'"
     },
     { "name": "notes", "type": "text", "nullable": true },
     { "name": "created_at", "type": "timestamptz", "nullable": false, "default": "NOW()" }
@@ -595,18 +458,18 @@ Both columns with `"primary_key": true` creates a **single composite primary key
   "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
   "name": "user_role",
   "columns": [
-    { 
-      "name": "user_id", 
-      "type": "integer", 
-      "nullable": false, 
-      "primary_key": true, 
-      "foreign_key": { "ref_table": "user", "ref_columns": ["id"], "on_delete": "cascade" } 
+    {
+      "name": "user_id",
+      "type": "integer",
+      "nullable": false,
+      "primary_key": true,
+      "foreign_key": { "ref_table": "user", "ref_columns": ["id"], "on_delete": "cascade" }
     },
-    { 
-      "name": "role_id", 
-      "type": "integer", 
-      "nullable": false, 
-      "primary_key": true, 
+    {
+      "name": "role_id",
+      "type": "integer",
+      "nullable": false,
+      "primary_key": true,
       "foreign_key": { "ref_table": "role", "ref_columns": ["id"], "on_delete": "cascade" },
       "index": true
     },
@@ -616,32 +479,25 @@ Both columns with `"primary_key": true` creates a **single composite primary key
 }
 ```
 
-### Article with Composite Index
+---
 
-```json
-{
-  "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
-  "name": "article",
-  "columns": [
-    { "name": "id", "type": "big_int", "nullable": false, "primary_key": { "auto_increment": true } },
-    { "name": "author_id", "type": "integer", "nullable": false, "foreign_key": "user.id", "index": ["idx_author_published"] },
-    { "name": "title", "type": { "kind": "varchar", "length": 200 }, "nullable": false },
-    { "name": "slug", "type": { "kind": "varchar", "length": 200 }, "nullable": false, "unique": true },
-    { "name": "content", "type": "text", "nullable": false },
-    { 
-      "name": "status", 
-      "type": { "kind": "enum", "name": "article_status", "values": ["draft", "review", "published", "archived"] }, 
-      "nullable": false, 
-      "default": "'draft'" 
-    },
-    { "name": "published_at", "type": "timestamptz", "nullable": true, "index": ["idx_author_published"] },
-    { "name": "view_count", "type": "integer", "nullable": false, "default": 0 },
-    { "name": "created_at", "type": "timestamptz", "nullable": false, "default": "NOW()" }
-  ],
-  "constraints": [
-    { "type": "check", "name": "check_view_count", "expr": "view_count >= 0" }
-  ]
-}
+## Workflow Summary
+
+```bash
+# 1. Create model
+vespertide new user
+
+# 2. Edit models/user.json
+
+# 3. Validate
+vespertide diff          # Check changes
+vespertide sql           # Preview SQL
+
+# 4. Create migration
+vespertide revision -m "create user table"
+
+# 5. Export ORM code (if needed)
+vespertide export --orm seaorm
 ```
 
 ---
@@ -650,77 +506,70 @@ Both columns with `"primary_key": true` creates a **single composite primary key
 
 ### MUST DO
 
-1. **Always include `$schema`** - No exceptions
-2. **Always specify `nullable`** - Required for every column
-3. **Validate against schema** - Before saving, check IDE errors
-4. **Index foreign key columns** - Add `"index": true`
-5. **Use inline constraints** - `primary_key`, `unique`, `index`, `foreign_key` ON the column
+1. Always include `$schema` in every model file
+2. Always specify `nullable` on every column
+3. Run `vespertide diff` + `vespertide sql` after every model edit
+4. Index foreign key columns (`"index": true`)
+5. Use inline constraints (`primary_key`, `unique`, `index`, `foreign_key` on columns)
 
 ### SHOULD DO
 
-1. **Use enums for status/category fields** - Prefer over text + CHECK
-2. **Use integer enums for expandable sets** - No migration needed for new values
-3. **Use `timestamptz` over `timestamp`** - Timezone-aware is safer
-4. **Use `json` type for JSON data** - Works across all backends (PostgreSQL, MySQL, SQLite)
+1. Use enums for status/category fields (prefer over text + CHECK)
+2. Use integer enums for expandable value sets (no migration needed)
+3. Use `timestamptz` over `timestamp` (timezone-aware)
+4. Use `json` type for JSON data (cross-backend compatible)
 
 ### MUST NOT DO
 
-1. **Never use PascalCase for reference actions** - Use `"cascade"` not `"Cascade"`
-2. **Never skip schema validation** - Prevents runtime errors
-3. **Never add NOT NULL columns without default** - Requires `fill_with` in migration
-4. **Never use table-level constraints** - Except for CHECK expressions only
-5. **Never manually create/edit migration files** - Only `fill_with` exception
-6. **Never manually edit exported ORM files** - Use `vespertide export` to regenerate
-7. **Never use `jsonb` type** - Use `json` instead (JSONB not supported in SQLite)
-8. **Never use custom types** - Use built-in types only for cross-database compatibility
-9. **Never use array types** - Use a separate join table instead (arrays not supported in SQLite)
+1. **Manually create/edit/modify revision (migration) files** -- use `vespertide revision` only
+2. **Manually create/edit `src/models/*.rs` (or `*.py`) files** -- use `vespertide export` to regenerate
+3. Use PascalCase for reference actions -- use `"cascade"` not `"Cascade"`
+4. Skip schema validation
+5. Add NOT NULL columns without `default` or `fill_with`
+6. Use table-level constraints for anything except CHECK
+7. Use `jsonb` type -- use `json` instead (not supported cross-backend)
+8. Use `custom` types -- breaks cross-database compatibility
+9. Use array types -- use a join table instead
 
-### Naming Conventions
+---
+
+## Naming Conventions
 
 | Item | Convention | Example |
 |------|------------|---------|
 | Tables | snake_case | `user_role` |
 | Columns | snake_case | `created_at` |
-| Indexes | `idx_{table}_{columns}` | `idx_user_email` |
-| Unique | `uq_{table}_{columns}` | `uq_user_email` |
-| Foreign Key | `fk_{table}_{ref}` | `fk_post_author` |
+| Indexes | `ix_{table}__{columns}` | `ix_user__email` |
+| Unique | `uq_{table}__{columns}` | `uq_user__email` |
+| Foreign Key | `fk_{table}__{columns}` | `fk_post__author_id` |
 | Check | `check_{description}` | `check_positive_amount` |
 | Enums | snake_case | `order_status` |
 
+> **Note**: Auto-generated constraint names use double underscore `__` as separator.
+
 ---
 
-## Quick Reference Card
+## Quick Reference
 
 ```
-COLUMN TYPES (simple)
-────────────────────────────────────────
-integer, big_int, small_int          Numbers
-real, double_precision               Floats
-text                                 Strings
-boolean                              Flags
-date, time, timestamp, timestamptz   Time
-interval                             Duration
-uuid                                 UUIDs
-json                                 JSON
-bytea                                Binary
-inet, cidr, macaddr                  Network
-xml                                  XML
+SIMPLE TYPES                              COMPLEX TYPES
+----------------------------------------  ----------------------------------------
+integer, big_int, small_int   Numbers     { "kind": "varchar", "length": N }
+real, double_precision        Floats      { "kind": "char", "length": N }
+text                          Strings     { "kind": "numeric", "precision": P, "scale": S }
+boolean                       Flags       { "kind": "enum", "name": "...", "values": [...] }
+date, time, timestamp         Time        { "kind": "custom", "custom_type": "..." }
+timestamptz, interval         Time+
+uuid                          UUIDs       REFERENCE ACTIONS (snake_case!)
+json                          JSON        ----------------------------------------
+bytea                         Binary      cascade, restrict, set_null,
+inet, cidr, macaddr           Network     set_default, no_action
+xml                           XML
 
-COLUMN TYPES (complex)
-────────────────────────────────────────
-{ "kind": "varchar", "length": N }
-{ "kind": "char", "length": N }
-{ "kind": "numeric", "precision": P, "scale": S }
-{ "kind": "enum", "name": "...", "values": [...] }
-{ "kind": "custom", "custom_type": "..." }
-
-REFERENCE ACTIONS (snake_case!)
-────────────────────────────────────────
-cascade, restrict, set_null, set_default, no_action
-
-CONSTRAINT TYPES
-────────────────────────────────────────
-primary_key, unique, foreign_key, check, index
+CONSTRAINT TYPES (inline preferred)       DATABASE BACKENDS
+----------------------------------------  ----------------------------------------
+primary_key, unique, index,               postgres (default), mysql, sqlite
+foreign_key, check
 ```
 
 ---
@@ -731,6 +580,6 @@ primary_key, unique, foreign_key, check, index
 |-------|-------|-----|
 | Invalid enum in `on_delete` | PascalCase used | Use `"cascade"` not `"Cascade"` |
 | Missing required property | `nullable` omitted | Add `"nullable": true/false` |
-| Unknown column type | Typo in type name | Check SimpleColumnType enum |
-| Foreign key validation failed | Referenced table missing | Create referenced table first |
+| Unknown column type | Typo in type name | Check column types table above |
+| FK validation failed | Referenced table missing | Create referenced table first |
 | NOT NULL without default | Adding column to existing table | Add `default` or use `fill_with` in revision |
