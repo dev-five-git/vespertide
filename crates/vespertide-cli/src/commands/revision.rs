@@ -526,26 +526,17 @@ fn rewrite_plan_for_recreation(
     }
 }
 
-/// Whether the caller should continue processing the plan or return early.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RecreateOutcome {
-    /// No recreation was needed, or recreation succeeded. Continue processing.
-    Continue,
-    /// Plan is empty after recreation rewrite. Caller should return early.
-    Done,
-}
-
 fn handle_recreate_requirements<F>(
     plan: &mut MigrationPlan,
     current_models: &[TableDef],
     prompt_fn: F,
-) -> Result<RecreateOutcome>
+) -> Result<()>
 where
     F: Fn(&[RecreateTableRequired]) -> Result<bool>,
 {
     let recreate_tables = find_non_nullable_fk_add_columns(plan, current_models);
     if recreate_tables.is_empty() {
-        return Ok(RecreateOutcome::Continue);
+        return Ok(());
     }
 
     if !prompt_fn(&recreate_tables)? {
@@ -555,17 +546,7 @@ where
     }
 
     rewrite_plan_for_recreation(plan, &recreate_tables, current_models);
-
-    if plan.actions.is_empty() {
-        println!(
-            "{} {}",
-            "No changes detected.".bright_yellow(),
-            "Nothing to migrate.".bright_white()
-        );
-        return Ok(RecreateOutcome::Done);
-    }
-
-    Ok(RecreateOutcome::Continue)
+    Ok(())
 }
 
 pub async fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Result<()> {
@@ -576,20 +557,15 @@ pub async fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Resul
     let mut plan = plan_next_migration(&current_models, &applied_plans)
         .map_err(|e| anyhow::anyhow!("planning error: {}", e))?;
 
+    // Check for non-nullable FK changes that require table recreation.
+    handle_recreate_requirements(&mut plan, &current_models, prompt_recreate_tables)?;
+
     if plan.actions.is_empty() {
         println!(
             "{} {}",
             "No changes detected.".bright_yellow(),
             "Nothing to migrate.".bright_white()
         );
-        return Ok(());
-    }
-
-    // Check for non-nullable FK changes that require table recreation.
-    if matches!(
-        handle_recreate_requirements(&mut plan, &current_models, prompt_recreate_tables)?,
-        RecreateOutcome::Done
-    ) {
         return Ok(());
     }
 
@@ -1312,7 +1288,7 @@ mod tests {
     }
 
     #[test]
-    fn handle_recreate_requirements_returns_continue_when_no_fk() {
+    fn handle_recreate_requirements_returns_ok_when_no_fk() {
         let mut plan = MigrationPlan {
             id: String::new(),
             comment: None,
@@ -1323,9 +1299,8 @@ mod tests {
             }],
         };
 
-        let result = handle_recreate_requirements(&mut plan, &[], |_| Ok(true)).unwrap();
+        handle_recreate_requirements(&mut plan, &[], |_| Ok(true)).unwrap();
 
-        assert_eq!(result, RecreateOutcome::Continue);
         assert_eq!(plan.actions.len(), 1);
     }
 
@@ -1377,7 +1352,7 @@ mod tests {
     }
 
     #[test]
-    fn handle_recreate_requirements_returns_done_when_model_missing() {
+    fn handle_recreate_requirements_empties_plan_when_model_missing() {
         use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
 
         let mut plan = MigrationPlan {
@@ -1415,14 +1390,13 @@ mod tests {
             ],
         };
 
-        let result = handle_recreate_requirements(&mut plan, &[], |_| Ok(true)).unwrap();
+        handle_recreate_requirements(&mut plan, &[], |_| Ok(true)).unwrap();
 
-        assert_eq!(result, RecreateOutcome::Done);
         assert!(plan.actions.is_empty());
     }
 
     #[test]
-    fn handle_recreate_requirements_returns_continue_after_rewrite() {
+    fn handle_recreate_requirements_rewrites_plan_when_model_exists() {
         use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
 
         let mut plan = MigrationPlan {
@@ -1490,9 +1464,8 @@ mod tests {
             constraints: vec![],
         }];
 
-        let result = handle_recreate_requirements(&mut plan, &models, |_| Ok(true)).unwrap();
+        handle_recreate_requirements(&mut plan, &models, |_| Ok(true)).unwrap();
 
-        assert_eq!(result, RecreateOutcome::Continue);
         assert_eq!(plan.actions.len(), 2);
         assert!(
             matches!(&plan.actions[0], MigrationAction::DeleteTable { table } if table == "post")
