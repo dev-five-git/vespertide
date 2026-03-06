@@ -874,6 +874,45 @@ mod tests {
     }
 
     #[test]
+    fn find_non_nullable_inline_fk_add_column_detects_recreate() {
+        use vespertide_core::{ColumnDef, ColumnType, ReferenceAction, SimpleColumnType};
+        use vespertide_core::schema::foreign_key::{ForeignKeyDef, ForeignKeySyntax};
+
+        let plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![MigrationAction::AddColumn {
+                table: "post".into(),
+                column: Box::new(ColumnDef {
+                    name: "user_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: Some(ForeignKeySyntax::Object(ForeignKeyDef {
+                        ref_table: "user".into(),
+                        ref_columns: vec!["id".into()],
+                        on_delete: Some(ReferenceAction::Cascade),
+                        on_update: None,
+                    })),
+                }),
+                fill_with: None,
+            }],
+        };
+
+        let result = find_non_nullable_fk_add_columns(&plan, &[]);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].table, "post");
+        assert_eq!(result[0].column, "user_id");
+        assert_eq!(result[0].reason, RecreateReason::AddColumnWithFk);
+    }
+
+    #[test]
     fn find_nullable_fk_add_column_returns_empty() {
         use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
         let plan = MigrationPlan {
@@ -1036,6 +1075,88 @@ mod tests {
             }],
             constraints: vec![],
         }];
+        assert!(find_non_nullable_fk_add_columns(&plan, &models).is_empty());
+    }
+
+    #[test]
+    fn find_fk_on_existing_column_with_default_returns_empty() {
+        use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
+
+        let plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![MigrationAction::AddConstraint {
+                table: "post".into(),
+                constraint: TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["user_id".into()],
+                    ref_table: "user".into(),
+                    ref_columns: vec!["id".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+            }],
+        };
+        let models = vec![TableDef {
+            name: "post".into(),
+            description: None,
+            columns: vec![ColumnDef {
+                name: "user_id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                nullable: false,
+                default: Some(true.into()),
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        }];
+
+        assert!(find_non_nullable_fk_add_columns(&plan, &models).is_empty());
+    }
+
+    #[test]
+    fn find_fk_on_existing_column_missing_from_model_returns_empty() {
+        use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
+
+        let plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 2,
+            actions: vec![MigrationAction::AddConstraint {
+                table: "post".into(),
+                constraint: TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["user_id".into()],
+                    ref_table: "user".into(),
+                    ref_columns: vec!["id".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+            }],
+        };
+        let models = vec![TableDef {
+            name: "post".into(),
+            description: None,
+            columns: vec![ColumnDef {
+                name: "other_id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        }];
+
         assert!(find_non_nullable_fk_add_columns(&plan, &models).is_empty());
     }
 
