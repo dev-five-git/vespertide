@@ -526,40 +526,46 @@ fn rewrite_plan_for_recreation(
     }
 }
 
+/// Whether the caller should continue processing the plan or return early.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RecreateHandling {
-    NotNeeded,
-    Rewritten,
-    PlanEmptied,
+enum RecreateOutcome {
+    /// No recreation was needed, or recreation succeeded. Continue processing.
+    Continue,
+    /// Plan is empty after recreation rewrite. Caller should return early.
+    Done,
 }
 
 fn handle_recreate_requirements<F>(
     plan: &mut MigrationPlan,
     current_models: &[TableDef],
     prompt_fn: F,
-) -> Result<RecreateHandling>
+) -> Result<RecreateOutcome>
 where
     F: Fn(&[RecreateTableRequired]) -> Result<bool>,
 {
     let recreate_tables = find_non_nullable_fk_add_columns(plan, current_models);
     if recreate_tables.is_empty() {
-        return Ok(RecreateHandling::NotNeeded);
+        return Ok(RecreateOutcome::Continue);
     }
 
     if !prompt_fn(&recreate_tables)? {
         anyhow::bail!(
-            "Migration cancelled. To proceed without recreation, make the column nullable \
-             or add it with a default value that references an existing row."
+            "Migration cancelled. To proceed without recreation, make the column nullable or add it with a default value that references an existing row."
         );
     }
 
     rewrite_plan_for_recreation(plan, &recreate_tables, current_models);
 
     if plan.actions.is_empty() {
-        return Ok(RecreateHandling::PlanEmptied);
+        println!(
+            "{} {}",
+            "No changes detected.".bright_yellow(),
+            "Nothing to migrate.".bright_white()
+        );
+        return Ok(RecreateOutcome::Done);
     }
 
-    Ok(RecreateHandling::Rewritten)
+    Ok(RecreateOutcome::Continue)
 }
 
 pub async fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Result<()> {
@@ -580,16 +586,11 @@ pub async fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Resul
     }
 
     // Check for non-nullable FK changes that require table recreation.
-    match handle_recreate_requirements(&mut plan, &current_models, prompt_recreate_tables)? {
-        RecreateHandling::NotNeeded | RecreateHandling::Rewritten => {}
-        RecreateHandling::PlanEmptied => {
-            println!(
-                "{} {}",
-                "No changes detected.".bright_yellow(),
-                "Nothing to migrate.".bright_white()
-            );
-            return Ok(());
-        }
+    if matches!(
+        handle_recreate_requirements(&mut plan, &current_models, prompt_recreate_tables)?,
+        RecreateOutcome::Done
+    ) {
+        return Ok(());
     }
 
     // Reconstruct baseline schema for column type lookups
@@ -1311,7 +1312,7 @@ mod tests {
     }
 
     #[test]
-    fn handle_recreate_requirements_returns_not_needed() {
+    fn handle_recreate_requirements_returns_continue_when_no_fk() {
         let mut plan = MigrationPlan {
             id: String::new(),
             comment: None,
@@ -1324,7 +1325,7 @@ mod tests {
 
         let result = handle_recreate_requirements(&mut plan, &[], |_| Ok(true)).unwrap();
 
-        assert_eq!(result, RecreateHandling::NotNeeded);
+        assert_eq!(result, RecreateOutcome::Continue);
         assert_eq!(plan.actions.len(), 1);
     }
 
@@ -1376,7 +1377,7 @@ mod tests {
     }
 
     #[test]
-    fn handle_recreate_requirements_returns_plan_emptied_when_model_missing() {
+    fn handle_recreate_requirements_returns_done_when_model_missing() {
         use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
 
         let mut plan = MigrationPlan {
@@ -1416,8 +1417,89 @@ mod tests {
 
         let result = handle_recreate_requirements(&mut plan, &[], |_| Ok(true)).unwrap();
 
-        assert_eq!(result, RecreateHandling::PlanEmptied);
+        assert_eq!(result, RecreateOutcome::Done);
         assert!(plan.actions.is_empty());
+    }
+
+    #[test]
+    fn handle_recreate_requirements_returns_continue_after_rewrite() {
+        use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
+
+        let mut plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![
+                MigrationAction::AddColumn {
+                    table: "post".into(),
+                    column: Box::new(ColumnDef {
+                        name: "user_id".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    }),
+                    fill_with: None,
+                },
+                MigrationAction::AddConstraint {
+                    table: "post".into(),
+                    constraint: TableConstraint::ForeignKey {
+                        name: None,
+                        columns: vec!["user_id".into()],
+                        ref_table: "user".into(),
+                        ref_columns: vec!["id".into()],
+                        on_delete: None,
+                        on_update: None,
+                    },
+                },
+            ],
+        };
+
+        let models = vec![TableDef {
+            name: "post".into(),
+            description: None,
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Uuid),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![],
+        }];
+
+        let result = handle_recreate_requirements(&mut plan, &models, |_| Ok(true)).unwrap();
+
+        assert_eq!(result, RecreateOutcome::Continue);
+        assert_eq!(plan.actions.len(), 2);
+        assert!(
+            matches!(&plan.actions[0], MigrationAction::DeleteTable { table } if table == "post")
+        );
+        assert!(
+            matches!(&plan.actions[1], MigrationAction::CreateTable { table, .. } if table == "post")
+        );
     }
 
     #[test]
