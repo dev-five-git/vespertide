@@ -421,13 +421,15 @@ fn find_non_nullable_fk_add_columns(
                         .columns
                         .iter()
                         .find(|c| c.name.as_str() == col_name.as_str())
-                        && !col_def.nullable && col_def.default.is_none() {
-                            result.push(RecreateTableRequired {
-                                table: table.clone(),
-                                column: col_name.clone(),
-                                reason: RecreateReason::AddFkToExistingColumn,
-                            });
-                        }
+                    && !col_def.nullable
+                    && col_def.default.is_none()
+                {
+                    result.push(RecreateTableRequired {
+                        table: table.clone(),
+                        column: col_name.clone(),
+                        reason: RecreateReason::AddFkToExistingColumn,
+                    });
+                }
             }
         }
     }
