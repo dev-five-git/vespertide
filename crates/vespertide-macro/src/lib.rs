@@ -58,22 +58,30 @@ impl Parse for MacroInput {
     }
 }
 
-/// Generated migration block with static SQL arrays and execution code.
+/// Generated migration block with static SQL arrays and metadata for the data-driven loop.
 #[derive(Debug)]
 pub(crate) struct MigrationBlock {
     /// Static array declarations (placed outside async block)
     pub statics: proc_macro2::TokenStream,
-    /// Execution block (placed inside async block)
-    pub execute: proc_macro2::TokenStream,
+    /// Migration version number
+    pub version: u32,
+    /// Migration ID for validation
+    pub migration_id: String,
+    /// Migration comment (for verbose logging)
+    pub comment: String,
+    /// Identifier for PostgreSQL static array
+    pub pg_ident: proc_macro2::Ident,
+    /// Identifier for MySQL static array
+    pub mysql_ident: proc_macro2::Ident,
+    /// Identifier for SQLite static array
+    pub sqlite_ident: proc_macro2::Ident,
 }
 
 pub(crate) fn build_migration_block(
     migration: &vespertide_core::MigrationPlan,
     baseline_schema: &mut Vec<vespertide_core::TableDef>,
-    verbose: bool,
 ) -> Result<MigrationBlock, String> {
     let version = migration.version;
-    let migration_id = &migration.id;
 
     // Use the current baseline schema (from all previous migrations)
     let queries = build_plan_queries(migration, baseline_schema).map_err(|e| {
@@ -116,78 +124,17 @@ pub(crate) fn build_migration_block(
         static #sqlite_ident: &[&str] = &[#(#sqlite_sqls),*];
     };
 
-    // Generate version guard and SQL execution block
-    let version_str = format!("v{}", version);
-    let comment_str = migration.comment.as_deref().unwrap_or("").to_string();
+    let comment = migration.comment.as_deref().unwrap_or("").to_string();
 
-    let verbose_start = if verbose {
-        quote! {
-            eprintln!("[vespertide] Applying migration {} ({})", #version_str, #comment_str);
-        }
-    } else {
-        quote! {}
-    };
-
-    let verbose_sql_log = if verbose {
-        quote! {
-            eprintln!("[vespertide]   [{}/{}] {}", __sql_idx + 1, __sqls.len(), __sql);
-        }
-    } else {
-        quote! {}
-    };
-
-    let verbose_end = if verbose {
-        quote! {
-            eprintln!("[vespertide] Migration {} applied successfully", #version_str);
-        }
-    } else {
-        quote! {}
-    };
-
-    let execute = quote! {
-        if __version < #version {
-            // Validate migration id against database if version already tracked
-            if let Some(db_id) = __version_ids.get(&#version) {
-                let expected_id: &str = #migration_id;
-                if !expected_id.is_empty() && !db_id.is_empty() && db_id != expected_id {
-                    return Err(::vespertide::MigrationError::IdMismatch {
-                        version: #version,
-                        expected: expected_id.to_string(),
-                        found: db_id.clone(),
-                    });
-                }
-            }
-
-            #verbose_start
-            let __sqls: &[&str] = match backend {
-                sea_orm::DatabaseBackend::Postgres => #pg_ident,
-                sea_orm::DatabaseBackend::MySql => #mysql_ident,
-                sea_orm::DatabaseBackend::Sqlite => #sqlite_ident,
-                _ => #pg_ident,
-            };
-            for (__sql_idx, __sql) in __sqls.iter().enumerate() {
-                if !__sql.is_empty() {
-                    #verbose_sql_log
-                    let stmt = sea_orm::Statement::from_string(backend, *__sql);
-                    __txn.execute_raw(stmt).await.map_err(|e| {
-                        ::vespertide::MigrationError::DatabaseError(
-                            format!("Failed to execute SQL '{}': {}", __sql, e)
-                        )
-                    })?;
-                }
-            }
-
-            let insert_sql = format!("INSERT INTO {q}{}{q} (version, id) VALUES ({}, '{}')", __version_table, #version, #migration_id);
-            let stmt = sea_orm::Statement::from_string(backend, insert_sql);
-            __txn.execute_raw(stmt).await.map_err(|e| {
-                ::vespertide::MigrationError::DatabaseError(format!("Failed to insert version: {}", e))
-            })?;
-
-            #verbose_end
-        }
-    };
-
-    Ok(MigrationBlock { statics, execute })
+    Ok(MigrationBlock {
+        statics,
+        version,
+        migration_id: migration.id.clone(),
+        comment,
+        pg_ident,
+        mysql_ident,
+        sqlite_ident,
+    })
 }
 
 fn generate_migration_code(
@@ -204,8 +151,99 @@ fn generate_migration_code(
         quote! {}
     };
 
+    let verbose_start = if verbose {
+        quote! {
+            eprintln!("[vespertide] Applying migration v{} ({})", __v, __comment);
+        }
+    } else {
+        quote! {}
+    };
+
+    let verbose_sql_log = if verbose {
+        quote! {
+            eprintln!("[vespertide]   [{}/{}] {}", __sql_idx + 1, __sqls.len(), __sql);
+        }
+    } else {
+        quote! {}
+    };
+
+    let verbose_end = if verbose {
+        quote! {
+            eprintln!("[vespertide] Migration v{} applied successfully", __v);
+        }
+    } else {
+        quote! {}
+    };
+
     let all_statics: Vec<_> = migration_blocks.iter().map(|b| &b.statics).collect();
-    let all_executes: Vec<_> = migration_blocks.iter().map(|b| &b.execute).collect();
+
+    // Build metadata entries for the data-driven loop
+    let entries: Vec<_> = migration_blocks
+        .iter()
+        .map(|b| {
+            let version = b.version;
+            let id = &b.migration_id;
+            let comment = &b.comment;
+            let pg = &b.pg_ident;
+            let mysql = &b.mysql_ident;
+            let sqlite = &b.sqlite_ident;
+            quote! {
+                (#version, #id, #comment, #pg, #mysql, #sqlite)
+            }
+        })
+        .collect();
+
+    // Generate the migration loop (or nothing if no migrations)
+    let migration_loop = if entries.is_empty() {
+        quote! {}
+    } else {
+        quote! {
+            for (__v, __mid, __comment, __pg_sqls, __mysql_sqls, __sqlite_sqls) in [
+                #(#entries),*
+            ] {
+                if __version < __v {
+                    // Validate migration id against database if version already tracked
+                    if let Some(db_id) = __version_ids.get(&__v) {
+                        let expected_id: &str = __mid;
+                        if !expected_id.is_empty() && !db_id.is_empty() && db_id != expected_id {
+                            return Err(::vespertide::MigrationError::IdMismatch {
+                                version: __v,
+                                expected: expected_id.to_string(),
+                                found: db_id.clone(),
+                            });
+                        }
+                    }
+
+                    #verbose_start
+                    let __sqls: &[&str] = match backend {
+                        sea_orm::DatabaseBackend::Postgres => __pg_sqls,
+                        sea_orm::DatabaseBackend::MySql => __mysql_sqls,
+                        sea_orm::DatabaseBackend::Sqlite => __sqlite_sqls,
+                        _ => __pg_sqls,
+                    };
+                    for (__sql_idx, __sql) in __sqls.iter().enumerate() {
+                        if !__sql.is_empty() {
+                            #verbose_sql_log
+                            let stmt = sea_orm::Statement::from_string(backend, *__sql);
+                            __txn.execute_raw(stmt).await.map_err(|e| {
+                                ::vespertide::MigrationError::DatabaseError(
+                                    format!("Failed to execute SQL '{}': {}", __sql, e)
+                                )
+                            })?;
+                        }
+                    }
+
+                    let insert_sql = format!("INSERT INTO {q}{}{q} (version, id) VALUES ({}, '{}')", __version_table, __v, __mid);
+                    let stmt = sea_orm::Statement::from_string(backend, insert_sql);
+                    __txn.execute_raw(stmt).await.map_err(|e| {
+                        ::vespertide::MigrationError::DatabaseError(format!("Failed to insert version: {}", e))
+                    })?;
+
+                    #verbose_end
+                }
+            }
+        }
+    };
 
     quote! {
         {
@@ -272,8 +310,8 @@ fn generate_migration_code(
 
                 #verbose_current_version
 
-                // Execute each migration block within the same transaction
-                #(#all_executes)*
+                // Execute migrations via data-driven loop
+                #migration_loop
 
                 // Commit the entire migration
                 __txn.commit().await.map_err(|e| {
@@ -354,7 +392,7 @@ pub(crate) fn vespertide_migration_impl(
     for migration in &migrations {
         // Apply prefix to migration table names
         let prefixed_migration = migration.clone().with_prefix(prefix);
-        match build_migration_block(&prefixed_migration, &mut baseline_schema, verbose) {
+        match build_migration_block(&prefixed_migration, &mut baseline_schema) {
             Ok(block) => migration_blocks.push(block),
             Err(e) => {
                 return syn::Error::new(proc_macro2::Span::call_site(), e).to_compile_error();
@@ -486,7 +524,7 @@ mod tests {
     }
 
     fn block_to_string(block: &MigrationBlock) -> String {
-        format!("{} {}", block.statics, block.execute)
+        block.statics.to_string()
     }
 
     #[test]
@@ -504,15 +542,15 @@ mod tests {
         };
 
         let mut baseline = Vec::new();
-        let result = build_migration_block(&migration, &mut baseline, false);
+        let result = build_migration_block(&migration, &mut baseline);
 
         assert!(result.is_ok());
         let block = result.unwrap();
         let block_str = block_to_string(&block);
 
-        // Verify the generated block contains expected elements
-        assert!(block_str.contains("version < 1u32"));
+        // Verify statics contain SQL and metadata is correct
         assert!(block_str.contains("CREATE TABLE"));
+        assert_eq!(block.version, 1);
 
         // Verify baseline schema was updated
         assert_eq!(baseline.len(), 1);
@@ -535,7 +573,7 @@ mod tests {
         };
 
         let mut baseline = Vec::new();
-        let _ = build_migration_block(&create_migration, &mut baseline, false);
+        let _ = build_migration_block(&create_migration, &mut baseline);
 
         // Now add a column
         let add_column_migration = MigrationPlan {
@@ -560,12 +598,12 @@ mod tests {
             }],
         };
 
-        let result = build_migration_block(&add_column_migration, &mut baseline, false);
+        let result = build_migration_block(&add_column_migration, &mut baseline);
         assert!(result.is_ok());
         let block = result.unwrap();
         let block_str = block_to_string(&block);
 
-        assert!(block_str.contains("version < 2u32"));
+        assert_eq!(block.version, 2);
         assert!(block_str.contains("ALTER TABLE"));
         assert!(block_str.contains("ADD COLUMN"));
     }
@@ -592,7 +630,7 @@ mod tests {
         };
 
         let mut baseline = Vec::new();
-        let result = build_migration_block(&migration, &mut baseline, false);
+        let result = build_migration_block(&migration, &mut baseline);
 
         assert!(result.is_ok());
         assert_eq!(baseline.len(), 2);
@@ -617,7 +655,7 @@ mod tests {
         };
 
         let mut baseline = Vec::new();
-        let block = build_migration_block(&migration, &mut baseline, false).unwrap();
+        let block = build_migration_block(&migration, &mut baseline).unwrap();
 
         let generated = generate_migration_code(&pool, version_table, vec![block], false);
         let generated_str = generated.to_string();
@@ -628,6 +666,8 @@ mod tests {
         assert!(generated_str.contains("test_versions"));
         assert!(generated_str.contains("CREATE TABLE IF NOT EXISTS"));
         assert!(generated_str.contains("SELECT MAX"));
+        // Verify data-driven loop structure
+        assert!(generated_str.contains("1u32"));
     }
 
     #[test]
@@ -660,7 +700,7 @@ mod tests {
                 constraints: vec![],
             }],
         };
-        let block1 = build_migration_block(&migration1, &mut baseline, false).unwrap();
+        let block1 = build_migration_block(&migration1, &mut baseline).unwrap();
 
         let migration2 = MigrationPlan {
             id: String::new(),
@@ -673,14 +713,16 @@ mod tests {
                 constraints: vec![],
             }],
         };
-        let block2 = build_migration_block(&migration2, &mut baseline, false).unwrap();
+        let block2 = build_migration_block(&migration2, &mut baseline).unwrap();
 
         let generated = generate_migration_code(&pool, "migrations", vec![block1, block2], false);
         let generated_str = generated.to_string();
 
-        // Both version checks should be present
-        assert!(generated_str.contains("version < 1u32"));
-        assert!(generated_str.contains("version < 2u32"));
+        // Both migration versions should be present in the metadata array
+        assert!(generated_str.contains("1u32"));
+        assert!(generated_str.contains("2u32"));
+        // Data-driven loop structure
+        assert!(generated_str.contains("__version < __v"));
     }
 
     #[test]
@@ -698,15 +740,21 @@ mod tests {
         };
 
         let mut baseline = Vec::new();
-        let result = build_migration_block(&migration, &mut baseline, false);
+        let result = build_migration_block(&migration, &mut baseline);
         assert!(result.is_ok());
 
-        let block_str = block_to_string(&result.unwrap());
+        let block = result.unwrap();
+        let block_str = block_to_string(&block);
 
-        // The generated block should have backend matching
-        assert!(block_str.contains("DatabaseBackend :: Postgres"));
-        assert!(block_str.contains("DatabaseBackend :: MySql"));
-        assert!(block_str.contains("DatabaseBackend :: Sqlite"));
+        // Statics should have all three backend arrays
+        assert!(block_str.contains("__V1_PG"));
+        assert!(block_str.contains("__V1_MYSQL"));
+        assert!(block_str.contains("__V1_SQLITE"));
+
+        // Verify ident names match
+        assert_eq!(block.pg_ident.to_string(), "__V1_PG");
+        assert_eq!(block.mysql_ident.to_string(), "__V1_MYSQL");
+        assert_eq!(block.sqlite_ident.to_string(), "__V1_SQLITE");
     }
 
     #[test]
@@ -725,7 +773,7 @@ mod tests {
         };
 
         let mut baseline = Vec::new();
-        let _ = build_migration_block(&create_migration, &mut baseline, false);
+        let _ = build_migration_block(&create_migration, &mut baseline);
         assert_eq!(baseline.len(), 1);
 
         // Now delete it
@@ -739,7 +787,7 @@ mod tests {
             }],
         };
 
-        let result = build_migration_block(&delete_migration, &mut baseline, false);
+        let result = build_migration_block(&delete_migration, &mut baseline);
         assert!(result.is_ok());
         let block_str = block_to_string(&result.unwrap());
         assert!(block_str.contains("DROP TABLE"));
@@ -776,7 +824,7 @@ mod tests {
         };
 
         let mut baseline = Vec::new();
-        let result = build_migration_block(&migration, &mut baseline, false);
+        let result = build_migration_block(&migration, &mut baseline);
         assert!(result.is_ok());
 
         // Table should be normalized with index
@@ -801,7 +849,7 @@ mod tests {
         };
 
         let mut baseline = Vec::new();
-        let result = build_migration_block(&migration, &mut baseline, false);
+        let result = build_migration_block(&migration, &mut baseline);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -908,15 +956,17 @@ mod tests {
         };
 
         let mut baseline = Vec::new();
-        let result = build_migration_block(&migration, &mut baseline, true);
+        let result = build_migration_block(&migration, &mut baseline);
 
         assert!(result.is_ok());
-        let block_str = block_to_string(&result.unwrap());
+        let block = result.unwrap();
 
-        // Verbose mode should contain eprintln statements with migration info
-        assert!(block_str.contains("vespertide"));
-        assert!(block_str.contains("Applying migration"));
-        assert!(block_str.contains("version < 1u32"));
+        // Metadata should capture comment for verbose logging in generate_migration_code
+        assert_eq!(block.version, 1);
+        assert_eq!(block.comment, "initial setup");
+        // SQL statics should still contain the SQL
+        let block_str = block_to_string(&block);
+        assert!(block_str.contains("CREATE TABLE"));
     }
 
     #[test]
@@ -941,14 +991,12 @@ mod tests {
         };
 
         let mut baseline = Vec::new();
-        let result = build_migration_block(&migration, &mut baseline, true);
+        let result = build_migration_block(&migration, &mut baseline);
 
         assert!(result.is_ok());
-        let block_str = block_to_string(&result.unwrap());
-
-        // Should have migration-level logging
-        assert!(block_str.contains("Applying migration"));
         assert_eq!(baseline.len(), 2);
+        // Metadata should be set even with multiple actions
+        assert_eq!(result.as_ref().unwrap().version, 1);
     }
 
     #[test]
@@ -966,9 +1014,9 @@ mod tests {
             }],
         };
         let mut baseline = Vec::new();
-        let _ = build_migration_block(&create, &mut baseline, true);
+        let _ = build_migration_block(&create, &mut baseline);
 
-        // Add column in verbose mode
+        // Add column
         let add_col = MigrationPlan {
             id: String::new(),
             version: 2,
@@ -991,11 +1039,13 @@ mod tests {
             }],
         };
 
-        let result = build_migration_block(&add_col, &mut baseline, true);
+        let result = build_migration_block(&add_col, &mut baseline);
         assert!(result.is_ok());
-        let block_str = block_to_string(&result.unwrap());
-        assert!(block_str.contains("vespertide"));
-        assert!(block_str.contains("version < 2u32"));
+        let block = result.unwrap();
+        assert_eq!(block.version, 2);
+        assert_eq!(block.comment, "add email");
+        let block_str = block_to_string(&block);
+        assert!(block_str.contains("__V2_PG"));
     }
 
     #[test]
@@ -1016,13 +1066,14 @@ mod tests {
         };
 
         let mut baseline = Vec::new();
-        let block = build_migration_block(&migration, &mut baseline, true).unwrap();
+        let block = build_migration_block(&migration, &mut baseline).unwrap();
 
         let generated = generate_migration_code(&pool, version_table, vec![block], true);
         let generated_str = generated.to_string();
 
-        // Verbose mode should include current version eprintln
+        // Verbose mode should include logging in the data-driven loop
         assert!(generated_str.contains("Current database version"));
+        assert!(generated_str.contains("Applying migration"));
         assert!(generated_str.contains("async"));
     }
 
