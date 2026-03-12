@@ -1,7 +1,7 @@
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case", untagged)]
 pub enum StrOrBoolOrArray {
     Str(String),
@@ -11,7 +11,8 @@ pub enum StrOrBoolOrArray {
 
 /// A value that can be a string, boolean, or number.
 /// This is used for default values where columns can use literal values directly.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub enum DefaultValue {
     Bool(bool),

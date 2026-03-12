@@ -1,4 +1,3 @@
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::schema::{
@@ -6,7 +5,8 @@ use crate::schema::{
     names::{ColumnName, TableName},
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case", tag = "type")]
 pub enum TableConstraint {
     PrimaryKey {

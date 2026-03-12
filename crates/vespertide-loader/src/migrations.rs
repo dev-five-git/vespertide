@@ -113,8 +113,69 @@ pub fn load_migrations_at_compile_time() -> Result<Vec<MigrationPlan>, Box<dyn s
 mod tests {
     use super::*;
     use serial_test::serial;
+    use std::env;
     use std::fs;
     use tempfile::TempDir;
+
+    struct CwdGuard {
+        original: PathBuf,
+    }
+
+    impl CwdGuard {
+        fn new(dir: &PathBuf) -> Self {
+            let original = env::current_dir().unwrap();
+            env::set_current_dir(dir).unwrap();
+            Self { original }
+        }
+    }
+
+    impl Drop for CwdGuard {
+        fn drop(&mut self) {
+            let _ = env::set_current_dir(&self.original);
+        }
+    }
+
+    fn write_config(dir: &std::path::Path) {
+        let cfg = VespertideConfig::default();
+        let text = serde_json::to_string_pretty(&cfg).unwrap();
+        fs::write(dir.join("vespertide.json"), text).unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn test_load_migrations_returns_empty_when_no_migrations_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let _guard = CwdGuard::new(&temp_dir.path().to_path_buf());
+        write_config(temp_dir.path());
+
+        let result = load_migrations(&VespertideConfig::default()).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    #[serial]
+    fn test_load_migrations_reads_json_and_sorts_versions() {
+        let temp_dir = TempDir::new().unwrap();
+        let _guard = CwdGuard::new(&temp_dir.path().to_path_buf());
+        write_config(temp_dir.path());
+        fs::create_dir_all("migrations").unwrap();
+        fs::write(
+            "migrations/0002_second.json",
+            r#"{"version": 2, "actions": []}"#,
+        )
+        .unwrap();
+        fs::write(
+            "migrations/0001_first.json",
+            r#"{"version": 1, "actions": []}"#,
+        )
+        .unwrap();
+
+        let plans = load_migrations(&VespertideConfig::default()).unwrap();
+        assert_eq!(
+            plans.iter().map(|plan| plan.version).collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+    }
 
     #[test]
     fn test_load_migrations_from_dir_with_no_migrations_dir() {
@@ -241,6 +302,32 @@ actions:
         let result = load_migrations_from_dir(Some(temp_dir.path().to_path_buf()));
         assert!(result.is_ok());
         let plans = result.unwrap();
+        assert_eq!(plans.len(), 1);
+        assert_eq!(plans[0].version, 1);
+    }
+
+    #[test]
+    #[serial]
+    fn test_load_migrations_reads_yaml_for_runtime_loader() {
+        let temp_dir = TempDir::new().unwrap();
+        let _guard = CwdGuard::new(&temp_dir.path().to_path_buf());
+        write_config(temp_dir.path());
+        fs::create_dir_all("migrations").unwrap();
+
+        let migration_content = r#"---
+version: 1
+actions:
+  - type: create_table
+    table: users
+    columns:
+      - name: id
+        type: integer
+        nullable: false
+    constraints: []
+"#;
+        fs::write("migrations/0001_test.yaml", migration_content).unwrap();
+
+        let plans = load_migrations(&VespertideConfig::default()).unwrap();
         assert_eq!(plans.len(), 1);
         assert_eq!(plans[0].version, 1);
     }

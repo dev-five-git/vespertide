@@ -1,9 +1,9 @@
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::schema::names::{ColumnName, IndexName};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct IndexDef {
     pub name: IndexName,

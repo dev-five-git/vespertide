@@ -1,4 +1,3 @@
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::schema::{
@@ -8,7 +7,8 @@ use crate::schema::{
     str_or_bool::{StrOrBoolOrArray, StringOrBool},
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct ColumnDef {
     pub name: ColumnName,
@@ -28,7 +28,8 @@ pub struct ColumnDef {
     pub foreign_key: Option<ForeignKeySyntax>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case", untagged)]
 pub enum ColumnType {
     Simple(SimpleColumnType),
@@ -146,7 +147,8 @@ impl ColumnType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum SimpleColumnType {
     SmallInt,
@@ -246,14 +248,16 @@ impl SimpleColumnType {
 }
 
 /// Integer enum variant with name and numeric value
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct NumValue {
     pub name: String,
     pub value: i32,
 }
 
 /// Enum values definition - either all string or all integer
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub enum EnumValues {
     String(Vec<String>),
@@ -317,7 +321,8 @@ impl From<Vec<&str>> for EnumValues {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case", tag = "kind")]
 pub enum ComplexColumnType {
     Varchar { length: u32 },

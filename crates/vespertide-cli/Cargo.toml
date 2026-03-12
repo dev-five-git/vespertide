@@ -22,8 +22,8 @@ schemars = "1.2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs"] }
 futures = "0.3"
 async-recursion = "1"
-vespertide-config = { workspace = true }
-vespertide-core = { workspace = true }
+vespertide-config = { workspace = true, features = ["cli", "schema"] }
+vespertide-core = { workspace = true, features = ["schema"] }
 vespertide-loader = { workspace = true }
 vespertide-planner = { workspace = true }
 vespertide-query = { workspace = true }

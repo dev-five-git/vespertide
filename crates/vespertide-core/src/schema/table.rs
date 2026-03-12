@@ -1,5 +1,3 @@
-use schemars::JsonSchema;
-
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -46,7 +44,8 @@ impl std::fmt::Display for TableValidationError {
 
 impl std::error::Error for TableValidationError {}
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct TableDef {
     pub name: TableName,

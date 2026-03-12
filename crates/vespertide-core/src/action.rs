@@ -1,10 +1,10 @@
 use crate::schema::{ColumnDef, ColumnName, ColumnType, TableConstraint, TableName};
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct MigrationPlan {
     /// Unique identifier for this migration (UUID format).
@@ -18,7 +18,8 @@ pub struct MigrationPlan {
     pub actions: Vec<MigrationAction>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum MigrationAction {
     CreateTable {

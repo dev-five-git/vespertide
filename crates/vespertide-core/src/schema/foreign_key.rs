@@ -1,9 +1,9 @@
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::schema::{names::ColumnName, names::TableName, reference::ReferenceAction};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct ForeignKeyDef {
     pub ref_table: TableName,
@@ -13,7 +13,8 @@ pub struct ForeignKeyDef {
 }
 
 /// Shorthand syntax for foreign key: { "references": "table.column", "on_delete": "cascade" }
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct ReferenceSyntaxDef {
     /// Reference in "table.column" format
@@ -24,7 +25,8 @@ pub struct ReferenceSyntaxDef {
     pub on_update: Option<ReferenceAction>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case", untagged)]
 pub enum ForeignKeySyntax {
     /// table.column

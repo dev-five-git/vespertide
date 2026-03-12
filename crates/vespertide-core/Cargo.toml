@@ -10,9 +10,13 @@ description = "Data models for tables, columns, constraints, indexes, and migrat
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-schemars = { version = "1.2" }
+schemars = { version = "1.2", optional = true }
 thiserror = "2"
 vespertide-naming = { workspace = true }
+
+[features]
+default = ["schema"]
+schema = ["dep:schemars"]
 
 [dev-dependencies]
 rstest = "0.26"
