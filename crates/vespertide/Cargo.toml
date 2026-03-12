@@ -11,4 +11,8 @@ description = "Rust workspace for defining database schemas in JSON and generati
 [dependencies]
 vespertide-macro = { workspace = true }
 vespertide-core = { workspace = true }
-sea-orm = { version = "2.0.0-rc.36", default-features = false }
+sea-orm = { version = "2.0.0-rc.37", default-features = false }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+sea-orm = { version = "2.0.0-rc.37", default-features = false, features = ["runtime-tokio-native-tls", "sqlx-sqlite"] }

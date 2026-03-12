@@ -163,10 +163,7 @@ fn load_models_recursive_internal(
                     }
                     #[cfg(not(feature = "yaml"))]
                     {
-                        return Err(format!(
-                            "YAML support not enabled. Enable the 'yaml' feature or use JSON format: {}",
-                            path.display()
-                        ).into());
+                        return Err(format!("YAML support not enabled. Enable the 'yaml' feature or use JSON format: {}", path.display()).into());
                     }
                 };
 
@@ -341,6 +338,28 @@ mod tests {
         assert!(err_msg.contains("Failed to normalize table 'orders'"));
     }
 
+    #[cfg(not(feature = "yaml"))]
+    #[test]
+    #[serial]
+    fn load_models_reports_yaml_disabled_for_runtime_loader() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        write_config();
+
+        fs::create_dir_all("models").unwrap();
+        fs::write(
+            "models/users.yaml",
+            "name: users\ncolumns: []\nconstraints: []\n",
+        )
+        .unwrap();
+
+        let result = load_models(&VespertideConfig::default());
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("YAML support not enabled"));
+        assert!(err_msg.contains("users.yaml"));
+    }
+
     #[test]
     #[serial]
     fn test_load_models_from_dir_with_root() {
@@ -413,6 +432,26 @@ mod tests {
         assert!(result.is_ok());
         let models = result.unwrap();
         assert_eq!(models.len(), 0);
+    }
+
+    #[cfg(not(feature = "yaml"))]
+    #[test]
+    #[serial]
+    fn test_load_models_from_dir_reports_yaml_disabled() {
+        let temp_dir = tempdir().unwrap();
+        let models_dir = temp_dir.path().join("models");
+        fs::create_dir_all(&models_dir).unwrap();
+        fs::write(
+            models_dir.join("users.yaml"),
+            "name: users\ncolumns: []\nconstraints: []\n",
+        )
+        .unwrap();
+
+        let result = load_models_from_dir(Some(temp_dir.path().to_path_buf()));
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("YAML support not enabled"));
+        assert!(err_msg.contains("users.yaml"));
     }
 
     #[cfg(feature = "yaml")]

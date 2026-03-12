@@ -149,29 +149,18 @@ fn generate_migration_code(
         "static __VESPERTIDE_MIGRATIONS: &[::vespertide::runtime::EmbeddedMigration] = &[\n",
     );
     for b in &migration_blocks {
-        writeln!(
-            code,
-            "::vespertide::runtime::EmbeddedMigration::new({}u32, {:?}, {:?}, __V{}_PG, __V{}_MYSQL, __V{}_SQLITE),",
-            b.version, b.migration_id, b.comment, b.version, b.version, b.version
-        )
-        .unwrap();
+        writeln!(code, "::vespertide::runtime::EmbeddedMigration::new({}u32, {:?}, {:?}, __V{}_PG, __V{}_MYSQL, __V{}_SQLITE),", b.version, b.migration_id, b.comment, b.version, b.version, b.version).unwrap();
     }
     code.push_str("];\n");
 
     code.push_str("async {\n");
     writeln!(code, "let __pool = &{pool_str};").unwrap();
-    writeln!(
-        code,
-        "::vespertide::runtime::run_embedded_migrations(__pool, {version_table:?}, {verbose}, __VESPERTIDE_MIGRATIONS).await"
-    )
-    .unwrap();
+    writeln!(code, "::vespertide::runtime::run_embedded_migrations(__pool, {version_table:?}, {verbose}, __VESPERTIDE_MIGRATIONS).await").unwrap();
     code.push_str("}\n"); // async block
     code.push_str("}\n"); // outer block
 
     // Single parse — ONE IPC call to rustc tokenizer
-    code.parse().unwrap_or_else(|e| {
-        panic!("vespertide_migration codegen produced invalid Rust:\n{e}\n\nGenerated code (first 2000 chars):\n{}", &code[..code.len().min(2000)])
-    })
+    code.parse().unwrap_or_else(|e| panic!("vespertide_migration codegen produced invalid Rust:\n{e}\n\nGenerated code (first 2000 chars):\n{}", &code[..code.len().min(2000)]))
 }
 
 /// Write a compact SQL blob declaration into the code string.
