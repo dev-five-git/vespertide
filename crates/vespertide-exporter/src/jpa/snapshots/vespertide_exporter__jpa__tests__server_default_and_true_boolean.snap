@@ -1,0 +1,31 @@
+---
+source: crates/vespertide-exporter/src/jpa/mod.rs
+expression: result
+---
+import jakarta.persistence.*;
+import java.time.OffsetDateTime;
+
+@Entity
+@Table(name = "logs")
+public class Logs {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
+    private Integer id;
+
+    @Column(name = "active", nullable = false)
+    private Boolean active = true;
+
+    @Column(name = "created_at", nullable = false)
+    private OffsetDateTime createdAt;
+
+    @Column(name = "score", nullable = false)
+    private Float score = 1.5;
+
+    @Column(name = "tag", nullable = false, columnDefinition = "TEXT")
+    private String tag;
+
+    protected Logs() {
+    }
+}

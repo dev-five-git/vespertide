@@ -1,0 +1,28 @@
+---
+source: crates/vespertide-exporter/src/jpa/mod.rs
+expression: result
+---
+import jakarta.persistence.*;
+import java.time.LocalDate;
+
+@Entity
+@Table(name = "events", indexes = {
+    @Index(columnList = "venue_id, date")
+}, uniqueConstraints = {
+    @UniqueConstraint(columnNames = {"venue_id", "date"})
+})
+public class Events {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @Column(name = "venue_id", nullable = false)
+    private Integer venueId;
+
+    @Column(name = "date", nullable = false)
+    private LocalDate date;
+
+    protected Events() {
+    }
+}

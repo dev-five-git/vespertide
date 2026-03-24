@@ -1059,11 +1059,153 @@ mod tests {
         assert_snapshot!(result);
     }
 
+    #[test]
+    fn test_unnamed_index_and_unique() {
+        let table = TableDef {
+            name: "events".into(),
+            description: None,
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("venue_id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("date", ColumnType::Simple(SimpleColumnType::Date)),
+            ],
+            constraints: vec![
+                TableConstraint::PrimaryKey {
+                    auto_increment: false,
+                    columns: vec!["id".into()],
+                },
+                TableConstraint::Index {
+                    name: None,
+                    columns: vec!["venue_id".into(), "date".into()],
+                },
+                TableConstraint::Unique {
+                    name: None,
+                    columns: vec!["venue_id".into(), "date".into()],
+                },
+            ],
+        };
+
+        let result = render_entity(&table).unwrap();
+        assert_snapshot!(result);
+    }
+
+    #[test]
+    fn test_fk_with_comment_and_auto_increment() {
+        let table = TableDef {
+            name: "child".into(),
+            description: None,
+            columns: vec![
+                ColumnDef {
+                    name: "parent_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: Some("References parent table".into()),
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                col("value", ColumnType::Simple(SimpleColumnType::Text)),
+            ],
+            constraints: vec![
+                TableConstraint::PrimaryKey {
+                    auto_increment: true,
+                    columns: vec!["parent_id".into()],
+                },
+                TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["parent_id".into()],
+                    ref_table: "parent".into(),
+                    ref_columns: vec!["id".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+            ],
+        };
+
+        let result = render_entity(&table).unwrap();
+        assert_snapshot!(result);
+    }
+
+    #[test]
+    fn test_server_default_and_true_boolean() {
+        let table = TableDef {
+            name: "logs".into(),
+            description: None,
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                ColumnDef {
+                    name: "active".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Boolean),
+                    nullable: false,
+                    default: Some(DefaultValue::Bool(true)),
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "created_at".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Timestamptz),
+                    nullable: false,
+                    default: Some(DefaultValue::String("NOW()".into())),
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "score".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Real),
+                    nullable: false,
+                    default: Some(DefaultValue::Float(1.5)),
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "tag".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: false,
+                    default: Some(DefaultValue::String("UNKNOWN_EXPR".into())),
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: true,
+                columns: vec!["id".into()],
+            }],
+        };
+
+        let result = render_entity(&table).unwrap();
+        assert_snapshot!(result);
+    }
+
+    #[test]
+    fn test_column_type_to_java_string_enum() {
+        // Exercises the string enum branch in column_type_to_java
+        let ty = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "status".into(),
+            values: EnumValues::String(vec!["a".into()]),
+        });
+        assert_eq!(column_type_to_java(&ty), "String");
+    }
+
     #[rstest]
     #[case("order_item", "OrderItem")]
     #[case("users", "Users")]
     #[case("a", "A")]
     #[case("user_profile_image", "UserProfileImage")]
+    #[case("", "")]
     fn test_to_pascal_case(#[case] input: &str, #[case] expected: &str) {
         assert_eq!(to_pascal_case(input), expected);
     }
@@ -1072,6 +1214,7 @@ mod tests {
     #[case("created_at", "createdAt")]
     #[case("id", "id")]
     #[case("user_profile_image", "userProfileImage")]
+    #[case("", "")]
     fn test_to_camel_case(#[case] input: &str, #[case] expected: &str) {
         assert_eq!(to_camel_case(input), expected);
     }

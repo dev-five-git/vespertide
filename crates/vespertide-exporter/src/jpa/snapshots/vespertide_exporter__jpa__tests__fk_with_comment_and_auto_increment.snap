@@ -1,0 +1,23 @@
+---
+source: crates/vespertide-exporter/src/jpa/mod.rs
+expression: result
+---
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "child")
+public class Child {
+
+    /** References parent table */
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "parent_id", nullable = false)
+    private Parent parent;
+
+    @Column(name = "value", nullable = false, columnDefinition = "TEXT")
+    private String value;
+
+    protected Child() {
+    }
+}

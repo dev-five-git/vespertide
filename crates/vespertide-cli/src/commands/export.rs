@@ -603,6 +603,7 @@ mod tests {
     #[case(OrmArg::Seaorm, Orm::SeaOrm)]
     #[case(OrmArg::Sqlalchemy, Orm::SqlAlchemy)]
     #[case(OrmArg::Sqlmodel, Orm::SqlModel)]
+    #[case(OrmArg::Jpa, Orm::Jpa)]
     fn orm_arg_maps_to_enum(#[case] arg: OrmArg, #[case] expected: Orm) {
         assert_eq!(Orm::from(arg), expected);
     }
@@ -768,6 +769,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn clean_export_dir_removes_java_files_for_jpa() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path().join("export_dir");
+        std_fs::create_dir_all(&root).unwrap();
+
+        std_fs::write(root.join("User.java"), "// java entity").unwrap();
+        std_fs::write(root.join("Order.java"), "// java entity").unwrap();
+        std_fs::write(root.join("keep.rs"), "// keep this").unwrap();
+
+        clean_export_dir(&root, Orm::Jpa).await.unwrap();
+
+        assert!(!root.join("User.java").exists());
+        assert!(!root.join("Order.java").exists());
+        assert!(root.join("keep.rs").exists());
+    }
+
+    #[tokio::test]
     async fn clean_export_dir_handles_missing_directory() {
         let tmp = tempdir().unwrap();
         let root = tmp.path().join("nonexistent_dir");
@@ -827,5 +845,45 @@ mod tests {
         // Should not error when called on a file instead of directory
         let result = clean_dir_recursive(&file_path, "rs").await;
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn build_output_path_jpa_uses_pascal_case_java_extension() {
+        use std::path::Path;
+        let root = Path::new("src/models");
+
+        // snake_case model → PascalCase .java
+        let rel_path = Path::new("order_item.json");
+        let out = build_output_path(root, rel_path, Orm::Jpa);
+        assert_eq!(out, Path::new("src/models/OrderItem.java"));
+
+        // Single word
+        let rel_path2 = Path::new("users.json");
+        let out2 = build_output_path(root, rel_path2, Orm::Jpa);
+        assert_eq!(out2, Path::new("src/models/Users.java"));
+
+        // Nested path
+        let rel_path3 = Path::new("blog/post_comment.yaml");
+        let out3 = build_output_path(root, rel_path3, Orm::Jpa);
+        assert_eq!(out3, Path::new("src/models/blog/PostComment.java"));
+    }
+
+    #[test]
+    fn build_output_path_jpa_strips_vespertide_suffix() {
+        use std::path::Path;
+        let root = Path::new("src/models");
+
+        let rel_path = Path::new("user.vespertide.json");
+        let out = build_output_path(root, rel_path, Orm::Jpa);
+        assert_eq!(out, Path::new("src/models/User.java"));
+    }
+
+    #[rstest]
+    #[case("order_item", "OrderItem")]
+    #[case("users", "Users")]
+    #[case("a", "A")]
+    #[case("user_profile_image", "UserProfileImage")]
+    fn test_to_pascal_case(#[case] input: &str, #[case] expected: &str) {
+        assert_eq!(to_pascal_case(input), expected);
     }
 }
