@@ -104,12 +104,14 @@ pub fn build_action_queries_with_pending(
             column,
             nullable,
             fill_with,
+            delete_null_rows,
         } => build_modify_column_nullable(
             backend,
             table,
             column,
             *nullable,
             fill_with.as_deref(),
+            delete_null_rows.unwrap_or(false),
             current_schema,
         ),
 
@@ -1268,6 +1270,7 @@ mod tests {
             column: "email".into(),
             nullable: false,
             fill_with: Some("'unknown'".into()),
+            delete_null_rows: None,
         };
         let current_schema = vec![TableDef {
             name: "users".into(),

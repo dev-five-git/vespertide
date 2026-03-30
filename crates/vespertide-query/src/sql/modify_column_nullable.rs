@@ -18,12 +18,25 @@ pub fn build_modify_column_nullable(
     column: &str,
     nullable: bool,
     fill_with: Option<&str>,
+    delete_null_rows: bool,
     current_schema: &[TableDef],
 ) -> Result<Vec<BuiltQuery>, QueryError> {
     let mut queries = Vec::new();
 
+    // If delete_null_rows is set, delete rows with NULL values instead of updating
+    if !nullable && delete_null_rows {
+        let delete_sql = match backend {
+            DatabaseBackend::Postgres | DatabaseBackend::Sqlite => {
+                format!("DELETE FROM \"{}\" WHERE \"{}\" IS NULL", table, column)
+            }
+            DatabaseBackend::MySql => {
+                format!("DELETE FROM `{}` WHERE `{}` IS NULL", table, column)
+            }
+        };
+        queries.push(BuiltQuery::Raw(RawSql::uniform(delete_sql)));
+    }
     // If changing to NOT NULL, first update existing NULL values if fill_with is provided
-    if !nullable && let Some(fill_value) = normalize_fill_with(fill_with) {
+    else if !nullable && let Some(fill_value) = normalize_fill_with(fill_with) {
         let fill_value = convert_default_for_backend(&fill_value, backend);
         let update_sql = match backend {
             DatabaseBackend::Postgres | DatabaseBackend::Sqlite => format!(
@@ -201,8 +214,9 @@ mod tests {
             vec![],
         )];
 
-        let result =
-            build_modify_column_nullable(&backend, "users", "email", nullable, fill_with, &schema);
+        let result = build_modify_column_nullable(
+            &backend, "users", "email", nullable, fill_with, false, &schema,
+        );
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -242,7 +256,8 @@ mod tests {
             return;
         }
 
-        let result = build_modify_column_nullable(&backend, "users", "email", false, None, &[]);
+        let result =
+            build_modify_column_nullable(&backend, "users", "email", false, None, false, &[]);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Table 'users' not found"));
@@ -270,7 +285,8 @@ mod tests {
             vec![],
         )];
 
-        let result = build_modify_column_nullable(&backend, "users", "email", false, None, &schema);
+        let result =
+            build_modify_column_nullable(&backend, "users", "email", false, None, false, &schema);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Column 'email' not found"));
@@ -294,7 +310,8 @@ mod tests {
             }],
         )];
 
-        let result = build_modify_column_nullable(&backend, "users", "email", false, None, &schema);
+        let result =
+            build_modify_column_nullable(&backend, "users", "email", false, None, false, &schema);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -348,6 +365,7 @@ mod tests {
             "paid_at",
             false,
             Some("NOW()"),
+            false,
             &schema,
         );
         assert!(result.is_ok());
@@ -402,7 +420,8 @@ mod tests {
             vec![],
         )];
 
-        let result = build_modify_column_nullable(&backend, "users", "email", false, None, &schema);
+        let result =
+            build_modify_column_nullable(&backend, "users", "email", false, None, false, &schema);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -428,5 +447,98 @@ mod tests {
         with_settings!({ snapshot_suffix => suffix }, {
             assert_snapshot!(sql);
         });
+    }
+
+    /// Test delete_null_rows generates DELETE instead of UPDATE
+    #[rstest]
+    #[case::postgres_delete_null_rows(DatabaseBackend::Postgres)]
+    #[case::mysql_delete_null_rows(DatabaseBackend::MySql)]
+    #[case::sqlite_delete_null_rows(DatabaseBackend::Sqlite)]
+    fn test_delete_null_rows(#[case] backend: DatabaseBackend) {
+        let schema = vec![table_def(
+            "orders",
+            vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer), false),
+                col(
+                    "user_id",
+                    ColumnType::Simple(SimpleColumnType::Integer),
+                    true,
+                ),
+            ],
+            vec![],
+        )];
+
+        let result =
+            build_modify_column_nullable(&backend, "orders", "user_id", false, None, true, &schema);
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        assert!(
+            sql.contains("DELETE FROM"),
+            "Expected DELETE FROM in SQL, got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("IS NULL"),
+            "Expected IS NULL in SQL, got: {}",
+            sql
+        );
+        assert!(
+            !sql.contains("UPDATE"),
+            "Should NOT contain UPDATE, got: {}",
+            sql
+        );
+
+        let suffix = format!(
+            "{}_delete_null_rows",
+            match backend {
+                DatabaseBackend::Postgres => "postgres",
+                DatabaseBackend::MySql => "mysql",
+                DatabaseBackend::Sqlite => "sqlite",
+            }
+        );
+
+        with_settings!({ snapshot_suffix => suffix }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    /// Test delete_null_rows=true with nullable=true does nothing special
+    #[rstest]
+    #[case::postgres_delete_null_rows_nullable(DatabaseBackend::Postgres)]
+    fn test_delete_null_rows_with_nullable_true(#[case] backend: DatabaseBackend) {
+        let schema = vec![table_def(
+            "orders",
+            vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer), false),
+                col(
+                    "user_id",
+                    ColumnType::Simple(SimpleColumnType::Integer),
+                    false,
+                ),
+            ],
+            vec![],
+        )];
+
+        let result =
+            build_modify_column_nullable(&backend, "orders", "user_id", true, None, true, &schema);
+        assert!(result.is_ok());
+        let queries = result.unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        assert!(
+            !sql.contains("DELETE FROM"),
+            "Should NOT contain DELETE when nullable=true, got: {}",
+            sql
+        );
     }
 }

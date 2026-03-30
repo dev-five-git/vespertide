@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
 use anyhow::{Context, Result};
@@ -10,8 +10,8 @@ use tokio::fs;
 use vespertide_config::FileFormat;
 use vespertide_core::{MigrationAction, MigrationPlan, TableConstraint, TableDef};
 use vespertide_planner::{
-    EnumFillWithRequired, find_missing_enum_fill_with, find_missing_fill_with, plan_next_migration,
-    schema_from_plans,
+    EnumFillWithRequired, FillWithRequired, find_missing_enum_fill_with, find_missing_fill_with,
+    plan_next_migration, schema_from_plans,
 };
 
 use crate::utils::{
@@ -30,6 +30,18 @@ fn parse_fill_with_args(args: &[String]) -> HashMap<(String, String), String> {
         }
     }
     map
+}
+
+/// Parse delete_null_rows arguments from CLI.
+/// Format: table.column
+fn parse_delete_null_rows_args(args: &[String]) -> HashSet<(String, String)> {
+    let mut set = HashSet::new();
+    for arg in args {
+        if let Some((table, column)) = arg.split_once('.') {
+            set.insert((table.to_string(), column.to_string()));
+        }
+    }
+    set
 }
 
 /// Format the type info string for display.
@@ -221,8 +233,31 @@ fn apply_fill_with_to_plan(
     }
 }
 
+/// Apply delete_null_rows flags to matching ModifyColumnNullable actions.
+fn apply_delete_null_rows_to_plan(
+    plan: &mut MigrationPlan,
+    delete_set: &HashSet<(String, String)>,
+) {
+    for action in &mut plan.actions {
+        if let MigrationAction::ModifyColumnNullable {
+            table,
+            column,
+            nullable,
+            delete_null_rows,
+            ..
+        } = action
+            && !*nullable
+            && delete_null_rows.is_none()
+            && delete_set.contains(&(table.clone(), column.clone()))
+        {
+            *delete_null_rows = Some(true);
+        }
+    }
+}
+
 /// Handle interactive fill_with collection if there are missing values.
 /// Returns the updated fill_values map after collecting from user.
+#[cfg(test)]
 fn handle_missing_fill_with<F, E>(
     plan: &mut MigrationPlan,
     fill_values: &mut HashMap<(String, String), String>,
@@ -243,6 +278,71 @@ where
         apply_fill_with_to_plan(plan, fill_values);
     }
 
+    Ok(())
+}
+
+#[cfg(not(tarpaulin_include))]
+fn prompt_delete_null_rows(table: &str, column: &str) -> Result<bool> {
+    let confirmed = Confirm::new()
+        .with_prompt(format!("  Delete rows where {}.{} IS NULL?", table, column))
+        .default(false)
+        .interact()
+        .context("failed to read confirmation")?;
+    Ok(confirmed)
+}
+
+fn handle_delete_null_rows<F>(
+    plan: &mut MigrationPlan,
+    missing: &mut Vec<FillWithRequired>,
+    delete_set: &HashSet<(String, String)>,
+    prompt_fn: F,
+) -> Result<()>
+where
+    F: Fn(&str, &str) -> Result<bool>,
+{
+    let mut to_delete = Vec::new();
+    let mut remaining = Vec::new();
+
+    for item in missing.drain(..) {
+        if item.has_foreign_key && !delete_set.contains(&(item.table.clone(), item.column.clone()))
+        {
+            // FK column without CLI arg — prompt user
+            println!(
+                "  {} {}.{} has a foreign key constraint — fill_with may not work.",
+                "\u{2022}".bright_cyan(),
+                item.table.bright_white(),
+                item.column.bright_green()
+            );
+            if prompt_fn(&item.table, &item.column)? {
+                to_delete.push((item.table.clone(), item.column.clone()));
+            } else {
+                remaining.push(item);
+            }
+        } else if delete_set.contains(&(item.table.clone(), item.column.clone())) {
+            to_delete.push((item.table.clone(), item.column.clone()));
+        } else {
+            remaining.push(item);
+        }
+    }
+
+    // Apply delete_null_rows to plan
+    for (table, column) in &to_delete {
+        for action in &mut plan.actions {
+            if let MigrationAction::ModifyColumnNullable {
+                table: t,
+                column: c,
+                delete_null_rows,
+                ..
+            } = action
+                && t == table
+                && c == column
+            {
+                *delete_null_rows = Some(true);
+            }
+        }
+    }
+
+    *missing = remaining;
     Ok(())
 }
 
@@ -549,7 +649,55 @@ where
     Ok(())
 }
 
-pub async fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Result<()> {
+pub async fn cmd_revision(
+    message: String,
+    fill_with_args: Vec<String>,
+    delete_null_rows_args: Vec<String>,
+) -> Result<()> {
+    cmd_revision_core(
+        message,
+        fill_with_args,
+        delete_null_rows_args,
+        RevisionPromptFns {
+            recreate_prompt_fn: prompt_recreate_tables,
+            delete_null_rows_prompt_fn: prompt_delete_null_rows,
+            fill_with_prompt_fn: prompt_fill_with_value,
+            enum_prompt_fn: prompt_enum_value,
+            enum_bare_prompt_fn: prompt_enum_value_bare,
+        },
+    )
+    .await
+}
+
+struct RevisionPromptFns<R, D, F, E, EB> {
+    recreate_prompt_fn: R,
+    delete_null_rows_prompt_fn: D,
+    fill_with_prompt_fn: F,
+    enum_prompt_fn: E,
+    enum_bare_prompt_fn: EB,
+}
+
+async fn cmd_revision_core<R, D, F, E, EB>(
+    message: String,
+    fill_with_args: Vec<String>,
+    delete_null_rows_args: Vec<String>,
+    prompt_fns: RevisionPromptFns<R, D, F, E, EB>,
+) -> Result<()>
+where
+    R: Fn(&[RecreateTableRequired]) -> Result<bool>,
+    D: Fn(&str, &str) -> Result<bool>,
+    F: Fn(&str, &str) -> Result<String>,
+    E: Fn(&str, &[String]) -> Result<String>,
+    EB: Fn(&str, &[String]) -> Result<String>,
+{
+    let RevisionPromptFns {
+        recreate_prompt_fn,
+        delete_null_rows_prompt_fn,
+        fill_with_prompt_fn,
+        enum_prompt_fn,
+        enum_bare_prompt_fn,
+    } = prompt_fns;
+
     let config = load_config()?;
     let current_models = load_models(&config)?;
     let applied_plans = load_migrations(&config)?;
@@ -558,7 +706,7 @@ pub async fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Resul
         .map_err(|e| anyhow::anyhow!("planning error: {}", e))?;
 
     // Check for non-nullable FK changes that require table recreation.
-    handle_recreate_requirements(&mut plan, &current_models, prompt_recreate_tables)?;
+    handle_recreate_requirements(&mut plan, &current_models, recreate_prompt_fn)?;
 
     if plan.actions.is_empty() {
         println!(
@@ -575,21 +723,38 @@ pub async fn cmd_revision(message: String, fill_with_args: Vec<String>) -> Resul
 
     // Parse CLI fill_with arguments
     let mut fill_values = parse_fill_with_args(&fill_with_args);
+    let delete_set = parse_delete_null_rows_args(&delete_null_rows_args);
 
     // Apply any CLI-provided fill_with values first
     apply_fill_with_to_plan(&mut plan, &fill_values);
+    apply_delete_null_rows_to_plan(&mut plan, &delete_set);
 
-    // Handle any missing fill_with values interactively
-    handle_missing_fill_with(
-        &mut plan,
-        &mut fill_values,
-        &baseline_schema,
-        prompt_fill_with_value,
-        prompt_enum_value,
-    )?;
+    // Find all missing fill_with values
+    let mut missing = find_missing_fill_with(&plan, &baseline_schema);
+
+    // Handle FK columns with delete_null_rows option first
+    if !missing.is_empty() {
+        handle_delete_null_rows(
+            &mut plan,
+            &mut missing,
+            &delete_set,
+            delete_null_rows_prompt_fn,
+        )?;
+    }
+
+    // Handle remaining missing fill_with values interactively
+    if !missing.is_empty() {
+        collect_fill_with_values(
+            &missing,
+            &mut fill_values,
+            fill_with_prompt_fn,
+            enum_prompt_fn,
+        )?;
+        apply_fill_with_to_plan(&mut plan, &fill_values);
+    }
 
     // Handle any missing enum fill_with values (for removed enum values) interactively
-    handle_missing_enum_fill_with(&mut plan, &baseline_schema, prompt_enum_value_bare)?;
+    handle_missing_enum_fill_with(&mut plan, &baseline_schema, enum_bare_prompt_fn)?;
 
     plan.id = uuid::Uuid::new_v4().to_string();
     plan.comment = Some(message);
@@ -759,7 +924,7 @@ mod tests {
         write_model("users");
         std_fs::create_dir_all(cfg.migrations_dir()).unwrap();
 
-        cmd_revision("init".into(), vec![]).await.unwrap();
+        cmd_revision("init".into(), vec![], vec![]).await.unwrap();
 
         let entries: Vec<_> = std_fs::read_dir(cfg.migrations_dir()).unwrap().collect();
         assert!(!entries.is_empty());
@@ -773,7 +938,7 @@ mod tests {
 
         let cfg = write_config();
         // no models, no migrations -> plan with no actions -> early return
-        assert!(cmd_revision("noop".into(), vec![]).await.is_ok());
+        assert!(cmd_revision("noop".into(), vec![], vec![]).await.is_ok());
         // migrations dir should not be created
         assert!(!cfg.migrations_dir().exists());
     }
@@ -791,7 +956,7 @@ mod tests {
             std_fs::remove_dir_all(cfg.migrations_dir()).unwrap();
         }
 
-        cmd_revision("yaml".into(), vec![]).await.unwrap();
+        cmd_revision("yaml".into(), vec![], vec![]).await.unwrap();
 
         let entries: Vec<_> = std_fs::read_dir(cfg.migrations_dir()).unwrap().collect();
         assert!(!entries.is_empty());
@@ -1567,6 +1732,7 @@ mod tests {
                 column: "status".into(),
                 nullable: false,
                 fill_with: None,
+                delete_null_rows: None,
             }],
         };
 
@@ -1702,6 +1868,7 @@ mod tests {
                     column: "status".into(),
                     nullable: false,
                     fill_with: None,
+                    delete_null_rows: None,
                 },
             ],
         };
@@ -1868,6 +2035,7 @@ mod tests {
             column_type: "text".to_string(),
             default_value: "''".to_string(),
             enum_values: None,
+            has_foreign_key: false,
         }];
 
         let mut fill_values = HashMap::new();
@@ -1900,6 +2068,7 @@ mod tests {
                 column_type: "text".to_string(),
                 default_value: "''".to_string(),
                 enum_values: None,
+                has_foreign_key: false,
             },
             FillWithRequired {
                 action_index: 1,
@@ -1909,6 +2078,7 @@ mod tests {
                 column_type: "text".to_string(),
                 default_value: "''".to_string(),
                 enum_values: None,
+                has_foreign_key: false,
             },
         ];
 
@@ -1972,6 +2142,7 @@ mod tests {
             column_type: "text".to_string(),
             default_value: "''".to_string(),
             enum_values: None,
+            has_foreign_key: false,
         }];
 
         let mut fill_values = HashMap::new();
@@ -2178,6 +2349,7 @@ mod tests {
                     column: "status".into(),
                     nullable: false,
                     fill_with: None,
+                    delete_null_rows: None,
                 },
             ],
         };
@@ -2237,6 +2409,7 @@ mod tests {
                 "confirmed".to_string(),
                 "shipped".to_string(),
             ]),
+            has_foreign_key: false,
         }];
 
         let mut fill_values = HashMap::new();
@@ -2523,5 +2696,721 @@ mod tests {
     #[test]
     fn test_strip_enum_quotes_only_trailing() {
         assert_eq!(strip_enum_quotes("active'".to_string()), "active");
+    }
+
+    #[test]
+    fn test_parse_delete_null_rows_args() {
+        let args = vec!["users.email".to_string(), "orders.user_id".to_string()];
+        let result = parse_delete_null_rows_args(&args);
+        assert_eq!(result.len(), 2);
+        assert!(result.contains(&("users".to_string(), "email".to_string())));
+        assert!(result.contains(&("orders".to_string(), "user_id".to_string())));
+    }
+
+    #[test]
+    fn test_parse_delete_null_rows_args_invalid_format() {
+        let args = vec!["invalid_no_dot".to_string(), "valid.column".to_string()];
+        let result = parse_delete_null_rows_args(&args);
+        assert_eq!(result.len(), 1);
+        assert!(result.contains(&("valid".to_string(), "column".to_string())));
+    }
+
+    #[test]
+    fn test_parse_delete_null_rows_args_empty() {
+        let result = parse_delete_null_rows_args(&[]);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_apply_delete_null_rows_to_plan() {
+        use vespertide_core::MigrationPlan;
+
+        let mut plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::ModifyColumnNullable {
+                table: "orders".into(),
+                column: "user_id".into(),
+                nullable: false,
+                fill_with: None,
+                delete_null_rows: None,
+            }],
+        };
+
+        let mut delete_set = HashSet::new();
+        delete_set.insert(("orders".to_string(), "user_id".to_string()));
+        apply_delete_null_rows_to_plan(&mut plan, &delete_set);
+
+        match &plan.actions[0] {
+            MigrationAction::ModifyColumnNullable {
+                delete_null_rows, ..
+            } => {
+                assert_eq!(delete_null_rows, &Some(true));
+            }
+            _ => panic!("Expected ModifyColumnNullable action"),
+        }
+    }
+
+    #[test]
+    fn test_apply_delete_null_rows_to_plan_skips_nullable_true() {
+        use vespertide_core::MigrationPlan;
+
+        let mut plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::ModifyColumnNullable {
+                table: "orders".into(),
+                column: "user_id".into(),
+                nullable: true,
+                fill_with: None,
+                delete_null_rows: None,
+            }],
+        };
+
+        let mut delete_set = HashSet::new();
+        delete_set.insert(("orders".to_string(), "user_id".to_string()));
+        apply_delete_null_rows_to_plan(&mut plan, &delete_set);
+
+        match &plan.actions[0] {
+            MigrationAction::ModifyColumnNullable {
+                delete_null_rows, ..
+            } => {
+                assert_eq!(delete_null_rows, &None);
+            }
+            _ => panic!("Expected ModifyColumnNullable action"),
+        }
+    }
+
+    #[test]
+    fn test_apply_delete_null_rows_to_plan_skips_already_set() {
+        use vespertide_core::MigrationPlan;
+
+        let mut plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::ModifyColumnNullable {
+                table: "orders".into(),
+                column: "user_id".into(),
+                nullable: false,
+                fill_with: None,
+                delete_null_rows: Some(false),
+            }],
+        };
+
+        let mut delete_set = HashSet::new();
+        delete_set.insert(("orders".to_string(), "user_id".to_string()));
+        apply_delete_null_rows_to_plan(&mut plan, &delete_set);
+
+        match &plan.actions[0] {
+            MigrationAction::ModifyColumnNullable {
+                delete_null_rows, ..
+            } => {
+                assert_eq!(delete_null_rows, &Some(false));
+            }
+            _ => panic!("Expected ModifyColumnNullable action"),
+        }
+    }
+
+    #[test]
+    fn test_apply_delete_null_rows_to_plan_no_match() {
+        use vespertide_core::MigrationPlan;
+
+        let mut plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::ModifyColumnNullable {
+                table: "orders".into(),
+                column: "user_id".into(),
+                nullable: false,
+                fill_with: None,
+                delete_null_rows: None,
+            }],
+        };
+
+        let mut delete_set = HashSet::new();
+        delete_set.insert(("other_table".to_string(), "other_col".to_string()));
+        apply_delete_null_rows_to_plan(&mut plan, &delete_set);
+
+        match &plan.actions[0] {
+            MigrationAction::ModifyColumnNullable {
+                delete_null_rows, ..
+            } => {
+                assert_eq!(delete_null_rows, &None);
+            }
+            _ => panic!("Expected ModifyColumnNullable action"),
+        }
+    }
+
+    #[test]
+    fn test_handle_delete_null_rows_fk_accepted() {
+        use vespertide_core::MigrationPlan;
+        use vespertide_planner::FillWithRequired;
+
+        let mut plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::ModifyColumnNullable {
+                table: "orders".into(),
+                column: "user_id".into(),
+                nullable: false,
+                fill_with: None,
+                delete_null_rows: None,
+            }],
+        };
+
+        let mut missing = vec![FillWithRequired {
+            action_index: 0,
+            table: "orders".to_string(),
+            column: "user_id".to_string(),
+            action_type: "ModifyColumnNullable",
+            column_type: "integer".to_string(),
+            default_value: "0".to_string(),
+            enum_values: None,
+            has_foreign_key: true,
+        }];
+
+        let delete_set = HashSet::new();
+
+        let mock_prompt = |_table: &str, _column: &str| -> Result<bool> { Ok(true) };
+
+        let result = handle_delete_null_rows(&mut plan, &mut missing, &delete_set, mock_prompt);
+        assert!(result.is_ok());
+
+        assert!(missing.is_empty());
+
+        match &plan.actions[0] {
+            MigrationAction::ModifyColumnNullable {
+                delete_null_rows, ..
+            } => {
+                assert_eq!(delete_null_rows, &Some(true));
+            }
+            _ => panic!("Expected ModifyColumnNullable"),
+        }
+    }
+
+    #[test]
+    fn test_handle_delete_null_rows_fk_declined() {
+        use vespertide_core::MigrationPlan;
+        use vespertide_planner::FillWithRequired;
+
+        let mut plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::ModifyColumnNullable {
+                table: "orders".into(),
+                column: "user_id".into(),
+                nullable: false,
+                fill_with: None,
+                delete_null_rows: None,
+            }],
+        };
+
+        let mut missing = vec![FillWithRequired {
+            action_index: 0,
+            table: "orders".to_string(),
+            column: "user_id".to_string(),
+            action_type: "ModifyColumnNullable",
+            column_type: "integer".to_string(),
+            default_value: "0".to_string(),
+            enum_values: None,
+            has_foreign_key: true,
+        }];
+
+        let delete_set = HashSet::new();
+
+        let mock_prompt = |_table: &str, _column: &str| -> Result<bool> { Ok(false) };
+
+        let result = handle_delete_null_rows(&mut plan, &mut missing, &delete_set, mock_prompt);
+        assert!(result.is_ok());
+
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].table, "orders");
+
+        match &plan.actions[0] {
+            MigrationAction::ModifyColumnNullable {
+                delete_null_rows, ..
+            } => {
+                assert_eq!(delete_null_rows, &None);
+            }
+            _ => panic!("Expected ModifyColumnNullable"),
+        }
+    }
+
+    #[test]
+    fn test_handle_delete_null_rows_cli_provided() {
+        use vespertide_core::MigrationPlan;
+        use vespertide_planner::FillWithRequired;
+
+        let mut plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::ModifyColumnNullable {
+                table: "orders".into(),
+                column: "user_id".into(),
+                nullable: false,
+                fill_with: None,
+                delete_null_rows: None,
+            }],
+        };
+
+        let mut missing = vec![FillWithRequired {
+            action_index: 0,
+            table: "orders".to_string(),
+            column: "user_id".to_string(),
+            action_type: "ModifyColumnNullable",
+            column_type: "integer".to_string(),
+            default_value: "0".to_string(),
+            enum_values: None,
+            has_foreign_key: false,
+        }];
+
+        let mut delete_set = HashSet::new();
+        delete_set.insert(("orders".to_string(), "user_id".to_string()));
+
+        let mock_prompt = |_table: &str, _column: &str| -> Result<bool> {
+            panic!("Should not be called for CLI-provided items");
+        };
+
+        let result = handle_delete_null_rows(&mut plan, &mut missing, &delete_set, mock_prompt);
+        assert!(result.is_ok());
+
+        assert!(missing.is_empty());
+
+        match &plan.actions[0] {
+            MigrationAction::ModifyColumnNullable {
+                delete_null_rows, ..
+            } => {
+                assert_eq!(delete_null_rows, &Some(true));
+            }
+            _ => panic!("Expected ModifyColumnNullable"),
+        }
+    }
+
+    #[test]
+    fn test_handle_delete_null_rows_non_fk_passthrough() {
+        use vespertide_core::MigrationPlan;
+        use vespertide_planner::FillWithRequired;
+
+        let mut plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::ModifyColumnNullable {
+                table: "users".into(),
+                column: "email".into(),
+                nullable: false,
+                fill_with: None,
+                delete_null_rows: None,
+            }],
+        };
+
+        let mut missing = vec![FillWithRequired {
+            action_index: 0,
+            table: "users".to_string(),
+            column: "email".to_string(),
+            action_type: "ModifyColumnNullable",
+            column_type: "text".to_string(),
+            default_value: "''".to_string(),
+            enum_values: None,
+            has_foreign_key: false,
+        }];
+
+        let delete_set = HashSet::new();
+
+        let mock_prompt = |_table: &str, _column: &str| -> Result<bool> {
+            panic!("Should not be called for non-FK items");
+        };
+
+        let result = handle_delete_null_rows(&mut plan, &mut missing, &delete_set, mock_prompt);
+        assert!(result.is_ok());
+
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].column, "email");
+
+        match &plan.actions[0] {
+            MigrationAction::ModifyColumnNullable {
+                delete_null_rows, ..
+            } => {
+                assert_eq!(delete_null_rows, &None);
+            }
+            _ => panic!("Expected ModifyColumnNullable"),
+        }
+    }
+
+    #[test]
+    fn test_handle_delete_null_rows_prompt_error() {
+        use vespertide_core::MigrationPlan;
+        use vespertide_planner::FillWithRequired;
+
+        let mut plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::ModifyColumnNullable {
+                table: "orders".into(),
+                column: "user_id".into(),
+                nullable: false,
+                fill_with: None,
+                delete_null_rows: None,
+            }],
+        };
+
+        let mut missing = vec![FillWithRequired {
+            action_index: 0,
+            table: "orders".to_string(),
+            column: "user_id".to_string(),
+            action_type: "ModifyColumnNullable",
+            column_type: "integer".to_string(),
+            default_value: "0".to_string(),
+            enum_values: None,
+            has_foreign_key: true,
+        }];
+
+        let delete_set = HashSet::new();
+
+        let mock_prompt = |_table: &str, _column: &str| -> Result<bool> {
+            Err(anyhow::anyhow!("user cancelled"))
+        };
+
+        let result = handle_delete_null_rows(&mut plan, &mut missing, &delete_set, mock_prompt);
+        assert!(result.is_err());
+    }
+
+    /// Integration test: FK column nullable→not-null triggers handle_delete_null_rows (line 489)
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn cmd_revision_core_handles_delete_null_rows_for_fk_column() {
+        use vespertide_core::MigrationPlan;
+        use vespertide_core::schema::foreign_key::{ForeignKeyDef, ForeignKeySyntax};
+
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+
+        let cfg = write_config();
+        std_fs::create_dir_all(cfg.migrations_dir()).unwrap();
+
+        // Write v1 migration: create "orders" table with nullable user_id
+        let v1 = MigrationPlan {
+            id: "v1-id".to_string(),
+            comment: Some("init".to_string()),
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::CreateTable {
+                table: "orders".into(),
+                columns: vec![
+                    ColumnDef {
+                        name: "id".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    },
+                    ColumnDef {
+                        name: "user_id".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: true, // nullable in v1
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    },
+                ],
+                constraints: vec![
+                    TableConstraint::PrimaryKey {
+                        auto_increment: false,
+                        columns: vec!["id".into()],
+                    },
+                    TableConstraint::ForeignKey {
+                        name: Some("fk_orders__user_id".into()),
+                        columns: vec!["user_id".into()],
+                        ref_table: "users".into(),
+                        ref_columns: vec!["id".into()],
+                        on_delete: None,
+                        on_update: None,
+                    },
+                ],
+            }],
+        };
+        let v1_path = cfg.migrations_dir().join("0001_init.vespertide.json");
+        std_fs::write(&v1_path, serde_json::to_string_pretty(&v1).unwrap()).unwrap();
+
+        // Write updated model: user_id is now NOT NULL
+        let models_dir = PathBuf::from("models");
+        std_fs::create_dir_all(&models_dir).unwrap();
+        let users_model = TableDef {
+            name: "users".to_string(),
+            description: None,
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
+        };
+        std_fs::write(
+            models_dir.join("users.json"),
+            serde_json::to_string_pretty(&users_model).unwrap(),
+        )
+        .unwrap();
+
+        let model = TableDef {
+            name: "orders".to_string(),
+            description: None,
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false, // NOT NULL now
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: Some(ForeignKeySyntax::Object(ForeignKeyDef {
+                        ref_table: "users".into(),
+                        ref_columns: vec!["id".into()],
+                        on_delete: None,
+                        on_update: None,
+                    })),
+                },
+            ],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
+        };
+        std_fs::write(
+            models_dir.join("orders.json"),
+            serde_json::to_string_pretty(&model).unwrap(),
+        )
+        .unwrap();
+
+        // Mock prompts
+        let recreate_prompt = |_: &[RecreateTableRequired]| -> Result<bool> { Ok(true) };
+        let delete_prompt = |_table: &str, _col: &str| -> Result<bool> { Ok(true) };
+        let fill_prompt = |_p: &str, _d: &str| -> Result<String> {
+            panic!("fill prompt should not be called — FK handled by delete_null_rows");
+        };
+        let enum_prompt = |_p: &str, _v: &[String]| -> Result<String> {
+            panic!("enum prompt should not be called");
+        };
+        let enum_bare_prompt = |_p: &str, _v: &[String]| -> Result<String> {
+            panic!("enum bare prompt should not be called");
+        };
+
+        let result = cmd_revision_core(
+            "make user_id required".into(),
+            vec![],
+            vec![],
+            RevisionPromptFns {
+                recreate_prompt_fn: recreate_prompt,
+                delete_null_rows_prompt_fn: delete_prompt,
+                fill_with_prompt_fn: fill_prompt,
+                enum_prompt_fn: enum_prompt,
+                enum_bare_prompt_fn: enum_bare_prompt,
+            },
+        )
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "cmd_revision_core failed: {:?}",
+            result.err()
+        );
+
+        // Verify migration was created
+        let entries: Vec<_> = std_fs::read_dir(cfg.migrations_dir())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .collect();
+        // Should have 2 files: v1 + new v2
+        assert_eq!(entries.len(), 2);
+    }
+
+    /// Integration test: non-FK column nullable→not-null triggers collect_fill_with_values (lines 494-495)
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn cmd_revision_core_handles_fill_with_for_non_fk_column() {
+        use vespertide_core::MigrationPlan;
+
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+
+        let cfg = write_config();
+        std_fs::create_dir_all(cfg.migrations_dir()).unwrap();
+
+        // Write v1 migration: create "users" table with nullable email
+        let v1 = MigrationPlan {
+            id: "v1-id".to_string(),
+            comment: Some("init".to_string()),
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::CreateTable {
+                table: "users".into(),
+                columns: vec![
+                    ColumnDef {
+                        name: "id".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    },
+                    ColumnDef {
+                        name: "email".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Text),
+                        nullable: true, // nullable in v1
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    },
+                ],
+                constraints: vec![TableConstraint::PrimaryKey {
+                    auto_increment: false,
+                    columns: vec!["id".into()],
+                }],
+            }],
+        };
+        let v1_path = cfg.migrations_dir().join("0001_init.vespertide.json");
+        std_fs::write(&v1_path, serde_json::to_string_pretty(&v1).unwrap()).unwrap();
+
+        // Write updated model: email is now NOT NULL (no default)
+        let models_dir = PathBuf::from("models");
+        std_fs::create_dir_all(&models_dir).unwrap();
+        let model = TableDef {
+            name: "users".to_string(),
+            description: None,
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: false, // NOT NULL now
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            }],
+        };
+        std_fs::write(
+            models_dir.join("users.json"),
+            serde_json::to_string_pretty(&model).unwrap(),
+        )
+        .unwrap();
+
+        // Mock prompts
+        let recreate_prompt = |_: &[RecreateTableRequired]| -> Result<bool> { Ok(true) };
+        let delete_prompt = |_table: &str, _col: &str| -> Result<bool> { Ok(false) };
+        let fill_prompt = |_p: &str, _d: &str| -> Result<String> { Ok("'unknown'".to_string()) };
+        let enum_prompt = |_p: &str, _v: &[String]| -> Result<String> {
+            panic!("enum prompt should not be called");
+        };
+        let enum_bare_prompt = |_p: &str, _v: &[String]| -> Result<String> {
+            panic!("enum bare prompt should not be called");
+        };
+
+        let result = cmd_revision_core(
+            "make email required".into(),
+            vec![],
+            vec![],
+            RevisionPromptFns {
+                recreate_prompt_fn: recreate_prompt,
+                delete_null_rows_prompt_fn: delete_prompt,
+                fill_with_prompt_fn: fill_prompt,
+                enum_prompt_fn: enum_prompt,
+                enum_bare_prompt_fn: enum_bare_prompt,
+            },
+        )
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "cmd_revision_core failed: {:?}",
+            result.err()
+        );
+
+        // Verify migration was written with fill_with
+        let entries: Vec<_> = std_fs::read_dir(cfg.migrations_dir())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .collect();
+        assert_eq!(entries.len(), 2);
+
+        // Read the v2 migration and verify fill_with was applied
+        let v2_path = entries
+            .iter()
+            .find(|e| e.file_name().to_string_lossy().contains("0002"))
+            .expect("v2 migration not found");
+        let v2_content = std_fs::read_to_string(v2_path.path()).unwrap();
+        assert!(
+            v2_content.contains("fill_with"),
+            "Expected fill_with in migration, got: {}",
+            v2_content
+        );
     }
 }

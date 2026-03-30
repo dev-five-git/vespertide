@@ -60,6 +60,11 @@ pub enum MigrationAction {
         nullable: bool,
         /// Required when changing from nullable to non-nullable to backfill existing NULL values.
         fill_with: Option<String>,
+        /// When true, rows with NULL values in the column are deleted instead of backfilled.
+        /// Mutually exclusive with `fill_with`. Useful for FK columns where a valid fill value
+        /// may not exist.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        delete_null_rows: Option<bool>,
     },
     ModifyColumnDefault {
         table: TableName,
@@ -164,11 +169,13 @@ impl MigrationAction {
                 column,
                 nullable,
                 fill_with,
+                delete_null_rows,
             } => MigrationAction::ModifyColumnNullable {
                 table: format!("{}{}", prefix, table),
                 column,
                 nullable,
                 fill_with,
+                delete_null_rows,
             },
             MigrationAction::ModifyColumnDefault {
                 table,
@@ -643,6 +650,7 @@ mod tests {
             column: "email".into(),
             nullable: false,
             fill_with: None,
+            delete_null_rows: None,
         },
         "ModifyColumnNullable: users.email -> NOT NULL"
     )]
@@ -652,6 +660,7 @@ mod tests {
             column: "email".into(),
             nullable: true,
             fill_with: None,
+            delete_null_rows: None,
         },
         "ModifyColumnNullable: users.email -> NULL"
     )]
@@ -931,6 +940,7 @@ mod tests {
             column: "email".into(),
             nullable: false,
             fill_with: Some("default@example.com".into()),
+            delete_null_rows: None,
         };
         let prefixed = action.with_prefix("myapp_");
         if let MigrationAction::ModifyColumnNullable {
@@ -938,12 +948,14 @@ mod tests {
             column,
             nullable,
             fill_with,
+            delete_null_rows,
         } = prefixed
         {
             assert_eq!(table.as_str(), "myapp_users");
             assert_eq!(column.as_str(), "email");
             assert!(!nullable);
             assert_eq!(fill_with, Some("default@example.com".into()));
+            assert_eq!(delete_null_rows, None);
         } else {
             panic!("Expected ModifyColumnNullable");
         }

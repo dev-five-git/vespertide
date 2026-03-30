@@ -69,6 +69,10 @@ enum Commands {
         /// Format: table.column=value (can be specified multiple times)
         #[arg(long = "fill-with")]
         fill_with: Vec<String>,
+        /// Delete rows with NULL values instead of filling.
+        /// Format: table.column (can be specified multiple times)
+        #[arg(long = "delete-null-rows")]
+        delete_null_rows: Vec<String>,
     },
     /// Initialize vespertide.json with defaults.
     Init,
@@ -93,7 +97,11 @@ async fn main() -> Result<()> {
         Some(Commands::Log { backend }) => cmd_log(backend.into()).await,
         Some(Commands::New { name, format }) => cmd_new(name, format).await,
         Some(Commands::Status) => cmd_status().await,
-        Some(Commands::Revision { message, fill_with }) => cmd_revision(message, fill_with).await,
+        Some(Commands::Revision {
+            message,
+            fill_with,
+            delete_null_rows,
+        }) => cmd_revision(message, fill_with, delete_null_rows).await,
         Some(Commands::Init) => cmd_init().await,
         Some(Commands::Export { orm, export_dir }) => cmd_export(orm, export_dir).await,
         None => {

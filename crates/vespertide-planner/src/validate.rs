@@ -416,9 +416,10 @@ pub fn validate_migration_plan(plan: &MigrationPlan) -> Result<(), PlannerError>
                 column,
                 nullable,
                 fill_with,
+                delete_null_rows,
             } => {
                 // If changing from nullable to non-nullable, fill_with is required
-                if !nullable && fill_with.is_none() {
+                if !nullable && fill_with.is_none() && !delete_null_rows.unwrap_or(false) {
                     return Err(PlannerError::MissingFillWith(table.clone(), column.clone()));
                 }
             }
@@ -462,6 +463,8 @@ pub struct FillWithRequired {
     pub default_value: String,
     /// Enum values if the column is an enum type (for selection UI).
     pub enum_values: Option<Vec<String>>,
+    /// Whether the current column has a foreign key constraint.
+    pub has_foreign_key: bool,
 }
 
 /// Find all actions in a migration plan that require fill_with values.
@@ -492,6 +495,7 @@ pub fn find_missing_fill_with(
                         column_type: column.r#type.to_display_string(),
                         default_value: column.r#type.default_fill_value().to_string(),
                         enum_values: column.r#type.enum_variant_names(),
+                        has_foreign_key: false,
                     });
                 }
             }
@@ -500,15 +504,18 @@ pub fn find_missing_fill_with(
                 column,
                 nullable,
                 fill_with,
+                delete_null_rows,
             } => {
                 // If changing from nullable to non-nullable, fill_with is required
                 // UNLESS the column already has a default value (which will be used)
-                if !nullable && fill_with.is_none() {
+                if !nullable && fill_with.is_none() && !delete_null_rows.unwrap_or(false) {
                     // Look up column from the current schema
-                    let col_def = current_schema
-                        .iter()
-                        .find(|t| t.name == *table)
-                        .and_then(|t| t.columns.iter().find(|c| c.name == *column));
+                    let table_def = current_schema.iter().find(|t| t.name == *table);
+
+                    let col_def =
+                        table_def.and_then(|t| t.columns.iter().find(|c| c.name == *column));
+
+                    let has_foreign_key = table_def.is_some_and(|t| t.constraints.iter().any(|constraint| matches!(constraint, TableConstraint::ForeignKey { columns, .. } if columns.iter().any(|col_name| col_name == column))));
 
                     // If column has a default value, fill_with is not needed
                     if col_def.is_some_and(|c| c.default.is_some()) {
@@ -532,6 +539,7 @@ pub fn find_missing_fill_with(
                         column_type: col_type_str,
                         default_value: default_val,
                         enum_values: enum_vals,
+                        has_foreign_key,
                     });
                 }
             }
@@ -1272,6 +1280,7 @@ mod tests {
                 column: "email".into(),
                 nullable: false,
                 fill_with: None,
+                delete_null_rows: None,
             }],
         };
 
@@ -1298,6 +1307,7 @@ mod tests {
                 column: "email".into(),
                 nullable: false,
                 fill_with: Some("'unknown'".into()),
+                delete_null_rows: None,
             }],
         };
 
@@ -1318,6 +1328,7 @@ mod tests {
                 column: "email".into(),
                 nullable: true,
                 fill_with: None,
+                delete_null_rows: None,
             }],
         };
 
@@ -1900,6 +1911,7 @@ mod tests {
                 column: "email".into(),
                 nullable: false,
                 fill_with: None,
+                delete_null_rows: None,
             }],
         };
 
@@ -1924,6 +1936,7 @@ mod tests {
                 column: "email".into(),
                 nullable: true,
                 fill_with: None,
+                delete_null_rows: None,
             }],
         };
 
@@ -1943,6 +1956,7 @@ mod tests {
                 column: "email".into(),
                 nullable: false,
                 fill_with: Some("'default'".into()),
+                delete_null_rows: None,
             }],
         };
 
@@ -1980,6 +1994,7 @@ mod tests {
                 column: "status".into(),
                 nullable: false,
                 fill_with: None,
+                delete_null_rows: None,
             }],
         };
 
@@ -2020,6 +2035,7 @@ mod tests {
                 column: "email".into(),
                 nullable: false,
                 fill_with: None,
+                delete_null_rows: None,
             }],
         };
 
@@ -2056,6 +2072,7 @@ mod tests {
                     column: "status".into(),
                     nullable: false,
                     fill_with: None,
+                    delete_null_rows: None,
                 },
                 MigrationAction::AddColumn {
                     table: "users".into(),

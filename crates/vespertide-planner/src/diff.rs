@@ -527,6 +527,7 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
                         column: col.to_string(),
                         nullable: to_def.nullable,
                         fill_with: None,
+                        delete_null_rows: None,
                     });
                 }
             }
@@ -4189,6 +4190,7 @@ mod tests {
                     column,
                     nullable: false,
                     fill_with: None,
+                    delete_null_rows: None,
                 } if table == "users" && column == "email"
             ));
         }
@@ -4224,6 +4226,7 @@ mod tests {
                     column,
                     nullable: true,
                     fill_with: None,
+                    delete_null_rows: None,
                 } if table == "users" && column == "email"
             ));
         }

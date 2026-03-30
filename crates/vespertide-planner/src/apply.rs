@@ -122,6 +122,7 @@ pub fn apply_action(
             column,
             nullable,
             fill_with: _,
+            delete_null_rows: _,
         } => {
             let tbl = schema
                 .iter_mut()
@@ -1326,6 +1327,7 @@ mod tests {
                 column: "email".into(),
                 nullable: false,
                 fill_with: None,
+                delete_null_rows: None,
             },
         )
         .unwrap();
@@ -1344,6 +1346,7 @@ mod tests {
                 column: "email".into(),
                 nullable: false,
                 fill_with: None,
+                delete_null_rows: None,
             },
         )
         .unwrap_err();
@@ -1366,6 +1369,7 @@ mod tests {
                 column: "email".into(),
                 nullable: false,
                 fill_with: None,
+                delete_null_rows: None,
             },
         )
         .unwrap_err();

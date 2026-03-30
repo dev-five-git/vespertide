@@ -462,6 +462,7 @@ mod tests {
             column: "email".into(),
             nullable: false,
             fill_with: None,
+            delete_null_rows: None,
         },
         format!(
             "{} {}.{} {} {}",
@@ -478,6 +479,7 @@ mod tests {
             column: "email".into(),
             nullable: true,
             fill_with: None,
+            delete_null_rows: None,
         },
         format!(
             "{} {}.{} {} {}",

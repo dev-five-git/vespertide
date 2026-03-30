@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/modify_column_nullable.rs
+expression: sql
+---
+DELETE FROM `orders` WHERE `user_id` IS NULL
+ALTER TABLE `orders` MODIFY COLUMN `user_id` int NOT NULL
