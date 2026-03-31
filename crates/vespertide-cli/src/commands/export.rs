@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -61,6 +62,19 @@ pub async fn cmd_export(orm: OrmArg, export_dir: Option<PathBuf>) -> Result<()> 
     // Extract all tables for schema context (used for FK chain resolution)
     let all_tables: Vec<TableDef> = normalized_models.iter().map(|(t, _)| t.clone()).collect();
 
+    // Build module path mappings for SeaORM cross-directory relation resolution.
+    // Maps table_name -> module path segments (e.g., "admin" -> ["admin", "admin"])
+    let module_paths: HashMap<String, Vec<String>> = normalized_models
+        .iter()
+        .map(|(table, rel_path)| {
+            let segments = rel_path_to_module_segments(rel_path);
+            (table.name.clone(), segments)
+        })
+        .collect();
+
+    // Derive crate:: prefix from export directory (e.g., "src/models" -> "crate::models")
+    let crate_prefix = export_dir_to_crate_prefix(&target_root);
+
     // Create SeaORM exporter with config if needed
     let seaorm_exporter = SeaOrmExporterWithConfig::new(config.seaorm(), config.prefix());
 
@@ -70,7 +84,12 @@ pub async fn cmd_export(orm: OrmArg, export_dir: Option<PathBuf>) -> Result<()> 
         .map(|(table, rel_path)| {
             let code = match orm_kind {
                 Orm::SeaOrm => seaorm_exporter
-                    .render_entity_with_schema(table, &all_tables)
+                    .render_entity_with_schema_and_paths(
+                        table,
+                        &all_tables,
+                        &module_paths,
+                        &crate_prefix,
+                    )
                     .map_err(|e| anyhow::anyhow!(e)),
                 _ => render_entity_with_schema(orm_kind, table, &all_tables)
                     .map_err(|e| anyhow::anyhow!(e)),
@@ -115,6 +134,54 @@ pub async fn cmd_export(orm: OrmArg, export_dir: Option<PathBuf>) -> Result<()> 
     }
 
     Ok(())
+}
+
+/// Derive `crate::` prefix from the export directory path.
+///
+/// For example: `src/models` → `crate::models`, `src/db/entities` → `crate::db::entities`.
+/// If the path doesn't start with `src/`, returns empty string (fallback to `super::` behavior).
+fn export_dir_to_crate_prefix(export_dir: &Path) -> String {
+    let normalized = export_dir.to_string_lossy().replace('\\', "/");
+    let stripped = normalized.strip_prefix("./").unwrap_or(&normalized);
+
+    if let Some(after_src) = stripped.strip_prefix("src/") {
+        let module_path = after_src.trim_end_matches('/').replace('/', "::");
+        format!("crate::{module_path}")
+    } else {
+        String::new()
+    }
+}
+
+/// Convert a relative model file path to Rust module path segments.
+///
+/// For example: `admin/admin.json` → `["admin", "admin"]`
+/// `estimate/estimate_checker.vespertide.json` → `["estimate", "estimate_checker"]`
+fn rel_path_to_module_segments(rel_path: &Path) -> Vec<String> {
+    let mut segments = Vec::new();
+
+    // Add directory components
+    if let Some(parent) = rel_path.parent() {
+        for component in parent.components() {
+            if let std::path::Component::Normal(name) = component
+                && let Some(s) = name.to_str()
+            {
+                segments.push(sanitize_filename(s).to_string());
+            }
+        }
+    }
+
+    // Add file stem (strip extensions and .vespertide suffix)
+    if let Some(file_name) = rel_path.file_name().and_then(|n| n.to_str()) {
+        let (stem, _) = if let Some(dot_idx) = file_name.rfind('.') {
+            file_name.split_at(dot_idx)
+        } else {
+            (file_name, "")
+        };
+        let stem = stem.strip_suffix(".vespertide").unwrap_or(stem);
+        segments.push(sanitize_filename(stem).to_string());
+    }
+
+    segments
 }
 
 fn resolve_export_dir(export_dir: Option<PathBuf>, config: &VespertideConfig) -> PathBuf {

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::orm::OrmExporter;
 use vespertide_config::SeaOrmConfig;
@@ -6,6 +6,37 @@ use vespertide_core::{
     ColumnDef, ColumnType, ComplexColumnType, EnumValues, NumValue, StringOrBool, TableConstraint,
     TableDef,
 };
+
+/// Build an absolute `crate::` module path for the target table.
+///
+/// `crate_prefix` is derived from the export directory (e.g., `"src/models"` → `"crate::models"`).
+/// `to_module` is the module path segments of the target table (e.g., `["admin", "admin"]`).
+///
+/// Returns a path like `crate::models::admin::admin`.
+fn absolute_module_path(crate_prefix: &str, to_module: &[String]) -> String {
+    let mut path = crate_prefix.to_string();
+    for seg in to_module {
+        path.push_str("::");
+        path.push_str(seg);
+    }
+    path
+}
+
+/// Look up the module path for a table name from the module_paths map.
+/// Uses `crate::` absolute paths when crate_prefix and module_paths are available.
+/// Falls back to `super::{table_name}` when no mapping exists.
+fn resolve_entity_module_path(
+    target_table: &str,
+    module_paths: &HashMap<String, Vec<String>>,
+    crate_prefix: &str,
+) -> String {
+    if !crate_prefix.is_empty()
+        && let Some(to) = module_paths.get(target_table)
+    {
+        return absolute_module_path(crate_prefix, to);
+    }
+    format!("super::{target_table}")
+}
 
 pub struct SeaOrmExporter;
 
@@ -55,6 +86,25 @@ impl<'a> SeaOrmExporterWithConfig<'a> {
             self.prefix,
         ))
     }
+
+    /// Render entity with schema context and module path mappings for correct
+    /// cross-directory relation paths (e.g., `super::super::admin::admin::Entity`).
+    pub fn render_entity_with_schema_and_paths(
+        &self,
+        table: &TableDef,
+        schema: &[TableDef],
+        module_paths: &HashMap<String, Vec<String>>,
+        crate_prefix: &str,
+    ) -> Result<String, String> {
+        Ok(render_entity_with_config_and_paths(
+            table,
+            schema,
+            self.config,
+            self.prefix,
+            module_paths,
+            crate_prefix,
+        ))
+    }
 }
 
 /// Render a single table into SeaORM entity code.
@@ -77,9 +127,23 @@ pub fn render_entity_with_config(
     config: &SeaOrmConfig,
     prefix: &str,
 ) -> String {
+    render_entity_with_config_and_paths(table, schema, config, prefix, &HashMap::new(), "")
+}
+
+/// Render a single table into SeaORM entity code with schema context, configuration,
+/// and module path mappings for correct cross-directory relation paths.
+pub fn render_entity_with_config_and_paths(
+    table: &TableDef,
+    schema: &[TableDef],
+    config: &SeaOrmConfig,
+    prefix: &str,
+    module_paths: &HashMap<String, Vec<String>>,
+    crate_prefix: &str,
+) -> String {
     let primary_keys = primary_key_columns(table);
     let composite_pk = primary_keys.len() > 1;
-    let relation_fields = relation_field_defs_with_schema(table, schema);
+    let relation_fields =
+        relation_field_defs_with_schema(table, schema, module_paths, crate_prefix);
 
     // Build sets of columns with single-column unique constraints and indexes
     let unique_columns = single_column_unique_set(&table.constraints);
@@ -439,7 +503,12 @@ fn resolve_fk_target<'a>(
     (ref_table, ref_columns.to_vec())
 }
 
-fn relation_field_defs_with_schema(table: &TableDef, schema: &[TableDef]) -> Vec<String> {
+fn relation_field_defs_with_schema(
+    table: &TableDef,
+    schema: &[TableDef],
+    module_paths: &HashMap<String, Vec<String>>,
+    crate_prefix: &str,
+) -> Vec<String> {
     let mut out = Vec::new();
     let mut used = HashSet::new();
 
@@ -550,8 +619,10 @@ fn relation_field_defs_with_schema(table: &TableDef, schema: &[TableDef]) -> Vec
             };
 
             out.push(attr);
+            let entity_path =
+                resolve_entity_module_path(resolved_table, module_paths, crate_prefix);
             out.push(format!(
-                "    pub {field_name}: HasOne<super::{resolved_table}::Entity>,"
+                "    pub {field_name}: HasOne<{entity_path}::Entity>,"
             ));
         }
     }
@@ -563,6 +634,8 @@ fn relation_field_defs_with_schema(table: &TableDef, schema: &[TableDef]) -> Vec
         &mut used,
         &entity_count,
         &mut used_relation_enums,
+        module_paths,
+        crate_prefix,
     );
     out.extend(reverse_relations);
 
@@ -748,6 +821,8 @@ fn reverse_relation_field_defs(
     used: &mut HashSet<String>,
     entity_count: &std::collections::HashMap<String, usize>,
     used_relation_enums: &mut HashSet<String>,
+    module_paths: &HashMap<String, Vec<String>>,
+    crate_prefix: &str,
 ) -> Vec<String> {
     // First pass: collect all reverse relations
     let mut relations: Vec<ReverseRelation> = Vec::new();
@@ -902,9 +977,10 @@ fn reverse_relation_field_defs(
         };
 
         out.push(attr);
+        let entity_path =
+            resolve_entity_module_path(&rel.target_entity, module_paths, crate_prefix);
         out.push(format!(
-            "    pub {field_name}: {rust_type}<super::{}::Entity>,",
-            rel.target_entity
+            "    pub {field_name}: {rust_type}<{entity_path}::Entity>,"
         ));
     }
 
@@ -1240,6 +1316,55 @@ fn to_snake_case(s: &str) -> String {
         result.push(c.to_ascii_lowercase());
     }
     result
+}
+
+#[cfg(test)]
+mod module_path_tests {
+    use super::*;
+
+    #[test]
+    fn absolute_module_path_builds_correct_path() {
+        let result = absolute_module_path("crate::models", &["admin".into(), "admin".into()]);
+        assert_eq!(result, "crate::models::admin::admin");
+    }
+
+    #[test]
+    fn absolute_module_path_single_segment() {
+        let result = absolute_module_path("crate::models", &["user".into()]);
+        assert_eq!(result, "crate::models::user");
+    }
+
+    #[test]
+    fn absolute_module_path_deep_nesting() {
+        let result = absolute_module_path(
+            "crate::db::entities",
+            &["company".into(), "division".into(), "department".into()],
+        );
+        assert_eq!(result, "crate::db::entities::company::division::department");
+    }
+
+    #[test]
+    fn resolve_entity_module_path_with_crate_prefix() {
+        let mut module_paths = HashMap::new();
+        module_paths.insert("admin".into(), vec!["admin".into(), "admin".into()]);
+        let result = resolve_entity_module_path("admin", &module_paths, "crate::models");
+        assert_eq!(result, "crate::models::admin::admin");
+    }
+
+    #[test]
+    fn resolve_entity_module_path_fallback_when_no_mapping() {
+        let module_paths = HashMap::new();
+        let result = resolve_entity_module_path("user", &module_paths, "crate::models");
+        assert_eq!(result, "super::user");
+    }
+
+    #[test]
+    fn resolve_entity_module_path_fallback_when_empty_prefix() {
+        let mut module_paths = HashMap::new();
+        module_paths.insert("admin".into(), vec!["admin".into(), "admin".into()]);
+        let result = resolve_entity_module_path("admin", &module_paths, "");
+        assert_eq!(result, "super::admin");
+    }
 }
 
 #[cfg(test)]
