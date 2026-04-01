@@ -1168,7 +1168,6 @@ fn render_indexes(lines: &mut Vec<String>, constraints: &[TableConstraint]) {
     if index_constraints.is_empty() {
         return;
     }
-    lines.push(String::new());
     lines.push("// Index definitions (SeaORM uses Statement builders externally)".into());
     for (name, columns) in index_constraints {
         let cols = columns.join(", ");

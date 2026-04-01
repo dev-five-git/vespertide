@@ -20,7 +20,6 @@ pub struct Model {
     pub status: String,
 }
 
-
 // Index definitions (SeaORM uses Statement builders externally)
 // idx_department on [department]
 vespera::schema_type!(Schema from Model, name = "UsersSchema");

@@ -26,7 +26,6 @@ pub struct Model {
     pub user: HasOne<super::user::Entity>,
 }
 
-
 // Index definitions (SeaORM uses Statement builders externally)
 // (unnamed) on [article_id]
 // (unnamed) on [user_id]
