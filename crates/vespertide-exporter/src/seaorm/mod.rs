@@ -1846,9 +1846,7 @@ mod module_path_tests {
         assert!(rendered.contains(
             "crate::models::estimate::estimate_user_checker_setting::Relation::Username.def().rev()"
         ));
-        assert!(rendered.contains(
-            "crate::models::estimate::estimate_user_checker_setting::Relation::CheckerUsername.def()"
-        ));
+        assert!(rendered.contains("crate::models::estimate::estimate_user_checker_setting::Relation::CheckerUsername.def()"));
     }
 }
 
@@ -2049,7 +2047,7 @@ mod helper_tests {
         assert!(column_type_supports_eq(&ColumnType::Complex(
             ComplexColumnType::Numeric {
                 precision: 10,
-                scale: 2,
+                scale: 2
             }
         )));
     }
