@@ -125,7 +125,7 @@ pub async fn cmd_export(orm: OrmArg, export_dir: Option<PathBuf>) -> Result<()> 
 
     // Ensure mod chain for SeaORM (must be done after all files are written)
     if matches!(orm_kind, Orm::SeaOrm) {
-        for (_, rel_path) in &normalized_models {
+        for (_table, rel_path) in &normalized_models {
             let out_path = build_output_path(&target_root, rel_path, orm_kind);
             ensure_mod_chain(&target_root, rel_path)
                 .await
@@ -342,8 +342,7 @@ async fn load_models_recursive(base: &Path) -> Result<Vec<(TableDef, PathBuf)>> 
 }
 
 async fn ensure_mod_chain(root: &Path, rel_path: &Path) -> Result<()> {
-    // Only needed for SeaORM (Rust) exports to wire modules.
-    // Strip extension and ".vespertide" suffix from filename
+    // SeaORM exports use a standard nested Rust module tree.
     let path_without_ext = rel_path.with_extension("");
     let path_stripped = if let Some(stem) = path_without_ext.file_stem().and_then(|s| s.to_str()) {
         let stripped_stem = stem.strip_suffix(".vespertide").unwrap_or(stem);
@@ -366,7 +365,7 @@ async fn ensure_mod_chain(root: &Path, rel_path: &Path) -> Result<()> {
     if comps.is_empty() {
         return Ok(());
     }
-    // Build from deepest file up to root: dir/mod.rs should include child module.
+
     while let Some(child) = comps.pop() {
         let dir = root.join(comps.join(std::path::MAIN_SEPARATOR_STR));
         let mod_path = dir.join("mod.rs");
@@ -375,13 +374,15 @@ async fn ensure_mod_chain(root: &Path, rel_path: &Path) -> Result<()> {
         {
             fs::create_dir_all(parent).await?;
         }
+
         let mut content = if mod_path.exists() {
             fs::read_to_string(&mod_path).await?
         } else {
             String::new()
         };
-        let decl = format!("pub mod {};", child);
-        if !content.lines().any(|l| l.trim() == decl) {
+
+        let decl = format!("pub mod {child};");
+        if !content.lines().any(|line| line.trim() == decl) {
             if !content.is_empty() && !content.ends_with('\n') {
                 content.push('\n');
             }
@@ -390,6 +391,7 @@ async fn ensure_mod_chain(root: &Path, rel_path: &Path) -> Result<()> {
             fs::write(mod_path, content).await?;
         }
     }
+
     Ok(())
 }
 
@@ -535,7 +537,7 @@ mod tests {
         let content = std_fs::read_to_string(out).unwrap();
         assert!(content.contains("#[sea_orm(table_name = \"posts\")]"));
 
-        // mod.rs wiring
+        // nested mod.rs wiring
         let root_mod = custom.join("mod.rs");
         let blog_mod = custom.join("blog/mod.rs");
         assert!(root_mod.exists());
@@ -779,6 +781,7 @@ mod tests {
         let blog_mod = std_fs::read_to_string(root.join("blog/mod.rs")).unwrap();
         assert!(root_mod.contains("pub mod blog;"));
         assert!(blog_mod.contains("pub mod post;"));
+        assert!(!root_mod.contains("post_vespertide"));
         assert!(!blog_mod.contains("post_vespertide"));
     }
 

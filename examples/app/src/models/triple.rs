@@ -1,0 +1,126 @@
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "triple")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub username: String,
+    #[sea_orm(has_many, relation_enum = "TripleRel", via_rel = "Username")]
+    pub username_triple_rels: HasMany<super::triple_rel::Entity>,
+    #[sea_orm(
+        has_many,
+        relation_enum = "CheckerUsername",
+        via_rel = "CheckerUsername"
+    )]
+    pub checker_username_triple_rels: HasMany<super::triple_rel::Entity>,
+    #[sea_orm(has_many, relation_enum = "OtherUsername", via_rel = "OtherUsername")]
+    pub other_username_triple_rels: HasMany<super::triple_rel::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "TripleSchema");
+impl ActiveModelBehavior for ActiveModel {}
+
+pub struct UsernameToCheckerUsernameViaTripleRel;
+impl Linked for UsernameToCheckerUsernameViaTripleRel {
+    type FromEntity = Entity;
+    type ToEntity = Entity;
+
+    fn link(&self) -> Vec<RelationDef> {
+        vec![
+            super::triple_rel::Relation::Username.def().rev(),
+            super::triple_rel::Relation::CheckerUsername.def(),
+        ]
+    }
+}
+
+pub struct UsernameToOtherUsernameViaTripleRel;
+impl Linked for UsernameToOtherUsernameViaTripleRel {
+    type FromEntity = Entity;
+    type ToEntity = Entity;
+
+    fn link(&self) -> Vec<RelationDef> {
+        vec![
+            super::triple_rel::Relation::Username.def().rev(),
+            super::triple_rel::Relation::OtherUsername.def(),
+        ]
+    }
+}
+
+pub struct CheckerUsernameToUsernameViaTripleRel;
+impl Linked for CheckerUsernameToUsernameViaTripleRel {
+    type FromEntity = Entity;
+    type ToEntity = Entity;
+
+    fn link(&self) -> Vec<RelationDef> {
+        vec![
+            super::triple_rel::Relation::CheckerUsername.def().rev(),
+            super::triple_rel::Relation::Username.def(),
+        ]
+    }
+}
+
+pub struct CheckerUsernameToOtherUsernameViaTripleRel;
+impl Linked for CheckerUsernameToOtherUsernameViaTripleRel {
+    type FromEntity = Entity;
+    type ToEntity = Entity;
+
+    fn link(&self) -> Vec<RelationDef> {
+        vec![
+            super::triple_rel::Relation::CheckerUsername.def().rev(),
+            super::triple_rel::Relation::OtherUsername.def(),
+        ]
+    }
+}
+
+pub struct OtherUsernameToUsernameViaTripleRel;
+impl Linked for OtherUsernameToUsernameViaTripleRel {
+    type FromEntity = Entity;
+    type ToEntity = Entity;
+
+    fn link(&self) -> Vec<RelationDef> {
+        vec![
+            super::triple_rel::Relation::OtherUsername.def().rev(),
+            super::triple_rel::Relation::Username.def(),
+        ]
+    }
+}
+
+pub struct OtherUsernameToCheckerUsernameViaTripleRel;
+impl Linked for OtherUsernameToCheckerUsernameViaTripleRel {
+    type FromEntity = Entity;
+    type ToEntity = Entity;
+
+    fn link(&self) -> Vec<RelationDef> {
+        vec![
+            super::triple_rel::Relation::OtherUsername.def().rev(),
+            super::triple_rel::Relation::CheckerUsername.def(),
+        ]
+    }
+}
+
+impl Model {
+    pub fn find_checker_usernames_via_triple_rel_from_username(&self) -> Select<Entity> {
+        self.find_linked(UsernameToCheckerUsernameViaTripleRel)
+    }
+
+    pub fn find_other_usernames_via_triple_rel_from_username(&self) -> Select<Entity> {
+        self.find_linked(UsernameToOtherUsernameViaTripleRel)
+    }
+
+    pub fn find_usernames_via_triple_rel_from_checker_username(&self) -> Select<Entity> {
+        self.find_linked(CheckerUsernameToUsernameViaTripleRel)
+    }
+
+    pub fn find_other_usernames_via_triple_rel_from_checker_username(&self) -> Select<Entity> {
+        self.find_linked(CheckerUsernameToOtherUsernameViaTripleRel)
+    }
+
+    pub fn find_usernames_via_triple_rel_from_other_username(&self) -> Select<Entity> {
+        self.find_linked(OtherUsernameToUsernameViaTripleRel)
+    }
+
+    pub fn find_checker_usernames_via_triple_rel_from_other_username(&self) -> Select<Entity> {
+        self.find_linked(OtherUsernameToCheckerUsernameViaTripleRel)
+    }
+}

@@ -25,6 +25,7 @@ fn absolute_module_path(crate_prefix: &str, to_module: &[String]) -> String {
 /// Look up the module path for a table name from the module_paths map.
 /// Uses `super::` for sibling modules in the same folder, `crate::` absolute paths for
 /// cross-directory relations when mappings are available, and falls back to `super::{table_name}`.
+#[cfg(test)]
 fn resolve_entity_module_path(
     current_table: &str,
     target_table: &str,
@@ -45,6 +46,44 @@ fn resolve_entity_module_path(
         if !crate_prefix.is_empty() {
             return absolute_module_path(crate_prefix, target);
         }
+    }
+
+    format!("super::{target_table}")
+}
+
+/// Resolve relation field entity paths for SeaORM model macros.
+///
+/// Rule:
+/// - same folder → `super::{table}`
+/// - different folder → absolute `crate::...` path
+///
+/// This avoids generating brittle `super::super::...` paths for cross-folder relations.
+fn resolve_relation_entity_module_path(
+    current_table: &str,
+    target_table: &str,
+    module_paths: &HashMap<String, Vec<String>>,
+    crate_prefix: &str,
+) -> String {
+    if let (Some(current), Some(target)) = (
+        module_paths.get(current_table),
+        module_paths.get(target_table),
+    ) {
+        let current_parent = current.split_last().map_or(&[][..], |(_, parent)| parent);
+        let target_parent = target.split_last().map_or(&[][..], |(_, parent)| parent);
+
+        if current_parent == target_parent {
+            return format!("super::{target_table}");
+        }
+
+        if !crate_prefix.is_empty() {
+            return absolute_module_path(crate_prefix, target);
+        }
+
+        return format!("super::{target_table}");
+    }
+
+    if !crate_prefix.is_empty() {
+        return format!("{crate_prefix}::{target_table}");
     }
 
     format!("super::{target_table}")
@@ -247,6 +286,18 @@ pub fn render_entity_with_config_and_paths(
     }
 
     lines.push("impl ActiveModelBehavior for ActiveModel {}".into());
+
+    let self_ref_links = render_self_ref_link_helpers(table, schema, module_paths, crate_prefix);
+    if !self_ref_links.is_empty() {
+        lines.push(String::new());
+        lines.extend(self_ref_links);
+    }
+
+    let self_ref_query_helpers = render_self_ref_query_helpers(table, schema);
+    if !self_ref_query_helpers.is_empty() {
+        lines.push(String::new());
+        lines.extend(self_ref_query_helpers);
+    }
 
     lines.push(String::new());
 
@@ -646,8 +697,12 @@ fn relation_field_defs_with_schema(
             };
 
             out.push(attr);
-            let entity_path =
-                resolve_entity_module_path(&table.name, resolved_table, module_paths, crate_prefix);
+            let entity_path = resolve_relation_entity_module_path(
+                &table.name,
+                resolved_table,
+                module_paths,
+                crate_prefix,
+            );
             out.push(format!(
                 "    pub {field_name}: HasOne<{entity_path}::Entity>,"
             ));
@@ -682,6 +737,246 @@ fn generate_relation_enum_name(columns: &[String]) -> String {
     };
 
     to_pascal_case(without_id)
+}
+
+fn unique_relation_enum_name(
+    preferred: String,
+    source_table: &str,
+    base_relation_enum: &str,
+    used_relation_enums: &HashSet<String>,
+) -> String {
+    if !used_relation_enums.contains(&preferred) {
+        return preferred;
+    }
+
+    let source_prefixed = format!("{}{}", to_pascal_case(source_table), base_relation_enum);
+    if !used_relation_enums.contains(&source_prefixed) {
+        return source_prefixed;
+    }
+
+    let mut index = 2;
+    loop {
+        let candidate = format!(
+            "{}{}{}",
+            to_pascal_case(source_table),
+            base_relation_enum,
+            index
+        );
+        if !used_relation_enums.contains(&candidate) {
+            return candidate;
+        }
+        index += 1;
+    }
+}
+
+fn collect_self_ref_junction(
+    current_table: &TableDef,
+    junction_table: &TableDef,
+    junction_pk: &HashSet<String>,
+) -> Option<SelfRefJunction> {
+    if junction_pk.len() < 2 {
+        return None;
+    }
+
+    let fks: Vec<_> = junction_table
+        .constraints
+        .iter()
+        .filter_map(|c| {
+            if let TableConstraint::ForeignKey {
+                columns, ref_table, ..
+            } = c
+            {
+                Some((columns.clone(), ref_table.clone()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if fks.len() < 2 {
+        return None;
+    }
+
+    let all_fk_cols_in_pk = fks
+        .iter()
+        .all(|(cols, _)| cols.iter().all(|c| junction_pk.contains(c)));
+    if !all_fk_cols_in_pk {
+        return None;
+    }
+
+    if !fks
+        .iter()
+        .all(|(_, ref_table)| ref_table == &current_table.name)
+    {
+        return None;
+    }
+
+    Some(SelfRefJunction {
+        junction_table: junction_table.name.clone(),
+        role_columns: fks.iter().map(|(cols, _)| cols[0].clone()).collect(),
+        role_relations: fks
+            .iter()
+            .map(|(cols, _)| generate_relation_enum_name(cols))
+            .collect(),
+    })
+}
+
+fn self_ref_link_name(
+    self_ref_junction: &SelfRefJunction,
+    from_idx: usize,
+    to_idx: usize,
+) -> String {
+    format!(
+        "{}To{}Via{}",
+        to_pascal_case(&self_ref_junction.role_columns[from_idx]),
+        to_pascal_case(&self_ref_junction.role_columns[to_idx]),
+        to_pascal_case(&self_ref_junction.junction_table)
+    )
+}
+
+fn resolve_self_ref_link_module_path(
+    current_table: &str,
+    junction_table: &str,
+    module_paths: &HashMap<String, Vec<String>>,
+    crate_prefix: &str,
+) -> String {
+    if let (Some(current), Some(target)) = (
+        module_paths.get(current_table),
+        module_paths.get(junction_table),
+    ) {
+        let current_parent = current.split_last().map_or(&[][..], |(_, parent)| parent);
+        let target_parent = target.split_last().map_or(&[][..], |(_, parent)| parent);
+
+        if current_parent == target_parent {
+            return format!("super::{junction_table}");
+        }
+
+        if !crate_prefix.is_empty() {
+            return absolute_module_path(crate_prefix, target);
+        }
+
+        return absolute_module_path("crate::models", target);
+    }
+
+    format!("super::{junction_table}")
+}
+
+fn render_self_ref_link_helpers(
+    table: &TableDef,
+    schema: &[TableDef],
+    module_paths: &HashMap<String, Vec<String>>,
+    crate_prefix: &str,
+) -> Vec<String> {
+    let mut out = Vec::new();
+
+    for other_table in schema {
+        if other_table.name == table.name {
+            continue;
+        }
+
+        let other_pk = primary_key_columns(other_table);
+        let Some(self_ref_junction) = collect_self_ref_junction(table, other_table, &other_pk)
+        else {
+            continue;
+        };
+
+        let junction_entity_path = resolve_self_ref_link_module_path(
+            &table.name,
+            &self_ref_junction.junction_table,
+            module_paths,
+            crate_prefix,
+        );
+
+        for (from_idx, from_role) in self_ref_junction.role_relations.iter().enumerate() {
+            for (to_idx, to_role) in self_ref_junction.role_relations.iter().enumerate() {
+                if from_idx == to_idx {
+                    continue;
+                }
+
+                let link_name = self_ref_link_name(&self_ref_junction, from_idx, to_idx);
+                out.push(format!("pub struct {link_name};"));
+                out.push(format!("impl Linked for {link_name} {{"));
+                out.push("    type FromEntity = Entity;".into());
+                out.push("    type ToEntity = Entity;".into());
+                out.push(String::new());
+                out.push("    fn link(&self) -> Vec<RelationDef> {".into());
+                out.push("        vec![".into());
+                out.push(format!(
+                    "            {junction_entity_path}::Relation::{}.def().rev(),",
+                    from_role
+                ));
+                out.push(format!(
+                    "            {junction_entity_path}::Relation::{}.def(),",
+                    to_role
+                ));
+                out.push("        ]".into());
+                out.push("    }".into());
+                out.push("}".into());
+                out.push(String::new());
+            }
+        }
+    }
+
+    while out.last().is_some_and(String::is_empty) {
+        out.pop();
+    }
+
+    out
+}
+
+fn render_self_ref_query_helpers(table: &TableDef, schema: &[TableDef]) -> Vec<String> {
+    let mut methods = Vec::new();
+    let mut used_method_names = HashSet::new();
+
+    for other_table in schema {
+        if other_table.name == table.name {
+            continue;
+        }
+
+        let other_pk = primary_key_columns(other_table);
+        let Some(self_ref_junction) = collect_self_ref_junction(table, other_table, &other_pk)
+        else {
+            continue;
+        };
+
+        for (from_idx, from_col) in self_ref_junction.role_columns.iter().enumerate() {
+            for (to_idx, to_col) in self_ref_junction.role_columns.iter().enumerate() {
+                if from_idx == to_idx {
+                    continue;
+                }
+
+                let link_name = self_ref_link_name(&self_ref_junction, from_idx, to_idx);
+                let method_base = format!(
+                    "find_{}_via_{}_from_{}",
+                    pluralize(&sanitize_field_name(to_col)),
+                    sanitize_field_name(&self_ref_junction.junction_table),
+                    sanitize_field_name(from_col)
+                );
+                let method_name = unique_name(&method_base, &mut used_method_names);
+
+                methods.push(format!(
+                    "    pub fn {method_name}(&self) -> Select<Entity> {{"
+                ));
+                methods.push(format!("        self.find_linked({link_name})"));
+                methods.push("    }".into());
+                methods.push(String::new());
+            }
+        }
+    }
+
+    while methods.last().is_some_and(String::is_empty) {
+        methods.pop();
+    }
+
+    if methods.is_empty() {
+        return methods;
+    }
+
+    let mut out = Vec::new();
+    out.push("impl Model {".into());
+    out.extend(methods);
+    out.push("}".into());
+    out
 }
 
 /// Infer a field name from a single FK column.
@@ -752,8 +1047,16 @@ struct ReverseRelation {
     has_multiple_fks: bool,
     /// Optional via clause for M2M relations
     via: Option<String>,
+    /// Optional via_rel clause for reverse diamond relations
+    via_rel: Option<String>,
     /// Whether this is a M2M relation (through junction table)
     is_m2m: bool,
+}
+
+struct SelfRefJunction {
+    junction_table: String,
+    role_columns: Vec<String>,
+    role_relations: Vec<String>,
 }
 
 /// Collect target entities from reverse relations (for counting across all relations).
@@ -948,6 +1251,7 @@ fn reverse_relation_field_defs(
                         source_table: other_table.name.clone(),
                         has_multiple_fks,
                         via: None,
+                        via_rel: Some(generate_relation_enum_name(columns)),
                         is_m2m: false,
                     });
                 }
@@ -981,16 +1285,12 @@ fn reverse_relation_field_defs(
                 .unwrap_or(false);
 
         let attr = if needs_relation_enum {
-            // When multiple HasMany/HasOne target the same Entity, ALL need `via`
-            // - M2M relations: via = junction_table
-            // - Direct FK relations: via = source_table (the table with the FK)
-            let via_value = rel.via.as_ref().unwrap_or(&rel.source_table);
-
-            let relation_enum_name = if rel.is_m2m {
+            let preferred_relation_enum_name = if rel.is_m2m {
                 // M2M: use {Target}Via{Junction} pattern directly
                 // e.g., "MediaViaUserMediaRole"
                 rel.base_relation_enum.clone()
             } else {
+                let via_value = rel.via.as_ref().unwrap_or(&rel.source_table);
                 // Direct: use via table name, fall back to FK-based on collision
                 let base_enum = to_pascal_case(via_value);
                 if used_relation_enums.contains(&base_enum) {
@@ -999,11 +1299,25 @@ fn reverse_relation_field_defs(
                     base_enum
                 }
             };
+            let relation_enum_name = unique_relation_enum_name(
+                preferred_relation_enum_name,
+                &rel.source_table,
+                &rel.base_relation_enum,
+                used_relation_enums,
+            );
             used_relation_enums.insert(relation_enum_name.clone());
 
-            format!(
-                "    #[sea_orm({relation_type}, relation_enum = \"{relation_enum_name}\", via = \"{via_value}\")]"
-            )
+            if let Some(via_rel) = &rel.via_rel {
+                format!(
+                    "    #[sea_orm({relation_type}, relation_enum = \"{relation_enum_name}\", via_rel = \"{via_rel}\")]"
+                )
+            } else if let Some(via) = &rel.via {
+                format!(
+                    "    #[sea_orm({relation_type}, relation_enum = \"{relation_enum_name}\", via = \"{via}\")]"
+                )
+            } else {
+                format!("    #[sea_orm({relation_type}, relation_enum = \"{relation_enum_name}\")]")
+            }
         } else if let Some(via) = &rel.via {
             // No ambiguity - just via without relation_enum
             format!("    #[sea_orm({relation_type}, via = \"{via}\")]")
@@ -1012,8 +1326,12 @@ fn reverse_relation_field_defs(
         };
 
         out.push(attr);
-        let entity_path =
-            resolve_entity_module_path(&table.name, &rel.target_entity, module_paths, crate_prefix);
+        let entity_path = resolve_relation_entity_module_path(
+            &table.name,
+            &rel.target_entity,
+            module_paths,
+            crate_prefix,
+        );
         out.push(format!(
             "    pub {field_name}: {rust_type}<{entity_path}::Entity>,"
         ));
@@ -1072,6 +1390,16 @@ fn collect_many_to_many_relations(
 
     let mut relations = Vec::new();
 
+    let self_ref_fks: Vec<_> = fks
+        .iter()
+        .filter(|(_, ref_table)| ref_table == &current_table.name)
+        .cloned()
+        .collect();
+
+    if self_ref_fks.len() == fks.len() {
+        return None;
+    }
+
     // First, add has_many to the junction table itself (direct relation, not M2M)
     let junction_base = pluralize(&sanitize_field_name(&junction_table.name));
     relations.push(ReverseRelation {
@@ -1082,6 +1410,7 @@ fn collect_many_to_many_relations(
         source_table: junction_table.name.clone(),
         has_multiple_fks: false,
         via: None,
+        via_rel: None,
         is_m2m: false,
     });
 
@@ -1121,6 +1450,7 @@ fn collect_many_to_many_relations(
             source_table: junction_table.name.clone(),
             has_multiple_fks: false,
             via: Some(junction_table.name.clone()),
+            via_rel: None,
             is_m2m: true,
         });
     }
@@ -1168,7 +1498,6 @@ fn render_indexes(lines: &mut Vec<String>, constraints: &[TableConstraint]) {
     if index_constraints.is_empty() {
         return;
     }
-    lines.push(String::new());
     lines.push("// Index definitions (SeaORM uses Statement builders externally)".into());
     for (name, columns) in index_constraints {
         let cols = columns.join(", ");
@@ -1356,6 +1685,21 @@ fn to_snake_case(s: &str) -> String {
 #[cfg(test)]
 mod module_path_tests {
     use super::*;
+    use vespertide_core::{ColumnType, SimpleColumnType};
+
+    fn test_pk_column(name: &str) -> ColumnDef {
+        ColumnDef {
+            name: name.into(),
+            r#type: ColumnType::Simple(SimpleColumnType::Text),
+            nullable: false,
+            default: None,
+            comment: None,
+            primary_key: Some(vespertide_core::schema::primary_key::PrimaryKeySyntax::Bool(true)),
+            unique: None,
+            index: None,
+            foreign_key: None,
+        }
+    }
 
     #[test]
     fn absolute_module_path_builds_correct_path() {
@@ -1418,6 +1762,154 @@ mod module_path_tests {
         module_paths.insert("admin".into(), vec!["admin".into(), "admin".into()]);
         let result = resolve_entity_module_path("user", "admin", &module_paths, "");
         assert_eq!(result, "super::admin");
+    }
+
+    #[test]
+    fn resolve_relation_entity_module_path_uses_crate_for_cross_directory_nested_models() {
+        let mut module_paths = HashMap::new();
+        module_paths.insert("admin".into(), vec!["admin".into(), "admin".into()]);
+        module_paths.insert(
+            "estimate".into(),
+            vec!["estimate".into(), "estimate".into()],
+        );
+
+        let result = resolve_relation_entity_module_path(
+            "admin",
+            "estimate",
+            &module_paths,
+            "crate::models",
+        );
+        assert_eq!(result, "crate::models::estimate::estimate");
+    }
+
+    #[test]
+    fn resolve_relation_entity_module_path_uses_super_for_same_directory() {
+        let mut module_paths = HashMap::new();
+        module_paths.insert("admin".into(), vec!["shared".into(), "admin".into()]);
+        module_paths.insert(
+            "admin_stamp".into(),
+            vec!["shared".into(), "admin_stamp".into()],
+        );
+        let result = resolve_relation_entity_module_path(
+            "admin",
+            "admin_stamp",
+            &module_paths,
+            "crate::models",
+        );
+        assert_eq!(result, "super::admin_stamp");
+    }
+
+    #[test]
+    fn resolve_relation_entity_module_path_fallback_super_when_empty_prefix_cross_directory() {
+        let mut module_paths = HashMap::new();
+        module_paths.insert("admin".into(), vec!["admin".into(), "admin".into()]);
+        module_paths.insert(
+            "estimate".into(),
+            vec!["estimate".into(), "estimate".into()],
+        );
+        let result = resolve_relation_entity_module_path("admin", "estimate", &module_paths, "");
+        assert_eq!(result, "super::estimate");
+    }
+
+    #[test]
+    fn resolve_relation_entity_module_path_uses_crate_prefix_when_not_in_module_paths() {
+        let module_paths = HashMap::new();
+        let result = resolve_relation_entity_module_path(
+            "admin",
+            "estimate",
+            &module_paths,
+            "crate::models",
+        );
+        assert_eq!(result, "crate::models::estimate");
+    }
+
+    #[test]
+    fn resolve_self_ref_link_module_path_uses_super_for_same_directory() {
+        let mut module_paths = HashMap::new();
+        module_paths.insert("admin".into(), vec!["shared".into(), "admin".into()]);
+        module_paths.insert(
+            "admin_friendship".into(),
+            vec!["shared".into(), "admin_friendship".into()],
+        );
+        let result = resolve_self_ref_link_module_path(
+            "admin",
+            "admin_friendship",
+            &module_paths,
+            "crate::models",
+        );
+        assert_eq!(result, "super::admin_friendship");
+    }
+
+    #[test]
+    fn resolve_self_ref_link_module_path_absolute_fallback_when_empty_prefix() {
+        let mut module_paths = HashMap::new();
+        module_paths.insert("admin".into(), vec!["admin".into(), "admin".into()]);
+        module_paths.insert(
+            "admin_friendship".into(),
+            vec!["social".into(), "admin_friendship".into()],
+        );
+        let result =
+            resolve_self_ref_link_module_path("admin", "admin_friendship", &module_paths, "");
+        assert_eq!(result, "crate::models::social::admin_friendship");
+    }
+
+    #[test]
+    fn self_ref_link_helpers_use_crate_path_for_cross_directory_junctions() {
+        let admin = TableDef {
+            name: "admin".into(),
+            description: None,
+            columns: vec![test_pk_column("username")],
+            constraints: vec![],
+        };
+
+        let estimate_user_checker_setting = TableDef {
+            name: "estimate_user_checker_setting".into(),
+            description: None,
+            columns: vec![
+                test_pk_column("username"),
+                test_pk_column("checker_username"),
+            ],
+            constraints: vec![
+                TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["username".into()],
+                    ref_table: "admin".into(),
+                    ref_columns: vec!["username".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+                TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["checker_username".into()],
+                    ref_table: "admin".into(),
+                    ref_columns: vec!["username".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+            ],
+        };
+
+        let schema = vec![admin.clone(), estimate_user_checker_setting];
+        let mut module_paths = HashMap::new();
+        module_paths.insert("admin".into(), vec!["admin".into(), "admin".into()]);
+        module_paths.insert(
+            "estimate_user_checker_setting".into(),
+            vec!["estimate".into(), "estimate_user_checker_setting".into()],
+        );
+
+        let rendered = render_entity_with_config_and_paths(
+            &admin,
+            &schema,
+            &SeaOrmConfig::default(),
+            "",
+            &module_paths,
+            "crate::models",
+        );
+
+        assert!(rendered.contains(
+            "crate::models::estimate::estimate_user_checker_setting::Relation::Username.def().rev()"
+        ));
+        assert!(rendered.contains("crate::models::estimate::estimate_user_checker_setting::Relation::CheckerUsername.def()"));
     }
 }
 
@@ -1545,6 +2037,40 @@ mod helper_tests {
         assert_eq!(unique_name("other", &mut used), "other_1");
     }
 
+    #[test]
+    fn test_unique_relation_enum_name_preferred_available() {
+        let used = HashSet::new();
+        let result = unique_relation_enum_name("User".into(), "post", "User", &used);
+        assert_eq!(result, "User");
+    }
+
+    #[test]
+    fn test_unique_relation_enum_name_source_prefixed() {
+        let mut used = HashSet::new();
+        used.insert("User".into());
+        let result = unique_relation_enum_name("User".into(), "post", "User", &used);
+        assert_eq!(result, "PostUser");
+    }
+
+    #[test]
+    fn test_unique_relation_enum_name_numbered_fallback() {
+        let mut used = HashSet::new();
+        used.insert("User".into());
+        used.insert("PostUser".into());
+        let result = unique_relation_enum_name("User".into(), "post", "User", &used);
+        assert_eq!(result, "PostUser2");
+    }
+
+    #[test]
+    fn test_unique_relation_enum_name_numbered_fallback_skips_taken() {
+        let mut used = HashSet::new();
+        used.insert("User".into());
+        used.insert("PostUser".into());
+        used.insert("PostUser2".into());
+        let result = unique_relation_enum_name("User".into(), "post", "User", &used);
+        assert_eq!(result, "PostUser3");
+    }
+
     #[rstest]
     #[case(vec!["creator_user_id".into()], "CreatorUser")]
     #[case(vec!["used_by_user_id".into()], "UsedByUser")]
@@ -1618,7 +2144,7 @@ mod helper_tests {
         assert!(column_type_supports_eq(&ColumnType::Complex(
             ComplexColumnType::Numeric {
                 precision: 10,
-                scale: 2,
+                scale: 2
             }
         )));
     }
@@ -2810,6 +3336,8 @@ mod tests {
     #[case("multiple_fk_same_table")]
     #[case("username_fk")]
     #[case("multiple_reverse_relations")]
+    #[case("dual_reverse_relations")]
+    #[case("triple_reverse_relations")]
     #[case("multiple_has_one_relations")]
     fn render_entity_with_schema_snapshots(#[case] name: &str) {
         use vespertide_core::SimpleColumnType::*;
@@ -3095,6 +3623,48 @@ mod tests {
                     ],
                 );
                 (user.clone(), vec![user, profile])
+            }
+            "dual_reverse_relations" => {
+                let dual = table_with_pk(
+                    "dual",
+                    vec![col("username", ColumnType::Simple(Text))],
+                    vec!["username"],
+                );
+                let dual_rel = table_with_pk_and_fk(
+                    "dual_rel",
+                    vec![
+                        col("username", ColumnType::Simple(Text)),
+                        col("checker_username", ColumnType::Simple(Text)),
+                    ],
+                    vec!["username", "checker_username"],
+                    vec![
+                        (vec!["username"], "dual", vec!["username"]),
+                        (vec!["checker_username"], "dual", vec!["username"]),
+                    ],
+                );
+                (dual.clone(), vec![dual, dual_rel])
+            }
+            "triple_reverse_relations" => {
+                let dual = table_with_pk(
+                    "dual",
+                    vec![col("username", ColumnType::Simple(Text))],
+                    vec!["username"],
+                );
+                let triple_rel = table_with_pk_and_fk(
+                    "triple_rel",
+                    vec![
+                        col("username", ColumnType::Simple(Text)),
+                        col("checker_username", ColumnType::Simple(Text)),
+                        col("other_username", ColumnType::Simple(Text)),
+                    ],
+                    vec!["username", "checker_username", "other_username"],
+                    vec![
+                        (vec!["username"], "dual", vec!["username"]),
+                        (vec!["checker_username"], "dual", vec!["username"]),
+                        (vec!["other_username"], "dual", vec!["username"]),
+                    ],
+                );
+                (dual.clone(), vec![dual, triple_rel])
             }
             "multiple_has_one_relations" => {
                 // Test case where user has multiple has_one relations (UNIQUE FK)
@@ -3649,6 +4219,142 @@ mod tests {
         let result = exporter.render_entity(&table).unwrap();
         // Should have original table name without prefix
         assert!(result.contains("#[sea_orm(table_name = \"users\")]"));
+    }
+
+    #[test]
+    fn test_junction_relation_enum_without_via_when_entity_appears_multiple_times() {
+        use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+
+        // user has a forward FK to user_tag (composite FK), making user_tag appear
+        // in both forward and reverse targets => entity_count > 1 for user_tag.
+        // The junction table entry from collect_many_to_many_relations has via=None, via_rel=None,
+        // so when needs_relation_enum is true, it hits the branch with only relation_enum (no via/via_rel).
+        let user = TableDef {
+            name: "user".into(),
+            description: None,
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "pinned_user_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "pinned_tag_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: true,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![TableConstraint::ForeignKey {
+                name: None,
+                columns: vec!["pinned_user_id".into(), "pinned_tag_id".into()],
+                ref_table: "user_tag".into(),
+                ref_columns: vec!["user_id".into(), "tag_id".into()],
+                on_delete: None,
+                on_update: None,
+            }],
+        };
+
+        let user_tag = TableDef {
+            name: "user_tag".into(),
+            description: None,
+            columns: vec![
+                ColumnDef {
+                    name: "user_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "tag_id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![
+                TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["user_id".into()],
+                    ref_table: "user".into(),
+                    ref_columns: vec!["id".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+                TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["tag_id".into()],
+                    ref_table: "tag".into(),
+                    ref_columns: vec!["id".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+            ],
+        };
+
+        let tag = TableDef {
+            name: "tag".into(),
+            description: None,
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                unique: None,
+                index: None,
+                foreign_key: None,
+            }],
+            constraints: vec![],
+        };
+
+        let schema = vec![user.clone(), user_tag, tag];
+        let rendered = render_entity_with_schema(&user, &schema);
+
+        // The junction table "user_tag" appears in both forward (composite FK) and reverse (M2M junction),
+        // so it gets relation_enum without via/via_rel
+        assert!(rendered.contains("relation_enum"));
+        // Verify we have a has_many to user_tag with relation_enum but no via
+        let has_user_tag_relation_enum_without_via = rendered.lines().any(|line| {
+            line.contains("has_many") && line.contains("relation_enum") && !line.contains("via")
+        });
+        assert!(
+            has_user_tag_relation_enum_without_via,
+            "Expected has_many with relation_enum but no via for junction table entity, got:\n{rendered}"
+        );
     }
 
     #[test]
