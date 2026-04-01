@@ -25,6 +25,7 @@ fn absolute_module_path(crate_prefix: &str, to_module: &[String]) -> String {
 /// Look up the module path for a table name from the module_paths map.
 /// Uses `super::` for sibling modules in the same folder, `crate::` absolute paths for
 /// cross-directory relations when mappings are available, and falls back to `super::{table_name}`.
+#[cfg(test)]
 fn resolve_entity_module_path(
     current_table: &str,
     target_table: &str,
@@ -45,6 +46,44 @@ fn resolve_entity_module_path(
         if !crate_prefix.is_empty() {
             return absolute_module_path(crate_prefix, target);
         }
+    }
+
+    format!("super::{target_table}")
+}
+
+/// Resolve relation field entity paths for SeaORM model macros.
+///
+/// Rule:
+/// - same folder → `super::{table}`
+/// - different folder → absolute `crate::...` path
+///
+/// This avoids generating brittle `super::super::...` paths for cross-folder relations.
+fn resolve_relation_entity_module_path(
+    current_table: &str,
+    target_table: &str,
+    module_paths: &HashMap<String, Vec<String>>,
+    crate_prefix: &str,
+) -> String {
+    if let (Some(current), Some(target)) = (
+        module_paths.get(current_table),
+        module_paths.get(target_table),
+    ) {
+        let current_parent = current.split_last().map_or(&[][..], |(_, parent)| parent);
+        let target_parent = target.split_last().map_or(&[][..], |(_, parent)| parent);
+
+        if current_parent == target_parent {
+            return format!("super::{target_table}");
+        }
+
+        if !crate_prefix.is_empty() {
+            return absolute_module_path(crate_prefix, target);
+        }
+
+        return format!("super::{target_table}");
+    }
+
+    if !crate_prefix.is_empty() {
+        return format!("{crate_prefix}::{target_table}");
     }
 
     format!("super::{target_table}")
@@ -248,7 +287,7 @@ pub fn render_entity_with_config_and_paths(
 
     lines.push("impl ActiveModelBehavior for ActiveModel {}".into());
 
-    let self_ref_links = render_self_ref_link_helpers(table, schema);
+    let self_ref_links = render_self_ref_link_helpers(table, schema, module_paths, crate_prefix);
     if !self_ref_links.is_empty() {
         lines.push(String::new());
         lines.extend(self_ref_links);
@@ -658,8 +697,12 @@ fn relation_field_defs_with_schema(
             };
 
             out.push(attr);
-            let entity_path =
-                resolve_entity_module_path(&table.name, resolved_table, module_paths, crate_prefix);
+            let entity_path = resolve_relation_entity_module_path(
+                &table.name,
+                resolved_table,
+                module_paths,
+                crate_prefix,
+            );
             out.push(format!(
                 "    pub {field_name}: HasOne<{entity_path}::Entity>,"
             ));
@@ -791,7 +834,39 @@ fn self_ref_link_name(
     )
 }
 
-fn render_self_ref_link_helpers(table: &TableDef, schema: &[TableDef]) -> Vec<String> {
+fn resolve_self_ref_link_module_path(
+    current_table: &str,
+    junction_table: &str,
+    module_paths: &HashMap<String, Vec<String>>,
+    crate_prefix: &str,
+) -> String {
+    if let (Some(current), Some(target)) = (
+        module_paths.get(current_table),
+        module_paths.get(junction_table),
+    ) {
+        let current_parent = current.split_last().map_or(&[][..], |(_, parent)| parent);
+        let target_parent = target.split_last().map_or(&[][..], |(_, parent)| parent);
+
+        if current_parent == target_parent {
+            return format!("super::{junction_table}");
+        }
+
+        if !crate_prefix.is_empty() {
+            return absolute_module_path(crate_prefix, target);
+        }
+
+        return absolute_module_path("crate::models", target);
+    }
+
+    format!("super::{junction_table}")
+}
+
+fn render_self_ref_link_helpers(
+    table: &TableDef,
+    schema: &[TableDef],
+    module_paths: &HashMap<String, Vec<String>>,
+    crate_prefix: &str,
+) -> Vec<String> {
     let mut out = Vec::new();
 
     for other_table in schema {
@@ -804,6 +879,13 @@ fn render_self_ref_link_helpers(table: &TableDef, schema: &[TableDef]) -> Vec<St
         else {
             continue;
         };
+
+        let junction_entity_path = resolve_self_ref_link_module_path(
+            &table.name,
+            &self_ref_junction.junction_table,
+            module_paths,
+            crate_prefix,
+        );
 
         if self_ref_junction.role_columns.len() < 2 {
             continue;
@@ -824,12 +906,12 @@ fn render_self_ref_link_helpers(table: &TableDef, schema: &[TableDef]) -> Vec<St
                 out.push("    fn link(&self) -> Vec<RelationDef> {".into());
                 out.push("        vec![".into());
                 out.push(format!(
-                    "            super::{}::Relation::{}.def().rev(),",
-                    self_ref_junction.junction_table, from_role
+                    "            {junction_entity_path}::Relation::{}.def().rev(),",
+                    from_role
                 ));
                 out.push(format!(
-                    "            super::{}::Relation::{}.def(),",
-                    self_ref_junction.junction_table, to_role
+                    "            {junction_entity_path}::Relation::{}.def(),",
+                    to_role
                 ));
                 out.push("        ]".into());
                 out.push("    }".into());
@@ -1252,8 +1334,12 @@ fn reverse_relation_field_defs(
         };
 
         out.push(attr);
-        let entity_path =
-            resolve_entity_module_path(&table.name, &rel.target_entity, module_paths, crate_prefix);
+        let entity_path = resolve_relation_entity_module_path(
+            &table.name,
+            &rel.target_entity,
+            module_paths,
+            crate_prefix,
+        );
         out.push(format!(
             "    pub {field_name}: {rust_type}<{entity_path}::Entity>,"
         ));
@@ -1607,6 +1693,21 @@ fn to_snake_case(s: &str) -> String {
 #[cfg(test)]
 mod module_path_tests {
     use super::*;
+    use vespertide_core::{ColumnType, SimpleColumnType};
+
+    fn test_pk_column(name: &str) -> ColumnDef {
+        ColumnDef {
+            name: name.into(),
+            r#type: ColumnType::Simple(SimpleColumnType::Text),
+            nullable: false,
+            default: None,
+            comment: None,
+            primary_key: Some(vespertide_core::schema::primary_key::PrimaryKeySyntax::Bool(true)),
+            unique: None,
+            index: None,
+            foreign_key: None,
+        }
+    }
 
     #[test]
     fn absolute_module_path_builds_correct_path() {
@@ -1669,6 +1770,85 @@ mod module_path_tests {
         module_paths.insert("admin".into(), vec!["admin".into(), "admin".into()]);
         let result = resolve_entity_module_path("user", "admin", &module_paths, "");
         assert_eq!(result, "super::admin");
+    }
+
+    #[test]
+    fn resolve_relation_entity_module_path_uses_crate_for_cross_directory_nested_models() {
+        let mut module_paths = HashMap::new();
+        module_paths.insert("admin".into(), vec!["admin".into(), "admin".into()]);
+        module_paths.insert(
+            "estimate".into(),
+            vec!["estimate".into(), "estimate".into()],
+        );
+
+        let result = resolve_relation_entity_module_path(
+            "admin",
+            "estimate",
+            &module_paths,
+            "crate::models",
+        );
+        assert_eq!(result, "crate::models::estimate::estimate");
+    }
+
+    #[test]
+    fn self_ref_link_helpers_use_crate_path_for_cross_directory_junctions() {
+        let admin = TableDef {
+            name: "admin".into(),
+            description: None,
+            columns: vec![test_pk_column("username")],
+            constraints: vec![],
+        };
+
+        let estimate_user_checker_setting = TableDef {
+            name: "estimate_user_checker_setting".into(),
+            description: None,
+            columns: vec![
+                test_pk_column("username"),
+                test_pk_column("checker_username"),
+            ],
+            constraints: vec![
+                TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["username".into()],
+                    ref_table: "admin".into(),
+                    ref_columns: vec!["username".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+                TableConstraint::ForeignKey {
+                    name: None,
+                    columns: vec!["checker_username".into()],
+                    ref_table: "admin".into(),
+                    ref_columns: vec!["username".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+            ],
+        };
+
+        let schema = vec![admin.clone(), estimate_user_checker_setting];
+        let mut module_paths = HashMap::new();
+        module_paths.insert("admin".into(), vec!["admin".into(), "admin".into()]);
+        module_paths.insert(
+            "estimate_user_checker_setting".into(),
+            vec!["estimate".into(), "estimate_user_checker_setting".into()],
+        );
+
+        let rendered = render_entity_with_config_and_paths(
+            &admin,
+            &schema,
+            &SeaOrmConfig::default(),
+            "",
+            &module_paths,
+            "crate::models",
+        );
+
+        assert!(rendered.contains(
+            "crate::models::estimate::estimate_user_checker_setting::Relation::Username.def().rev()"
+        ));
+        assert!(rendered.contains(
+            "crate::models::estimate::estimate_user_checker_setting::Relation::CheckerUsername.def()"
+        ));
     }
 }
 
