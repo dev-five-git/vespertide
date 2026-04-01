@@ -1,5 +1,9 @@
 pub mod article;
 pub mod article_user;
+pub mod dual;
+pub mod dual_rel;
 pub mod media;
+pub mod single;
+pub mod single_rel;
 pub mod user;
 pub mod user_media_role;
