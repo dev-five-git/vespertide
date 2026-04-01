@@ -3,8 +3,8 @@ use std::collections::{HashMap, HashSet};
 use crate::orm::OrmExporter;
 use vespertide_config::SeaOrmConfig;
 use vespertide_core::{
-    ColumnDef, ColumnType, ComplexColumnType, EnumValues, NumValue, StringOrBool, TableConstraint,
-    TableDef,
+    ColumnDef, ColumnType, ComplexColumnType, EnumValues, NumValue, SimpleColumnType, StringOrBool,
+    TableConstraint, TableDef,
 };
 
 /// Build an absolute `crate::` module path for the target table.
@@ -23,18 +23,30 @@ fn absolute_module_path(crate_prefix: &str, to_module: &[String]) -> String {
 }
 
 /// Look up the module path for a table name from the module_paths map.
-/// Uses `crate::` absolute paths when crate_prefix and module_paths are available.
-/// Falls back to `super::{table_name}` when no mapping exists.
+/// Uses `super::` for sibling modules in the same folder, `crate::` absolute paths for
+/// cross-directory relations when mappings are available, and falls back to `super::{table_name}`.
 fn resolve_entity_module_path(
+    current_table: &str,
     target_table: &str,
     module_paths: &HashMap<String, Vec<String>>,
     crate_prefix: &str,
 ) -> String {
-    if !crate_prefix.is_empty()
-        && let Some(to) = module_paths.get(target_table)
-    {
-        return absolute_module_path(crate_prefix, to);
+    if let (Some(current), Some(target)) = (
+        module_paths.get(current_table),
+        module_paths.get(target_table),
+    ) {
+        let current_parent = current.split_last().map_or(&[][..], |(_, parent)| parent);
+        let target_parent = target.split_last().map_or(&[][..], |(_, parent)| parent);
+
+        if current_parent == target_parent {
+            return format!("super::{target_table}");
+        }
+
+        if !crate_prefix.is_empty() {
+            return absolute_module_path(crate_prefix, target);
+        }
     }
+
     format!("super::{target_table}")
 }
 
@@ -176,8 +188,13 @@ pub fn render_entity_with_config_and_paths(
         }
     }
 
-    // Build model derive line with optional extra derives
-    let mut model_derives = vec!["Clone", "Debug", "PartialEq", "Eq", "DeriveEntityModel"];
+    // Build model derive line with optional extra derives.
+    // Float-backed fields (f32/f64) cannot implement Eq, so omit it when present.
+    let mut model_derives = vec!["Clone", "Debug", "PartialEq"];
+    if table.columns.iter().all(column_supports_eq) {
+        model_derives.push("Eq");
+    }
+    model_derives.push("DeriveEntityModel");
     let extra_model_derives: Vec<&str> = config
         .extra_model_derives()
         .iter()
@@ -416,7 +433,6 @@ fn format_default_value(value: &StringOrBool, column_type: &ColumnType) -> Strin
 
 /// Check if the simple column type is numeric.
 fn is_numeric_simple_type(simple: &vespertide_core::SimpleColumnType) -> bool {
-    use vespertide_core::SimpleColumnType;
     matches!(
         simple,
         SimpleColumnType::SmallInt
@@ -425,6 +441,17 @@ fn is_numeric_simple_type(simple: &vespertide_core::SimpleColumnType) -> bool {
             | SimpleColumnType::Real
             | SimpleColumnType::DoublePrecision
     )
+}
+
+fn column_supports_eq(column: &ColumnDef) -> bool {
+    column_type_supports_eq(&column.r#type)
+}
+
+fn column_type_supports_eq(column_type: &ColumnType) -> bool {
+    match column_type {
+        ColumnType::Simple(SimpleColumnType::Real | SimpleColumnType::DoublePrecision) => false,
+        ColumnType::Simple(_) | ColumnType::Complex(_) => true,
+    }
 }
 
 fn primary_key_columns(table: &TableDef) -> HashSet<String> {
@@ -620,7 +647,7 @@ fn relation_field_defs_with_schema(
 
             out.push(attr);
             let entity_path =
-                resolve_entity_module_path(resolved_table, module_paths, crate_prefix);
+                resolve_entity_module_path(&table.name, resolved_table, module_paths, crate_prefix);
             out.push(format!(
                 "    pub {field_name}: HasOne<{entity_path}::Entity>,"
             ));
@@ -673,6 +700,7 @@ fn generate_relation_enum_name(columns: &[String]) -> String {
 /// - FK column: "org_id", table: "user", to: "id" -> "org"
 fn infer_field_name_from_fk_column(fk_column: &str, table_name: &str, to: &str) -> String {
     let table_lower = table_name.to_lowercase();
+    let to_lower = to.to_lowercase();
 
     // Remove the "to" suffix from FK column (e.g., "user_id" for to="id", "user_idx" for to="idx").
     // If FK column still uses common suffixes like "*_id"/"*_idx", strip them as fallbacks.
@@ -685,6 +713,13 @@ fn infer_field_name_from_fk_column(fk_column: &str, table_name: &str, to: &str) 
 
     let sanitized = sanitize_field_name(without_suffix);
     let sanitized_lower = sanitized.to_lowercase();
+
+    // If the FK column exactly matches the referenced column name, treat it as a natural-key
+    // relation and expose the target entity name instead of the raw column name.
+    // Also handle compact forms like `username` for `user.name`.
+    if sanitized_lower == to_lower || sanitized_lower == format!("{table_lower}{to_lower}") {
+        return sanitize_field_name(table_name);
+    }
 
     // If the sanitized name is exactly the table name (e.g., "user_id" -> "user" for table "user"),
     // we need to fall back to the table name for proper disambiguation
@@ -978,7 +1013,7 @@ fn reverse_relation_field_defs(
 
         out.push(attr);
         let entity_path =
-            resolve_entity_module_path(&rel.target_entity, module_paths, crate_prefix);
+            resolve_entity_module_path(&table.name, &rel.target_entity, module_paths, crate_prefix);
         out.push(format!(
             "    pub {field_name}: {rust_type}<{entity_path}::Entity>,"
         ));
@@ -1346,15 +1381,34 @@ mod module_path_tests {
     #[test]
     fn resolve_entity_module_path_with_crate_prefix() {
         let mut module_paths = HashMap::new();
+        module_paths.insert(
+            "estimate".into(),
+            vec!["estimate".into(), "estimate".into()],
+        );
         module_paths.insert("admin".into(), vec!["admin".into(), "admin".into()]);
-        let result = resolve_entity_module_path("admin", &module_paths, "crate::models");
+        let result =
+            resolve_entity_module_path("estimate", "admin", &module_paths, "crate::models");
         assert_eq!(result, "crate::models::admin::admin");
+    }
+
+    #[test]
+    fn resolve_entity_module_path_prefers_super_for_siblings() {
+        let mut module_paths = HashMap::new();
+        module_paths.insert("admin".into(), vec!["admin".into(), "admin".into()]);
+        module_paths.insert(
+            "admin_stamp".into(),
+            vec!["admin".into(), "admin_stamp".into()],
+        );
+
+        let result =
+            resolve_entity_module_path("admin_stamp", "admin", &module_paths, "crate::models");
+        assert_eq!(result, "super::admin");
     }
 
     #[test]
     fn resolve_entity_module_path_fallback_when_no_mapping() {
         let module_paths = HashMap::new();
-        let result = resolve_entity_module_path("user", &module_paths, "crate::models");
+        let result = resolve_entity_module_path("post", "user", &module_paths, "crate::models");
         assert_eq!(result, "super::user");
     }
 
@@ -1362,7 +1416,7 @@ mod module_path_tests {
     fn resolve_entity_module_path_fallback_when_empty_prefix() {
         let mut module_paths = HashMap::new();
         module_paths.insert("admin".into(), vec!["admin".into(), "admin".into()]);
-        let result = resolve_entity_module_path("admin", &module_paths, "");
+        let result = resolve_entity_module_path("user", "admin", &module_paths, "");
         assert_eq!(result, "super::admin");
     }
 }
@@ -1520,6 +1574,8 @@ mod helper_tests {
     // FK column WITHOUT _id suffix (coverage for line 450)
     #[case("creator_user", "user", "id", "creator_user")]
     #[case("user", "user", "id", "user")]
+    #[case("username", "user", "name", "user")]
+    #[case("username", "admin", "username", "admin")]
     // FK column exactly matches table name with _id (coverage for line 464)
     #[case("customer_id", "customer", "id", "customer")]
     #[case("product_id", "product", "id", "product")]
@@ -1543,6 +1599,28 @@ mod helper_tests {
             infer_field_name_from_fk_column(fk_column, table_name, to),
             expected
         );
+    }
+
+    #[test]
+    fn test_column_type_supports_eq() {
+        assert!(column_type_supports_eq(&ColumnType::Simple(
+            SimpleColumnType::Integer
+        )));
+        assert!(column_type_supports_eq(&ColumnType::Simple(
+            SimpleColumnType::Text
+        )));
+        assert!(!column_type_supports_eq(&ColumnType::Simple(
+            SimpleColumnType::Real
+        )));
+        assert!(!column_type_supports_eq(&ColumnType::Simple(
+            SimpleColumnType::DoublePrecision
+        )));
+        assert!(column_type_supports_eq(&ColumnType::Complex(
+            ComplexColumnType::Numeric {
+                precision: 10,
+                scale: 2,
+            }
+        )));
     }
 
     #[rstest]
@@ -2730,6 +2808,7 @@ mod tests {
     #[case("not_junction_fk_not_in_pk_other")]
     #[case("not_junction_fk_not_in_pk_another")]
     #[case("multiple_fk_same_table")]
+    #[case("username_fk")]
     #[case("multiple_reverse_relations")]
     #[case("multiple_has_one_relations")]
     fn render_entity_with_schema_snapshots(#[case] name: &str) {
@@ -2978,6 +3057,23 @@ mod tests {
                 );
                 (post.clone(), vec![user, post])
             }
+            "username_fk" => {
+                let user = table_with_pk(
+                    "user",
+                    vec![col("username", ColumnType::Simple(Text))],
+                    vec!["username"],
+                );
+                let session = table_with_pk_and_fk(
+                    "session",
+                    vec![
+                        col("id", ColumnType::Simple(Uuid)),
+                        col("username", ColumnType::Simple(Text)),
+                    ],
+                    vec!["id"],
+                    vec![(vec!["username"], "user", vec!["username"])],
+                );
+                (session.clone(), vec![user, session])
+            }
             "multiple_reverse_relations" => {
                 // Test case where user has multiple has_one relations from profile
                 let user = table_with_pk(
@@ -3075,6 +3171,45 @@ mod tests {
         };
         let rendered = render_entity(&table);
         assert!(rendered.contains("default_value = 0.00"));
+    }
+
+    #[test]
+    fn render_entity_omits_eq_for_float_models() {
+        use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+
+        let table = TableDef {
+            name: "measurements".into(),
+            description: None,
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: Some(PrimaryKeySyntax::Bool(true)),
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "score".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::DoublePrecision),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![],
+        };
+
+        let rendered = render_entity(&table);
+        assert!(rendered.contains("#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]"));
+        assert!(!rendered.contains("#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]"));
     }
 
     #[test]
