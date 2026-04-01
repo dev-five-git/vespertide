@@ -10,11 +10,26 @@ pub struct Model {
     pub checker_username: String,
     #[sea_orm(primary_key)]
     pub other_username: String,
-    #[sea_orm(belongs_to, relation_enum = "Username", from = "username", to = "username")]
+    #[sea_orm(
+        belongs_to,
+        relation_enum = "Username",
+        from = "username",
+        to = "username"
+    )]
     pub triple: HasOne<super::triple::Entity>,
-    #[sea_orm(belongs_to, relation_enum = "CheckerUsername", from = "checker_username", to = "username")]
+    #[sea_orm(
+        belongs_to,
+        relation_enum = "CheckerUsername",
+        from = "checker_username",
+        to = "username"
+    )]
     pub checker: HasOne<super::triple::Entity>,
-    #[sea_orm(belongs_to, relation_enum = "OtherUsername", from = "other_username", to = "username")]
+    #[sea_orm(
+        belongs_to,
+        relation_enum = "OtherUsername",
+        from = "other_username",
+        to = "username"
+    )]
     pub other: HasOne<super::triple::Entity>,
 }
 

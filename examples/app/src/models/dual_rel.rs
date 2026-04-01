@@ -8,9 +8,19 @@ pub struct Model {
     pub username: String,
     #[sea_orm(primary_key)]
     pub checker_username: String,
-    #[sea_orm(belongs_to, relation_enum = "Username", from = "username", to = "username")]
+    #[sea_orm(
+        belongs_to,
+        relation_enum = "Username",
+        from = "username",
+        to = "username"
+    )]
     pub dual: HasOne<super::dual::Entity>,
-    #[sea_orm(belongs_to, relation_enum = "CheckerUsername", from = "checker_username", to = "username")]
+    #[sea_orm(
+        belongs_to,
+        relation_enum = "CheckerUsername",
+        from = "checker_username",
+        to = "username"
+    )]
     pub checker: HasOne<super::dual::Entity>,
 }
 

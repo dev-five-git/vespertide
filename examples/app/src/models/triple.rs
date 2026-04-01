@@ -8,7 +8,11 @@ pub struct Model {
     pub username: String,
     #[sea_orm(has_many, relation_enum = "TripleRel", via_rel = "Username")]
     pub username_triple_rels: HasMany<super::triple_rel::Entity>,
-    #[sea_orm(has_many, relation_enum = "CheckerUsername", via_rel = "CheckerUsername")]
+    #[sea_orm(
+        has_many,
+        relation_enum = "CheckerUsername",
+        via_rel = "CheckerUsername"
+    )]
     pub checker_username_triple_rels: HasMany<super::triple_rel::Entity>,
     #[sea_orm(has_many, relation_enum = "OtherUsername", via_rel = "OtherUsername")]
     pub other_username_triple_rels: HasMany<super::triple_rel::Entity>,
