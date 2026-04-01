@@ -18,7 +18,7 @@ pub struct Model {
     pub article_users: HasMany<super::article_user::Entity>,
     #[sea_orm(has_many, via = "article_user")]
     pub articles_via_article_user: HasMany<super::article::Entity>,
-    #[sea_orm(has_many, relation_enum = "Media", via = "media")]
+    #[sea_orm(has_many, relation_enum = "Media", via_rel = "Owner")]
     pub medias: HasMany<super::media::Entity>,
     #[sea_orm(has_many)]
     pub user_media_roles: HasMany<super::user_media_role::Entity>,

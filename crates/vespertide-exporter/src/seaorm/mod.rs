@@ -248,6 +248,18 @@ pub fn render_entity_with_config_and_paths(
 
     lines.push("impl ActiveModelBehavior for ActiveModel {}".into());
 
+    let self_ref_links = render_self_ref_link_helpers(table, schema);
+    if !self_ref_links.is_empty() {
+        lines.push(String::new());
+        lines.extend(self_ref_links);
+    }
+
+    let self_ref_query_helpers = render_self_ref_query_helpers(table, schema);
+    if !self_ref_query_helpers.is_empty() {
+        lines.push(String::new());
+        lines.extend(self_ref_query_helpers);
+    }
+
     lines.push(String::new());
 
     lines.join("\n")
@@ -684,6 +696,215 @@ fn generate_relation_enum_name(columns: &[String]) -> String {
     to_pascal_case(without_id)
 }
 
+fn unique_relation_enum_name(
+    preferred: String,
+    source_table: &str,
+    base_relation_enum: &str,
+    used_relation_enums: &HashSet<String>,
+) -> String {
+    if !used_relation_enums.contains(&preferred) {
+        return preferred;
+    }
+
+    let source_prefixed = format!("{}{}", to_pascal_case(source_table), base_relation_enum);
+    if !used_relation_enums.contains(&source_prefixed) {
+        return source_prefixed;
+    }
+
+    let mut index = 2;
+    loop {
+        let candidate = format!(
+            "{}{}{}",
+            to_pascal_case(source_table),
+            base_relation_enum,
+            index
+        );
+        if !used_relation_enums.contains(&candidate) {
+            return candidate;
+        }
+        index += 1;
+    }
+}
+
+fn collect_self_ref_junction(
+    current_table: &TableDef,
+    junction_table: &TableDef,
+    junction_pk: &HashSet<String>,
+) -> Option<SelfRefJunction> {
+    if junction_pk.len() < 2 {
+        return None;
+    }
+
+    let fks: Vec<_> = junction_table
+        .constraints
+        .iter()
+        .filter_map(|c| {
+            if let TableConstraint::ForeignKey {
+                columns, ref_table, ..
+            } = c
+            {
+                Some((columns.clone(), ref_table.clone()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if fks.len() < 2 {
+        return None;
+    }
+
+    let all_fk_cols_in_pk = fks
+        .iter()
+        .all(|(cols, _)| cols.iter().all(|c| junction_pk.contains(c)));
+    if !all_fk_cols_in_pk {
+        return None;
+    }
+
+    if !fks
+        .iter()
+        .all(|(_, ref_table)| ref_table == &current_table.name)
+    {
+        return None;
+    }
+
+    Some(SelfRefJunction {
+        junction_table: junction_table.name.clone(),
+        role_columns: fks.iter().map(|(cols, _)| cols[0].clone()).collect(),
+        role_relations: fks
+            .iter()
+            .map(|(cols, _)| generate_relation_enum_name(cols))
+            .collect(),
+    })
+}
+
+fn self_ref_link_name(
+    self_ref_junction: &SelfRefJunction,
+    from_idx: usize,
+    to_idx: usize,
+) -> String {
+    format!(
+        "{}To{}Via{}",
+        to_pascal_case(&self_ref_junction.role_columns[from_idx]),
+        to_pascal_case(&self_ref_junction.role_columns[to_idx]),
+        to_pascal_case(&self_ref_junction.junction_table)
+    )
+}
+
+fn render_self_ref_link_helpers(table: &TableDef, schema: &[TableDef]) -> Vec<String> {
+    let mut out = Vec::new();
+
+    for other_table in schema {
+        if other_table.name == table.name {
+            continue;
+        }
+
+        let other_pk = primary_key_columns(other_table);
+        let Some(self_ref_junction) = collect_self_ref_junction(table, other_table, &other_pk)
+        else {
+            continue;
+        };
+
+        if self_ref_junction.role_columns.len() < 2 {
+            continue;
+        }
+
+        for (from_idx, from_role) in self_ref_junction.role_relations.iter().enumerate() {
+            for (to_idx, to_role) in self_ref_junction.role_relations.iter().enumerate() {
+                if from_idx == to_idx {
+                    continue;
+                }
+
+                let link_name = self_ref_link_name(&self_ref_junction, from_idx, to_idx);
+                out.push(format!("pub struct {link_name};"));
+                out.push(format!("impl Linked for {link_name} {{"));
+                out.push("    type FromEntity = Entity;".into());
+                out.push("    type ToEntity = Entity;".into());
+                out.push(String::new());
+                out.push("    fn link(&self) -> Vec<RelationDef> {".into());
+                out.push("        vec![".into());
+                out.push(format!(
+                    "            super::{}::Relation::{}.def().rev(),",
+                    self_ref_junction.junction_table, from_role
+                ));
+                out.push(format!(
+                    "            super::{}::Relation::{}.def(),",
+                    self_ref_junction.junction_table, to_role
+                ));
+                out.push("        ]".into());
+                out.push("    }".into());
+                out.push("}".into());
+                out.push(String::new());
+            }
+        }
+    }
+
+    while out.last().is_some_and(String::is_empty) {
+        out.pop();
+    }
+
+    out
+}
+
+fn render_self_ref_query_helpers(table: &TableDef, schema: &[TableDef]) -> Vec<String> {
+    let mut methods = Vec::new();
+    let mut used_method_names = HashSet::new();
+
+    for other_table in schema {
+        if other_table.name == table.name {
+            continue;
+        }
+
+        let other_pk = primary_key_columns(other_table);
+        let Some(self_ref_junction) = collect_self_ref_junction(table, other_table, &other_pk)
+        else {
+            continue;
+        };
+
+        if self_ref_junction.role_columns.len() < 2 {
+            continue;
+        }
+
+        for (from_idx, from_col) in self_ref_junction.role_columns.iter().enumerate() {
+            for (to_idx, to_col) in self_ref_junction.role_columns.iter().enumerate() {
+                if from_idx == to_idx {
+                    continue;
+                }
+
+                let link_name = self_ref_link_name(&self_ref_junction, from_idx, to_idx);
+                let method_base = format!(
+                    "find_{}_via_{}_from_{}",
+                    pluralize(&sanitize_field_name(to_col)),
+                    sanitize_field_name(&self_ref_junction.junction_table),
+                    sanitize_field_name(from_col)
+                );
+                let method_name = unique_name(&method_base, &mut used_method_names);
+
+                methods.push(format!(
+                    "    pub fn {method_name}(&self) -> Select<Entity> {{"
+                ));
+                methods.push(format!("        self.find_linked({link_name})"));
+                methods.push("    }".into());
+                methods.push(String::new());
+            }
+        }
+    }
+
+    while methods.last().is_some_and(String::is_empty) {
+        methods.pop();
+    }
+
+    if methods.is_empty() {
+        return methods;
+    }
+
+    let mut out = Vec::new();
+    out.push("impl Model {".into());
+    out.extend(methods);
+    out.push("}".into());
+    out
+}
+
 /// Infer a field name from a single FK column.
 /// For "creator_user_id" with to="id", tries "creator_user" first.
 /// If the FK column still follows common suffix naming like `_id`/`_idx`,
@@ -752,8 +973,16 @@ struct ReverseRelation {
     has_multiple_fks: bool,
     /// Optional via clause for M2M relations
     via: Option<String>,
+    /// Optional via_rel clause for reverse diamond relations
+    via_rel: Option<String>,
     /// Whether this is a M2M relation (through junction table)
     is_m2m: bool,
+}
+
+struct SelfRefJunction {
+    junction_table: String,
+    role_columns: Vec<String>,
+    role_relations: Vec<String>,
 }
 
 /// Collect target entities from reverse relations (for counting across all relations).
@@ -948,6 +1177,7 @@ fn reverse_relation_field_defs(
                         source_table: other_table.name.clone(),
                         has_multiple_fks,
                         via: None,
+                        via_rel: Some(generate_relation_enum_name(columns)),
                         is_m2m: false,
                     });
                 }
@@ -981,16 +1211,12 @@ fn reverse_relation_field_defs(
                 .unwrap_or(false);
 
         let attr = if needs_relation_enum {
-            // When multiple HasMany/HasOne target the same Entity, ALL need `via`
-            // - M2M relations: via = junction_table
-            // - Direct FK relations: via = source_table (the table with the FK)
-            let via_value = rel.via.as_ref().unwrap_or(&rel.source_table);
-
-            let relation_enum_name = if rel.is_m2m {
+            let preferred_relation_enum_name = if rel.is_m2m {
                 // M2M: use {Target}Via{Junction} pattern directly
                 // e.g., "MediaViaUserMediaRole"
                 rel.base_relation_enum.clone()
             } else {
+                let via_value = rel.via.as_ref().unwrap_or(&rel.source_table);
                 // Direct: use via table name, fall back to FK-based on collision
                 let base_enum = to_pascal_case(via_value);
                 if used_relation_enums.contains(&base_enum) {
@@ -999,11 +1225,25 @@ fn reverse_relation_field_defs(
                     base_enum
                 }
             };
+            let relation_enum_name = unique_relation_enum_name(
+                preferred_relation_enum_name,
+                &rel.source_table,
+                &rel.base_relation_enum,
+                used_relation_enums,
+            );
             used_relation_enums.insert(relation_enum_name.clone());
 
-            format!(
-                "    #[sea_orm({relation_type}, relation_enum = \"{relation_enum_name}\", via = \"{via_value}\")]"
-            )
+            if let Some(via_rel) = &rel.via_rel {
+                format!(
+                    "    #[sea_orm({relation_type}, relation_enum = \"{relation_enum_name}\", via_rel = \"{via_rel}\")]"
+                )
+            } else if let Some(via) = &rel.via {
+                format!(
+                    "    #[sea_orm({relation_type}, relation_enum = \"{relation_enum_name}\", via = \"{via}\")]"
+                )
+            } else {
+                format!("    #[sea_orm({relation_type}, relation_enum = \"{relation_enum_name}\")]")
+            }
         } else if let Some(via) = &rel.via {
             // No ambiguity - just via without relation_enum
             format!("    #[sea_orm({relation_type}, via = \"{via}\")]")
@@ -1072,6 +1312,16 @@ fn collect_many_to_many_relations(
 
     let mut relations = Vec::new();
 
+    let self_ref_fks: Vec<_> = fks
+        .iter()
+        .filter(|(_, ref_table)| ref_table == &current_table.name)
+        .cloned()
+        .collect();
+
+    if self_ref_fks.len() == fks.len() {
+        return None;
+    }
+
     // First, add has_many to the junction table itself (direct relation, not M2M)
     let junction_base = pluralize(&sanitize_field_name(&junction_table.name));
     relations.push(ReverseRelation {
@@ -1082,6 +1332,7 @@ fn collect_many_to_many_relations(
         source_table: junction_table.name.clone(),
         has_multiple_fks: false,
         via: None,
+        via_rel: None,
         is_m2m: false,
     });
 
@@ -1121,6 +1372,7 @@ fn collect_many_to_many_relations(
             source_table: junction_table.name.clone(),
             has_multiple_fks: false,
             via: Some(junction_table.name.clone()),
+            via_rel: None,
             is_m2m: true,
         });
     }
@@ -2809,6 +3061,8 @@ mod tests {
     #[case("multiple_fk_same_table")]
     #[case("username_fk")]
     #[case("multiple_reverse_relations")]
+    #[case("dual_reverse_relations")]
+    #[case("triple_reverse_relations")]
     #[case("multiple_has_one_relations")]
     fn render_entity_with_schema_snapshots(#[case] name: &str) {
         use vespertide_core::SimpleColumnType::*;
@@ -3094,6 +3348,48 @@ mod tests {
                     ],
                 );
                 (user.clone(), vec![user, profile])
+            }
+            "dual_reverse_relations" => {
+                let dual = table_with_pk(
+                    "dual",
+                    vec![col("username", ColumnType::Simple(Text))],
+                    vec!["username"],
+                );
+                let dual_rel = table_with_pk_and_fk(
+                    "dual_rel",
+                    vec![
+                        col("username", ColumnType::Simple(Text)),
+                        col("checker_username", ColumnType::Simple(Text)),
+                    ],
+                    vec!["username", "checker_username"],
+                    vec![
+                        (vec!["username"], "dual", vec!["username"]),
+                        (vec!["checker_username"], "dual", vec!["username"]),
+                    ],
+                );
+                (dual.clone(), vec![dual, dual_rel])
+            }
+            "triple_reverse_relations" => {
+                let dual = table_with_pk(
+                    "dual",
+                    vec![col("username", ColumnType::Simple(Text))],
+                    vec!["username"],
+                );
+                let triple_rel = table_with_pk_and_fk(
+                    "triple_rel",
+                    vec![
+                        col("username", ColumnType::Simple(Text)),
+                        col("checker_username", ColumnType::Simple(Text)),
+                        col("other_username", ColumnType::Simple(Text)),
+                    ],
+                    vec!["username", "checker_username", "other_username"],
+                    vec![
+                        (vec!["username"], "dual", vec!["username"]),
+                        (vec!["checker_username"], "dual", vec!["username"]),
+                        (vec!["other_username"], "dual", vec!["username"]),
+                    ],
+                );
+                (dual.clone(), vec![dual, triple_rel])
             }
             "multiple_has_one_relations" => {
                 // Test case where user has multiple has_one relations (UNIQUE FK)

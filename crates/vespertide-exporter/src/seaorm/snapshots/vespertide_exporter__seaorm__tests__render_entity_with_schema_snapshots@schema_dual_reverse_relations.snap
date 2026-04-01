@@ -1,3 +1,7 @@
+---
+source: crates/vespertide-exporter/src/seaorm/mod.rs
+expression: rendered
+---
 use sea_orm::entity::prelude::*;
 
 #[sea_orm::model]

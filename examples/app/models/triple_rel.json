@@ -1,0 +1,39 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
+  "name": "triple_rel",
+  "columns": [
+    {
+      "name": "username",
+      "type": { "kind": "varchar", "length": 32 },
+      "nullable": false,
+      "primary_key": true,
+      "foreign_key": {
+        "ref_table": "triple",
+        "ref_columns": ["username"],
+        "on_delete": "cascade"
+      }
+    },
+    {
+      "name": "checker_username",
+      "type": { "kind": "varchar", "length": 32 },
+      "nullable": false,
+      "primary_key": true,
+      "foreign_key": {
+        "ref_table": "triple",
+        "ref_columns": ["username"],
+        "on_delete": "cascade"
+      }
+    },
+    {
+      "name": "other_username",
+      "type": { "kind": "varchar", "length": 32 },
+      "nullable": false,
+      "primary_key": true,
+      "foreign_key": {
+        "ref_table": "triple",
+        "ref_columns": ["username"],
+        "on_delete": "cascade"
+      }
+    }
+  ]
+}
