@@ -39,6 +39,7 @@ pub fn build_modify_column_type(
     new_type: &ColumnType,
     fill_with: Option<&BTreeMap<String, String>>,
     current_schema: &[TableDef],
+    pending_constraints: &[vespertide_core::TableConstraint],
 ) -> Result<Vec<BuiltQuery>, QueryError> {
     // SQLite does not support direct column type modification, so use temporary table approach
     if *backend == DatabaseBackend::Sqlite {
@@ -99,7 +100,8 @@ pub fn build_modify_column_type(
         let rename_query = build_rename_table(&temp_table, table);
 
         // 5. Recreate indexes (both regular and UNIQUE)
-        let index_queries = recreate_indexes_after_rebuild(table, &table_def.constraints, &[]);
+        let index_queries =
+            recreate_indexes_after_rebuild(table, &table_def.constraints, pending_constraints);
 
         let mut queries = Vec::new();
 
@@ -376,14 +378,7 @@ mod tests {
             constraints: vec![],
         }];
 
-        let result = build_modify_column_type(
-            &backend,
-            "users",
-            "age",
-            &ColumnType::Complex(ComplexColumnType::Varchar { length: 50 }),
-            None,
-            &current_schema,
-        );
+        let result = build_modify_column_type(&backend, "users", "age", &ColumnType::Complex(ComplexColumnType::Varchar { length: 50 }), None, &current_schema, &[]);
 
         // SQLite may return multiple queries
         let sql = result
@@ -410,14 +405,7 @@ mod tests {
 
     #[test]
     fn test_modify_column_type_table_not_found() {
-        let result = build_modify_column_type(
-            &DatabaseBackend::Sqlite,
-            "nonexistent_table",
-            "age",
-            &ColumnType::Simple(SimpleColumnType::BigInt),
-            None,
-            &[],
-        );
+        let result = build_modify_column_type(&DatabaseBackend::Sqlite, "nonexistent_table", "age", &ColumnType::Simple(SimpleColumnType::BigInt), None, &[], &[]);
         assert!(result.is_err());
         assert!(
             result
@@ -445,14 +433,7 @@ mod tests {
             }],
             constraints: vec![],
         }];
-        let result = build_modify_column_type(
-            &DatabaseBackend::Sqlite,
-            "users",
-            "nonexistent_column",
-            &ColumnType::Simple(SimpleColumnType::BigInt),
-            None,
-            &current_schema,
-        );
+        let result = build_modify_column_type(&DatabaseBackend::Sqlite, "users", "nonexistent_column", &ColumnType::Simple(SimpleColumnType::BigInt), None, &current_schema, &[]);
         assert!(result.is_err());
         assert!(
             result
@@ -512,14 +493,7 @@ mod tests {
             }],
         }];
 
-        let result = build_modify_column_type(
-            &backend,
-            "users",
-            "age",
-            &ColumnType::Simple(SimpleColumnType::BigInt),
-            None,
-            &current_schema,
-        )
+        let result = build_modify_column_type(&backend, "users", "age", &ColumnType::Simple(SimpleColumnType::BigInt), None, &current_schema, &[])
         .unwrap();
 
         let sql = result
@@ -592,14 +566,7 @@ mod tests {
             }],
         }];
 
-        let result = build_modify_column_type(
-            &backend,
-            "users",
-            "email",
-            &ColumnType::Complex(ComplexColumnType::Varchar { length: 255 }),
-            None,
-            &current_schema,
-        )
+        let result = build_modify_column_type(&backend, "users", "email", &ColumnType::Complex(ComplexColumnType::Varchar { length: 255 }), None, &current_schema, &[])
         .unwrap();
 
         let sql = result
@@ -804,14 +771,7 @@ mod tests {
             constraints: vec![],
         }];
 
-        let result = build_modify_column_type(
-            &backend,
-            "users",
-            "status",
-            &new_type,
-            None,
-            &current_schema,
-        )
+        let result = build_modify_column_type(&backend, "users", "status", &new_type, None, &current_schema, &[])
         .unwrap();
 
         let sql = result
@@ -870,14 +830,7 @@ mod tests {
             ]),
         });
 
-        let result = build_modify_column_type(
-            &backend,
-            "reservation_session",
-            "status",
-            &new_type,
-            None,
-            &current_schema,
-        )
+        let result = build_modify_column_type(&backend, "reservation_session", "status", &new_type, None, &current_schema, &[])
         .unwrap();
 
         let sql = result
@@ -934,6 +887,7 @@ mod tests {
             }),
             None,
             &[], // Empty schema - old_type will be None
+            &[],
         );
 
         assert!(result.is_ok());
@@ -1013,14 +967,7 @@ mod tests {
             constraints: vec![],
         }];
 
-        let result = build_modify_column_type(
-            &backend,
-            "users",
-            "status",
-            &new_type,
-            Some(&fill_with_map),
-            &current_schema,
-        )
+        let result = build_modify_column_type(&backend, "users", "status", &new_type, Some(&fill_with_map), &current_schema, &[])
         .unwrap();
 
         let sql = result

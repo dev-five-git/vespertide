@@ -20,6 +20,7 @@ pub fn build_modify_column_nullable(
     fill_with: Option<&str>,
     delete_null_rows: bool,
     current_schema: &[TableDef],
+    pending_constraints: &[vespertide_core::TableConstraint],
 ) -> Result<Vec<BuiltQuery>, QueryError> {
     let mut queries = Vec::new();
 
@@ -144,7 +145,7 @@ pub fn build_modify_column_nullable(
             queries.extend(recreate_indexes_after_rebuild(
                 table,
                 &table_def.constraints,
-                &[],
+                pending_constraints,
             ));
         }
     }
@@ -214,9 +215,7 @@ mod tests {
             vec![],
         )];
 
-        let result = build_modify_column_nullable(
-            &backend, "users", "email", nullable, fill_with, false, &schema,
-        );
+        let result = build_modify_column_nullable(&backend, "users", "email", nullable, fill_with, false, &schema, &[]);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -257,7 +256,7 @@ mod tests {
         }
 
         let result =
-            build_modify_column_nullable(&backend, "users", "email", false, None, false, &[]);
+            build_modify_column_nullable(&backend, "users", "email", false, None, false, &[], &[]);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Table 'users' not found"));
@@ -286,7 +285,7 @@ mod tests {
         )];
 
         let result =
-            build_modify_column_nullable(&backend, "users", "email", false, None, false, &schema);
+            build_modify_column_nullable(&backend, "users", "email", false, None, false, &schema, &[]);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Column 'email' not found"));
@@ -311,7 +310,7 @@ mod tests {
         )];
 
         let result =
-            build_modify_column_nullable(&backend, "users", "email", false, None, false, &schema);
+            build_modify_column_nullable(&backend, "users", "email", false, None, false, &schema, &[]);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -359,15 +358,7 @@ mod tests {
             vec![],
         )];
 
-        let result = build_modify_column_nullable(
-            &backend,
-            "orders",
-            "paid_at",
-            false,
-            Some("NOW()"),
-            false,
-            &schema,
-        );
+        let result = build_modify_column_nullable(&backend, "orders", "paid_at", false, Some("NOW()"), false, &schema, &[]);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -421,7 +412,7 @@ mod tests {
         )];
 
         let result =
-            build_modify_column_nullable(&backend, "users", "email", false, None, false, &schema);
+            build_modify_column_nullable(&backend, "users", "email", false, None, false, &schema, &[]);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -469,7 +460,7 @@ mod tests {
         )];
 
         let result =
-            build_modify_column_nullable(&backend, "orders", "user_id", false, None, true, &schema);
+            build_modify_column_nullable(&backend, "orders", "user_id", false, None, true, &schema, &[]);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -526,7 +517,7 @@ mod tests {
         )];
 
         let result =
-            build_modify_column_nullable(&backend, "orders", "user_id", true, None, true, &schema);
+            build_modify_column_nullable(&backend, "orders", "user_id", true, None, true, &schema, &[]);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries

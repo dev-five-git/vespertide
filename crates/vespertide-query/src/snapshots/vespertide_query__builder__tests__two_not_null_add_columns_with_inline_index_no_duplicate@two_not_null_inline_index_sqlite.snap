@@ -1,0 +1,21 @@
+---
+source: crates/vespertide-query/src/builder.rs
+expression: sql
+---
+-- Action 0: AddColumn { table: "article", column: ColumnDef { name: "category_pinned", type: Simple(Boolean), nullable: false, default: Some(Bool(false)), comment: None, primary_key: None, unique: None, index: Some(Bool(true)), foreign_key: None }, fill_with: None }
+CREATE TABLE "article_temp" ( "id" integer, "title" text, "category_pinned" boolean NOT NULL DEFAULT false );
+INSERT INTO "article_temp" ("id", "title", "category_pinned") SELECT "id", "title", false AS "category_pinned" FROM "article";
+DROP TABLE "article";
+ALTER TABLE "article_temp" RENAME TO "article"
+
+-- Action 1: AddColumn { table: "article", column: ColumnDef { name: "main_pinned", type: Simple(Boolean), nullable: false, default: Some(Bool(false)), comment: None, primary_key: None, unique: None, index: Some(Bool(true)), foreign_key: None }, fill_with: None }
+CREATE TABLE "article_temp" ( "id" integer, "title" text, "category_pinned" boolean NOT NULL DEFAULT false, "main_pinned" boolean NOT NULL DEFAULT false );
+INSERT INTO "article_temp" ("id", "title", "category_pinned", "main_pinned") SELECT "id", "title", "category_pinned", false AS "main_pinned" FROM "article";
+DROP TABLE "article";
+ALTER TABLE "article_temp" RENAME TO "article"
+
+-- Action 2: AddConstraint { table: "article", constraint: Index { name: None, columns: ["main_pinned"] } }
+CREATE INDEX "ix_article__main_pinned" ON "article" ("main_pinned")
+
+-- Action 3: AddConstraint { table: "article", constraint: Index { name: None, columns: ["category_pinned"] } }
+CREATE INDEX "ix_article__category_pinned" ON "article" ("category_pinned")

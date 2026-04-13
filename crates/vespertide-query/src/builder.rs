@@ -1,16 +1,35 @@
 use vespertide_core::{MigrationAction, MigrationPlan, TableDef};
 use vespertide_planner::apply_action;
 
-use crate::DatabaseBackend;
 use crate::error::QueryError;
-use crate::sql::BuiltQuery;
 use crate::sql::build_action_queries_with_pending;
+use crate::sql::BuiltQuery;
+use crate::DatabaseBackend;
 
 pub struct PlanQueries {
     pub action: MigrationAction,
     pub postgres: Vec<BuiltQuery>,
     pub mysql: Vec<BuiltQuery>,
     pub sqlite: Vec<BuiltQuery>,
+}
+
+/// Extract the target table name from any migration action.
+/// Returns `None` for `RawSql` (no table) and `RenameTable` (ambiguous).
+fn action_target_table(action: &MigrationAction) -> Option<&str> {
+    match action {
+        MigrationAction::CreateTable { table, .. }
+        | MigrationAction::DeleteTable { table }
+        | MigrationAction::AddColumn { table, .. }
+        | MigrationAction::RenameColumn { table, .. }
+        | MigrationAction::DeleteColumn { table, .. }
+        | MigrationAction::ModifyColumnType { table, .. }
+        | MigrationAction::ModifyColumnNullable { table, .. }
+        | MigrationAction::ModifyColumnDefault { table, .. }
+        | MigrationAction::ModifyColumnComment { table, .. }
+        | MigrationAction::AddConstraint { table, .. }
+        | MigrationAction::RemoveConstraint { table, .. } => Some(table),
+        MigrationAction::RenameTable { .. } | MigrationAction::RawSql { .. } => None,
+    }
 }
 
 pub fn build_plan_queries(
@@ -27,8 +46,13 @@ pub fn build_plan_queries(
         // but haven't been physically created as DB indexes yet.
         // Without this, a temp table rebuild would recreate these indexes prematurely,
         // causing "index already exists" errors when their AddConstraint actions run later.
+        //
+        // This applies to ANY action that may trigger a SQLite temp table rebuild
+        // (AddColumn with NOT NULL, ModifyColumn*, DeleteColumn, AddConstraint FK/PK/Check,
+        // RemoveConstraint), not just AddConstraint.
+        let action_table = action_target_table(action);
         let pending_constraints: Vec<vespertide_core::TableConstraint> =
-            if let MigrationAction::AddConstraint { table, .. } = action {
+            if let Some(table) = action_table {
                 plan.actions[i + 1..]
                     .iter()
                     .filter_map(|a| {
@@ -762,6 +786,104 @@ mod tests {
 
         let sql = collect_all_sql(&result, backend);
         with_settings!({ snapshot_suffix => format!("dup_fk_{}", label) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    // ── Two NOT NULL AddColumns with inline index + AddConstraint ────────
+
+    /// Regression test: when two NOT NULL columns with inline `index: true`
+    /// are added sequentially, the second AddColumn triggers a SQLite temp
+    /// table rebuild. At that point the evolving schema already contains the
+    /// first column's index (from normalization). Without pending constraint
+    /// awareness, the rebuild recreates that index, and the later
+    /// AddConstraint for the same index fails with "index already exists".
+    #[rstest]
+    #[case::postgres("postgres", DatabaseBackend::Postgres)]
+    #[case::mysql("mysql", DatabaseBackend::MySql)]
+    #[case::sqlite("sqlite", DatabaseBackend::Sqlite)]
+    fn test_two_not_null_add_columns_with_inline_index_no_duplicate(
+        #[case] label: &str,
+        #[case] backend: DatabaseBackend,
+    ) {
+        use vespertide_core::schema::str_or_bool::StrOrBoolOrArray;
+        use vespertide_core::DefaultValue;
+
+        let schema = vec![TableDef {
+            name: "article".into(),
+            description: None,
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("title", ColumnType::Simple(SimpleColumnType::Text)),
+            ],
+            constraints: vec![],
+        }];
+
+        let plan = MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![
+                // 1. Add NOT NULL column with inline index
+                MigrationAction::AddColumn {
+                    table: "article".into(),
+                    column: Box::new(ColumnDef {
+                        name: "category_pinned".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Boolean),
+                        nullable: false,
+                        default: Some(DefaultValue::Bool(false)),
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: Some(StrOrBoolOrArray::Bool(true)),
+                        foreign_key: None,
+                    }),
+                    fill_with: None,
+                },
+                // 2. Add another NOT NULL column with inline index
+                MigrationAction::AddColumn {
+                    table: "article".into(),
+                    column: Box::new(ColumnDef {
+                        name: "main_pinned".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Boolean),
+                        nullable: false,
+                        default: Some(DefaultValue::Bool(false)),
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: Some(StrOrBoolOrArray::Bool(true)),
+                        foreign_key: None,
+                    }),
+                    fill_with: None,
+                },
+                // 3. AddConstraint for main_pinned index
+                MigrationAction::AddConstraint {
+                    table: "article".into(),
+                    constraint: TableConstraint::Index {
+                        name: None,
+                        columns: vec!["main_pinned".into()],
+                    },
+                },
+                // 4. AddConstraint for category_pinned index
+                MigrationAction::AddConstraint {
+                    table: "article".into(),
+                    constraint: TableConstraint::Index {
+                        name: None,
+                        columns: vec!["category_pinned".into()],
+                    },
+                },
+            ],
+        };
+
+        let result = build_plan_queries(&plan, &schema).unwrap();
+
+        // Core invariant: no duplicate indexes across actions
+        assert_no_duplicate_indexes_per_action(&result);
+        assert_no_orphan_duplicate_indexes(&result);
+
+        let sql = collect_all_sql(&result, backend);
+        with_settings!({ snapshot_suffix => format!("two_not_null_inline_index_{}", label) }, {
             assert_snapshot!(sql);
         });
     }

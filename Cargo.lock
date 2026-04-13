@@ -3713,7 +3713,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide"
-version = "0.1.55"
+version = "0.1.56"
 dependencies = [
  "sea-orm",
  "tokio",
@@ -3723,7 +3723,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-cli"
-version = "0.1.55"
+version = "0.1.56"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -3752,7 +3752,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-config"
-version = "0.1.55"
+version = "0.1.56"
 dependencies = [
  "clap",
  "schemars",
@@ -3762,7 +3762,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-core"
-version = "0.1.55"
+version = "0.1.56"
 dependencies = [
  "rstest",
  "schemars",
@@ -3774,7 +3774,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-exporter"
-version = "0.1.55"
+version = "0.1.56"
 dependencies = [
  "insta",
  "rstest",
@@ -3786,7 +3786,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-loader"
-version = "0.1.55"
+version = "0.1.56"
 dependencies = [
  "anyhow",
  "rstest",
@@ -3801,7 +3801,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-macro"
-version = "0.1.55"
+version = "0.1.56"
 dependencies = [
  "proc-macro2",
  "runtime-macros",
@@ -3816,11 +3816,11 @@ dependencies = [
 
 [[package]]
 name = "vespertide-naming"
-version = "0.1.55"
+version = "0.1.56"
 
 [[package]]
 name = "vespertide-planner"
-version = "0.1.55"
+version = "0.1.56"
 dependencies = [
  "insta",
  "rstest",
@@ -3831,7 +3831,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-query"
-version = "0.1.55"
+version = "0.1.56"
 dependencies = [
  "insta",
  "rstest",
