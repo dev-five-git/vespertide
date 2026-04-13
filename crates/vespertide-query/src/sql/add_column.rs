@@ -286,7 +286,14 @@ mod tests {
             foreign_key: None,
         };
         let current_schema = vec![]; // Empty schema - table not found
-        let result = build_add_column(&DatabaseBackend::Sqlite, "users", &column, None, &current_schema, &[]);
+        let result = build_add_column(
+            &DatabaseBackend::Sqlite,
+            "users",
+            &column,
+            None,
+            &current_schema,
+            &[],
+        );
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Table 'users' not found in current schema"));
@@ -321,7 +328,14 @@ mod tests {
             }],
             constraints: vec![],
         }];
-        let result = build_add_column(&DatabaseBackend::Sqlite, "users", &column, None, &current_schema, &[]);
+        let result = build_add_column(
+            &DatabaseBackend::Sqlite,
+            "users",
+            &column,
+            None,
+            &current_schema,
+            &[],
+        );
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -362,7 +376,14 @@ mod tests {
             }],
             constraints: vec![],
         }];
-        let result = build_add_column(&DatabaseBackend::Sqlite, "users", &column, None, &current_schema, &[]);
+        let result = build_add_column(
+            &DatabaseBackend::Sqlite,
+            "users",
+            &column,
+            None,
+            &current_schema,
+            &[],
+        );
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -408,7 +429,14 @@ mod tests {
                 columns: vec!["id".into()],
             }],
         }];
-        let result = build_add_column(&DatabaseBackend::Sqlite, "users", &column, None, &current_schema, &[]);
+        let result = build_add_column(
+            &DatabaseBackend::Sqlite,
+            "users",
+            &column,
+            None,
+            &current_schema,
+            &[],
+        );
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -621,7 +649,8 @@ mod tests {
             }],
             constraints: vec![],
         }];
-        let result = build_add_column(&backend, "project", &column, None, &current_schema, &[]).unwrap();
+        let result =
+            build_add_column(&backend, "project", &column, None, &current_schema, &[]).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))

@@ -1,10 +1,10 @@
 use vespertide_core::{MigrationAction, MigrationPlan, TableDef};
 use vespertide_planner::apply_action;
 
-use crate::error::QueryError;
-use crate::sql::build_action_queries_with_pending;
-use crate::sql::BuiltQuery;
 use crate::DatabaseBackend;
+use crate::error::QueryError;
+use crate::sql::BuiltQuery;
+use crate::sql::build_action_queries_with_pending;
 
 pub struct PlanQueries {
     pub action: MigrationAction,
@@ -806,8 +806,8 @@ mod tests {
         #[case] label: &str,
         #[case] backend: DatabaseBackend,
     ) {
-        use vespertide_core::schema::str_or_bool::StrOrBoolOrArray;
         use vespertide_core::DefaultValue;
+        use vespertide_core::schema::str_or_bool::StrOrBoolOrArray;
 
         let schema = vec![TableDef {
             name: "article".into(),

@@ -561,13 +561,22 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
             }
 
             // Added columns
-            // Note: Inline foreign keys are already converted to TableConstraint::ForeignKey
-            // by normalize(), so they will be handled in the constraint diff below.
+            // Inline constraints (index, unique, foreign_key, primary_key) are already
+            // promoted to table-level TableConstraint entries by normalize(), so they
+            // will be emitted as separate AddConstraint actions in the constraint diff
+            // below. Strip them from the column def to prevent apply_action's normalize()
+            // from adding phantom constraints to the evolving schema, which would cause
+            // premature index recreation during SQLite temp table rebuilds.
             for (col, def) in &to_cols {
                 if !from_cols.contains_key(col) {
+                    let mut col_def = (*def).clone();
+                    col_def.primary_key = None;
+                    col_def.unique = None;
+                    col_def.index = None;
+                    col_def.foreign_key = None;
                     actions.push(MigrationAction::AddColumn {
                         table: name.to_string(),
-                        column: Box::new((*def).clone()),
+                        column: Box::new(col_def),
                         fill_with: None,
                     });
                 }

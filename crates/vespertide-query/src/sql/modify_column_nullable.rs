@@ -12,6 +12,7 @@ use crate::error::QueryError;
 
 /// Build SQL for changing column nullability.
 /// For nullable -> non-nullable transitions, fill_with should be provided to update NULL values.
+#[allow(clippy::too_many_arguments)]
 pub fn build_modify_column_nullable(
     backend: &DatabaseBackend,
     table: &str,
@@ -215,7 +216,16 @@ mod tests {
             vec![],
         )];
 
-        let result = build_modify_column_nullable(&backend, "users", "email", nullable, fill_with, false, &schema, &[]);
+        let result = build_modify_column_nullable(
+            &backend,
+            "users",
+            "email",
+            nullable,
+            fill_with,
+            false,
+            &schema,
+            &[],
+        );
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -284,8 +294,16 @@ mod tests {
             vec![],
         )];
 
-        let result =
-            build_modify_column_nullable(&backend, "users", "email", false, None, false, &schema, &[]);
+        let result = build_modify_column_nullable(
+            &backend,
+            "users",
+            "email",
+            false,
+            None,
+            false,
+            &schema,
+            &[],
+        );
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Column 'email' not found"));
@@ -309,8 +327,16 @@ mod tests {
             }],
         )];
 
-        let result =
-            build_modify_column_nullable(&backend, "users", "email", false, None, false, &schema, &[]);
+        let result = build_modify_column_nullable(
+            &backend,
+            "users",
+            "email",
+            false,
+            None,
+            false,
+            &schema,
+            &[],
+        );
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -358,7 +384,16 @@ mod tests {
             vec![],
         )];
 
-        let result = build_modify_column_nullable(&backend, "orders", "paid_at", false, Some("NOW()"), false, &schema, &[]);
+        let result = build_modify_column_nullable(
+            &backend,
+            "orders",
+            "paid_at",
+            false,
+            Some("NOW()"),
+            false,
+            &schema,
+            &[],
+        );
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -411,8 +446,16 @@ mod tests {
             vec![],
         )];
 
-        let result =
-            build_modify_column_nullable(&backend, "users", "email", false, None, false, &schema, &[]);
+        let result = build_modify_column_nullable(
+            &backend,
+            "users",
+            "email",
+            false,
+            None,
+            false,
+            &schema,
+            &[],
+        );
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -459,8 +502,16 @@ mod tests {
             vec![],
         )];
 
-        let result =
-            build_modify_column_nullable(&backend, "orders", "user_id", false, None, true, &schema, &[]);
+        let result = build_modify_column_nullable(
+            &backend,
+            "orders",
+            "user_id",
+            false,
+            None,
+            true,
+            &schema,
+            &[],
+        );
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -516,8 +567,16 @@ mod tests {
             vec![],
         )];
 
-        let result =
-            build_modify_column_nullable(&backend, "orders", "user_id", true, None, true, &schema, &[]);
+        let result = build_modify_column_nullable(
+            &backend,
+            "orders",
+            "user_id",
+            true,
+            None,
+            true,
+            &schema,
+            &[],
+        );
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries

@@ -378,7 +378,15 @@ mod tests {
             constraints: vec![],
         }];
 
-        let result = build_modify_column_type(&backend, "users", "age", &ColumnType::Complex(ComplexColumnType::Varchar { length: 50 }), None, &current_schema, &[]);
+        let result = build_modify_column_type(
+            &backend,
+            "users",
+            "age",
+            &ColumnType::Complex(ComplexColumnType::Varchar { length: 50 }),
+            None,
+            &current_schema,
+            &[],
+        );
 
         // SQLite may return multiple queries
         let sql = result
@@ -405,7 +413,15 @@ mod tests {
 
     #[test]
     fn test_modify_column_type_table_not_found() {
-        let result = build_modify_column_type(&DatabaseBackend::Sqlite, "nonexistent_table", "age", &ColumnType::Simple(SimpleColumnType::BigInt), None, &[], &[]);
+        let result = build_modify_column_type(
+            &DatabaseBackend::Sqlite,
+            "nonexistent_table",
+            "age",
+            &ColumnType::Simple(SimpleColumnType::BigInt),
+            None,
+            &[],
+            &[],
+        );
         assert!(result.is_err());
         assert!(
             result
@@ -433,7 +449,15 @@ mod tests {
             }],
             constraints: vec![],
         }];
-        let result = build_modify_column_type(&DatabaseBackend::Sqlite, "users", "nonexistent_column", &ColumnType::Simple(SimpleColumnType::BigInt), None, &current_schema, &[]);
+        let result = build_modify_column_type(
+            &DatabaseBackend::Sqlite,
+            "users",
+            "nonexistent_column",
+            &ColumnType::Simple(SimpleColumnType::BigInt),
+            None,
+            &current_schema,
+            &[],
+        );
         assert!(result.is_err());
         assert!(
             result
@@ -493,7 +517,15 @@ mod tests {
             }],
         }];
 
-        let result = build_modify_column_type(&backend, "users", "age", &ColumnType::Simple(SimpleColumnType::BigInt), None, &current_schema, &[])
+        let result = build_modify_column_type(
+            &backend,
+            "users",
+            "age",
+            &ColumnType::Simple(SimpleColumnType::BigInt),
+            None,
+            &current_schema,
+            &[],
+        )
         .unwrap();
 
         let sql = result
@@ -566,7 +598,15 @@ mod tests {
             }],
         }];
 
-        let result = build_modify_column_type(&backend, "users", "email", &ColumnType::Complex(ComplexColumnType::Varchar { length: 255 }), None, &current_schema, &[])
+        let result = build_modify_column_type(
+            &backend,
+            "users",
+            "email",
+            &ColumnType::Complex(ComplexColumnType::Varchar { length: 255 }),
+            None,
+            &current_schema,
+            &[],
+        )
         .unwrap();
 
         let sql = result
@@ -771,7 +811,15 @@ mod tests {
             constraints: vec![],
         }];
 
-        let result = build_modify_column_type(&backend, "users", "status", &new_type, None, &current_schema, &[])
+        let result = build_modify_column_type(
+            &backend,
+            "users",
+            "status",
+            &new_type,
+            None,
+            &current_schema,
+            &[],
+        )
         .unwrap();
 
         let sql = result
@@ -830,7 +878,15 @@ mod tests {
             ]),
         });
 
-        let result = build_modify_column_type(&backend, "reservation_session", "status", &new_type, None, &current_schema, &[])
+        let result = build_modify_column_type(
+            &backend,
+            "reservation_session",
+            "status",
+            &new_type,
+            None,
+            &current_schema,
+            &[],
+        )
         .unwrap();
 
         let sql = result
@@ -967,7 +1023,15 @@ mod tests {
             constraints: vec![],
         }];
 
-        let result = build_modify_column_type(&backend, "users", "status", &new_type, Some(&fill_with_map), &current_schema, &[])
+        let result = build_modify_column_type(
+            &backend,
+            "users",
+            "status",
+            &new_type,
+            Some(&fill_with_map),
+            &current_schema,
+            &[],
+        )
         .unwrap();
 
         let sql = result
