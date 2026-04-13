@@ -17,6 +17,7 @@ pub fn build_modify_column_default(
     column: &str,
     new_default: Option<&str>,
     current_schema: &[TableDef],
+    pending_constraints: &[vespertide_core::TableConstraint],
 ) -> Result<Vec<BuiltQuery>, QueryError> {
     let mut queries = Vec::new();
 
@@ -142,7 +143,7 @@ pub fn build_modify_column_default(
             queries.extend(recreate_indexes_after_rebuild(
                 table,
                 &table_def.constraints,
-                &[],
+                pending_constraints,
             ));
         }
     }
@@ -204,7 +205,8 @@ mod tests {
             vec![],
         )];
 
-        let result = build_modify_column_default(&backend, "users", "email", new_default, &schema);
+        let result =
+            build_modify_column_default(&backend, "users", "email", new_default, &schema, &[]);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -244,7 +246,7 @@ mod tests {
         }
 
         let result =
-            build_modify_column_default(&backend, "users", "email", Some("'default'"), &[]);
+            build_modify_column_default(&backend, "users", "email", Some("'default'"), &[], &[]);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Table 'users' not found"));
@@ -272,8 +274,14 @@ mod tests {
             vec![],
         )];
 
-        let result =
-            build_modify_column_default(&backend, "users", "email", Some("'default'"), &schema);
+        let result = build_modify_column_default(
+            &backend,
+            "users",
+            "email",
+            Some("'default'"),
+            &schema,
+            &[],
+        );
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Column 'email' not found"));
@@ -301,6 +309,7 @@ mod tests {
             "status", // column not in schema
             Some("'active'"),
             &schema,
+            &[],
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
@@ -338,6 +347,7 @@ mod tests {
             "email",
             Some("'default@example.com'"),
             &schema,
+            &[],
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
@@ -391,6 +401,7 @@ mod tests {
             "email",
             Some("'new@example.com'"),
             &schema,
+            &[],
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
@@ -434,7 +445,7 @@ mod tests {
         )];
 
         let result =
-            build_modify_column_default(&backend, "products", "quantity", Some("0"), &schema);
+            build_modify_column_default(&backend, "products", "quantity", Some("0"), &schema, &[]);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -477,7 +488,7 @@ mod tests {
         )];
 
         let result =
-            build_modify_column_default(&backend, "users", "is_active", Some("true"), &schema);
+            build_modify_column_default(&backend, "users", "is_active", Some("true"), &schema, &[]);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -531,6 +542,7 @@ mod tests {
             "created_at",
             Some(default_value),
             &schema,
+            &[],
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
@@ -573,8 +585,12 @@ mod tests {
         )];
 
         let result = build_modify_column_default(
-            &backend, "orders", "status", None, // Drop default
+            &backend,
+            "orders",
+            "status",
+            None, // Drop default
             &schema,
+            &[],
         );
         assert!(result.is_ok());
         let queries = result.unwrap();

@@ -21,6 +21,7 @@ pub fn build_delete_column(
     column: &str,
     column_type: Option<&ColumnType>,
     current_schema: &[TableDef],
+    pending_constraints: &[vespertide_core::TableConstraint],
 ) -> Vec<BuiltQuery> {
     let mut stmts = Vec::new();
 
@@ -35,7 +36,13 @@ pub fn build_delete_column(
             && let ColumnType::Complex(vespertide_core::ComplexColumnType::Enum { .. }) =
                 &col_def.r#type
         {
-            return build_delete_column_sqlite_temp_table(table, column, table_def, column_type);
+            return build_delete_column_sqlite_temp_table(
+                table,
+                column,
+                table_def,
+                column_type,
+                pending_constraints,
+            );
         }
 
         // Handle constraints referencing the deleted column
@@ -51,6 +58,7 @@ pub fn build_delete_column(
                             column,
                             table_def,
                             column_type,
+                            pending_constraints,
                         );
                     }
                     continue;
@@ -64,6 +72,7 @@ pub fn build_delete_column(
                         column,
                         table_def,
                         column_type,
+                        pending_constraints,
                     );
                 }
                 // Unique/Index: drop the index first, then drop column below
@@ -123,6 +132,7 @@ fn build_delete_column_sqlite_temp_table(
     column: &str,
     table_def: &TableDef,
     column_type: Option<&ColumnType>,
+    pending_constraints: &[vespertide_core::TableConstraint],
 ) -> Vec<BuiltQuery> {
     let mut stmts = Vec::new();
     let temp_table = format!("{}_temp", table);
@@ -183,7 +193,11 @@ fn build_delete_column_sqlite_temp_table(
     stmts.push(build_rename_table(&temp_table, table));
 
     // 5. Recreate indexes (both regular and UNIQUE) that don't reference the deleted column
-    stmts.extend(recreate_indexes_after_rebuild(table, &new_constraints, &[]));
+    stmts.extend(recreate_indexes_after_rebuild(
+        table,
+        &new_constraints,
+        pending_constraints,
+    ));
 
     // If column type is an enum, drop the type after (PostgreSQL only, but include for completeness)
     if let Some(col_type) = column_type
@@ -238,7 +252,7 @@ mod tests {
         #[case] backend: DatabaseBackend,
         #[case] expected: &[&str],
     ) {
-        let result = build_delete_column(&backend, "users", "email", None, &[]);
+        let result = build_delete_column(&backend, "users", "email", None, &[], &[]);
         let sql = result[0].build(backend);
         for exp in expected {
             assert!(
@@ -268,6 +282,7 @@ mod tests {
             "status",
             Some(&enum_type),
             &[],
+            &[],
         );
 
         // Should have 2 statements: ALTER TABLE and DROP TYPE
@@ -293,6 +308,7 @@ mod tests {
             "name",
             Some(&text_type),
             &[],
+            &[],
         );
 
         // Should only have 1 statement: ALTER TABLE
@@ -315,8 +331,14 @@ mod tests {
             }],
         }];
 
-        let result =
-            build_delete_column(&DatabaseBackend::Sqlite, "gift", "gift_code", None, &schema);
+        let result = build_delete_column(
+            &DatabaseBackend::Sqlite,
+            "gift",
+            "gift_code",
+            None,
+            &schema,
+            &[],
+        );
 
         // Should have 2 statements: DROP INDEX then ALTER TABLE DROP COLUMN
         assert_eq!(result.len(), 2);
@@ -357,7 +379,14 @@ mod tests {
             }],
         }];
 
-        let result = build_delete_column(&DatabaseBackend::Sqlite, "users", "email", None, &schema);
+        let result = build_delete_column(
+            &DatabaseBackend::Sqlite,
+            "users",
+            "email",
+            None,
+            &schema,
+            &[],
+        );
 
         // Should have 2 statements: DROP INDEX then ALTER TABLE DROP COLUMN
         assert_eq!(result.len(), 2);
@@ -392,6 +421,7 @@ mod tests {
             "gift_code",
             None,
             &schema,
+            &[],
         );
 
         // Should have only 1 statement: ALTER TABLE DROP COLUMN
@@ -417,8 +447,14 @@ mod tests {
             }],
         }];
 
-        let result =
-            build_delete_column(&DatabaseBackend::Sqlite, "gift", "gift_code", None, &schema);
+        let result = build_delete_column(
+            &DatabaseBackend::Sqlite,
+            "gift",
+            "gift_code",
+            None,
+            &schema,
+            &[],
+        );
 
         assert_eq!(result.len(), 2);
 
@@ -452,8 +488,14 @@ mod tests {
             }],
         }];
 
-        let result =
-            build_delete_column(&DatabaseBackend::Sqlite, "gift", "sender_id", None, &schema);
+        let result = build_delete_column(
+            &DatabaseBackend::Sqlite,
+            "gift",
+            "sender_id",
+            None,
+            &schema,
+            &[],
+        );
 
         // Should use temp table approach:
         // 1. CREATE TABLE gift_temp (without sender_id column)
@@ -535,8 +577,14 @@ mod tests {
             ],
         }];
 
-        let result =
-            build_delete_column(&DatabaseBackend::Sqlite, "gift", "sender_id", None, &schema);
+        let result = build_delete_column(
+            &DatabaseBackend::Sqlite,
+            "gift",
+            "sender_id",
+            None,
+            &schema,
+            &[],
+        );
 
         let all_sql: Vec<String> = result
             .iter()
@@ -589,6 +637,7 @@ mod tests {
             "sender_id",
             None,
             &schema,
+            &[],
         );
 
         // Should have only 1 statement: ALTER TABLE DROP COLUMN
@@ -634,6 +683,7 @@ mod tests {
             "product_id",
             None,
             &schema,
+            &[],
         );
 
         // Should use temp table approach
@@ -677,8 +727,14 @@ mod tests {
         }];
 
         // Delete nickname, which does NOT have the unique constraint
-        let result =
-            build_delete_column(&DatabaseBackend::Sqlite, "users", "nickname", None, &schema);
+        let result = build_delete_column(
+            &DatabaseBackend::Sqlite,
+            "users",
+            "nickname",
+            None,
+            &schema,
+            &[],
+        );
 
         // Should only have 1 statement: ALTER TABLE DROP COLUMN (no DROP INDEX needed)
         assert_eq!(
@@ -744,8 +800,14 @@ mod tests {
             ],
         }];
 
-        let result =
-            build_delete_column(&DatabaseBackend::Sqlite, "orders", "user_id", None, &schema);
+        let result = build_delete_column(
+            &DatabaseBackend::Sqlite,
+            "orders",
+            "user_id",
+            None,
+            &schema,
+            &[],
+        );
 
         let all_sql: Vec<String> = result
             .iter()
@@ -815,7 +877,7 @@ mod tests {
             }],
         }];
 
-        let result = build_delete_column(&backend, "users", "email", None, &schema);
+        let result = build_delete_column(&backend, "users", "email", None, &schema, &[]);
         let sql = build_sql_snapshot(&result, backend);
 
         with_settings!({ snapshot_suffix => format!("delete_column_with_unique_{}", title) }, {
@@ -848,7 +910,7 @@ mod tests {
             }],
         }];
 
-        let result = build_delete_column(&backend, "posts", "created_at", None, &schema);
+        let result = build_delete_column(&backend, "posts", "created_at", None, &schema, &[]);
         let sql = build_sql_snapshot(&result, backend);
 
         with_settings!({ snapshot_suffix => format!("delete_column_with_index_{}", title) }, {
@@ -882,7 +944,7 @@ mod tests {
             }],
         }];
 
-        let result = build_delete_column(&backend, "orders", "user_id", None, &schema);
+        let result = build_delete_column(&backend, "orders", "user_id", None, &schema, &[]);
         let sql = build_sql_snapshot(&result, backend);
 
         with_settings!({ snapshot_suffix => format!("delete_column_with_fk_{}", title) }, {
@@ -912,7 +974,7 @@ mod tests {
             }],
         }];
 
-        let result = build_delete_column(&backend, "order_items", "product_id", None, &schema);
+        let result = build_delete_column(&backend, "order_items", "product_id", None, &schema, &[]);
         let sql = build_sql_snapshot(&result, backend);
 
         with_settings!({ snapshot_suffix => format!("delete_column_with_pk_{}", title) }, {
@@ -957,7 +1019,7 @@ mod tests {
             ],
         }];
 
-        let result = build_delete_column(&backend, "orders", "user_id", None, &schema);
+        let result = build_delete_column(&backend, "orders", "user_id", None, &schema, &[]);
         let sql = build_sql_snapshot(&result, backend);
 
         with_settings!({ snapshot_suffix => format!("delete_column_with_fk_and_index_{}", title) }, {
@@ -1005,6 +1067,7 @@ mod tests {
             "user_id",
             Some(&enum_type),
             &schema,
+            &[],
         );
 
         // Should use temp table approach (FK triggers it) + DROP TYPE at end
@@ -1063,8 +1126,14 @@ mod tests {
         }];
 
         // Delete amount column — CHECK references it, so temp table is needed
-        let result =
-            build_delete_column(&DatabaseBackend::Sqlite, "orders", "amount", None, &schema);
+        let result = build_delete_column(
+            &DatabaseBackend::Sqlite,
+            "orders",
+            "amount",
+            None,
+            &schema,
+            &[],
+        );
 
         // Should use temp table approach (CREATE temp, INSERT, DROP, RENAME)
         assert!(
@@ -1106,7 +1175,14 @@ mod tests {
         }];
 
         // Delete "note" column — CHECK only references "amount", not "note"
-        let result = build_delete_column(&DatabaseBackend::Sqlite, "orders", "note", None, &schema);
+        let result = build_delete_column(
+            &DatabaseBackend::Sqlite,
+            "orders",
+            "note",
+            None,
+            &schema,
+            &[],
+        );
 
         assert_eq!(
             result.len(),

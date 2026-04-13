@@ -13,6 +13,7 @@ pub fn build_remove_constraint(
     table: &str,
     constraint: &TableConstraint,
     current_schema: &[TableDef],
+    pending_constraints: &[TableConstraint],
 ) -> Result<Vec<BuiltQuery>, QueryError> {
     match constraint {
         TableConstraint::PrimaryKey { .. } => {
@@ -63,8 +64,11 @@ pub fn build_remove_constraint(
                 let rename_query = build_rename_table(&temp_table, table);
 
                 // 5. Recreate indexes (both regular and UNIQUE)
-                let index_queries =
-                    recreate_indexes_after_rebuild(table, &table_def.constraints, &[]);
+                let index_queries = recreate_indexes_after_rebuild(
+                    table,
+                    &table_def.constraints,
+                    pending_constraints,
+                );
 
                 let mut queries = vec![create_query, insert_query, drop_query, rename_query];
                 queries.extend(index_queries);
@@ -153,7 +157,8 @@ pub fn build_remove_constraint(
                 let rename_query = build_rename_table(&temp_table, table);
 
                 // 5. Recreate indexes (both regular and UNIQUE, from new_constraints which has the unique removed)
-                let index_queries = recreate_indexes_after_rebuild(table, &new_constraints, &[]);
+                let index_queries =
+                    recreate_indexes_after_rebuild(table, &new_constraints, pending_constraints);
 
                 let mut queries = vec![create_query, insert_query, drop_query, rename_query];
                 queries.extend(index_queries);
@@ -248,8 +253,11 @@ pub fn build_remove_constraint(
                 let rename_query = build_rename_table(&temp_table, table);
 
                 // 5. Recreate indexes (both regular and UNIQUE)
-                let index_queries =
-                    recreate_indexes_after_rebuild(table, &table_def.constraints, &[]);
+                let index_queries = recreate_indexes_after_rebuild(
+                    table,
+                    &table_def.constraints,
+                    pending_constraints,
+                );
 
                 let mut queries = vec![create_query, insert_query, drop_query, rename_query];
                 queries.extend(index_queries);
@@ -335,8 +343,11 @@ pub fn build_remove_constraint(
                 let rename_query = build_rename_table(&temp_table, table);
 
                 // 5. Recreate indexes (both regular and UNIQUE)
-                let index_queries =
-                    recreate_indexes_after_rebuild(table, &table_def.constraints, &[]);
+                let index_queries = recreate_indexes_after_rebuild(
+                    table,
+                    &table_def.constraints,
+                    pending_constraints,
+                );
 
                 let mut queries = vec![create_query, insert_query, drop_query, rename_query];
                 queries.extend(index_queries);
@@ -526,7 +537,7 @@ mod tests {
         }];
 
         let result =
-            build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+            build_remove_constraint(&backend, "users", &constraint, &current_schema, &[]).unwrap();
         let sql = result[0].build(backend);
         for exp in expected {
             assert!(
@@ -554,6 +565,7 @@ mod tests {
             "nonexistent_table",
             &constraint,
             &[], // Empty schema
+            &[],
         );
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -594,7 +606,7 @@ mod tests {
         }];
 
         let result =
-            build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+            build_remove_constraint(&backend, "users", &constraint, &current_schema, &[]).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -645,7 +657,7 @@ mod tests {
         }];
 
         let result =
-            build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+            build_remove_constraint(&backend, "users", &constraint, &current_schema, &[]).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -674,6 +686,7 @@ mod tests {
             "nonexistent_table",
             &constraint,
             &[], // Empty schema
+            &[],
         );
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -721,7 +734,7 @@ mod tests {
         }];
 
         let result =
-            build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+            build_remove_constraint(&backend, "users", &constraint, &current_schema, &[]).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -785,7 +798,7 @@ mod tests {
         }];
 
         let result =
-            build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+            build_remove_constraint(&backend, "users", &constraint, &current_schema, &[]).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -851,7 +864,7 @@ mod tests {
         }];
 
         let result =
-            build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+            build_remove_constraint(&backend, "users", &constraint, &current_schema, &[]).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -884,6 +897,7 @@ mod tests {
             "nonexistent_table",
             &constraint,
             &[], // Empty schema
+            &[],
         );
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -935,7 +949,7 @@ mod tests {
         }];
 
         let result =
-            build_remove_constraint(&backend, "posts", &constraint, &current_schema).unwrap();
+            build_remove_constraint(&backend, "posts", &constraint, &current_schema, &[]).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -1003,7 +1017,7 @@ mod tests {
         }];
 
         let result =
-            build_remove_constraint(&backend, "posts", &constraint, &current_schema).unwrap();
+            build_remove_constraint(&backend, "posts", &constraint, &current_schema, &[]).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -1071,7 +1085,7 @@ mod tests {
         }];
 
         let result =
-            build_remove_constraint(&backend, "posts", &constraint, &current_schema).unwrap();
+            build_remove_constraint(&backend, "posts", &constraint, &current_schema, &[]).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -1100,6 +1114,7 @@ mod tests {
             "nonexistent_table",
             &constraint,
             &[], // Empty schema
+            &[],
         );
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -1153,7 +1168,7 @@ mod tests {
         }];
 
         let result =
-            build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+            build_remove_constraint(&backend, "users", &constraint, &current_schema, &[]).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -1217,7 +1232,7 @@ mod tests {
         }];
 
         let result =
-            build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+            build_remove_constraint(&backend, "users", &constraint, &current_schema, &[]).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -1285,7 +1300,7 @@ mod tests {
         }];
 
         let result =
-            build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+            build_remove_constraint(&backend, "users", &constraint, &current_schema, &[]).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -1359,7 +1374,7 @@ mod tests {
         }];
 
         let result =
-            build_remove_constraint(&backend, "posts", &constraint, &current_schema).unwrap();
+            build_remove_constraint(&backend, "posts", &constraint, &current_schema, &[]).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -1425,7 +1440,7 @@ mod tests {
         }];
 
         let result =
-            build_remove_constraint(&backend, "users", &constraint, &current_schema).unwrap();
+            build_remove_constraint(&backend, "users", &constraint, &current_schema, &[]).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -1463,9 +1478,14 @@ mod tests {
             }],
             constraints: vec![constraint.clone()],
         }];
-        let result =
-            build_remove_constraint(&DatabaseBackend::Postgres, "orders", &constraint, &schema)
-                .unwrap();
+        let result = build_remove_constraint(
+            &DatabaseBackend::Postgres,
+            "orders",
+            &constraint,
+            &schema,
+            &[],
+        )
+        .unwrap();
         assert_eq!(result.len(), 1);
         let sql = result[0].build(DatabaseBackend::Postgres);
         assert!(sql.contains("ALTER TABLE \"orders\" DROP CONSTRAINT \"orders_pkey\""));
@@ -1495,7 +1515,7 @@ mod tests {
             constraints: vec![constraint.clone()],
         }];
         let result =
-            build_remove_constraint(&DatabaseBackend::MySql, "orders", &constraint, &schema)
+            build_remove_constraint(&DatabaseBackend::MySql, "orders", &constraint, &schema, &[])
                 .unwrap();
         assert_eq!(result.len(), 1);
         let sql = result[0].build(DatabaseBackend::MySql);
@@ -1533,7 +1553,7 @@ mod tests {
             constraints: vec![],
         }];
 
-        let result = build_remove_constraint(&backend, "users", &constraint, &schema);
+        let result = build_remove_constraint(&backend, "users", &constraint, &schema, &[]);
         assert!(result.is_ok());
         let sql = result
             .unwrap()

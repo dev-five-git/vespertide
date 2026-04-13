@@ -63,7 +63,14 @@ pub fn build_action_queries_with_pending(
             table,
             column,
             fill_with,
-        } => build_add_column(backend, table, column, fill_with.as_deref(), current_schema),
+        } => build_add_column(
+            backend,
+            table,
+            column,
+            fill_with.as_deref(),
+            current_schema,
+            pending_constraints,
+        ),
 
         MigrationAction::RenameColumn { table, from, to } => {
             Ok(vec![build_rename_column(table, from, to)])
@@ -82,6 +89,7 @@ pub fn build_action_queries_with_pending(
                 column,
                 column_type,
                 current_schema,
+                pending_constraints,
             ))
         }
 
@@ -97,6 +105,7 @@ pub fn build_action_queries_with_pending(
             new_type,
             fill_with.as_ref(),
             current_schema,
+            pending_constraints,
         ),
 
         MigrationAction::ModifyColumnNullable {
@@ -113,6 +122,7 @@ pub fn build_action_queries_with_pending(
             fill_with.as_deref(),
             delete_null_rows.unwrap_or(false),
             current_schema,
+            pending_constraints,
         ),
 
         MigrationAction::ModifyColumnDefault {
@@ -125,6 +135,7 @@ pub fn build_action_queries_with_pending(
             column,
             new_default.as_deref(),
             current_schema,
+            pending_constraints,
         ),
 
         MigrationAction::ModifyColumnComment {
@@ -151,9 +162,13 @@ pub fn build_action_queries_with_pending(
             pending_constraints,
         ),
 
-        MigrationAction::RemoveConstraint { table, constraint } => {
-            build_remove_constraint(backend, table, constraint, current_schema)
-        }
+        MigrationAction::RemoveConstraint { table, constraint } => build_remove_constraint(
+            backend,
+            table,
+            constraint,
+            current_schema,
+            pending_constraints,
+        ),
     }
 }
 

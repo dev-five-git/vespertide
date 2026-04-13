@@ -37,6 +37,7 @@ pub fn build_add_column(
     column: &ColumnDef,
     fill_with: Option<&str>,
     current_schema: &[TableDef],
+    pending_constraints: &[vespertide_core::TableConstraint],
 ) -> Result<Vec<BuiltQuery>, QueryError> {
     // SQLite: NOT NULL additions or enum columns require table recreation
     // (enum columns need CHECK constraint which requires table recreation in SQLite)
@@ -99,7 +100,9 @@ pub fn build_add_column(
         let rename_query = build_rename_table(&temp_table, table);
 
         // Recreate indexes (both regular and UNIQUE)
-        let index_queries = recreate_indexes_after_rebuild(table, &table_def.constraints, &[]);
+        // Skip pending constraints that will be created by future AddConstraint actions
+        let index_queries =
+            recreate_indexes_after_rebuild(table, &table_def.constraints, pending_constraints);
 
         let mut stmts = vec![create_query, insert_query, drop_query, rename_query];
         stmts.extend(index_queries);
@@ -253,7 +256,7 @@ mod tests {
             constraints: vec![],
         }];
         let result =
-            build_add_column(&backend, "users", &column, fill_with, &current_schema).unwrap();
+            build_add_column(&backend, "users", &column, fill_with, &current_schema, &[]).unwrap();
         let sql = result[0].build(backend);
         for exp in expected {
             assert!(
@@ -289,6 +292,7 @@ mod tests {
             &column,
             None,
             &current_schema,
+            &[],
         );
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -330,6 +334,7 @@ mod tests {
             &column,
             None,
             &current_schema,
+            &[],
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
@@ -377,6 +382,7 @@ mod tests {
             &column,
             None,
             &current_schema,
+            &[],
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
@@ -429,6 +435,7 @@ mod tests {
             &column,
             None,
             &current_schema,
+            &[],
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
@@ -481,7 +488,7 @@ mod tests {
             }],
             constraints: vec![],
         }];
-        let result = build_add_column(&backend, "users", &column, None, &current_schema);
+        let result = build_add_column(&backend, "users", &column, None, &current_schema, &[]);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -538,7 +545,7 @@ mod tests {
             }],
             constraints: vec![],
         }];
-        let result = build_add_column(&backend, "users", &column, None, &current_schema);
+        let result = build_add_column(&backend, "users", &column, None, &current_schema, &[]);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -587,7 +594,7 @@ mod tests {
             }],
             constraints: vec![],
         }];
-        let result = build_add_column(&backend, "users", &column, None, &current_schema);
+        let result = build_add_column(&backend, "users", &column, None, &current_schema, &[]);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -642,7 +649,8 @@ mod tests {
             }],
             constraints: vec![],
         }];
-        let result = build_add_column(&backend, "project", &column, None, &current_schema).unwrap();
+        let result =
+            build_add_column(&backend, "project", &column, None, &current_schema, &[]).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -708,7 +716,7 @@ mod tests {
             constraints: vec![],
         }];
         // fill_with empty string should become ''
-        let result = build_add_column(&backend, "users", &column, Some(""), &current_schema);
+        let result = build_add_column(&backend, "users", &column, Some(""), &current_schema, &[]);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries

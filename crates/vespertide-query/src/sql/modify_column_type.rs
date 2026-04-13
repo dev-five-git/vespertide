@@ -39,6 +39,7 @@ pub fn build_modify_column_type(
     new_type: &ColumnType,
     fill_with: Option<&BTreeMap<String, String>>,
     current_schema: &[TableDef],
+    pending_constraints: &[vespertide_core::TableConstraint],
 ) -> Result<Vec<BuiltQuery>, QueryError> {
     // SQLite does not support direct column type modification, so use temporary table approach
     if *backend == DatabaseBackend::Sqlite {
@@ -99,7 +100,8 @@ pub fn build_modify_column_type(
         let rename_query = build_rename_table(&temp_table, table);
 
         // 5. Recreate indexes (both regular and UNIQUE)
-        let index_queries = recreate_indexes_after_rebuild(table, &table_def.constraints, &[]);
+        let index_queries =
+            recreate_indexes_after_rebuild(table, &table_def.constraints, pending_constraints);
 
         let mut queries = Vec::new();
 
@@ -383,6 +385,7 @@ mod tests {
             &ColumnType::Complex(ComplexColumnType::Varchar { length: 50 }),
             None,
             &current_schema,
+            &[],
         );
 
         // SQLite may return multiple queries
@@ -416,6 +419,7 @@ mod tests {
             "age",
             &ColumnType::Simple(SimpleColumnType::BigInt),
             None,
+            &[],
             &[],
         );
         assert!(result.is_err());
@@ -452,6 +456,7 @@ mod tests {
             &ColumnType::Simple(SimpleColumnType::BigInt),
             None,
             &current_schema,
+            &[],
         );
         assert!(result.is_err());
         assert!(
@@ -519,6 +524,7 @@ mod tests {
             &ColumnType::Simple(SimpleColumnType::BigInt),
             None,
             &current_schema,
+            &[],
         )
         .unwrap();
 
@@ -599,6 +605,7 @@ mod tests {
             &ColumnType::Complex(ComplexColumnType::Varchar { length: 255 }),
             None,
             &current_schema,
+            &[],
         )
         .unwrap();
 
@@ -811,6 +818,7 @@ mod tests {
             &new_type,
             None,
             &current_schema,
+            &[],
         )
         .unwrap();
 
@@ -877,6 +885,7 @@ mod tests {
             &new_type,
             None,
             &current_schema,
+            &[],
         )
         .unwrap();
 
@@ -934,6 +943,7 @@ mod tests {
             }),
             None,
             &[], // Empty schema - old_type will be None
+            &[],
         );
 
         assert!(result.is_ok());
@@ -1020,6 +1030,7 @@ mod tests {
             &new_type,
             Some(&fill_with_map),
             &current_schema,
+            &[],
         )
         .unwrap();
 
