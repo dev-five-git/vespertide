@@ -5163,4 +5163,44 @@ mod tests {
             plan.actions
         );
     }
+
+    #[test]
+    fn diff_mismatched_constraint_types_not_paired() {
+        // Removing a Unique and adding an Index on the same columns should NOT produce
+        // ReplaceConstraint — they are different constraint types (hits _ => false branch).
+        let from = vec![table(
+            "users",
+            vec![col("email", ColumnType::Simple(SimpleColumnType::Text))],
+            vec![TableConstraint::Unique {
+                name: Some("uq_email".into()),
+                columns: vec!["email".into()],
+            }],
+        )];
+        let to = vec![table(
+            "users",
+            vec![col("email", ColumnType::Simple(SimpleColumnType::Text))],
+            vec![idx("ix_email", vec!["email"])],
+        )];
+        let plan = diff_schemas(&from, &to).unwrap();
+        // Should be Remove + Add, not ReplaceConstraint
+        let replace_count = plan
+            .actions
+            .iter()
+            .filter(|a| matches!(a, MigrationAction::ReplaceConstraint { .. }))
+            .count();
+        assert_eq!(
+            replace_count, 0,
+            "Mismatched types should not produce ReplaceConstraint, got: {:?}",
+            plan.actions
+        );
+        assert_eq!(plan.actions.len(), 2);
+        assert!(matches!(
+            &plan.actions[0],
+            MigrationAction::RemoveConstraint { .. }
+        ));
+        assert!(matches!(
+            &plan.actions[1],
+            MigrationAction::AddConstraint { .. }
+        ));
+    }
 }

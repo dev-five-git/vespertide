@@ -368,11 +368,12 @@ mod tests {
     #[case::sqlite(DatabaseBackend::Sqlite)]
     fn replace_unique_constraint(#[case] backend: DatabaseBackend) {
         // Non-FK constraint: PG/MySQL uses remove+add, SQLite uses temp table
-        let schema = vec![TableDef {
-            name: "users".into(),
-            description: None,
-            columns: vec![
-                ColumnDef {
+        // Multi-table schema so the non-target table hits the else branch (t.clone())
+        let schema = vec![
+            TableDef {
+                name: "other".into(),
+                description: None,
+                columns: vec![ColumnDef {
                     name: "id".into(),
                     r#type: ColumnType::Simple(SimpleColumnType::Integer),
                     nullable: false,
@@ -382,30 +383,48 @@ mod tests {
                     unique: None,
                     index: None,
                     foreign_key: None,
-                },
-                ColumnDef {
-                    name: "email".into(),
-                    r#type: ColumnType::Simple(SimpleColumnType::Text),
-                    nullable: false,
-                    default: None,
-                    comment: None,
-                    primary_key: None,
-                    unique: None,
-                    index: None,
-                    foreign_key: None,
-                },
-            ],
-            constraints: vec![
-                TableConstraint::PrimaryKey {
-                    auto_increment: false,
-                    columns: vec!["id".into()],
-                },
-                TableConstraint::Unique {
-                    name: Some("uq_email".into()),
-                    columns: vec!["email".into()],
-                },
-            ],
-        }];
+                }],
+                constraints: vec![],
+            },
+            TableDef {
+                name: "users".into(),
+                description: None,
+                columns: vec![
+                    ColumnDef {
+                        name: "id".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    },
+                    ColumnDef {
+                        name: "email".into(),
+                        r#type: ColumnType::Simple(SimpleColumnType::Text),
+                        nullable: false,
+                        default: None,
+                        comment: None,
+                        primary_key: None,
+                        unique: None,
+                        index: None,
+                        foreign_key: None,
+                    },
+                ],
+                constraints: vec![
+                    TableConstraint::PrimaryKey {
+                        auto_increment: false,
+                        columns: vec!["id".into()],
+                    },
+                    TableConstraint::Unique {
+                        name: Some("uq_email".into()),
+                        columns: vec!["email".into()],
+                    },
+                ],
+            },
+        ];
         let from = TableConstraint::Unique {
             name: Some("uq_email".into()),
             columns: vec!["email".into()],
