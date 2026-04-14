@@ -309,9 +309,8 @@ fn clear_inline_constraint_fields(
                                 if filtered.is_empty() {
                                     col.index = None;
                                 } else if filtered.len() < names.len() {
-                                    col.index = Some(vespertide_core::StrOrBoolOrArray::Array(
-                                        filtered,
-                                    ));
+                                    col.index =
+                                        Some(vespertide_core::StrOrBoolOrArray::Array(filtered));
                                 }
                             }
                             _ => {}
@@ -912,7 +911,7 @@ mod tests {
         // Column with inline index: ["idx_single"]
         let mut col_with_index = col("email", ColumnType::Simple(SimpleColumnType::Text));
         col_with_index.index = Some(vespertide_core::StrOrBoolOrArray::Array(vec![
-            "idx_single".into()
+            "idx_single".into(),
         ]));
 
         let mut schema = vec![table(
@@ -1011,7 +1010,7 @@ mod tests {
         // Column with inline unique: ["uq_email"] (only one item in array)
         let mut col_with_unique = col("email", ColumnType::Simple(SimpleColumnType::Text));
         col_with_unique.unique = Some(vespertide_core::StrOrBoolOrArray::Array(vec![
-            "uq_email".to_string()
+            "uq_email".to_string(),
         ]));
 
         let mut schema = vec![table(

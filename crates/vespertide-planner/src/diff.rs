@@ -39,12 +39,8 @@ fn constraints_same_identity(a: &TableConstraint, b: &TableConstraint) -> bool {
             cols_a == cols_b && rt_a == rt_b && rc_a == rc_b
         }
         (
-            TableConstraint::Check {
-                name: name_a, ..
-            },
-            TableConstraint::Check {
-                name: name_b, ..
-            },
+            TableConstraint::Check { name: name_a, .. },
+            TableConstraint::Check { name: name_b, .. },
         ) => name_a == name_b,
         (
             TableConstraint::Unique {
