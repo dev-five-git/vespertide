@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/replace_constraint.rs
+description: replace FK on_delete for Postgres
+---
+ALTER TABLE "posts" DROP CONSTRAINT "fk_posts__fk_user";
+ALTER TABLE "posts" ADD CONSTRAINT "fk_posts__fk_user" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE

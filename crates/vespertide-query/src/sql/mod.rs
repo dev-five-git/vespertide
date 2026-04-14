@@ -12,6 +12,7 @@ pub mod raw_sql;
 pub mod remove_constraint;
 pub mod rename_column;
 pub mod rename_table;
+pub mod replace_constraint;
 pub mod types;
 
 pub use helpers::*;
@@ -28,7 +29,7 @@ use self::{
     modify_column_nullable::build_modify_column_nullable,
     modify_column_type::build_modify_column_type, raw_sql::build_raw_sql,
     remove_constraint::build_remove_constraint, rename_column::build_rename_column,
-    rename_table::build_rename_table,
+    rename_table::build_rename_table, replace_constraint::build_replace_constraint,
 };
 
 pub fn build_action_queries(
@@ -166,6 +167,15 @@ pub fn build_action_queries_with_pending(
             backend,
             table,
             constraint,
+            current_schema,
+            pending_constraints,
+        ),
+
+        MigrationAction::ReplaceConstraint { table, from, to } => build_replace_constraint(
+            backend,
+            table,
+            from,
+            to,
             current_schema,
             pending_constraints,
         ),

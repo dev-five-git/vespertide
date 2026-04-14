@@ -184,6 +184,19 @@ fn format_action(action: &MigrationAction) -> String {
                 table.bright_cyan()
             )
         }
+        MigrationAction::ReplaceConstraint {
+            table, from, to, ..
+        } => {
+            format!(
+                "{} {} {} {} {} {}",
+                "Replace constraint:".bright_yellow(),
+                format_constraint_type(from).bright_cyan().bold(),
+                "->".bright_white(),
+                format_constraint_type(to).bright_cyan().bold(),
+                "on".bright_white(),
+                table.bright_cyan()
+            )
+        }
     }
 }
 

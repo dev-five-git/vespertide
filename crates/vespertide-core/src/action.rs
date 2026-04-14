@@ -86,6 +86,11 @@ pub enum MigrationAction {
         table: TableName,
         constraint: TableConstraint,
     },
+    ReplaceConstraint {
+        table: TableName,
+        from: TableConstraint,
+        to: TableConstraint,
+    },
     RenameTable {
         from: TableName,
         to: TableName,
@@ -205,6 +210,13 @@ impl MigrationAction {
                 MigrationAction::RemoveConstraint {
                     table: format!("{}{}", prefix, table),
                     constraint: constraint.with_prefix(prefix),
+                }
+            }
+            MigrationAction::ReplaceConstraint { table, from, to } => {
+                MigrationAction::ReplaceConstraint {
+                    table: format!("{}{}", prefix, table),
+                    from: from.with_prefix(prefix),
+                    to: to.with_prefix(prefix),
                 }
             }
             MigrationAction::RenameTable { from, to } => MigrationAction::RenameTable {
@@ -338,6 +350,33 @@ impl fmt::Display for MigrationAction {
                     }
                 };
                 write!(f, "RemoveConstraint: {}.{}", table, constraint_name)
+            }
+            MigrationAction::ReplaceConstraint { table, to, .. } => {
+                let constraint_name = match to {
+                    TableConstraint::PrimaryKey { .. } => "PRIMARY KEY",
+                    TableConstraint::Unique { name, .. } => {
+                        if let Some(n) = name {
+                            return write!(f, "ReplaceConstraint: {}.{} (UNIQUE)", table, n);
+                        }
+                        "UNIQUE"
+                    }
+                    TableConstraint::ForeignKey { name, .. } => {
+                        if let Some(n) = name {
+                            return write!(f, "ReplaceConstraint: {}.{} (FOREIGN KEY)", table, n);
+                        }
+                        "FOREIGN KEY"
+                    }
+                    TableConstraint::Check { name, .. } => {
+                        return write!(f, "ReplaceConstraint: {}.{} (CHECK)", table, name);
+                    }
+                    TableConstraint::Index { name, .. } => {
+                        if let Some(n) = name {
+                            return write!(f, "ReplaceConstraint: {}.{} (INDEX)", table, n);
+                        }
+                        "INDEX"
+                    }
+                };
+                write!(f, "ReplaceConstraint: {}.{}", table, constraint_name)
             }
             MigrationAction::RenameTable { from, to } => {
                 write!(f, "RenameTable: {} -> {}", from, to)

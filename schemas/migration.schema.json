@@ -22,6 +22,11 @@
       ],
       "default": null
     },
+    "id": {
+      "description": "Unique identifier for this migration (UUID format).\nDefaults to empty string for backward compatibility with old migration files.",
+      "type": "string",
+      "default": ""
+    },
     "version": {
       "type": "integer",
       "format": "uint32",
@@ -433,6 +438,16 @@
             "column": {
               "type": "string"
             },
+            "fill_with": {
+              "description": "Mapping of removed enum values to replacement values for safe enum value removal.\ne.g., {\"cancelled\": \"'pending'\"} generates UPDATE before type change.",
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
             "new_type": {
               "$ref": "#/$defs/ColumnType"
             },
@@ -456,6 +471,13 @@
           "properties": {
             "column": {
               "type": "string"
+            },
+            "delete_null_rows": {
+              "description": "When true, rows with NULL values in the column are deleted instead of backfilled.\nMutually exclusive with `fill_with`. Useful for FK columns where a valid fill value\nmay not exist.",
+              "type": [
+                "boolean",
+                "null"
+              ]
             },
             "fill_with": {
               "description": "Required when changing from nullable to non-nullable to backfill existing NULL values.",
@@ -574,6 +596,30 @@
             "type",
             "table",
             "constraint"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "from": {
+              "$ref": "#/$defs/TableConstraint"
+            },
+            "table": {
+              "type": "string"
+            },
+            "to": {
+              "$ref": "#/$defs/TableConstraint"
+            },
+            "type": {
+              "type": "string",
+              "const": "replace_constraint"
+            }
+          },
+          "required": [
+            "type",
+            "table",
+            "from",
+            "to"
           ]
         },
         {

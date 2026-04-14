@@ -1,0 +1,8 @@
+---
+source: crates/vespertide-query/src/sql/replace_constraint.rs
+description: replace FK on_delete for Sqlite
+---
+CREATE TABLE "posts_temp" ( "id" integer NOT NULL, "user_id" integer NOT NULL, PRIMARY KEY ("id"), FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE );
+INSERT INTO "posts_temp" ("id", "user_id") SELECT "id", "user_id" FROM "posts";
+DROP TABLE "posts";
+ALTER TABLE "posts_temp" RENAME TO "posts"

@@ -201,109 +201,124 @@ pub fn apply_action(
                 .find(|t| t.name == *table)
                 .ok_or_else(|| PlannerError::TableNotFound(table.clone()))?;
             tbl.constraints.retain(|c| c != constraint);
+            clear_inline_constraint_fields(table, tbl, constraint);
+            Ok(())
+        }
+        MigrationAction::ReplaceConstraint { table, from, to } => {
+            let tbl = schema
+                .iter_mut()
+                .find(|t| t.name == *table)
+                .ok_or_else(|| PlannerError::TableNotFound(table.clone()))?;
+            // Replace the old constraint with the new one in-place
+            if let Some(existing) = tbl.constraints.iter_mut().find(|c| *c == from) {
+                *existing = to.clone();
+            }
+            // Clear inline fields for the old constraint to prevent normalize()
+            // from re-adding it as a ghost constraint
+            clear_inline_constraint_fields(table, tbl, from);
+            Ok(())
+        }
+    }
+}
 
-            // Also clear inline column fields that correspond to the removed constraint
-            // This ensures normalize() won't re-add the constraint from inline fields
-            match constraint {
-                TableConstraint::Unique { name, columns } => {
-                    // For unnamed single-column unique constraints, clear the column's inline unique
-                    if name.is_none()
-                        && columns.len() == 1
-                        && let Some(col) = tbl.columns.iter_mut().find(|c| c.name == columns[0])
+/// Clear inline column fields that correspond to a constraint.
+/// This ensures normalize() won't re-add the constraint from stale inline fields.
+fn clear_inline_constraint_fields(
+    table: &str,
+    tbl: &mut vespertide_core::TableDef,
+    constraint: &TableConstraint,
+) {
+    match constraint {
+        TableConstraint::Unique { name, columns } => {
+            // For unnamed single-column unique constraints, clear the column's inline unique
+            if name.is_none()
+                && columns.len() == 1
+                && let Some(col) = tbl.columns.iter_mut().find(|c| c.name == columns[0])
+            {
+                col.unique = None;
+            }
+            // For named constraints, clear inline unique references to this constraint name
+            if let Some(constraint_name) = name {
+                for col in &mut tbl.columns {
+                    if let Some(vespertide_core::StrOrBoolOrArray::Array(names)) = &mut col.unique {
+                        names.retain(|n| n != constraint_name);
+                        if names.is_empty() {
+                            col.unique = None;
+                        }
+                    } else if let Some(vespertide_core::StrOrBoolOrArray::Str(n)) = &col.unique
+                        && n == constraint_name
                     {
                         col.unique = None;
                     }
-                    // For named constraints, clear inline unique references to this constraint name
-                    if let Some(constraint_name) = name {
-                        for col in &mut tbl.columns {
-                            if let Some(vespertide_core::StrOrBoolOrArray::Array(names)) =
-                                &mut col.unique
+                }
+            }
+        }
+        TableConstraint::PrimaryKey { columns, .. } => {
+            for col_name in columns {
+                if let Some(col) = tbl.columns.iter_mut().find(|c| &c.name == col_name) {
+                    col.primary_key = None;
+                }
+            }
+        }
+        TableConstraint::ForeignKey { columns, .. } => {
+            for col_name in columns {
+                if let Some(col) = tbl.columns.iter_mut().find(|c| &c.name == col_name) {
+                    col.foreign_key = None;
+                }
+            }
+        }
+        TableConstraint::Check { .. } => {
+            // Check constraints don't have inline representation
+        }
+        TableConstraint::Index { name, columns } => {
+            // Check if this index name was auto-generated for a single column
+            for col in &mut tbl.columns {
+                let auto_name = vespertide_naming::build_index_name(
+                    table,
+                    std::slice::from_ref(&col.name),
+                    None,
+                );
+                if name.as_ref() == Some(&auto_name) {
+                    col.index = None;
+                    break;
+                }
+            }
+            // Also check for single-column unnamed indexes
+            if name.is_none()
+                && columns.len() == 1
+                && let Some(col) = tbl.columns.iter_mut().find(|c| c.name == columns[0])
+            {
+                col.index = None;
+            }
+            // Check for named index matching inline field
+            if let Some(constraint_name) = name {
+                for col in &mut tbl.columns {
+                    if let Some(ref idx_val) = col.index {
+                        match idx_val {
+                            vespertide_core::StrOrBoolOrArray::Str(idx_name)
+                                if idx_name == constraint_name =>
                             {
-                                names.retain(|n| n != constraint_name);
-                                if names.is_empty() {
-                                    col.unique = None;
-                                }
-                            } else if let Some(vespertide_core::StrOrBoolOrArray::Str(n)) =
-                                &col.unique
-                                && n == constraint_name
-                            {
-                                col.unique = None;
+                                col.index = None;
                             }
-                        }
-                    }
-                }
-                TableConstraint::PrimaryKey { columns, .. } => {
-                    // Clear inline primary_key for columns in this constraint
-                    for col_name in columns {
-                        if let Some(col) = tbl.columns.iter_mut().find(|c| &c.name == col_name) {
-                            col.primary_key = None;
-                        }
-                    }
-                }
-                TableConstraint::ForeignKey { columns, .. } => {
-                    // Clear inline foreign_key for columns in this constraint
-                    for col_name in columns {
-                        if let Some(col) = tbl.columns.iter_mut().find(|c| &c.name == col_name) {
-                            col.foreign_key = None;
-                        }
-                    }
-                }
-                TableConstraint::Check { .. } => {
-                    // Check constraints don't have inline representation
-                }
-                TableConstraint::Index { name, columns } => {
-                    // Clear inline index on columns when removing an index constraint
-                    // Check if this index name was auto-generated for a single column
-                    for col in &mut tbl.columns {
-                        let auto_name = vespertide_naming::build_index_name(
-                            table,
-                            std::slice::from_ref(&col.name),
-                            None,
-                        );
-                        if name.as_ref() == Some(&auto_name) {
-                            col.index = None;
-                            break;
-                        }
-                    }
-                    // Also check for single-column unnamed indexes
-                    if name.is_none()
-                        && columns.len() == 1
-                        && let Some(col) = tbl.columns.iter_mut().find(|c| c.name == columns[0])
-                    {
-                        col.index = None;
-                    }
-                    // Check for named index matching inline field
-                    if let Some(constraint_name) = name {
-                        for col in &mut tbl.columns {
-                            if let Some(ref idx_val) = col.index {
-                                match idx_val {
-                                    vespertide_core::StrOrBoolOrArray::Str(idx_name)
-                                        if idx_name == constraint_name =>
-                                    {
-                                        col.index = None;
-                                    }
-                                    vespertide_core::StrOrBoolOrArray::Array(names) => {
-                                        let filtered: Vec<_> = names
-                                            .iter()
-                                            .filter(|n| *n != constraint_name)
-                                            .cloned()
-                                            .collect();
-                                        if filtered.is_empty() {
-                                            col.index = None;
-                                        } else if filtered.len() < names.len() {
-                                            col.index = Some(
-                                                vespertide_core::StrOrBoolOrArray::Array(filtered),
-                                            );
-                                        }
-                                    }
-                                    _ => {}
+                            vespertide_core::StrOrBoolOrArray::Array(names) => {
+                                let filtered: Vec<_> = names
+                                    .iter()
+                                    .filter(|n| *n != constraint_name)
+                                    .cloned()
+                                    .collect();
+                                if filtered.is_empty() {
+                                    col.index = None;
+                                } else if filtered.len() < names.len() {
+                                    col.index = Some(vespertide_core::StrOrBoolOrArray::Array(
+                                        filtered,
+                                    ));
                                 }
                             }
+                            _ => {}
                         }
                     }
                 }
             }
-            Ok(())
         }
     }
 }
@@ -897,7 +912,7 @@ mod tests {
         // Column with inline index: ["idx_single"]
         let mut col_with_index = col("email", ColumnType::Simple(SimpleColumnType::Text));
         col_with_index.index = Some(vespertide_core::StrOrBoolOrArray::Array(vec![
-            "idx_single".into(),
+            "idx_single".into()
         ]));
 
         let mut schema = vec![table(
@@ -996,7 +1011,7 @@ mod tests {
         // Column with inline unique: ["uq_email"] (only one item in array)
         let mut col_with_unique = col("email", ColumnType::Simple(SimpleColumnType::Text));
         col_with_unique.unique = Some(vespertide_core::StrOrBoolOrArray::Array(vec![
-            "uq_email".to_string(),
+            "uq_email".to_string()
         ]));
 
         let mut schema = vec![table(
