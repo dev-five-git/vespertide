@@ -1095,4 +1095,176 @@ mod tests {
             panic!("Expected RemoveConstraint");
         }
     }
+
+    #[rstest]
+    #[case::replace_constraint_primary_key(
+        MigrationAction::ReplaceConstraint {
+            table: "users".into(),
+            from: TableConstraint::PrimaryKey {
+                auto_increment: false,
+                columns: vec!["id".into()],
+            },
+            to: TableConstraint::PrimaryKey {
+                auto_increment: true,
+                columns: vec!["id".into()],
+            },
+        },
+        "ReplaceConstraint: users.PRIMARY KEY"
+    )]
+    #[case::replace_constraint_unique_with_name(
+        MigrationAction::ReplaceConstraint {
+            table: "users".into(),
+            from: TableConstraint::Unique {
+                name: None,
+                columns: vec!["email".into()],
+            },
+            to: TableConstraint::Unique {
+                name: Some("uq_email".into()),
+                columns: vec!["email".into()],
+            },
+        },
+        "ReplaceConstraint: users.uq_email (UNIQUE)"
+    )]
+    #[case::replace_constraint_unique_without_name(
+        MigrationAction::ReplaceConstraint {
+            table: "users".into(),
+            from: TableConstraint::Unique {
+                name: Some("uq_email".into()),
+                columns: vec!["email".into()],
+            },
+            to: TableConstraint::Unique {
+                name: None,
+                columns: vec!["email".into()],
+            },
+        },
+        "ReplaceConstraint: users.UNIQUE"
+    )]
+    #[case::replace_constraint_foreign_key_with_name(
+        MigrationAction::ReplaceConstraint {
+            table: "posts".into(),
+            from: TableConstraint::ForeignKey {
+                name: None,
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            },
+            to: TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            },
+        },
+        "ReplaceConstraint: posts.fk_user (FOREIGN KEY)"
+    )]
+    #[case::replace_constraint_foreign_key_without_name(
+        MigrationAction::ReplaceConstraint {
+            table: "posts".into(),
+            from: TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            },
+            to: TableConstraint::ForeignKey {
+                name: None,
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            },
+        },
+        "ReplaceConstraint: posts.FOREIGN KEY"
+    )]
+    #[case::replace_constraint_check(
+        MigrationAction::ReplaceConstraint {
+            table: "users".into(),
+            from: TableConstraint::Check {
+                name: "chk_age".into(),
+                expr: "age > 0".into(),
+            },
+            to: TableConstraint::Check {
+                name: "chk_age".into(),
+                expr: "age >= 0".into(),
+            },
+        },
+        "ReplaceConstraint: users.chk_age (CHECK)"
+    )]
+    #[case::replace_constraint_index_with_name(
+        MigrationAction::ReplaceConstraint {
+            table: "users".into(),
+            from: TableConstraint::Index {
+                name: None,
+                columns: vec!["email".into()],
+            },
+            to: TableConstraint::Index {
+                name: Some("ix_users__email".into()),
+                columns: vec!["email".into()],
+            },
+        },
+        "ReplaceConstraint: users.ix_users__email (INDEX)"
+    )]
+    #[case::replace_constraint_index_without_name(
+        MigrationAction::ReplaceConstraint {
+            table: "users".into(),
+            from: TableConstraint::Index {
+                name: Some("ix_users__email".into()),
+                columns: vec!["email".into()],
+            },
+            to: TableConstraint::Index {
+                name: None,
+                columns: vec!["email".into()],
+            },
+        },
+        "ReplaceConstraint: users.INDEX"
+    )]
+    fn test_display_replace_constraint(#[case] action: MigrationAction, #[case] expected: &str) {
+        assert_eq!(action.to_string(), expected);
+    }
+
+    #[test]
+    fn test_action_with_prefix_replace_constraint() {
+        let action = MigrationAction::ReplaceConstraint {
+            table: "posts".into(),
+            from: TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: Some(ReferenceAction::Cascade),
+                on_update: None,
+            },
+            to: TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: Some(ReferenceAction::SetNull),
+                on_update: None,
+            },
+        };
+        let prefixed = action.with_prefix("myapp_");
+        if let MigrationAction::ReplaceConstraint { table, from, to } = prefixed {
+            assert_eq!(table.as_str(), "myapp_posts");
+            if let TableConstraint::ForeignKey { ref_table, .. } = from {
+                assert_eq!(ref_table.as_str(), "myapp_users");
+            } else {
+                panic!("Expected ForeignKey constraint in from");
+            }
+            if let TableConstraint::ForeignKey { ref_table, .. } = to {
+                assert_eq!(ref_table.as_str(), "myapp_users");
+            } else {
+                panic!("Expected ForeignKey constraint in to");
+            }
+        } else {
+            panic!("Expected ReplaceConstraint");
+        }
+    }
 }

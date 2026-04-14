@@ -1562,4 +1562,92 @@ mod tests {
 
         assert_err_kind(err, ErrKind::ColumnNotFound);
     }
+
+    #[test]
+    fn apply_replace_constraint_fk() {
+        let mut schema = vec![table(
+            "posts",
+            vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("user_id", ColumnType::Simple(SimpleColumnType::Integer)),
+            ],
+            vec![TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            }],
+        )];
+
+        let from = TableConstraint::ForeignKey {
+            name: Some("fk_user".into()),
+            columns: vec!["user_id".into()],
+            ref_table: "users".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: None,
+        };
+        let to = TableConstraint::ForeignKey {
+            name: Some("fk_user".into()),
+            columns: vec!["user_id".into()],
+            ref_table: "users".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: Some(vespertide_core::ReferenceAction::Cascade),
+            on_update: None,
+        };
+
+        apply_action(
+            &mut schema,
+            &MigrationAction::ReplaceConstraint {
+                table: "posts".into(),
+                from,
+                to: to.clone(),
+            },
+        )
+        .unwrap();
+        assert_eq!(schema[0].constraints.len(), 1);
+        assert_eq!(schema[0].constraints[0], to);
+    }
+
+    #[test]
+    fn apply_replace_constraint_table_not_found() {
+        let mut schema = vec![];
+        let from = idx("ix_old", vec!["col"]);
+        let to = idx("ix_new", vec!["col"]);
+        let err = apply_action(
+            &mut schema,
+            &MigrationAction::ReplaceConstraint {
+                table: "missing".into(),
+                from,
+                to,
+            },
+        )
+        .unwrap_err();
+        assert_err_kind(err, ErrKind::TableNotFound);
+    }
+
+    #[test]
+    fn apply_replace_constraint_no_match_leaves_unchanged() {
+        let existing = idx("ix_existing", vec!["col"]);
+        let mut schema = vec![table(
+            "users",
+            vec![col("col", ColumnType::Simple(SimpleColumnType::Integer))],
+            vec![existing.clone()],
+        )];
+
+        let from = idx("ix_nonexistent", vec!["other"]);
+        let to = idx("ix_new", vec!["other"]);
+        apply_action(
+            &mut schema,
+            &MigrationAction::ReplaceConstraint {
+                table: "users".into(),
+                from,
+                to,
+            },
+        )
+        .unwrap();
+        assert_eq!(schema[0].constraints, vec![existing]);
+    }
 }

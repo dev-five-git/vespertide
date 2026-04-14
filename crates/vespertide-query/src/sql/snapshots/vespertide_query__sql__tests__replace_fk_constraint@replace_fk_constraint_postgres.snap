@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/mod.rs
+expression: sql
+---
+ALTER TABLE "posts" DROP CONSTRAINT "fk_posts__fk_user";
+ALTER TABLE "posts" ADD CONSTRAINT "fk_posts__fk_user" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE

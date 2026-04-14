@@ -1538,4 +1538,71 @@ mod tests {
             assert_snapshot!(sql);
         });
     }
+
+    #[rstest]
+    #[case::replace_fk_constraint_postgres(DatabaseBackend::Postgres)]
+    #[case::replace_fk_constraint_mysql(DatabaseBackend::MySql)]
+    #[case::replace_fk_constraint_sqlite(DatabaseBackend::Sqlite)]
+    fn test_replace_fk_constraint(#[case] backend: DatabaseBackend) {
+        let schema = vec![TableDef {
+            name: "posts".into(),
+            description: None,
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("user_id", ColumnType::Simple(SimpleColumnType::Integer)),
+            ],
+            constraints: vec![
+                TableConstraint::PrimaryKey {
+                    auto_increment: false,
+                    columns: vec!["id".into()],
+                },
+                TableConstraint::ForeignKey {
+                    name: Some("fk_user".into()),
+                    columns: vec!["user_id".into()],
+                    ref_table: "users".into(),
+                    ref_columns: vec!["id".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+            ],
+        }];
+        let action = MigrationAction::ReplaceConstraint {
+            table: "posts".into(),
+            from: TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            },
+            to: TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: Some(ReferenceAction::Cascade),
+                on_update: None,
+            },
+        };
+        let result = build_action_queries(&backend, &action, &schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<_>>()
+            .join(";\n");
+
+        let suffix = format!(
+            "replace_fk_constraint_{}",
+            match backend {
+                DatabaseBackend::Postgres => "postgres",
+                DatabaseBackend::MySql => "mysql",
+                DatabaseBackend::Sqlite => "sqlite",
+            }
+        );
+
+        with_settings!({ snapshot_suffix => suffix }, {
+            assert_snapshot!(sql);
+        });
+    }
 }

@@ -4989,4 +4989,178 @@ mod tests {
             ));
         }
     }
+
+    #[test]
+    fn diff_detects_replace_fk_on_delete() {
+        // Changing FK on_delete should produce a ReplaceConstraint, not Remove+Add
+        let from = vec![table(
+            "posts",
+            vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("user_id", ColumnType::Simple(SimpleColumnType::Integer)),
+            ],
+            vec![TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            }],
+        )];
+        let to = vec![table(
+            "posts",
+            vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("user_id", ColumnType::Simple(SimpleColumnType::Integer)),
+            ],
+            vec![TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: Some(vespertide_core::ReferenceAction::Cascade),
+                on_update: None,
+            }],
+        )];
+        let plan = diff_schemas(&from, &to).unwrap();
+        assert_eq!(plan.actions.len(), 1);
+        assert!(
+            matches!(&plan.actions[0], MigrationAction::ReplaceConstraint { table, .. } if table == "posts")
+        );
+    }
+
+    #[test]
+    fn diff_detects_replace_unique_constraint() {
+        // Unique identity is by columns; changing name on same columns = replace
+        let from = vec![table(
+            "users",
+            vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("email", ColumnType::Simple(SimpleColumnType::Text)),
+            ],
+            vec![TableConstraint::Unique {
+                name: Some("uq_old".into()),
+                columns: vec!["email".into()],
+            }],
+        )];
+        let to = vec![table(
+            "users",
+            vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("email", ColumnType::Simple(SimpleColumnType::Text)),
+            ],
+            vec![TableConstraint::Unique {
+                name: Some("uq_new".into()),
+                columns: vec!["email".into()],
+            }],
+        )];
+        let plan = diff_schemas(&from, &to).unwrap();
+        assert_eq!(plan.actions.len(), 1);
+        assert!(
+            matches!(&plan.actions[0], MigrationAction::ReplaceConstraint { table, .. } if table == "users")
+        );
+    }
+
+    #[test]
+    fn diff_detects_replace_check_constraint() {
+        // Changing Check expr with same name → ReplaceConstraint
+        let from = vec![table(
+            "users",
+            vec![col("age", ColumnType::Simple(SimpleColumnType::Integer))],
+            vec![TableConstraint::Check {
+                name: "chk_age".into(),
+                expr: "age > 0".into(),
+            }],
+        )];
+        let to = vec![table(
+            "users",
+            vec![col("age", ColumnType::Simple(SimpleColumnType::Integer))],
+            vec![TableConstraint::Check {
+                name: "chk_age".into(),
+                expr: "age > 18".into(),
+            }],
+        )];
+        let plan = diff_schemas(&from, &to).unwrap();
+        assert_eq!(plan.actions.len(), 1);
+        assert!(
+            matches!(&plan.actions[0], MigrationAction::ReplaceConstraint { table, .. } if table == "users")
+        );
+    }
+
+    #[test]
+    fn diff_detects_replace_index_constraint() {
+        // Changing Index name but same columns → ReplaceConstraint
+        let from = vec![table(
+            "users",
+            vec![col("email", ColumnType::Simple(SimpleColumnType::Text))],
+            vec![idx("ix_old", vec!["email"])],
+        )];
+        let to = vec![table(
+            "users",
+            vec![col("email", ColumnType::Simple(SimpleColumnType::Text))],
+            vec![TableConstraint::Index {
+                name: Some("ix_new".into()),
+                columns: vec!["email".into()],
+            }],
+        )];
+        let plan = diff_schemas(&from, &to).unwrap();
+        assert_eq!(plan.actions.len(), 1);
+        assert!(
+            matches!(&plan.actions[0], MigrationAction::ReplaceConstraint { table, .. } if table == "users")
+        );
+    }
+
+    #[test]
+    fn diff_already_paired_constraint_not_double_matched() {
+        // Two unique constraints on different columns both getting renamed.
+        // The "already paired" check ensures the second from finds the second to
+        // rather than pairing with the already-matched first to.
+        let from = vec![table(
+            "users",
+            vec![
+                col("email", ColumnType::Simple(SimpleColumnType::Text)),
+                col("name", ColumnType::Simple(SimpleColumnType::Text)),
+            ],
+            vec![
+                TableConstraint::Unique {
+                    name: Some("uq_email_old".into()),
+                    columns: vec!["email".into()],
+                },
+                TableConstraint::Unique {
+                    name: Some("uq_name_old".into()),
+                    columns: vec!["name".into()],
+                },
+            ],
+        )];
+        let to = vec![table(
+            "users",
+            vec![
+                col("email", ColumnType::Simple(SimpleColumnType::Text)),
+                col("name", ColumnType::Simple(SimpleColumnType::Text)),
+            ],
+            vec![
+                TableConstraint::Unique {
+                    name: Some("uq_email_new".into()),
+                    columns: vec!["email".into()],
+                },
+                TableConstraint::Unique {
+                    name: Some("uq_name_new".into()),
+                    columns: vec!["name".into()],
+                },
+            ],
+        )];
+        let plan = diff_schemas(&from, &to).unwrap();
+        // Should get exactly 2 ReplaceConstraint actions, not 1
+        let replace_count = plan
+            .actions
+            .iter()
+            .filter(|a| matches!(a, MigrationAction::ReplaceConstraint { .. }))
+            .count();
+        assert_eq!(
+            replace_count, 2,
+            "Expected 2 ReplaceConstraint actions, got: {:?}",
+            plan.actions
+        );
+    }
 }

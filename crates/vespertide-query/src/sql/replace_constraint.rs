@@ -324,4 +324,124 @@ mod tests {
             assert_snapshot!(combined);
         });
     }
+
+    #[rstest]
+    #[case::postgres(DatabaseBackend::Postgres)]
+    #[case::mysql(DatabaseBackend::MySql)]
+    #[case::sqlite(DatabaseBackend::Sqlite)]
+    fn replace_fk_on_update(#[case] backend: DatabaseBackend) {
+        let schema = test_schema();
+        let from = TableConstraint::ForeignKey {
+            name: Some("fk_user".into()),
+            columns: vec!["user_id".into()],
+            ref_table: "users".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: None,
+        };
+        let to = TableConstraint::ForeignKey {
+            name: Some("fk_user".into()),
+            columns: vec!["user_id".into()],
+            ref_table: "users".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: Some(ReferenceAction::Cascade),
+        };
+
+        let queries = build_replace_constraint(&backend, "posts", &from, &to, &schema, &[])
+            .expect("should succeed");
+        let sql: Vec<String> = queries.iter().map(|q| q.build(backend)).collect();
+        let combined = sql.join(";\n");
+
+        with_settings!({
+            description => format!("replace FK on_update for {:?}", backend),
+            omit_expression => true,
+            snapshot_suffix => format!("replace_fk_on_update_{:?}", backend),
+        }, {
+            assert_snapshot!(combined);
+        });
+    }
+
+    #[rstest]
+    #[case::postgres(DatabaseBackend::Postgres)]
+    #[case::mysql(DatabaseBackend::MySql)]
+    #[case::sqlite(DatabaseBackend::Sqlite)]
+    fn replace_unique_constraint(#[case] backend: DatabaseBackend) {
+        // Non-FK constraint: PG/MySQL uses remove+add, SQLite uses temp table
+        let schema = vec![TableDef {
+            name: "users".into(),
+            description: None,
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+                ColumnDef {
+                    name: "email".into(),
+                    r#type: ColumnType::Simple(SimpleColumnType::Text),
+                    nullable: false,
+                    default: None,
+                    comment: None,
+                    primary_key: None,
+                    unique: None,
+                    index: None,
+                    foreign_key: None,
+                },
+            ],
+            constraints: vec![
+                TableConstraint::PrimaryKey {
+                    auto_increment: false,
+                    columns: vec!["id".into()],
+                },
+                TableConstraint::Unique {
+                    name: Some("uq_email".into()),
+                    columns: vec!["email".into()],
+                },
+            ],
+        }];
+        let from = TableConstraint::Unique {
+            name: Some("uq_email".into()),
+            columns: vec!["email".into()],
+        };
+        let to = TableConstraint::Unique {
+            name: Some("uq_email_new".into()),
+            columns: vec!["email".into()],
+        };
+
+        let queries = build_replace_constraint(&backend, "users", &from, &to, &schema, &[])
+            .expect("should succeed");
+        let sql: Vec<String> = queries.iter().map(|q| q.build(backend)).collect();
+        let combined = sql.join(";\n");
+
+        with_settings!({
+            description => format!("replace unique constraint for {:?}", backend),
+            omit_expression => true,
+            snapshot_suffix => format!("replace_unique_{:?}", backend),
+        }, {
+            assert_snapshot!(combined);
+        });
+    }
+
+    #[test]
+    fn replace_constraint_table_not_found_sqlite() {
+        let from = TableConstraint::Unique {
+            name: Some("uq_old".into()),
+            columns: vec!["col".into()],
+        };
+        let to = TableConstraint::Unique {
+            name: Some("uq_new".into()),
+            columns: vec!["col".into()],
+        };
+        let err =
+            build_replace_constraint(&DatabaseBackend::Sqlite, "missing", &from, &to, &[], &[])
+                .unwrap_err();
+        assert!(format!("{}", err).contains("missing"));
+    }
 }
