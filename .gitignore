@@ -4,3 +4,4 @@ settings.local.json
 coverage
 lcov.info
 .sisyphus
+.omc

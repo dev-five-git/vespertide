@@ -27,7 +27,8 @@ fn action_target_table(action: &MigrationAction) -> Option<&str> {
         | MigrationAction::ModifyColumnDefault { table, .. }
         | MigrationAction::ModifyColumnComment { table, .. }
         | MigrationAction::AddConstraint { table, .. }
-        | MigrationAction::RemoveConstraint { table, .. } => Some(table),
+        | MigrationAction::RemoveConstraint { table, .. }
+        | MigrationAction::ReplaceConstraint { table, .. } => Some(table),
         MigrationAction::RenameTable { .. } | MigrationAction::RawSql { .. } => None,
     }
 }
