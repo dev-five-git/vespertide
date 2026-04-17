@@ -184,6 +184,19 @@ fn format_action(action: &MigrationAction) -> String {
                 table.bright_cyan()
             )
         }
+        MigrationAction::ReplaceConstraint {
+            table, from, to, ..
+        } => {
+            format!(
+                "{} {} {} {} {} {}",
+                "Replace constraint:".bright_yellow(),
+                format_constraint_type(from).bright_cyan().bold(),
+                "->".bright_white(),
+                format_constraint_type(to).bright_cyan().bold(),
+                "on".bright_white(),
+                table.bright_cyan()
+            )
+        }
     }
 }
 
@@ -234,7 +247,9 @@ mod tests {
     use std::path::PathBuf;
     use tempfile::tempdir;
     use vespertide_config::VespertideConfig;
-    use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType, TableConstraint, TableDef};
+    use vespertide_core::{
+        ColumnDef, ColumnType, ReferenceAction, SimpleColumnType, TableConstraint, TableDef,
+    };
 
     struct CwdGuard {
         original: PathBuf,
@@ -564,6 +579,28 @@ mod tests {
             "->".bright_white(),
             "This is a very long comment...".bright_cyan().bold()
         )
+    )]
+    #[case(
+        MigrationAction::ReplaceConstraint {
+            table: "posts".into(),
+            from: vespertide_core::TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            },
+            to: vespertide_core::TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: Some(ReferenceAction::Cascade),
+                on_update: None,
+            },
+        },
+        format!("{} {} {} {} {} {}", "Replace constraint:".bright_yellow(), "fk_user FK (user_id) -> users".bright_cyan().bold(), "->".bright_white(), "fk_user FK (user_id) -> users".bright_cyan().bold(), "on".bright_white(), "posts".bright_cyan())
     )]
     #[serial]
     fn format_action_cases(#[case] action: MigrationAction, #[case] expected: String) {
