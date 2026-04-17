@@ -12,6 +12,7 @@ pub mod raw_sql;
 pub mod remove_constraint;
 pub mod rename_column;
 pub mod rename_table;
+pub mod replace_constraint;
 pub mod types;
 
 pub use helpers::*;
@@ -28,7 +29,7 @@ use self::{
     modify_column_nullable::build_modify_column_nullable,
     modify_column_type::build_modify_column_type, raw_sql::build_raw_sql,
     remove_constraint::build_remove_constraint, rename_column::build_rename_column,
-    rename_table::build_rename_table,
+    rename_table::build_rename_table, replace_constraint::build_replace_constraint,
 };
 
 pub fn build_action_queries(
@@ -166,6 +167,15 @@ pub fn build_action_queries_with_pending(
             backend,
             table,
             constraint,
+            current_schema,
+            pending_constraints,
+        ),
+
+        MigrationAction::ReplaceConstraint { table, from, to } => build_replace_constraint(
+            backend,
+            table,
+            from,
+            to,
             current_schema,
             pending_constraints,
         ),
@@ -1525,6 +1535,73 @@ mod tests {
             .join(";\n");
 
         with_settings!({ snapshot_suffix => format!("delete_enum_column_{:?}", backend) }, {
+            assert_snapshot!(sql);
+        });
+    }
+
+    #[rstest]
+    #[case::replace_fk_constraint_postgres(DatabaseBackend::Postgres)]
+    #[case::replace_fk_constraint_mysql(DatabaseBackend::MySql)]
+    #[case::replace_fk_constraint_sqlite(DatabaseBackend::Sqlite)]
+    fn test_replace_fk_constraint(#[case] backend: DatabaseBackend) {
+        let schema = vec![TableDef {
+            name: "posts".into(),
+            description: None,
+            columns: vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("user_id", ColumnType::Simple(SimpleColumnType::Integer)),
+            ],
+            constraints: vec![
+                TableConstraint::PrimaryKey {
+                    auto_increment: false,
+                    columns: vec!["id".into()],
+                },
+                TableConstraint::ForeignKey {
+                    name: Some("fk_user".into()),
+                    columns: vec!["user_id".into()],
+                    ref_table: "users".into(),
+                    ref_columns: vec!["id".into()],
+                    on_delete: None,
+                    on_update: None,
+                },
+            ],
+        }];
+        let action = MigrationAction::ReplaceConstraint {
+            table: "posts".into(),
+            from: TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            },
+            to: TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: Some(ReferenceAction::Cascade),
+                on_update: None,
+            },
+        };
+        let result = build_action_queries(&backend, &action, &schema).unwrap();
+        let sql = result
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<_>>()
+            .join(";\n");
+
+        let suffix = format!(
+            "replace_fk_constraint_{}",
+            match backend {
+                DatabaseBackend::Postgres => "postgres",
+                DatabaseBackend::MySql => "mysql",
+                DatabaseBackend::Sqlite => "sqlite",
+            }
+        );
+
+        with_settings!({ snapshot_suffix => suffix }, {
             assert_snapshot!(sql);
         });
     }

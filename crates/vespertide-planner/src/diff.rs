@@ -7,6 +7,61 @@ use vespertide_core::{
 
 use crate::error::PlannerError;
 
+/// Check if two constraints share the same "identity" but differ in properties.
+/// This enables emitting ReplaceConstraint instead of separate Remove + Add,
+/// avoiding double table recreation on SQLite.
+///
+/// Identity rules per constraint type:
+/// - PK: always same identity (at most one PK per table)
+/// - FK: same columns + ref_table + ref_columns (name is cosmetic)
+/// - Check: same name (expression is the "property")
+/// - Unique: same columns (name is cosmetic)
+/// - Index: same columns (name is cosmetic)
+fn constraints_same_identity(a: &TableConstraint, b: &TableConstraint) -> bool {
+    match (a, b) {
+        // PK: at most one per table, so any PK→PK change is a replacement
+        (TableConstraint::PrimaryKey { .. }, TableConstraint::PrimaryKey { .. }) => true,
+        (
+            TableConstraint::ForeignKey {
+                columns: cols_a,
+                ref_table: rt_a,
+                ref_columns: rc_a,
+                ..
+            },
+            TableConstraint::ForeignKey {
+                columns: cols_b,
+                ref_table: rt_b,
+                ref_columns: rc_b,
+                ..
+            },
+        ) => {
+            // Structural identity: same columns + same reference target
+            cols_a == cols_b && rt_a == rt_b && rc_a == rc_b
+        }
+        (
+            TableConstraint::Check { name: name_a, .. },
+            TableConstraint::Check { name: name_b, .. },
+        ) => name_a == name_b,
+        (
+            TableConstraint::Unique {
+                columns: cols_a, ..
+            },
+            TableConstraint::Unique {
+                columns: cols_b, ..
+            },
+        ) => cols_a == cols_b,
+        (
+            TableConstraint::Index {
+                columns: cols_a, ..
+            },
+            TableConstraint::Index {
+                columns: cols_b, ..
+            },
+        ) => cols_a == cols_b,
+        _ => false,
+    }
+}
+
 /// Topologically sort tables based on foreign key dependencies.
 /// Returns tables in order where tables with no FK dependencies come first,
 /// and tables that reference other tables come after their referenced tables.
@@ -582,35 +637,73 @@ pub fn diff_schemas(from: &[TableDef], to: &[TableDef]) -> Result<MigrationPlan,
                 }
             }
 
-            // Constraints - compare and detect additions/removals (includes indexes)
+            // Constraints - compare and detect additions/removals/replacements (includes indexes)
             // Skip RemoveConstraint for constraints where ALL columns are being deleted
             // (the constraint will be automatically dropped when the column is dropped)
-            for from_constraint in &from_tbl.constraints {
-                if !to_tbl.constraints.contains(from_constraint) {
-                    // Get the columns referenced by this constraint
-                    let constraint_columns = from_constraint.columns();
+            //
+            // For constraints that share the same "identity" (e.g., FK with same columns
+            // and ref_table/ref_columns but different on_delete/on_update), emit a single
+            // ReplaceConstraint instead of separate Remove + Add to avoid double table
+            // recreation on SQLite.
+            let mut replaced_from: Vec<usize> = Vec::new();
+            let mut replaced_to: Vec<usize> = Vec::new();
 
-                    // Skip if ALL columns of the constraint are being deleted
-                    let all_columns_deleted = !constraint_columns.is_empty()
-                        && constraint_columns
-                            .iter()
-                            .all(|col| deleted_columns.contains(col.as_str()));
-
-                    if !all_columns_deleted {
-                        actions.push(MigrationAction::RemoveConstraint {
+            // First pass: detect constraint replacements (same identity, different properties)
+            for (fi, from_constraint) in from_tbl.constraints.iter().enumerate() {
+                if to_tbl.constraints.contains(from_constraint) {
+                    continue; // Exact match, no change needed
+                }
+                for (ti, to_constraint) in to_tbl.constraints.iter().enumerate() {
+                    if from_tbl.constraints.contains(to_constraint) {
+                        continue; // Exact match with something else
+                    }
+                    if replaced_to.contains(&ti) {
+                        continue; // Already paired
+                    }
+                    if constraints_same_identity(from_constraint, to_constraint) {
+                        replaced_from.push(fi);
+                        replaced_to.push(ti);
+                        actions.push(MigrationAction::ReplaceConstraint {
                             table: name.to_string(),
-                            constraint: from_constraint.clone(),
+                            from: from_constraint.clone(),
+                            to: to_constraint.clone(),
                         });
+                        break;
                     }
                 }
             }
-            for to_constraint in &to_tbl.constraints {
-                if !from_tbl.constraints.contains(to_constraint) {
-                    actions.push(MigrationAction::AddConstraint {
+
+            // Second pass: remaining removals (not replaced)
+            for (fi, from_constraint) in from_tbl.constraints.iter().enumerate() {
+                if to_tbl.constraints.contains(from_constraint) || replaced_from.contains(&fi) {
+                    continue;
+                }
+                // Get the columns referenced by this constraint
+                let constraint_columns = from_constraint.columns();
+
+                // Skip if ALL columns of the constraint are being deleted
+                let all_columns_deleted = !constraint_columns.is_empty()
+                    && constraint_columns
+                        .iter()
+                        .all(|col| deleted_columns.contains(col.as_str()));
+
+                if !all_columns_deleted {
+                    actions.push(MigrationAction::RemoveConstraint {
                         table: name.to_string(),
-                        constraint: to_constraint.clone(),
+                        constraint: from_constraint.clone(),
                     });
                 }
+            }
+
+            // Third pass: remaining additions (not replaced)
+            for (ti, to_constraint) in to_tbl.constraints.iter().enumerate() {
+                if from_tbl.constraints.contains(to_constraint) || replaced_to.contains(&ti) {
+                    continue;
+                }
+                actions.push(MigrationAction::AddConstraint {
+                    table: name.to_string(),
+                    constraint: to_constraint.clone(),
+                });
             }
         }
     }
@@ -3249,30 +3342,19 @@ mod tests {
 
             let plan = diff_schemas(&from, &to).unwrap();
 
-            // Should remove old PK and add new composite PK
-            assert_eq!(plan.actions.len(), 2);
+            // Should replace PK with new composite PK
+            assert_eq!(plan.actions.len(), 1);
 
-            let has_remove = plan.actions.iter().any(|a| {
-                matches!(
-                    a,
-                    MigrationAction::RemoveConstraint {
-                        table,
-                        constraint: TableConstraint::PrimaryKey { columns, .. }
-                    } if table == "users" && columns == &vec!["id".to_string()]
-                )
-            });
-            assert!(has_remove, "Should have RemoveConstraint for old PK");
-
-            let has_add = plan.actions.iter().any(|a| {
-                matches!(
-                    a,
-                    MigrationAction::AddConstraint {
-                        table,
-                        constraint: TableConstraint::PrimaryKey { columns, .. }
-                    } if table == "users" && columns == &vec!["id".to_string(), "tenant_id".to_string()]
-                )
-            });
-            assert!(has_add, "Should have AddConstraint for new composite PK");
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::ReplaceConstraint {
+                    table,
+                    from: TableConstraint::PrimaryKey { columns: from_cols, .. },
+                    to: TableConstraint::PrimaryKey { columns: to_cols, .. },
+                } if table == "users"
+                  && from_cols == &vec!["id".to_string()]
+                  && to_cols == &vec!["id".to_string(), "tenant_id".to_string()]
+            ));
         }
 
         #[test]
@@ -3298,36 +3380,19 @@ mod tests {
 
             let plan = diff_schemas(&from, &to).unwrap();
 
-            // Should remove old composite PK and add new single-column PK
-            assert_eq!(plan.actions.len(), 2);
+            // Should replace composite PK with single-column PK
+            assert_eq!(plan.actions.len(), 1);
 
-            let has_remove = plan.actions.iter().any(|a| {
-                matches!(
-                    a,
-                    MigrationAction::RemoveConstraint {
-                        table,
-                        constraint: TableConstraint::PrimaryKey { columns, .. }
-                    } if table == "users" && columns == &vec!["id".to_string(), "tenant_id".to_string()]
-                )
-            });
-            assert!(
-                has_remove,
-                "Should have RemoveConstraint for old composite PK"
-            );
-
-            let has_add = plan.actions.iter().any(|a| {
-                matches!(
-                    a,
-                    MigrationAction::AddConstraint {
-                        table,
-                        constraint: TableConstraint::PrimaryKey { columns, .. }
-                    } if table == "users" && columns == &vec!["id".to_string()]
-                )
-            });
-            assert!(
-                has_add,
-                "Should have AddConstraint for new single-column PK"
-            );
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::ReplaceConstraint {
+                    table,
+                    from: TableConstraint::PrimaryKey { columns: from_cols, .. },
+                    to: TableConstraint::PrimaryKey { columns: to_cols, .. },
+                } if table == "users"
+                  && from_cols == &vec!["id".to_string(), "tenant_id".to_string()]
+                  && to_cols == &vec!["id".to_string()]
+            ));
         }
 
         #[test]
@@ -3353,29 +3418,18 @@ mod tests {
 
             let plan = diff_schemas(&from, &to).unwrap();
 
-            assert_eq!(plan.actions.len(), 2);
+            assert_eq!(plan.actions.len(), 1);
 
-            let has_remove = plan.actions.iter().any(|a| {
-                matches!(
-                    a,
-                    MigrationAction::RemoveConstraint {
-                        table,
-                        constraint: TableConstraint::PrimaryKey { columns, .. }
-                    } if table == "users" && columns == &vec!["id".to_string()]
-                )
-            });
-            assert!(has_remove, "Should have RemoveConstraint for old PK");
-
-            let has_add = plan.actions.iter().any(|a| {
-                matches!(
-                    a,
-                    MigrationAction::AddConstraint {
-                        table,
-                        constraint: TableConstraint::PrimaryKey { columns, .. }
-                    } if table == "users" && columns == &vec!["uuid".to_string()]
-                )
-            });
-            assert!(has_add, "Should have AddConstraint for new PK");
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::ReplaceConstraint {
+                    table,
+                    from: TableConstraint::PrimaryKey { columns: from_cols, .. },
+                    to: TableConstraint::PrimaryKey { columns: to_cols, .. },
+                } if table == "users"
+                  && from_cols == &vec!["id".to_string()]
+                  && to_cols == &vec!["uuid".to_string()]
+            ));
         }
 
         #[test]
@@ -3403,39 +3457,22 @@ mod tests {
 
             let plan = diff_schemas(&from, &to).unwrap();
 
-            assert_eq!(plan.actions.len(), 2);
+            assert_eq!(plan.actions.len(), 1);
 
-            let has_remove = plan.actions.iter().any(|a| {
-                matches!(
-                    a,
-                    MigrationAction::RemoveConstraint {
-                        table,
-                        constraint: TableConstraint::PrimaryKey { columns, .. }
-                    } if table == "users" && columns == &vec!["id".to_string()]
-                )
-            });
-            assert!(
-                has_remove,
-                "Should have RemoveConstraint for old single-column PK"
-            );
-
-            let has_add = plan.actions.iter().any(|a| {
-                matches!(
-                    a,
-                    MigrationAction::AddConstraint {
-                        table,
-                        constraint: TableConstraint::PrimaryKey { columns, .. }
-                    } if table == "users" && columns == &vec![
-                        "id".to_string(),
-                        "tenant_id".to_string(),
-                        "region_id".to_string()
-                    ]
-                )
-            });
-            assert!(
-                has_add,
-                "Should have AddConstraint for new 3-column composite PK"
-            );
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::ReplaceConstraint {
+                    table,
+                    from: TableConstraint::PrimaryKey { columns: from_cols, .. },
+                    to: TableConstraint::PrimaryKey { columns: to_cols, .. },
+                } if table == "users"
+                  && from_cols == &vec!["id".to_string()]
+                  && to_cols == &vec![
+                      "id".to_string(),
+                      "tenant_id".to_string(),
+                      "region_id".to_string()
+                  ]
+            ));
         }
 
         #[test]
@@ -3463,39 +3500,22 @@ mod tests {
 
             let plan = diff_schemas(&from, &to).unwrap();
 
-            assert_eq!(plan.actions.len(), 2);
+            assert_eq!(plan.actions.len(), 1);
 
-            let has_remove = plan.actions.iter().any(|a| {
-                matches!(
-                    a,
-                    MigrationAction::RemoveConstraint {
-                        table,
-                        constraint: TableConstraint::PrimaryKey { columns, .. }
-                    } if table == "users" && columns == &vec![
-                        "id".to_string(),
-                        "tenant_id".to_string(),
-                        "region_id".to_string()
-                    ]
-                )
-            });
-            assert!(
-                has_remove,
-                "Should have RemoveConstraint for old 3-column composite PK"
-            );
-
-            let has_add = plan.actions.iter().any(|a| {
-                matches!(
-                    a,
-                    MigrationAction::AddConstraint {
-                        table,
-                        constraint: TableConstraint::PrimaryKey { columns, .. }
-                    } if table == "users" && columns == &vec!["id".to_string()]
-                )
-            });
-            assert!(
-                has_add,
-                "Should have AddConstraint for new single-column PK"
-            );
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::ReplaceConstraint {
+                    table,
+                    from: TableConstraint::PrimaryKey { columns: from_cols, .. },
+                    to: TableConstraint::PrimaryKey { columns: to_cols, .. },
+                } if table == "users"
+                  && from_cols == &vec![
+                      "id".to_string(),
+                      "tenant_id".to_string(),
+                      "region_id".to_string()
+                  ]
+                  && to_cols == &vec!["id".to_string()]
+            ));
         }
 
         #[test]
@@ -3524,35 +3544,18 @@ mod tests {
 
             let plan = diff_schemas(&from, &to).unwrap();
 
-            assert_eq!(plan.actions.len(), 2);
+            assert_eq!(plan.actions.len(), 1);
 
-            let has_remove = plan.actions.iter().any(|a| {
-                matches!(
-                    a,
-                    MigrationAction::RemoveConstraint {
-                        table,
-                        constraint: TableConstraint::PrimaryKey { columns, .. }
-                    } if table == "users" && columns == &vec!["id".to_string(), "tenant_id".to_string()]
-                )
-            });
-            assert!(
-                has_remove,
-                "Should have RemoveConstraint for old PK with tenant_id"
-            );
-
-            let has_add = plan.actions.iter().any(|a| {
-                matches!(
-                    a,
-                    MigrationAction::AddConstraint {
-                        table,
-                        constraint: TableConstraint::PrimaryKey { columns, .. }
-                    } if table == "users" && columns == &vec!["id".to_string(), "region_id".to_string()]
-                )
-            });
-            assert!(
-                has_add,
-                "Should have AddConstraint for new PK with region_id"
-            );
+            assert!(matches!(
+                &plan.actions[0],
+                MigrationAction::ReplaceConstraint {
+                    table,
+                    from: TableConstraint::PrimaryKey { columns: from_cols, .. },
+                    to: TableConstraint::PrimaryKey { columns: to_cols, .. },
+                } if table == "users"
+                  && from_cols == &vec!["id".to_string(), "tenant_id".to_string()]
+                  && to_cols == &vec!["id".to_string(), "region_id".to_string()]
+            ));
         }
     }
 
@@ -4985,5 +4988,219 @@ mod tests {
                 if table == "users"
             ));
         }
+    }
+
+    #[test]
+    fn diff_detects_replace_fk_on_delete() {
+        // Changing FK on_delete should produce a ReplaceConstraint, not Remove+Add
+        let from = vec![table(
+            "posts",
+            vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("user_id", ColumnType::Simple(SimpleColumnType::Integer)),
+            ],
+            vec![TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+            }],
+        )];
+        let to = vec![table(
+            "posts",
+            vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("user_id", ColumnType::Simple(SimpleColumnType::Integer)),
+            ],
+            vec![TableConstraint::ForeignKey {
+                name: Some("fk_user".into()),
+                columns: vec!["user_id".into()],
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: Some(vespertide_core::ReferenceAction::Cascade),
+                on_update: None,
+            }],
+        )];
+        let plan = diff_schemas(&from, &to).unwrap();
+        assert_eq!(plan.actions.len(), 1);
+        assert!(
+            matches!(&plan.actions[0], MigrationAction::ReplaceConstraint { table, .. } if table == "posts")
+        );
+    }
+
+    #[test]
+    fn diff_detects_replace_unique_constraint() {
+        // Unique identity is by columns; changing name on same columns = replace
+        let from = vec![table(
+            "users",
+            vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("email", ColumnType::Simple(SimpleColumnType::Text)),
+            ],
+            vec![TableConstraint::Unique {
+                name: Some("uq_old".into()),
+                columns: vec!["email".into()],
+            }],
+        )];
+        let to = vec![table(
+            "users",
+            vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer)),
+                col("email", ColumnType::Simple(SimpleColumnType::Text)),
+            ],
+            vec![TableConstraint::Unique {
+                name: Some("uq_new".into()),
+                columns: vec!["email".into()],
+            }],
+        )];
+        let plan = diff_schemas(&from, &to).unwrap();
+        assert_eq!(plan.actions.len(), 1);
+        assert!(
+            matches!(&plan.actions[0], MigrationAction::ReplaceConstraint { table, .. } if table == "users")
+        );
+    }
+
+    #[test]
+    fn diff_detects_replace_check_constraint() {
+        // Changing Check expr with same name → ReplaceConstraint
+        let from = vec![table(
+            "users",
+            vec![col("age", ColumnType::Simple(SimpleColumnType::Integer))],
+            vec![TableConstraint::Check {
+                name: "chk_age".into(),
+                expr: "age > 0".into(),
+            }],
+        )];
+        let to = vec![table(
+            "users",
+            vec![col("age", ColumnType::Simple(SimpleColumnType::Integer))],
+            vec![TableConstraint::Check {
+                name: "chk_age".into(),
+                expr: "age > 18".into(),
+            }],
+        )];
+        let plan = diff_schemas(&from, &to).unwrap();
+        assert_eq!(plan.actions.len(), 1);
+        assert!(
+            matches!(&plan.actions[0], MigrationAction::ReplaceConstraint { table, .. } if table == "users")
+        );
+    }
+
+    #[test]
+    fn diff_detects_replace_index_constraint() {
+        // Changing Index name but same columns → ReplaceConstraint
+        let from = vec![table(
+            "users",
+            vec![col("email", ColumnType::Simple(SimpleColumnType::Text))],
+            vec![idx("ix_old", vec!["email"])],
+        )];
+        let to = vec![table(
+            "users",
+            vec![col("email", ColumnType::Simple(SimpleColumnType::Text))],
+            vec![TableConstraint::Index {
+                name: Some("ix_new".into()),
+                columns: vec!["email".into()],
+            }],
+        )];
+        let plan = diff_schemas(&from, &to).unwrap();
+        assert_eq!(plan.actions.len(), 1);
+        assert!(
+            matches!(&plan.actions[0], MigrationAction::ReplaceConstraint { table, .. } if table == "users")
+        );
+    }
+
+    #[test]
+    fn diff_already_paired_constraint_not_double_matched() {
+        // Two unique constraints on different columns both getting renamed.
+        // The "already paired" check ensures the second from finds the second to
+        // rather than pairing with the already-matched first to.
+        let from = vec![table(
+            "users",
+            vec![
+                col("email", ColumnType::Simple(SimpleColumnType::Text)),
+                col("name", ColumnType::Simple(SimpleColumnType::Text)),
+            ],
+            vec![
+                TableConstraint::Unique {
+                    name: Some("uq_email_old".into()),
+                    columns: vec!["email".into()],
+                },
+                TableConstraint::Unique {
+                    name: Some("uq_name_old".into()),
+                    columns: vec!["name".into()],
+                },
+            ],
+        )];
+        let to = vec![table(
+            "users",
+            vec![
+                col("email", ColumnType::Simple(SimpleColumnType::Text)),
+                col("name", ColumnType::Simple(SimpleColumnType::Text)),
+            ],
+            vec![
+                TableConstraint::Unique {
+                    name: Some("uq_email_new".into()),
+                    columns: vec!["email".into()],
+                },
+                TableConstraint::Unique {
+                    name: Some("uq_name_new".into()),
+                    columns: vec!["name".into()],
+                },
+            ],
+        )];
+        let plan = diff_schemas(&from, &to).unwrap();
+        // Should get exactly 2 ReplaceConstraint actions, not 1
+        let replace_count = plan
+            .actions
+            .iter()
+            .filter(|a| matches!(a, MigrationAction::ReplaceConstraint { .. }))
+            .count();
+        assert_eq!(
+            replace_count, 2,
+            "Expected 2 ReplaceConstraint actions, got: {:?}",
+            plan.actions
+        );
+    }
+
+    #[test]
+    fn diff_mismatched_constraint_types_not_paired() {
+        // Removing a Unique and adding an Index on the same columns should NOT produce
+        // ReplaceConstraint — they are different constraint types (hits _ => false branch).
+        let from = vec![table(
+            "users",
+            vec![col("email", ColumnType::Simple(SimpleColumnType::Text))],
+            vec![TableConstraint::Unique {
+                name: Some("uq_email".into()),
+                columns: vec!["email".into()],
+            }],
+        )];
+        let to = vec![table(
+            "users",
+            vec![col("email", ColumnType::Simple(SimpleColumnType::Text))],
+            vec![idx("ix_email", vec!["email"])],
+        )];
+        let plan = diff_schemas(&from, &to).unwrap();
+        // Should be Remove + Add, not ReplaceConstraint
+        let replace_count = plan
+            .actions
+            .iter()
+            .filter(|a| matches!(a, MigrationAction::ReplaceConstraint { .. }))
+            .count();
+        assert_eq!(
+            replace_count, 0,
+            "Mismatched types should not produce ReplaceConstraint, got: {:?}",
+            plan.actions
+        );
+        assert_eq!(plan.actions.len(), 2);
+        assert!(matches!(
+            &plan.actions[0],
+            MigrationAction::RemoveConstraint { .. }
+        ));
+        assert!(matches!(
+            &plan.actions[1],
+            MigrationAction::AddConstraint { .. }
+        ));
     }
 }

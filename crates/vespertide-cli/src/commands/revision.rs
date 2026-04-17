@@ -602,7 +602,8 @@ fn rewrite_plan_for_recreation(
             | MigrationAction::ModifyColumnDefault { table, .. }
             | MigrationAction::ModifyColumnComment { table, .. }
             | MigrationAction::AddConstraint { table, .. }
-            | MigrationAction::RemoveConstraint { table, .. } => Some(table.as_str()),
+            | MigrationAction::RemoveConstraint { table, .. }
+            | MigrationAction::ReplaceConstraint { table, .. } => Some(table.as_str()),
             _ => None,
         };
         table.is_none_or(|t| !tables_to_recreate.contains(t))
