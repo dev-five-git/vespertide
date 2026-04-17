@@ -1584,7 +1584,7 @@ fn render_enum(
     lines.push(format!("#[derive({})]", derives.join(", ")));
     lines.push(format!(
         "#[serde(rename_all = \"{}\")]",
-        config.enum_naming_case().serde_rename_all()
+        enum_serde_rename_all(values, config)
     ));
 
     match values {
@@ -1605,8 +1605,9 @@ fn render_enum(
 
     match values {
         EnumValues::String(string_values) => {
+            let use_screaming_snake_variants = uses_screaming_snake_variants(string_values);
             for s in string_values {
-                let variant_name = enum_variant_name(s);
+                let variant_name = enum_string_variant_name(s, use_screaming_snake_variants);
                 lines.push(format!("    #[sea_orm(string_value = \"{}\")]", s));
                 lines.push(format!("    {},", variant_name));
             }
@@ -1631,6 +1632,20 @@ fn render_enum(
 fn enum_variant_name(s: &str) -> String {
     let pascal = to_pascal_case(s);
 
+    finalize_enum_variant_name(pascal)
+}
+
+fn enum_string_variant_name(s: &str, use_screaming_snake_variants: bool) -> String {
+    let pascal = if use_screaming_snake_variants {
+        screaming_snake_to_pascal_case(s)
+    } else {
+        to_pascal_case(s)
+    };
+
+    finalize_enum_variant_name(pascal)
+}
+
+fn finalize_enum_variant_name(pascal: String) -> String {
     // Handle empty string
     if pascal.is_empty() {
         return "Value".to_string();
@@ -1647,6 +1662,56 @@ fn enum_variant_name(s: &str) -> String {
     }
 
     pascal
+}
+
+fn enum_serde_rename_all(values: &EnumValues, config: &SeaOrmConfig) -> &'static str {
+    match values {
+        EnumValues::String(string_values) if uses_screaming_snake_variants(string_values) => {
+            "SCREAMING_SNAKE_CASE"
+        }
+        _ => config.enum_naming_case().serde_rename_all(),
+    }
+}
+
+fn uses_screaming_snake_variants(values: &[String]) -> bool {
+    !values.is_empty() && values.iter().all(|value| is_screaming_snake_value(value))
+}
+
+fn is_screaming_snake_value(value: &str) -> bool {
+    let mut has_ascii_upper = false;
+
+    for ch in value.chars() {
+        if ch.is_ascii_lowercase() {
+            return false;
+        }
+        if ch.is_ascii_uppercase() {
+            has_ascii_upper = true;
+            continue;
+        }
+        if ch.is_ascii_digit() || ch == '_' {
+            continue;
+        }
+        return false;
+    }
+
+    has_ascii_upper
+}
+
+fn screaming_snake_to_pascal_case(value: &str) -> String {
+    value
+        .split('_')
+        .filter(|segment| !segment.is_empty())
+        .map(|segment| {
+            let mut chars = segment.chars();
+            let first = chars
+                .next()
+                .expect("empty segments are filtered before PascalCase conversion");
+            let mut out = String::new();
+            out.push(first.to_ascii_uppercase());
+            out.extend(chars.map(|ch| ch.to_ascii_lowercase()));
+            out
+        })
+        .collect()
 }
 
 fn to_pascal_case(s: &str) -> String {
@@ -2182,12 +2247,41 @@ mod helper_tests {
     #[case("pending", "Pending")]
     #[case("in_stock", "InStock")]
     #[case("info-level", "InfoLevel")]
+    #[case("ACTIVE", "ACTIVE")]
+    #[case("ERROR_LEVEL", "ERRORLEVEL")]
     #[case("1critical", "N1critical")]
     #[case("123abc", "N123abc")]
     #[case("1_critical", "N1Critical")]
     #[case("", "Value")]
     fn test_enum_variant_name(#[case] input: &str, #[case] expected: &str) {
         assert_eq!(enum_variant_name(input), expected);
+    }
+
+    #[test]
+    fn test_render_enum_uses_screaming_snake_serde_for_uppercase_values() {
+        let mut lines = Vec::new();
+        let config = SeaOrmConfig::default();
+        let values = EnumValues::String(vec!["PENDING".into(), "IN_PROGRESS".into()]);
+
+        render_enum(&mut lines, "orders", "order_status", &values, &config);
+
+        let result = lines.join("\n");
+        assert!(result.contains("#[serde(rename_all = \"SCREAMING_SNAKE_CASE\")]"));
+        assert!(result.contains("    #[sea_orm(string_value = \"PENDING\")]\n    Pending,"));
+        assert!(result.contains("    #[sea_orm(string_value = \"IN_PROGRESS\")]\n    InProgress,"));
+    }
+
+    #[test]
+    fn test_is_screaming_snake_value_rejects_invalid_symbol() {
+        assert!(!is_screaming_snake_value("PENDING-REVIEW"));
+    }
+
+    #[test]
+    fn test_screaming_snake_to_pascal_case_ignores_empty_segments() {
+        assert_eq!(
+            screaming_snake_to_pascal_case("PENDING__REVIEW"),
+            "PendingReview"
+        );
     }
 
     fn string_enum_order_status() -> (&'static str, EnumValues) {

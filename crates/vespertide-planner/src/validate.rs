@@ -417,12 +417,11 @@ pub fn validate_migration_plan(plan: &MigrationPlan) -> Result<(), PlannerError>
                 nullable,
                 fill_with,
                 delete_null_rows,
-            } => {
+            }
                 // If changing from nullable to non-nullable, fill_with is required
-                if !nullable && fill_with.is_none() && !delete_null_rows.unwrap_or(false) {
+                if !nullable && fill_with.is_none() && !delete_null_rows.unwrap_or(false) => {
                     return Err(PlannerError::MissingFillWith(table.clone(), column.clone()));
                 }
-            }
             MigrationAction::ModifyColumnType {
                 table,
                 column,
@@ -484,9 +483,9 @@ pub fn find_missing_fill_with(
                 table,
                 column,
                 fill_with,
-            } => {
+            }
                 // If column is NOT NULL and has no default, fill_with is required
-                if !column.nullable && column.default.is_none() && fill_with.is_none() {
+                if !column.nullable && column.default.is_none() && fill_with.is_none() => {
                     missing.push(FillWithRequired {
                         action_index: idx,
                         table: table.clone(),
@@ -498,17 +497,16 @@ pub fn find_missing_fill_with(
                         has_foreign_key: false,
                     });
                 }
-            }
             MigrationAction::ModifyColumnNullable {
                 table,
                 column,
                 nullable,
                 fill_with,
                 delete_null_rows,
-            } => {
+            }
                 // If changing from nullable to non-nullable, fill_with is required
                 // UNLESS the column already has a default value (which will be used)
-                if !nullable && fill_with.is_none() && !delete_null_rows.unwrap_or(false) {
+                if !nullable && fill_with.is_none() && !delete_null_rows.unwrap_or(false) => {
                     // Look up column from the current schema
                     let table_def = current_schema.iter().find(|t| t.name == *table);
 
@@ -542,7 +540,6 @@ pub fn find_missing_fill_with(
                         has_foreign_key,
                     });
                 }
-            }
             _ => {}
         }
     }
