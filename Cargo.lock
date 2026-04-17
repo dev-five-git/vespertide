@@ -969,7 +969,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2541,7 +2541,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3345,10 +3345,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.2",
  "once_cell",
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3672,9 +3672,9 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vespera"
-version = "0.1.48"
+version = "0.1.50"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12b3bac41bd5e069d7f1b31eb6a3fd0225402a97f4845f8b4a6d77a10e39be0d"
+checksum = "4e53fae5b7dfbc9c6358a7ed2ab03309bafda94edff6f0ed137aacbbf4673290"
 dependencies = [
  "axum",
  "axum-extra",
@@ -3689,9 +3689,9 @@ dependencies = [
 
 [[package]]
 name = "vespera_core"
-version = "0.1.48"
+version = "0.1.50"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1198fde536e67801f3a091a9c353d223095be6182328d70a0036e97b09b52533"
+checksum = "a7907610cd10b5404764392d01a9ed1cbc9f77e65fbdab3d29d7e725a69fef2a"
 dependencies = [
  "serde",
  "serde_json",
@@ -3699,9 +3699,9 @@ dependencies = [
 
 [[package]]
 name = "vespera_macro"
-version = "0.1.48"
+version = "0.1.50"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "acf76c9614257c8c16d4d37b828da36aa32ebe14e5be22a7b0669244c21b83ab"
+checksum = "8516ec0107927abe8dfa91ea4c7db0c03a63c8b1e5273a6013e3de665b5ff029"
 dependencies = [
  "proc-macro2",
  "quote",
