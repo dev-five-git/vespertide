@@ -1703,15 +1703,13 @@ fn screaming_snake_to_pascal_case(value: &str) -> String {
         .filter(|segment| !segment.is_empty())
         .map(|segment| {
             let mut chars = segment.chars();
-            match chars.next() {
-                Some(first) => {
-                    let mut out = String::new();
-                    out.push(first.to_ascii_uppercase());
-                    out.extend(chars.map(|ch| ch.to_ascii_lowercase()));
-                    out
-                }
-                None => String::new(),
-            }
+            let first = chars
+                .next()
+                .expect("empty segments are filtered before PascalCase conversion");
+            let mut out = String::new();
+            out.push(first.to_ascii_uppercase());
+            out.extend(chars.map(|ch| ch.to_ascii_lowercase()));
+            out
         })
         .collect()
 }
