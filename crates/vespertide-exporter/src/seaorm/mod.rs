@@ -2273,6 +2273,19 @@ mod helper_tests {
         assert!(result.contains("    #[sea_orm(string_value = \"IN_PROGRESS\")]\n    InProgress,"));
     }
 
+    #[test]
+    fn test_is_screaming_snake_value_rejects_invalid_symbol() {
+        assert!(!is_screaming_snake_value("PENDING-REVIEW"));
+    }
+
+    #[test]
+    fn test_screaming_snake_to_pascal_case_ignores_empty_segments() {
+        assert_eq!(
+            screaming_snake_to_pascal_case("PENDING__REVIEW"),
+            "PendingReview"
+        );
+    }
+
     fn string_enum_order_status() -> (&'static str, EnumValues) {
         (
             "order_status",
