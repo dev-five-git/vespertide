@@ -4,16 +4,16 @@ import type { Metadata } from 'next'
 import { AboutUs } from '@/components/about-us'
 
 export const metadata: Metadata = {
-  title: 'Vespera - About us',
-  description: 'About the team behind Vespera',
+  title: 'Vespertide - About us',
+  description: 'About the team behind Vespertide',
   alternates: {
     canonical: '/about-us',
   },
   openGraph: {
-    title: 'Vespera - About us',
-    description: 'About the team behind Vespera',
+    title: 'Vespertide - About us',
+    description: 'About the team behind Vespertide',
     url: '/about-us',
-    siteName: 'Vespera',
+    siteName: 'Vespertide',
   },
 }
 

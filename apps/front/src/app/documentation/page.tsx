@@ -2,16 +2,16 @@ import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 
 export const metadata: Metadata = {
-  title: 'Vespera - Documentation',
-  description: 'Vespera documentation',
+  title: 'Vespertide - Documentation',
+  description: 'Vespertide documentation',
   alternates: {
     canonical: '/documentation',
   },
   openGraph: {
-    title: 'Vespera - Documentation',
-    description: 'Vespera documentation',
+    title: 'Vespertide - Documentation',
+    description: 'Vespertide documentation',
     url: '/documentation',
-    siteName: 'Vespera',
+    siteName: 'Vespertide',
   },
 }
 

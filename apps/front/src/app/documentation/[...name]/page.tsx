@@ -41,8 +41,8 @@ export async function generateMetadata({
   const { name } = await params
   const label =
     findLabelFromSegments(SIDE_MENU_ITEMS.documentation, name) ?? name.join(' ')
-  const title = `Vespera - ${label}`
-  const description = `${label} · Vespera documentation`
+  const title = `Vespertide - ${label}`
+  const description = `${label} · Vespertide documentation`
   const url = `/documentation/${name.join('/')}`
   return {
     title,
@@ -54,7 +54,7 @@ export async function generateMetadata({
       title,
       description,
       url,
-      siteName: 'Vespera',
+      siteName: 'Vespertide',
     },
   }
 }

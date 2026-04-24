@@ -95,19 +95,21 @@ globalCss({
 })
 
 export const metadata: Metadata = {
-  title: 'Vespera',
-  description: 'FastAPI-like DX for Rust/Axum with automated OpenAPI 3.1',
+  title: 'Vespertide',
+  description:
+    'Declarative database schema management for Rust — define schemas in JSON, diff against migrations, and generate typed actions and SQL.',
   alternates: {
-    canonical: 'https://vespera.devfive.kr',
+    canonical: 'https://vespertide.devfive.kr',
   },
-  metadataBase: new URL('https://vespera.devfive.kr'),
+  metadataBase: new URL('https://vespertide.devfive.kr'),
   openGraph: {
-    title: 'Vespera',
-    description: 'FastAPI-like DX for Rust/Axum with automated OpenAPI 3.1',
-    images: ['https://vespera.devfive.kr/og-image.webp'],
-    siteName: 'Vespera',
+    title: 'Vespertide',
+    description:
+      'Declarative database schema management for Rust — define schemas in JSON, diff against migrations, and generate typed actions and SQL.',
+    images: ['https://vespertide.devfive.kr/og-image.webp'],
+    siteName: 'Vespertide',
     type: 'website',
-    url: 'https://vespera.devfive.kr',
+    url: 'https://vespertide.devfive.kr',
   },
 }
 
