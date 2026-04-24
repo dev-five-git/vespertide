@@ -1,7 +1,9 @@
-import { Box, Center, css, Flex, Image } from '@devup-ui/react'
+import { Center, css, Flex, Image } from '@devup-ui/react'
 import Link from 'next/link'
 
 import { Search, SearchResult } from '../search'
+import { SearchForm } from '../search/form'
+import { SearchParamsBoundary } from '../search-params-boundary'
 import { SheetRouteBoundary, SheetRouteTrigger } from '../sheet/router'
 import { LightThemeBoundary } from '../theme/light-theme-boundary'
 import { ThemeToggle } from '../theme/theme-toggle'
@@ -72,9 +74,9 @@ export function Header() {
                 },
               }}
             >
-              <Box as="form" display="contents">
+              <SearchForm>
                 <Search id="desktop-search" name="search" />
-              </Box>
+              </SearchForm>
             </Flex>
             <Flex alignItems="center" display={['none', null, null, 'flex']}>
               <Link
@@ -122,14 +124,15 @@ export function Header() {
           </Flex>
         </Flex>
       </Flex>
-      <SearchResult
-        className={css({
-          position: 'absolute',
-          bottom: '-20px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-        })}
-      />
+      <SearchParamsBoundary queryKey="search">
+        <SearchResult
+          className={css({
+            bottom: '-20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+          })}
+        />
+      </SearchParamsBoundary>
     </HeaderContainer>
   )
 }

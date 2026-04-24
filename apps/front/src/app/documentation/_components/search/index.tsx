@@ -2,6 +2,7 @@ import { Box, css } from '@devup-ui/react'
 
 import { Effect } from '@/components/header/effect'
 import { Search as SearchComponent } from '@/components/search'
+import { SearchForm } from '@/components/search/form'
 import {
   SheetRouteContainer,
   SheetRouteTrigger,
@@ -40,9 +41,9 @@ export function Search() {
             />
           </Effect>
         </SheetRouteTrigger>
-        <Box as="form" display="contents">
+        <SearchForm>
           <SearchComponent />
-        </Box>
+        </SearchForm>
       </SheetRouteContainer>
     </>
   )

@@ -26,6 +26,7 @@ export function Search(props: ComponentProps<typeof Input>) {
           maskSize="contain"
         />
       }
+      name="search"
       placeholder="Search documentation"
       typography="caption"
       {...props}
@@ -48,6 +49,7 @@ export function SearchResult(
       styleOrder={1}
       top="88px"
       transform="translateX(-50%)"
+      zIndex="110"
       {...props}
     >
       <Center py="40px">
