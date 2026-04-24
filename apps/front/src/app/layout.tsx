@@ -1,12 +1,15 @@
-import { globalCss, ThemeScript } from '@devup-ui/react'
+import { css, globalCss, keyframes, ThemeScript } from '@devup-ui/react'
 import { resetCss } from '@devup-ui/reset-css'
 import type { Metadata } from 'next'
 
+import { Dimmer } from '@/components/dimmer'
 import { Footer } from '@/components/footer'
 import { Header } from '@/components/header'
 import { HeaderProvider } from '@/components/header/header-provider'
 import { MobileMenu } from '@/components/mobile-menu'
-import { SheetProvider } from '@/components/sheet'
+import { SheetRoute, SheetRouter } from '@/components/sheet/router'
+
+import { Search } from './documentation/_components/search'
 
 resetCss()
 
@@ -113,6 +116,24 @@ export const metadata: Metadata = {
   },
 }
 
+export const dim = keyframes({
+  from: {
+    opacity: 0,
+  },
+  to: {
+    opacity: 1,
+  },
+})
+
+export const brighten = keyframes({
+  from: {
+    opacity: 1,
+  },
+  to: {
+    opacity: 0,
+  },
+})
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -160,14 +181,30 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         <link href="/favicon.ico" rel="shortcut icon" />
       </head>
       <body>
-        <SheetProvider>
-          <HeaderProvider>
-            <Header />
-            <MobileMenu />
-            {children}
-            <Footer />
-          </HeaderProvider>
-        </SheetProvider>
+        <Dimmer
+          className={css({
+            display: 'none',
+            selectors: {
+              'body:has(#desktop-search:focus) &': {
+                display: 'block',
+              },
+            },
+          })}
+          dimmed
+        />
+        <SheetRouter>
+          <SheetRoute name="mobile-menu">
+            <SheetRoute name="search">
+              <HeaderProvider>
+                <Header />
+                <MobileMenu />
+                <Search />
+                {children}
+                <Footer />
+              </HeaderProvider>
+            </SheetRoute>
+          </SheetRoute>
+        </SheetRouter>
       </body>
     </html>
   )

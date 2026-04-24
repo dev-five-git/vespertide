@@ -20,6 +20,7 @@
       "dependencies": {
         "@devup-api/fetch": "^0.1",
         "@devup-api/react-query": "^0.1",
+        "@devup-ui/components": "^0.1.44",
         "@devup-ui/react": "^1",
         "@devup-ui/reset-css": "^1",
         "@mdx-js/loader": "^3.1.1",
@@ -96,6 +97,8 @@
     "@devup-api/webpack-plugin": ["@devup-api/webpack-plugin@0.1.12", "", { "dependencies": { "@devup-api/core": "^0.1.16", "@devup-api/generator": "^0.1.22", "@devup-api/utils": "^0.1.9" } }, "sha512-D9ulnE1U1uQ22kMzG5+hFT9cGhvQRUezmtesAXQfpbr3s/xgA8h+CPOhnayGqY0UYe3JVrkdLs2zVNYD4nCaHQ=="],
 
     "@devup-ui/bun-plugin": ["@devup-ui/bun-plugin@1.0.7", "", { "dependencies": { "@devup-ui/plugin-utils": "^1.0.4", "@devup-ui/wasm": "^1.0.68" } }, "sha512-Sd3jeZ1swtAL+wf1STTW+Ay60jbZ9emWIJhnXfUK9+A/h+LLqiMpu9fI+m8IXxKM+5ijDF12lcrN+Vm3rT4o/g=="],
+
+    "@devup-ui/components": ["@devup-ui/components@0.1.44", "", { "dependencies": { "@devup-ui/react": "^1.0.35", "clsx": "^2.1", "react": "^19.2.4" } }, "sha512-yqkkfMr9LaBOaHdXWgPF0uI/J2b9s2LXpsrbQniOx+5GseogDtWhmg52jfr6GiFgpiHMPktDcKCWEfuTraMqQw=="],
 
     "@devup-ui/eslint-plugin": ["@devup-ui/eslint-plugin@1.0.14", "", { "dependencies": { "@typescript-eslint/utils": "^8.57", "typescript-eslint": "^8.57" } }, "sha512-HLoIDIHgUsEJ4z8a0VGMx48DYIKfnv/jZPIQWFlK6s67n6x+R33loY+5O/mggbIDntGY2lknGTKFfKgD4hahPQ=="],
 

@@ -1,7 +1,8 @@
 import { Center, css, Flex, Image } from '@devup-ui/react'
 import Link from 'next/link'
 
-import { SheetBoundary, SheetTrigger } from '../sheet'
+import { Search } from '../search'
+import { SheetRouteBoundary, SheetRouteTrigger } from '../sheet/router'
 import { LightThemeBoundary } from '../theme/light-theme-boundary'
 import { ThemeToggle } from '../theme/theme-toggle'
 import { Effect } from './effect'
@@ -47,60 +48,75 @@ export function Header() {
           </Flex>
         </Center>
         <Flex alignItems="center" gap="$spacingSpacing24">
-          <Flex alignItems="center" display={['flex', null, null, 'none']}>
-            <SheetBoundary reverse>
-              <Effect className={css({ _hover: { bg: 'revert' } })}>
-                <HeaderGnbIcon icon="search" />
-              </Effect>
-            </SheetBoundary>
-            <SheetTrigger>
+          <Flex alignItems="center" display={[null, null, null, 'none']}>
+            <SheetRouteBoundary name="mobile-menu" reverse>
+              <SheetRouteTrigger name="search">
+                <Effect className={css({ _hover: { bg: 'revert' } })}>
+                  <HeaderGnbIcon icon="search" />
+                </Effect>
+              </SheetRouteTrigger>
+            </SheetRouteBoundary>
+            <SheetRouteTrigger name="mobile-menu">
               <Effect className={css({ _hover: { bg: 'revert' } })}>
                 <HeaderHamburger />
               </Effect>
-            </SheetTrigger>
+            </SheetRouteTrigger>
           </Flex>
           <Flex alignItems="center" display={['none', null, null, 'flex']}>
-            <Link
-              href="https://github.com/dev-five-git/vespera"
-              rel="noopener noreferrer"
-              target="_blank"
+            <Flex
+              alignItems="center"
+              display={['none', null, null, 'flex']}
+              selectors={{
+                '&:has(input:focus) [aria-label="search dimmer"]': {
+                  display: 'block',
+                },
+              }}
             >
-              <Effect>
-                <GnbIcon icon="github" />
-              </Effect>
-            </Link>
-            <Link
-              href="https://discord.com/invite/8zjcGc7cWh"
-              rel="noopener noreferrer"
-              target="_blank"
-            >
-              <Effect>
-                <GnbIcon icon="discord" />
-              </Effect>
-            </Link>
-            <Link
-              href="https://open.kakao.com/o/giONwVAh"
-              rel="noopener noreferrer"
-              target="_blank"
-            >
-              <Effect>
-                <GnbIcon icon="kakao" />
-              </Effect>
-            </Link>
-            <LightThemeBoundary>
-              <ThemeToggle>
+              <Search id="desktop-search" />
+            </Flex>
+            <Flex alignItems="center" display={['none', null, null, 'flex']}>
+              <Link
+                href="https://github.com/dev-five-git/vespera"
+                rel="noopener noreferrer"
+                target="_blank"
+              >
                 <Effect>
-                  <GnbIcon icon="theme-light" />
+                  <GnbIcon icon="github" />
                 </Effect>
-              </ThemeToggle>
-            </LightThemeBoundary>
-            <LightThemeBoundary reverse>
-              <ThemeToggle>
+              </Link>
+              <Link
+                href="https://discord.com/invite/8zjcGc7cWh"
+                rel="noopener noreferrer"
+                target="_blank"
+              >
                 <Effect>
-                  <GnbIcon icon="theme-dark" />
+                  <GnbIcon icon="discord" />
                 </Effect>
-              </ThemeToggle>
-            </LightThemeBoundary>
+              </Link>
+              <Link
+                href="https://open.kakao.com/o/giONwVAh"
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                <Effect>
+                  <GnbIcon icon="kakao" />
+                </Effect>
+              </Link>
+              <LightThemeBoundary>
+                <ThemeToggle>
+                  <Effect>
+                    <GnbIcon icon="theme-light" />
+                  </Effect>
+                </ThemeToggle>
+              </LightThemeBoundary>
+              <LightThemeBoundary reverse>
+                <ThemeToggle>
+                  <Effect>
+                    <GnbIcon icon="theme-dark" />
+                  </Effect>
+                </ThemeToggle>
+              </LightThemeBoundary>
+            </Flex>
           </Flex>
         </Flex>
       </Flex>

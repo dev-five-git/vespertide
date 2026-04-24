@@ -18,6 +18,11 @@ export function HeaderContainer(props: ComponentProps<typeof Center<'div'>>) {
       pr="4px"
       py="12px"
       right="0px"
+      selectors={{
+        '&:has(#desktop-search:focus)': {
+          bg: '$containerBackground',
+        },
+      }}
       styleOrder={1}
       top="0px"
       transition="all .1s"
