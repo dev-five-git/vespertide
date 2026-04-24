@@ -1,6 +1,13 @@
 'use client'
 
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 
 import { useSheet } from '../sheet'
 
@@ -10,6 +17,8 @@ const HeaderContext = createContext<{
   transparent: boolean
   sentinels: Set<HTMLElement>
   isSentinelVisible: boolean
+  selected: string
+  setSelected: (selected: string) => void
 } | null>(null)
 
 export function useHeader() {
@@ -20,7 +29,27 @@ export function useHeader() {
   return context
 }
 
-export function HeaderProvider({ children }: { children: React.ReactNode }) {
+export function HeaderProvider({
+  defaultSelected = '',
+  selected: selectedProp,
+  onSelect,
+  children,
+}: {
+  defaultSelected?: string
+  selected?: string
+  onSelect?: (selected: string) => void
+  children: React.ReactNode
+}) {
+  const [innerSelected, setInnerSelected] = useState(defaultSelected)
+  const selected = selectedProp ?? innerSelected
+  const handleSelect = useCallback(
+    (selected: string) => {
+      setInnerSelected(selected)
+      onSelect?.(selected)
+    },
+    [onSelect],
+  )
+
   const { isOpen } = useSheet()
   const [menuOpen, setMenuOpen] = useState(false)
   const transparent = !isOpen
@@ -61,6 +90,8 @@ export function HeaderProvider({ children }: { children: React.ReactNode }) {
         transparent,
         sentinels,
         isSentinelVisible,
+        selected,
+        setSelected: handleSelect,
       }}
     >
       {children}
