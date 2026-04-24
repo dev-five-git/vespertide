@@ -133,17 +133,12 @@ export default function HomePage() {
         </Center>
 
         <ExampleProvider defaultSelected={EXAMPLES[0].id} examples={EXAMPLES}>
-          <HeaderSentinel
-            className={css({
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              bg: '$containerBackground',
-              flexDir: 'column',
-              overflow: 'hidden',
-              px: '20px',
-              py: ['80px', null, null, '120px'],
-            })}
+          <Center
+            bg="$containerBackground"
+            flexDir="column"
+            overflow="hidden"
+            px="20px"
+            py={['80px', null, null, '120px']}
           >
             <VStack gap="40px" maxW={[null, null, null, '1280px']} w="100%">
               <VStack gap="16px">
@@ -202,7 +197,7 @@ export default function HomePage() {
                 </VStack>
               </VStack>
             </VStack>
-          </HeaderSentinel>
+          </Center>
         </ExampleProvider>
 
         <HeaderSentinel
