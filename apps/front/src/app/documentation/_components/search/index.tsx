@@ -40,7 +40,9 @@ export function Search() {
             />
           </Effect>
         </SheetRouteTrigger>
-        <SearchComponent />
+        <Box as="form" display="contents">
+          <SearchComponent />
+        </Box>
       </SheetRouteContainer>
     </>
   )

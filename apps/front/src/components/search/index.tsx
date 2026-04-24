@@ -1,5 +1,6 @@
 import { Input } from '@devup-ui/components'
-import { Box, css } from '@devup-ui/react'
+import { Text } from '@devup-ui/react'
+import { Box, Center, css, VStack } from '@devup-ui/react'
 import { ComponentProps } from 'react'
 
 export function Search(props: ComponentProps<typeof Input>) {
@@ -29,5 +30,31 @@ export function Search(props: ComponentProps<typeof Input>) {
       typography="caption"
       {...props}
     />
+  )
+}
+
+export function SearchResult(
+  props: Omit<ComponentProps<typeof VStack<'div'>>, 'children'>,
+) {
+  return (
+    <VStack
+      bg="$containerBackground"
+      borderRadius="16px"
+      left="50%"
+      maxH="600px"
+      overflow="hidden"
+      p="$spacingSpacing24"
+      pos="absolute"
+      styleOrder={1}
+      top="88px"
+      transform="translateX(-50%)"
+      {...props}
+    >
+      <Center py="40px">
+        <Text color="$caption" flex="1" textAlign="center" typography="caption">
+          No search results found.
+        </Text>
+      </Center>
+    </VStack>
   )
 }
