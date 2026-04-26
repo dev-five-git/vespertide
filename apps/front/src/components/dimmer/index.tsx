@@ -40,7 +40,7 @@ export function Dimmer({
         onAnimationEnd={() => setInnerDimmed(dimmed)}
         pos="fixed"
         styleOrder={1}
-        zIndex="100"
+        zIndex="90"
         {...props}
       />
     )

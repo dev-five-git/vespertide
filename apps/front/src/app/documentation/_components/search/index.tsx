@@ -42,7 +42,7 @@ export function Search() {
           </Effect>
         </SheetRouteTrigger>
         <SearchForm>
-          <SearchComponent />
+          <SearchComponent id="mobile-search" />
         </SearchForm>
       </SheetRouteContainer>
     </>

@@ -1,8 +1,9 @@
 import { Center, css, Flex, Image } from '@devup-ui/react'
 import Link from 'next/link'
 
-import { Search, SearchResult } from '../search'
+import { Search } from '../search'
 import { SearchForm } from '../search/form'
+import { SearchResult } from '../search/result'
 import { SearchParamsBoundary } from '../search-params-boundary'
 import { SheetRouteBoundary, SheetRouteTrigger } from '../sheet/router'
 import { LightThemeBoundary } from '../theme/light-theme-boundary'
@@ -128,8 +129,6 @@ export function Header() {
         <SearchResult
           className={css({
             bottom: '-20px',
-            left: '50%',
-            transform: 'translateX(-50%)',
           })}
         />
       </SearchParamsBoundary>
