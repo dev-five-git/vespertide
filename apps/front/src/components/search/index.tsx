@@ -18,7 +18,17 @@ export function Search(props: ComponentProps<typeof Input>) {
       }}
       classNames={{
         container: css({ flex: '1' }),
-        input: css({ w: '100%', pl: '48px', py: '8px', pr: '16px' }),
+        input: css({
+          w: '100%',
+          pl: '48px',
+          py: '8px',
+          pr: '16px',
+          selectors: {
+            '&:focus': {
+              backgroundColor: 'var(--vespertideBg)',
+            },
+          },
+        }),
       }}
       colors={{
         primary: 'var(--vespertidePrimary)',
