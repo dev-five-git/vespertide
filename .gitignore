@@ -5,3 +5,4 @@ coverage
 lcov.info
 .sisyphus
 .omc
+node_modules
