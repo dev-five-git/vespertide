@@ -4,6 +4,7 @@ import { Center, css, Grid, Text, VStack } from '@devup-ui/react'
 import Link from 'next/link'
 import { ComponentProps, useEffect, useMemo, useState } from 'react'
 
+import { MarkdownParser } from '../markdown-parser'
 import { useSearchContext } from './provider'
 
 export function Result(
@@ -116,22 +117,28 @@ export function Result(
                       overflow="hidden"
                       textOverflow="ellipsis"
                       typography="caption"
+                      whiteSpace="pre-wrap"
                     >
-                      {item.text.split(reg).map((part, idx) =>
-                        part.toLowerCase() === query.toLowerCase() ? (
-                          <Text
-                            key={idx}
-                            color="$vespertidePrimary"
-                            fontWeight="bold"
-                          >
-                            {part}
+                      <MarkdownParser
+                        markdown={item.text}
+                        render={(content) => (
+                          <Text>
+                            {content.split(reg).map((part, idx) =>
+                              part.toLowerCase() === query.toLowerCase() ? (
+                                <Text
+                                  key={idx}
+                                  color="$vespertidePrimary"
+                                  fontWeight="bold"
+                                >
+                                  {part}
+                                </Text>
+                              ) : (
+                                part
+                              ),
+                            )}
                           </Text>
-                        ) : (
-                          <Text key={idx} as="span">
-                            {part}
-                          </Text>
-                        ),
-                      )}
+                        )}
+                      />
                     </Text>
                   </VStack>
                 </VStack>
