@@ -9,7 +9,7 @@ import { useSearchContext } from './provider'
 export function Result(
   props: Omit<ComponentProps<typeof VStack<'div'>>, 'children'>,
 ) {
-  const { value: query, insideClickRefs } = useSearchContext()
+  const { debouncedValue: query, insideClickRefs } = useSearchContext()
   const inputRef = Array.from(insideClickRefs.current).find(
     (el) => el.tagName === 'INPUT',
   )

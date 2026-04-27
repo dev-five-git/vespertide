@@ -11,11 +11,14 @@ import {
 
 const SearchContext = createContext<{
   value: string
+  debouncedValue: string
   setValue: (value: string) => void
   dimmed: boolean
   setDimmed: (dimmed: boolean) => void
   insideClickRefs: RefObject<Set<HTMLElement>>
 } | null>(null)
+
+const DEBOUNCE_MS = 1000
 
 export function useSearchContext() {
   const context = useContext(SearchContext)
@@ -27,8 +30,14 @@ export function useSearchContext() {
 
 export function Provider({ children }: { children: React.ReactNode }) {
   const [value, setValue] = useState('')
+  const [debouncedValue, setDebouncedValue] = useState('')
   const [dimmed, setDimmed] = useState(false)
   const insideClickRefs = useRef<Set<HTMLElement>>(new Set())
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedValue(value), DEBOUNCE_MS)
+    return () => clearTimeout(id)
+  }, [value])
 
   useEffect(() => {
     function handleOutsideClick(event: MouseEvent) {
@@ -67,6 +76,7 @@ export function Provider({ children }: { children: React.ReactNode }) {
     <SearchContext.Provider
       value={{
         value,
+        debouncedValue,
         setValue,
         dimmed,
         setDimmed,
