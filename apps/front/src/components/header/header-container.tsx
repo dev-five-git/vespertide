@@ -23,7 +23,7 @@ export function HeaderContainer(props: ComponentProps<typeof Center<'div'>>) {
       styleOrder={1}
       top="0px"
       transition="all .1s"
-      zIndex="100"
+      zIndex="200"
       {...props}
     />
   )

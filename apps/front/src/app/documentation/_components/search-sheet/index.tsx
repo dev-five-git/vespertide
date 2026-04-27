@@ -20,6 +20,7 @@ export function SearchSheet() {
         pl: '$spacingSpacing04',
         pr: '$spacingSpacing20',
         gap: '4px',
+        zIndex: '200',
       })}
       name="search"
       position="top"

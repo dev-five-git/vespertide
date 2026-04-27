@@ -66,7 +66,7 @@ export function Result(
       h="max-content"
       left={['50%', null, null, desktopLeft]}
       pl="$spacingSpacing08"
-      pos="absolute"
+      pos="fixed"
       pr="$spacingSpacing16"
       py="$spacingSpacing20"
       styleOrder={1}
