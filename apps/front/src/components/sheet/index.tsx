@@ -8,7 +8,9 @@ import {
   Dispatch,
   isValidElement,
   SetStateAction,
+  useCallback,
   useContext,
+  useEffect,
   useState,
 } from 'react'
 
@@ -40,10 +42,26 @@ export function SheetProvider({
 }) {
   const [innerOpen, setInnerOpen] = useState(defaultOpen)
   const isOpen = openProp ?? innerOpen
-  const handleOpenChange = (open: boolean | ((prev: boolean) => boolean)) => {
-    setInnerOpen(open)
-    onOpenChange?.(open)
-  }
+  const handleOpenChange = useCallback(
+    (open: boolean | ((prev: boolean) => boolean)) => {
+      setInnerOpen(open)
+      onOpenChange?.(open)
+    },
+    [onOpenChange],
+  )
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        handleOpenChange(false)
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [handleOpenChange])
+
   return (
     <SheetContext.Provider value={{ isOpen, setIsOpen: handleOpenChange }}>
       {children}

@@ -6,9 +6,9 @@ import { useSheetRouter } from '../sheet/router'
 import { useSearchContext } from './provider'
 
 export function Dimmer(props: ComponentProps<typeof BaseDimmer>) {
-  const { resultOpen } = useSearchContext()
+  const { dimmed } = useSearchContext()
   const { route } = useSheetRouter()
-  return <BaseDimmer dimmed={resultOpen || route === 'search'} {...props} />
+  return <BaseDimmer dimmed={dimmed || route === 'search'} {...props} />
 }
 
 export { Dimmer as SearchDimmer }

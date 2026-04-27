@@ -7,10 +7,18 @@ import { Header } from '@/components/header'
 import { HeaderProvider } from '@/components/header/header-provider'
 import { MobileMenu } from '@/components/mobile-menu'
 import { SearchDimmer } from '@/components/search/dimmer'
-import { SearchProvider } from '@/components/search/provider'
-import { SheetRoute, SheetRouter } from '@/components/sheet/router'
+import {
+  SearchContextBoundary,
+  SearchProvider,
+} from '@/components/search/provider'
+import { SearchResult } from '@/components/search/result'
+import {
+  SheetRoute,
+  SheetRouteBoundary,
+  SheetRouter,
+} from '@/components/sheet/router'
 
-import { Search } from './documentation/_components/search'
+import { SearchSheet } from './documentation/_components/search-sheet'
 
 resetCss()
 
@@ -143,15 +151,6 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-})(window,document,'script','dataLayer','GTM-PSRKC4QZ')`,
-          }}
-        />
         <link
           as="font"
           crossOrigin="anonymous"
@@ -190,7 +189,17 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
                   <SearchDimmer />
                   <Header />
                   <MobileMenu />
-                  <Search />
+                  <SearchSheet />
+                  <SearchContextBoundary state="value">
+                    <SearchContextBoundary state="dimmed">
+                      <SearchResult />
+                    </SearchContextBoundary>
+                    <SearchContextBoundary reverse state="dimmed">
+                      <SheetRouteBoundary name="search">
+                        <SearchResult />
+                      </SheetRouteBoundary>
+                    </SearchContextBoundary>
+                  </SearchContextBoundary>
                   {children}
                   <Footer />
                 </HeaderProvider>

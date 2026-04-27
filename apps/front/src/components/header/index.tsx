@@ -4,8 +4,6 @@ import Link from 'next/link'
 import { PathnameBoundary } from '../pathname-boundary'
 import { Search } from '../search'
 import { SearchForm } from '../search/form'
-import { SearchContextBoundary } from '../search/provider'
-import { SearchResult } from '../search/result'
 import { SheetRouteBoundary, SheetRouteTrigger } from '../sheet/router'
 import { LightThemeBoundary } from '../theme/light-theme-boundary'
 import { ThemeToggle } from '../theme/theme-toggle'
@@ -72,15 +70,7 @@ export function Header() {
             gap="$spacingSpacing24"
           >
             <PathnameBoundary candidates={['/']} reverse>
-              <Flex
-                alignItems="center"
-                display={['none', null, null, 'flex']}
-                selectors={{
-                  '&:has(input:focus) [aria-label="search dimmer"]': {
-                    display: 'block',
-                  },
-                }}
-              >
+              <Flex alignItems="center" display={['none', null, null, 'flex']}>
                 <SearchForm>
                   <Search id="desktop-search" name="search" />
                 </SearchForm>
@@ -132,11 +122,6 @@ export function Header() {
           </Flex>
         </Flex>
       </Flex>
-      <SearchContextBoundary state="value">
-        <SearchContextBoundary state="resultOpen">
-          <SearchResult />
-        </SearchContextBoundary>
-      </SearchContextBoundary>
     </HeaderContainer>
   )
 }

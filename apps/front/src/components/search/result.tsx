@@ -10,6 +10,14 @@ export function Result(
   props: Omit<ComponentProps<typeof VStack<'div'>>, 'children'>,
 ) {
   const { value: query, insideClickRefs } = useSearchContext()
+  const inputRef = Array.from(insideClickRefs.current).find(
+    (el) => el.tagName === 'INPUT',
+  )
+  const inputRect = inputRef?.getBoundingClientRect()
+  const desktopLeft = inputRect
+    ? inputRect.left - inputRect.width + 16 + 'px'
+    : '50%'
+
   const [data, setData] = useState<
     {
       title: string
@@ -55,14 +63,14 @@ export function Result(
       bg="$containerBackground"
       borderRadius="16px"
       h="max-content"
-      left="50%"
+      left={['50%', null, null, desktopLeft]}
       pl="$spacingSpacing08"
       pos="absolute"
       pr="$spacingSpacing16"
       py="$spacingSpacing20"
       styleOrder={1}
       top={['88px', null, null, '75px']}
-      transform="translateX(-50%)"
+      transform={['translateX(-50%)', null, null, 'unset']}
       w={['calc(100% - 32px)', null, null, '500px']}
       zIndex="120"
       {...props}

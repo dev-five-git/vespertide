@@ -6,7 +6,7 @@ import { ComponentProps } from 'react'
 import { useSearchContext } from './provider'
 
 export function Search(props: ComponentProps<typeof Input>) {
-  const { value, setValue, setResultOpen, insideClickRefs } = useSearchContext()
+  const { value, setValue, setDimmed, insideClickRefs } = useSearchContext()
   return (
     <Input
       ref={(el) => {
@@ -38,7 +38,7 @@ export function Search(props: ComponentProps<typeof Input>) {
       }
       name="search"
       onChange={(e) => setValue(e.target.value)}
-      onClick={() => setResultOpen(true)}
+      onClick={() => setDimmed(true)}
       placeholder="Search documentation"
       typography="caption"
       value={value}

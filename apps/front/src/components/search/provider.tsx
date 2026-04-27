@@ -12,8 +12,8 @@ import {
 const SearchContext = createContext<{
   value: string
   setValue: (value: string) => void
-  resultOpen: boolean
-  setResultOpen: (open: boolean) => void
+  dimmed: boolean
+  setDimmed: (dimmed: boolean) => void
   insideClickRefs: RefObject<Set<HTMLElement>>
 } | null>(null)
 
@@ -27,7 +27,7 @@ export function useSearchContext() {
 
 export function Provider({ children }: { children: React.ReactNode }) {
   const [value, setValue] = useState('')
-  const [resultOpen, setResultOpen] = useState(false)
+  const [dimmed, setDimmed] = useState(false)
   const insideClickRefs = useRef<Set<HTMLElement>>(new Set())
 
   useEffect(() => {
@@ -39,7 +39,7 @@ export function Provider({ children }: { children: React.ReactNode }) {
       ) {
         return
       }
-      setResultOpen(false)
+      setDimmed(false)
     }
     document.addEventListener('click', handleOutsideClick)
     return () => {
@@ -48,10 +48,10 @@ export function Provider({ children }: { children: React.ReactNode }) {
   }, [])
 
   useEffect(() => {
-    if (!resultOpen) return
+    if (!dimmed) return
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
-        setResultOpen(false)
+        setDimmed(false)
         insideClickRefs.current.forEach((el) => {
           el.blur()
         })
@@ -61,15 +61,15 @@ export function Provider({ children }: { children: React.ReactNode }) {
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [resultOpen])
+  }, [dimmed])
 
   return (
     <SearchContext.Provider
       value={{
         value,
         setValue,
-        resultOpen,
-        setResultOpen,
+        dimmed,
+        setDimmed,
         insideClickRefs,
       }}
     >
@@ -83,12 +83,12 @@ export function SearchContextBoundary({
   children,
   reverse = false,
 }: {
-  state: 'value' | 'resultOpen'
+  state: 'value' | 'dimmed'
   reverse?: boolean
   children: React.ReactNode
 }) {
-  const { value, resultOpen } = useSearchContext()
-  const pass = state === 'value' ? !!value : !!resultOpen
+  const { value, dimmed } = useSearchContext()
+  const pass = state === 'value' ? !!value : !!dimmed
   if (reverse) return pass ? null : children
   return pass ? children : null
 }
