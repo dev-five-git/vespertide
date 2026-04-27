@@ -52,6 +52,7 @@ export function ContainerAnimator({
   className,
   isOpen,
   setIsOpen,
+  ref: refProp,
   ...props
 }: ComponentProps<typeof Box<'div'>> & {
   position?: 'left' | 'right' | 'top' | 'bottom'
@@ -85,6 +86,13 @@ export function ContainerAnimator({
     render && (
       <Box
         ref={(node) => {
+          if (refProp) {
+            if (typeof refProp === 'function') {
+              refProp(node)
+            } else {
+              refProp.current = node
+            }
+          }
           if (!node?.checkVisibility()) return () => {}
           ref.current = node
           return () => {

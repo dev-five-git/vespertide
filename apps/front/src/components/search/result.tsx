@@ -54,13 +54,6 @@ export function Result(
   const reg = useMemo(() => new RegExp(`(${query})`, 'gi'), [query])
   return (
     <Grid
-      ref={(el) => {
-        if (!el) return
-        insideClickRefs.current.add(el)
-        return () => {
-          insideClickRefs.current.delete(el)
-        }
-      }}
       bg="$containerBackground"
       borderRadius="16px"
       h="max-content"

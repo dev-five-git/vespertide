@@ -18,7 +18,7 @@ const SearchContext = createContext<{
   insideClickRefs: RefObject<Set<HTMLElement>>
 } | null>(null)
 
-const DEBOUNCE_MS = 1000
+const DEBOUNCE_MS = 750
 
 export function useSearchContext() {
   const context = useContext(SearchContext)
