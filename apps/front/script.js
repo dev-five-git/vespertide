@@ -12,12 +12,24 @@ for await (const file of files) {
       if (content.trim().length === 0 || titleIndex === -1) {
         return null
       }
-      const fileName = file.split(/[/\\]/).pop()
+      const titleMatch = /^#+\s+(.*)/m.exec(content.toString())
+      if (!titleMatch) {
+        return null
+      }
+
+      const url =
+        '/' +
+        file
+          .replace(/\\/g, '/')
+          .replace(/^src\/app\//, '')
+          .replace(/\/\[\.\.\.[^\]]+\]\//, '/')
+          .replace(/\.mdx$/, '')
+          .replace(/\./g, '/')
 
       return {
         text: content.toString().substring(titleIndex),
-        title: /(#)+ (.*)/.exec(content.toString())[1],
-        url: file.replace(/src[/\\]app[/\\]/, '').replace(fileName, ''),
+        title: titleMatch[1],
+        url,
       }
     }),
   )
