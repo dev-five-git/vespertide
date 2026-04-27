@@ -1,10 +1,11 @@
 import { Center, css, Flex, Image } from '@devup-ui/react'
 import Link from 'next/link'
 
+import { PathnameBoundary } from '../pathname-boundary'
 import { Search } from '../search'
 import { SearchForm } from '../search/form'
+import { SearchContextBoundary } from '../search/provider'
 import { SearchResult } from '../search/result'
-import { SearchParamsBoundary } from '../search-params-boundary'
 import { SheetRouteBoundary, SheetRouteTrigger } from '../sheet/router'
 import { LightThemeBoundary } from '../theme/light-theme-boundary'
 import { ThemeToggle } from '../theme/theme-toggle'
@@ -65,20 +66,26 @@ export function Header() {
               </Effect>
             </SheetRouteTrigger>
           </Flex>
-          <Flex alignItems="center" display={['none', null, null, 'flex']}>
-            <Flex
-              alignItems="center"
-              display={['none', null, null, 'flex']}
-              selectors={{
-                '&:has(input:focus) [aria-label="search dimmer"]': {
-                  display: 'block',
-                },
-              }}
-            >
-              <SearchForm>
-                <Search id="desktop-search" name="search" />
-              </SearchForm>
-            </Flex>
+          <Flex
+            alignItems="center"
+            display={['none', null, null, 'flex']}
+            gap="$spacingSpacing24"
+          >
+            <PathnameBoundary candidates={['/']} reverse>
+              <Flex
+                alignItems="center"
+                display={['none', null, null, 'flex']}
+                selectors={{
+                  '&:has(input:focus) [aria-label="search dimmer"]': {
+                    display: 'block',
+                  },
+                }}
+              >
+                <SearchForm>
+                  <Search id="desktop-search" name="search" />
+                </SearchForm>
+              </Flex>
+            </PathnameBoundary>
             <Flex alignItems="center" display={['none', null, null, 'flex']}>
               <Link
                 href="https://github.com/dev-five-git/vespera"
@@ -125,13 +132,11 @@ export function Header() {
           </Flex>
         </Flex>
       </Flex>
-      <SearchParamsBoundary queryKey="search">
-        <SearchResult
-          className={css({
-            bottom: '-20px',
-          })}
-        />
-      </SearchParamsBoundary>
+      <SearchContextBoundary state="value">
+        <SearchContextBoundary state="resultOpen">
+          <SearchResult />
+        </SearchContextBoundary>
+      </SearchContextBoundary>
     </HeaderContainer>
   )
 }

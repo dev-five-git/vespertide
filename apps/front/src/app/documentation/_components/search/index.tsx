@@ -8,12 +8,9 @@ import {
   SheetRouteTrigger,
 } from '@/components/sheet/router'
 
-import { SearchBackground } from './background'
-
 export function Search() {
   return (
     <>
-      <SearchBackground />
       <SheetRouteContainer
         className={css({
           display: 'flex',

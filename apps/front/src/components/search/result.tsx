@@ -2,13 +2,14 @@
 
 import { Center, css, Grid, Text, VStack } from '@devup-ui/react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
 import { ComponentProps, useEffect, useMemo, useState } from 'react'
+
+import { useSearchContext } from './provider'
 
 export function Result(
   props: Omit<ComponentProps<typeof VStack<'div'>>, 'children'>,
 ) {
-  const query = useSearchParams().get('search')
+  const { value: query, insideClickRefs } = useSearchContext()
   const [data, setData] = useState<
     {
       title: string
@@ -42,27 +43,27 @@ export function Result(
     }
   }, [query])
   const reg = useMemo(() => new RegExp(`(${query})`, 'gi'), [query])
-  if (!query) return
   return (
     <Grid
+      ref={(el) => {
+        if (!el) return
+        insideClickRefs.current.add(el)
+        return () => {
+          insideClickRefs.current.delete(el)
+        }
+      }}
       bg="$containerBackground"
       borderRadius="16px"
-      display="none"
       h="max-content"
       left="50%"
       pl="$spacingSpacing08"
       pos="absolute"
       pr="$spacingSpacing16"
       py="$spacingSpacing20"
-      selectors={{
-        'body:has(#desktop-search:focus), body:has(#mobile-search) &': {
-          display: 'block',
-        },
-      }}
       styleOrder={1}
-      top="88px"
+      top={['88px', null, null, '75px']}
       transform="translateX(-50%)"
-      w={['100%', null, '500px']}
+      w={['calc(100% - 32px)', null, null, '500px']}
       zIndex="120"
       {...props}
     >
@@ -81,7 +82,7 @@ export function Result(
             w: '6px',
           },
         }}
-        w={[null, null, '468px']}
+        w={[null, null, null, '468px']}
       >
         {data?.length ? (
           <VStack gap="16px">
