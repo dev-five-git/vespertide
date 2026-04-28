@@ -51,16 +51,28 @@ export default function HomePage() {
         <Center
           bg="linear-gradient(-180deg, #9AE99D 0%, #FFF6DF 100%)"
           flexDir="column"
-          h="1080px"
+          h={[null, null, null, null, '1080px']}
           overflow="hidden"
           pb="60px"
           pos="relative"
-          pt="128px"
-          px="40px"
+          pt={['120px', null, null, '148px']}
+          px={['20px', null, null, '40px']}
         >
-          <VStack alignItems="flex-start" gap="50px" maxW="1280px" w="100%">
-            <VStack alignItems="flex-start" gap="$spacingSpacing32" w="100%">
-              <Text color="#10131F" textAlign="center" typography="displaySm">
+          <VStack
+            alignItems={['center', null, null, null, 'flex-start']}
+            gap="50px"
+            maxW="1280px"
+            pos="relative"
+            w="100%"
+          >
+            <VStack
+              alignItems="flex-start"
+              gap="$spacingSpacing32"
+              pos="relative"
+              w="100%"
+              zIndex="1"
+            >
+              <Text color="#10131F" typography="displaySm">
                 Lorem ipsum dolor sit amet, <br />
                 consectetur adipiscing elit.
               </Text>
@@ -72,15 +84,19 @@ export default function HomePage() {
                 Etiam auctor cursus urna sit amet elementum.
               </Text>
             </VStack>
+            <Box
+              bg="url(/images/hero-figure.webp) center/cover no-repeat"
+              bgPosition="center"
+              bgSize="contain"
+              boxSize={['350px', null, null, null, '750px']}
+              pos={[null, null, null, null, 'absolute']}
+              right="-150px"
+              top="50%"
+              transform={[null, null, null, null, 'translateY(-50%)']}
+              zIndex="0"
+            />
             <Button>Get started</Button>
           </VStack>
-          <Box
-            bg="url(/images/hero-figure.webp) center/cover no-repeat"
-            boxSize="750px"
-            left="1028px"
-            pos="absolute"
-            top="173px"
-          />
         </Center>
 
         <Center
