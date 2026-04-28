@@ -119,13 +119,26 @@
             }
         },
         "typography": {
-            "displaySm": {
-                "fontFamily": "Pretendard",
-                "fontWeight": 700,
-                "fontSize": "48px",
-                "lineHeight": 1.3,
-                "letterSpacing": "-0.02em"
-            },
+            "displaySm": [
+                {
+                    "fontFamily": "Pretendard",
+                    "fontWeight": 700,
+                    "fontSize": "32px",
+                    "lineHeight": 1.3,
+                    "letterSpacing": "-0.02em"
+                },
+                null,
+                null,
+                {
+                    "fontFamily": "Pretendard",
+                    "fontWeight": 700,
+                    "fontSize": "48px",
+                    "lineHeight": 1.3,
+                    "letterSpacing": "-0.02em"
+                },
+                null,
+                null
+            ],
             "h1": [
                 {
                     "fontFamily": "Pretendard",
@@ -479,14 +492,7 @@
                 },
                 null,
                 null
-            ],
-            "dispalySm": {
-                "fontFamily": "Pretendard",
-                "fontWeight": 700,
-                "fontSize": "32px",
-                "lineHeight": 1.3,
-                "letterSpacing": "-0.02em"
-            }
+            ]
         }
     }
 }
