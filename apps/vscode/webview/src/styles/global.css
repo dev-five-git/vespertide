@@ -28,24 +28,47 @@ textarea, input {
   font-size: inherit;
 }
 
+/* ── Design tokens (dark defaults) ──────────────────────────────────── */
+:root {
+  --node-bg: var(--vscode-editor-background, #1e1e1e);
+  --node-border: rgba(255, 255, 255, 0.1);
+  --node-field-divider: rgba(255, 255, 255, 0.04);
+  --node-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  --canvas-dot: rgba(255, 255, 255, 0.07);
+  --edge-color: rgba(99, 102, 241, 0.55);
+  --edge-arrow: rgba(99, 102, 241, 0.7);
+  --navbar-bg: rgba(30, 30, 30, 0.92);
+  --navbar-border: rgba(255, 255, 255, 0.12);
+}
+
 /* Light theme overrides */
 [data-theme="light"] {
-  --vscode-editor-background: #ffffff;
-  --vscode-editor-foreground: #1e1e1e;
-  --vscode-foreground: #1e1e1e;
-  --vscode-sideBar-background: #f3f3f3;
-  --vscode-editorWidget-background: #ebebeb;
-  --vscode-editorGroupHeader-tabsBackground: #e4e4e4;
-  --vscode-panel-border: rgba(0, 0, 0, 0.12);
-  --vscode-tab-inactiveForeground: #717171;
+  --vscode-editor-background: #f0f0f0;
+  --vscode-editor-foreground: #1a1a1a;
+  --vscode-foreground: #1a1a1a;
+  --vscode-sideBar-background: #e8e8e8;
+  --vscode-editorWidget-background: #e0e0e0;
+  --vscode-editorGroupHeader-tabsBackground: #d8d8d8;
+  --vscode-panel-border: rgba(0, 0, 0, 0.14);
+  --vscode-tab-inactiveForeground: #5a5a5a;
   --vscode-button-background: #0078d4;
   --vscode-button-foreground: #ffffff;
   --vscode-focusBorder: #0078d4;
-  --vscode-input-border: rgba(0, 0, 0, 0.18);
-  --vscode-scrollbarSlider-background: rgba(0, 0, 0, 0.18);
-  --vscode-scrollbarSlider-hoverBackground: rgba(0, 0, 0, 0.35);
+  --vscode-input-border: rgba(0, 0, 0, 0.2);
+  --vscode-scrollbarSlider-background: rgba(0, 0, 0, 0.2);
+  --vscode-scrollbarSlider-hoverBackground: rgba(0, 0, 0, 0.38);
   --vscode-inputValidation-errorBackground: rgba(180, 30, 30, 0.08);
   --vscode-inputValidation-errorForeground: #a80000;
+
+  --node-bg: #ffffff;
+  --node-border: rgba(0, 0, 0, 0.1);
+  --node-field-divider: rgba(0, 0, 0, 0.05);
+  --node-shadow: 0 1px 6px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.07);
+  --canvas-dot: rgba(0, 0, 0, 0.09);
+  --edge-color: rgba(79, 70, 229, 0.55);
+  --edge-arrow: rgba(79, 70, 229, 0.75);
+  --navbar-bg: rgba(255, 255, 255, 0.95);
+  --navbar-border: rgba(0, 0, 0, 0.12);
 }
 
 /* Animations */

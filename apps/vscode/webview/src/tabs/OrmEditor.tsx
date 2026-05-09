@@ -75,16 +75,24 @@ function modelToJson(model: Model, ormType: OrmType) {
   };
 }
 
-function getEdges(models: Model[]): { from: string; to: string }[] {
+function getEdges(models: Model[]): { from: string; to: string; oneToMany: boolean }[] {
   const names = new Set(models.map((m) => m.name));
-  const seen  = new Set<string>();
-  const edges: { from: string; to: string }[] = [];
+  const edges: { from: string; to: string; oneToMany: boolean }[] = [];
   for (const model of models) {
     for (const f of model.fields) {
+      if (!f.isRelation) continue;
       const base = f.type.replace('[]', '').replace('?', '');
-      if (f.isRelation && names.has(base)) {
-        const key = [model.name, base].sort().join(':');
-        if (!seen.has(key)) { seen.add(key); edges.push({ from: model.name, to: base }); }
+      if (!names.has(base)) continue;
+      // Only draw an edge from the model that owns the FK scalar field
+      // e.g. authorId / author_id means this model holds the FK
+      const hasFk = model.fields.some(
+        (sf) => !sf.isRelation && (
+          sf.name === f.name + 'Id' || sf.name === f.name + '_id' ||
+          sf.name.toLowerCase() === f.name.toLowerCase() + 'id'
+        )
+      );
+      if (hasFk) {
+        edges.push({ from: model.name, to: base, oneToMany: false });
       }
     }
   }
@@ -282,19 +290,25 @@ export default function OrmEditor({ state, setState }: Props) {
     panningRef.current = { mx: e.clientX, my: e.clientY, px: pan.x, py: pan.y };
   };
 
-  // Zoom toward cursor
+  // Zoom toward cursor (pinch) or pan (two-finger scroll)
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    setScale((prev) => {
-      const next  = Math.min(2, Math.max(0.25, prev - e.deltaY * 0.0008));
-      const ratio = next / prev;
-      setPan((p) => ({ x: mx - ratio * (mx - p.x), y: my - ratio * (my - p.y) }));
-      return next;
-    });
+    if (e.ctrlKey || e.metaKey) {
+      // Pinch-to-zoom or Ctrl+scroll → zoom toward cursor
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      setScale((prev) => {
+        const next  = Math.min(2, Math.max(0.25, prev - e.deltaY * 0.008));
+        const ratio = next / prev;
+        setPan((p) => ({ x: mx - ratio * (mx - p.x), y: my - ratio * (my - p.y) }));
+        return next;
+      });
+    } else {
+      // Two-finger trackpad scroll → pan
+      setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }));
+    }
   }, []);
 
   useEffect(() => {
@@ -341,7 +355,7 @@ export default function OrmEditor({ state, setState }: Props) {
           {/* Dot grid — moves with pan */}
           <div style={{
             position: 'absolute', inset: 0, pointerEvents: 'none',
-            backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.07) 1px, transparent 1px)',
+            backgroundImage: 'radial-gradient(circle, var(--canvas-dot) 1px, transparent 1px)',
             backgroundSize: `${24 * scale}px ${24 * scale}px`,
             backgroundPosition: `${pan.x % (24 * scale)}px ${pan.y % (24 * scale)}px`,
           }} />
@@ -355,22 +369,32 @@ export default function OrmEditor({ state, setState }: Props) {
             <svg style={{ position: 'absolute', overflow: 'visible', width: 0, height: 0, pointerEvents: 'none' }}>
               <defs>
                 <marker id="vt-arrow" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
-                  <path d="M0,0.5 L0,5.5 L6,3 z" fill="rgba(99,102,241,0.65)" />
+                  <path d="M0,0.5 L0,5.5 L6,3 z" fill="var(--edge-arrow)" />
                 </marker>
               </defs>
               {edges.map((edge, i) => {
                 const from = positions[edge.from];
                 const to   = positions[edge.to];
                 if (!from || !to) return null;
-                const x1 = from.x + NODE_W;
-                const y1 = from.y + HEADER_H / 2;
-                const x2 = to.x;
-                const y2 = to.y + HEADER_H / 2;
-                const cx = (x1 + x2) / 2;
+                const fh = nodeHeight(models.find(m => m.name === edge.from)!);
+                const th = nodeHeight(models.find(m => m.name === edge.to)!);
+                // Pick nearest horizontal sides
+                const fromRight = from.x + NODE_W;
+                const toLeft    = to.x;
+                const fromLeft  = from.x;
+                const toRight   = to.x + NODE_W;
+                const useRight  = Math.abs(fromRight - toLeft) <= Math.abs(fromLeft - toRight);
+                const x1 = useRight ? fromRight : fromLeft;
+                const x2 = useRight ? toLeft    : toRight;
+                const y1 = from.y + fh / 2;
+                const y2 = to.y   + th / 2;
+                const dx = Math.abs(x2 - x1) * 0.5;
+                const c1x = x1 + (useRight ?  dx : -dx);
+                const c2x = x2 + (useRight ? -dx :  dx);
                 return (
                   <path key={i}
-                    d={`M${x1} ${y1} C${cx} ${y1},${cx} ${y2},${x2} ${y2}`}
-                    fill="none" stroke="rgba(99,102,241,0.45)" strokeWidth="1.5"
+                    d={`M${x1} ${y1} C${c1x} ${y1},${c2x} ${y2},${x2} ${y2}`}
+                    fill="none" stroke="var(--edge-color)" strokeWidth="1.5"
                     strokeDasharray="5 3" markerEnd="url(#vt-arrow)"
                   />
                 );
@@ -390,11 +414,11 @@ export default function OrmEditor({ state, setState }: Props) {
                     position: 'absolute', left: pos.x, top: pos.y,
                     width: NODE_W, height: nodeHeight(model),
                     borderRadius: 8, overflow: 'hidden', userSelect: 'none', cursor: 'pointer',
-                    border: `1.5px solid ${isSel ? color : 'rgba(255,255,255,0.1)'}`,
+                    border: `1.5px solid ${isSel ? color : 'var(--node-border)'}`,
                     boxShadow: isSel
-                      ? `0 0 0 3px ${color}28, 0 4px 18px rgba(0,0,0,0.45)`
-                      : '0 2px 10px rgba(0,0,0,0.35)',
-                    background: 'var(--vscode-editor-background,#1e1e1e)',
+                      ? `0 0 0 3px ${color}28, 0 4px 18px rgba(0,0,0,0.35)`
+                      : 'var(--node-shadow)',
+                    background: 'var(--node-bg)',
                     transition: 'border-color 0.12s, box-shadow 0.12s',
                   }}
                 >
@@ -412,7 +436,7 @@ export default function OrmEditor({ state, setState }: Props) {
                     <div key={f.name} style={{
                       height: FIELD_H, display: 'flex', alignItems: 'center',
                       padding: '0 12px', gap: 6,
-                      borderBottom: fi < model.fields.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                      borderBottom: fi < model.fields.length - 1 ? '1px solid var(--node-field-divider)' : 'none',
                     }}>
                       <span style={{ fontSize: 9, width: 10, textAlign: 'center', flexShrink: 0, opacity: 0.5 }}>
                         {f.isPrimary ? '⬡' : f.isRelation ? '⇢' : '·'}
@@ -441,10 +465,10 @@ export default function OrmEditor({ state, setState }: Props) {
             position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)',
             display: 'flex', alignItems: 'center', gap: 2,
             padding: '4px 8px',
-            background: 'var(--vscode-editorWidget-background, #2d2d2d)',
-            border: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.12))',
+            background: 'var(--navbar-bg)',
+            border: '1px solid var(--navbar-border)',
             borderRadius: 9,
-            boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
             backdropFilter: 'blur(8px)',
             userSelect: 'none',
             zIndex: 10,

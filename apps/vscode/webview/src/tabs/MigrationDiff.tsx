@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { postMessage } from '../vscode';
 import type { AppState } from '../App';
 
@@ -11,17 +11,25 @@ type Column = { label: string; sql: string };
 
 export default function MigrationDiff({ state, setState: _setState }: Props) {
   const lastSchemaRef = useRef<string>('');
+  const [requested, setRequested] = useState(false);
 
-  // Re-generate when schema changes (or on first mount if schema exists)
+  // Trigger on first mount regardless (so tab is pre-populated)
   useEffect(() => {
+    if (!requested) {
+      setRequested(true);
+      postMessage({ type: 'generate_migration', schema: state.schema, db: 'postgres' });
+      lastSchemaRef.current = JSON.stringify(state.schema);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-generate when schema changes
+  useEffect(() => {
+    if (!requested) return;
     const key = JSON.stringify(state.schema);
     if (key === lastSchemaRef.current) return;
-    if (!Object.keys(state.schema).length) return;
     lastSchemaRef.current = key;
-
-    // Send one message; host will call generateMigration for all 3 dialects in parallel
     postMessage({ type: 'generate_migration', schema: state.schema, db: 'postgres' });
-  }, [state.schema]);
+  }, [state.schema, requested]);
 
   const columns: Column[] = [
     { label: 'PostgreSQL', sql: state.postgres },
