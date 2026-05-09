@@ -2,15 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { onMessage } from './vscode';
 import type { HostMessage, OrmType, Schema } from './vscode';
 import OrmEditor from './tabs/OrmEditor';
-import OrmConverter from './tabs/OrmConverter';
 import MigrationDiff from './tabs/MigrationDiff';
 import Export from './tabs/Export';
 
-type Tab = 'editor' | 'converter' | 'migration' | 'export';
+type Tab = 'editor' | 'migration' | 'export';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'editor',    label: 'ORM Editor' },
-  { id: 'converter', label: 'Converter' },
   { id: 'migration', label: 'Migration' },
   { id: 'export',    label: 'Export' },
 ];
@@ -47,16 +45,8 @@ export default function App() {
         switch (msg.type) {
           case 'erd_updated':
             return { ...prev, svg: msg.svg, error: null };
-          case 'orm_converted':
-            return { ...prev, ormSource: msg.source, error: null };
           case 'migration_updated':
-            return {
-              ...prev,
-              postgres: msg.postgres,
-              mysql: msg.mysql,
-              sqlite: msg.sqlite,
-              error: null,
-            };
+            return { ...prev, postgres: msg.postgres, mysql: msg.mysql, sqlite: msg.sqlite, error: null };
           case 'export_done':
             return { ...prev, error: null };
           case 'error':
@@ -70,7 +60,6 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      {/* ── Tab bar ── */}
       <div
         role="tablist"
         style={{
@@ -108,25 +97,20 @@ export default function App() {
         ))}
       </div>
 
-      {/* ── Error banner ── */}
       {state.error && (
-        <div
-          style={{
-            padding: '6px 12px',
-            background: 'var(--vscode-inputValidation-errorBackground, rgba(90,29,29,0.9))',
-            color: 'var(--vscode-inputValidation-errorForeground, #f48771)',
-            fontSize: '12px',
-            flexShrink: 0,
-          }}
-        >
+        <div style={{
+          padding: '6px 12px',
+          background: 'var(--vscode-inputValidation-errorBackground, rgba(90,29,29,0.9))',
+          color: 'var(--vscode-inputValidation-errorForeground, #f48771)',
+          fontSize: '12px',
+          flexShrink: 0,
+        }}>
           {state.error}
         </div>
       )}
 
-      {/* ── Tab content ── */}
       <div style={{ flex: 1, overflow: 'hidden' }}>
         {tab === 'editor'    && <OrmEditor    state={state} setState={setState} />}
-        {tab === 'converter' && <OrmConverter state={state} setState={setState} />}
         {tab === 'migration' && <MigrationDiff state={state} setState={setState} />}
         {tab === 'export'    && <Export       state={state} setState={setState} />}
       </div>
