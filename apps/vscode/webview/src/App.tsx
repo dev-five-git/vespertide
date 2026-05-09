@@ -148,6 +148,7 @@ export type AppState = {
   mysql: string;
   sqlite: string;
   error: string | null;
+  theme: 'dark' | 'light';
 };
 
 const INITIAL: AppState = {
@@ -159,6 +160,7 @@ const INITIAL: AppState = {
   mysql: '',
   sqlite: '',
   error: null,
+  theme: 'dark',
 };
 
 export default function App() {
@@ -185,7 +187,7 @@ export default function App() {
   }, []);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div data-theme={state.theme} style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <div
         role="tablist"
         style={{

@@ -28,6 +28,26 @@ textarea, input {
   font-size: inherit;
 }
 
+/* Light theme overrides */
+[data-theme="light"] {
+  --vscode-editor-background: #ffffff;
+  --vscode-editor-foreground: #1e1e1e;
+  --vscode-foreground: #1e1e1e;
+  --vscode-sideBar-background: #f3f3f3;
+  --vscode-editorWidget-background: #ebebeb;
+  --vscode-editorGroupHeader-tabsBackground: #e4e4e4;
+  --vscode-panel-border: rgba(0, 0, 0, 0.12);
+  --vscode-tab-inactiveForeground: #717171;
+  --vscode-button-background: #0078d4;
+  --vscode-button-foreground: #ffffff;
+  --vscode-focusBorder: #0078d4;
+  --vscode-input-border: rgba(0, 0, 0, 0.18);
+  --vscode-scrollbarSlider-background: rgba(0, 0, 0, 0.18);
+  --vscode-scrollbarSlider-hoverBackground: rgba(0, 0, 0, 0.35);
+  --vscode-inputValidation-errorBackground: rgba(180, 30, 30, 0.08);
+  --vscode-inputValidation-errorForeground: #a80000;
+}
+
 /* Animations */
 @keyframes slideInRight {
   from { transform: translateX(20px); opacity: 0; }

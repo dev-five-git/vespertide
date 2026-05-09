@@ -106,6 +106,33 @@ const DRAG_THRESHOLD = 5;
 
 function nodeHeight(m: Model) { return HEADER_H + m.fields.length * FIELD_H + 6; }
 
+// ── Icons ─────────────────────────────────────────────────────────────────────
+
+const IconFit = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+    <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/>
+  </svg>
+);
+
+const IconHand = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 11V8a2 2 0 0 0-4 0m4 3v-1a2 2 0 0 1 4 0v5a8 8 0 0 1-8 8h-2a8 8 0 0 1-8-8v-1a2 2 0 0 1 4 0M14 8V6a2 2 0 0 0-4 0v5M10 7V5a2 2 0 0 0-4 0v9"/>
+  </svg>
+);
+
+const IconSun = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+    <circle cx="12" cy="12" r="4"/>
+    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+  </svg>
+);
+
+const IconMoon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+  </svg>
+);
+
 // ── Button style ──────────────────────────────────────────────────────────────
 
 const btnBase: React.CSSProperties = {
@@ -113,15 +140,29 @@ const btnBase: React.CSSProperties = {
   background: 'transparent', color: 'var(--vscode-foreground)', fontSize: 11, cursor: 'pointer',
 };
 
+const navBtn = (active = false): React.CSSProperties => ({
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  width: 28, height: 26, border: 'none', borderRadius: 5, cursor: 'pointer',
+  background: active ? 'rgba(99,102,241,0.18)' : 'transparent',
+  color: active ? '#a5b4fc' : 'var(--vscode-foreground)',
+  opacity: active ? 1 : 0.7,
+  transition: 'background 0.12s, color 0.12s, opacity 0.12s',
+});
+
+const navDivider: React.CSSProperties = {
+  width: 1, height: 16, background: 'var(--vscode-panel-border, rgba(255,255,255,0.12))', margin: '0 3px', flexShrink: 0,
+};
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 type Props = { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>> };
 
 export default function OrmEditor({ state, setState }: Props) {
-  const [models,   setModels]   = useState<Model[]>([]);
+  const [models,    setModels]    = useState<Model[]>([]);
   const [positions, setPositions] = useState<Record<string, Pos>>({});
-  const [selected, setSelected] = useState<Model | null>(null);
-  const [showCode, setShowCode] = useState(false);
+  const [selected,  setSelected]  = useState<Model | null>(null);
+  const [showCode,  setShowCode]  = useState(false);
+  const [lockMode,  setLockMode]  = useState(false);   // pan-only, no node interaction
   const [pan,   setPan]   = useState<Pos>({ x: 32, y: 32 });
   const [scale, setScale] = useState(1);
 
@@ -213,6 +254,7 @@ export default function OrmEditor({ state, setState }: Props) {
 
   // Node drag — starts pending, activates only after threshold
   const startNodeDrag = (e: React.MouseEvent, id: string) => {
+    if (lockMode) return;
     e.stopPropagation();
     didDragRef.current = false;
     const pos = positions[id] ?? { x: 0, y: 0 };
@@ -227,10 +269,10 @@ export default function OrmEditor({ state, setState }: Props) {
     };
   };
 
-  // Click registered only when no drag happened
+  // Click registered only when no drag happened and not in lock mode
   const handleNodeClick = (e: React.MouseEvent, model: Model) => {
     e.stopPropagation();
-    if (!didDragRef.current) {
+    if (!lockMode && !didDragRef.current) {
       setSelected((prev) => (prev?.name === model.name ? null : model));
     }
   };
@@ -269,20 +311,13 @@ export default function OrmEditor({ state, setState }: Props) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
 
-      {/* ── Toolbar: zoom + code toggle only ── */}
+      {/* ── Toolbar: Code toggle only ── */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', flexShrink: 0,
+        display: 'flex', alignItems: 'center', padding: '5px 10px', flexShrink: 0,
         background: 'var(--vscode-editorWidget-background, #252526)',
         borderBottom: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))',
       }}>
         <div style={{ flex: 1 }} />
-        <button style={btnBase} onClick={() => setScale((s) => Math.max(0.25, +(s - 0.1).toFixed(2)))}>−</button>
-        <span style={{ fontSize: 11, opacity: 0.55, minWidth: 38, textAlign: 'center' }}>
-          {Math.round(scale * 100)}%
-        </span>
-        <button style={btnBase} onClick={() => setScale((s) => Math.min(2, +(s + 0.1).toFixed(2)))}>+</button>
-        <button style={{ ...btnBase, marginLeft: 2 }} onClick={() => { setScale(1); setPan({ x: 32, y: 32 }); }}>↺</button>
-        <div style={{ width: 1, height: 14, background: 'rgba(255,255,255,0.12)', margin: '0 4px' }} />
         <button
           style={{
             ...btnBase,
@@ -300,8 +335,8 @@ export default function OrmEditor({ state, setState }: Props) {
         <div
           ref={canvasRef}
           onMouseDown={startPan}
-          onClick={() => setSelected(null)}
-          style={{ flex: 1, position: 'relative', overflow: 'hidden', cursor: 'grab', background: 'var(--vscode-editor-background,#1e1e1e)' }}
+          onClick={() => { if (!lockMode) setSelected(null); }}
+          style={{ flex: 1, position: 'relative', overflow: 'hidden', cursor: lockMode ? 'grab' : 'default', background: 'var(--vscode-editor-background,#1e1e1e)' }}
         >
           {/* Dot grid — moves with pan */}
           <div style={{
@@ -400,6 +435,84 @@ export default function OrmEditor({ state, setState }: Props) {
               <span style={{ fontSize: 12 }}>스키마를 파싱하는 중...</span>
             </div>
           )}
+
+          {/* ── Bottom navigation bar ── */}
+          <div style={{
+            position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)',
+            display: 'flex', alignItems: 'center', gap: 2,
+            padding: '4px 8px',
+            background: 'var(--vscode-editorWidget-background, #2d2d2d)',
+            border: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.12))',
+            borderRadius: 9,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+            backdropFilter: 'blur(8px)',
+            userSelect: 'none',
+            zIndex: 10,
+          }}>
+            {/* Zoom − */}
+            <button
+              style={navBtn()}
+              title="축소 (10%)"
+              onClick={() => setScale((s) => Math.max(0.25, +(s - 0.1).toFixed(2)))}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
+
+            {/* Zoom % — click to reset to 100% */}
+            <button
+              style={{ ...navBtn(), width: 44, fontSize: 11, fontVariantNumeric: 'tabular-nums' }}
+              title="100%로 초기화"
+              onClick={() => { setScale(1); setPan({ x: 32, y: 32 }); }}
+            >
+              {Math.round(scale * 100)}%
+            </button>
+
+            {/* Zoom + */}
+            <button
+              style={navBtn()}
+              title="확대 (10%)"
+              onClick={() => setScale((s) => Math.min(2, +(s + 0.1).toFixed(2)))}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
+
+            <div style={navDivider} />
+
+            {/* Fit to screen */}
+            <button
+              style={navBtn()}
+              title="화면에 맞추기"
+              onClick={() => { setScale(1); setPan({ x: 32, y: 32 }); }}
+            >
+              <IconFit />
+            </button>
+
+            <div style={navDivider} />
+
+            {/* Pan-only mode */}
+            <button
+              style={navBtn(lockMode)}
+              title={lockMode ? '이동 모드 (클릭하여 편집 모드로)' : '편집 모드 (클릭하여 이동 모드로)'}
+              onClick={() => { setLockMode((v) => !v); if (lockMode) setSelected(null); }}
+            >
+              <IconHand />
+            </button>
+
+            <div style={navDivider} />
+
+            {/* Theme toggle */}
+            <button
+              style={navBtn()}
+              title={state.theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
+              onClick={() => setState((p) => ({ ...p, theme: p.theme === 'dark' ? 'light' : 'dark' }))}
+            >
+              {state.theme === 'dark' ? <IconSun /> : <IconMoon />}
+            </button>
+          </div>
         </div>
 
         {/* ── Detail panel ── */}
