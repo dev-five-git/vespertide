@@ -60,10 +60,9 @@ export async function convertOrm(source: string, from: OrmType, to: OrmType): Pr
   return `// [stub] ${from} → ${to} 변환\n// packages/wasm 연결 후 실제 변환이 동작합니다\n\n${source}`;
 }
 
-export async function generateMigration(schema: Schema, db: DbDialect): Promise<string> {
-  // TODO: return generate_migration(schema, db);
-  const dialect = { postgres: 'PostgreSQL', mysql: 'MySQL', sqlite: 'SQLite' }[db];
-  return `-- [stub] ${dialect} 마이그레이션\n-- packages/wasm 연결 후 실제 SQL이 생성됩니다\n\nCREATE TABLE IF NOT EXISTS example (\n  id SERIAL PRIMARY KEY,\n  created_at TIMESTAMP NOT NULL DEFAULT NOW()\n);`;
+export async function generateMigration(_schema: Schema, _db: DbDialect): Promise<string> {
+  // TODO: return generate_migration(_schema, _db);
+  return '';
 }
 
 /** Returns null if WASM svg_to_pdf is not available (fallback handled in export.ts) */
