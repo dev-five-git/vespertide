@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { postMessage } from '../vscode';
 import type { OrmType } from '../vscode';
 import type { AppState } from '../App';
+import { DEFAULT_SCHEMAS } from '../App';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -247,7 +248,11 @@ export default function OrmEditor({ state, setState }: Props) {
       }}>
         {ORM_TYPES.map((orm) => (
           <button key={orm}
-            onClick={() => setState((p) => ({ ...p, ormType: orm }))}
+            onClick={() => setState((p) => ({
+              ...p,
+              ormType: orm,
+              ormSource: DEFAULT_SCHEMAS[orm],
+            }))}
             style={{
               padding: '2px 10px', border: '1px solid', borderRadius: 3, fontSize: 11,
               borderColor: state.ormType === orm ? 'var(--vscode-focusBorder,#007acc)' : 'rgba(255,255,255,0.15)',
@@ -379,7 +384,7 @@ export default function OrmEditor({ state, setState }: Props) {
                 <line x1="3" y1="9" x2="21" y2="9"/>
                 <line x1="9" y1="9" x2="9" y2="21"/>
               </svg>
-              <div style={{ fontSize: 12 }}>&lt;/&gt; Code 버튼을 눌러 ORM 스키마를 입력하세요</div>
+              <div style={{ fontSize: 12 }}>스키마를 파싱하는 중...</div>
             </div>
           )}
         </div>
