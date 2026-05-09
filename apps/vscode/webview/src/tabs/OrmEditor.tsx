@@ -75,25 +75,25 @@ function modelToJson(model: Model, ormType: OrmType) {
   };
 }
 
-function getEdges(models: Model[]): { from: string; to: string; oneToMany: boolean }[] {
+type EdgeDef = { from: string; fromFieldIdx: number; to: string };
+
+function getEdges(models: Model[]): EdgeDef[] {
   const names = new Set(models.map((m) => m.name));
-  const edges: { from: string; to: string; oneToMany: boolean }[] = [];
+  const edges: EdgeDef[] = [];
   for (const model of models) {
-    for (const f of model.fields) {
+    for (let fi = 0; fi < model.fields.length; fi++) {
+      const f = model.fields[fi];
       if (!f.isRelation) continue;
       const base = f.type.replace('[]', '').replace('?', '');
-      if (!names.has(base)) continue;
-      // Only draw an edge from the model that owns the FK scalar field
-      // e.g. authorId / author_id means this model holds the FK
+      if (!names.has(base) || base === model.name) continue;
+      // Only draw from FK-owning side (has a matching scalar like authorId / author_id)
       const hasFk = model.fields.some(
         (sf) => !sf.isRelation && (
-          sf.name === f.name + 'Id' || sf.name === f.name + '_id' ||
-          sf.name.toLowerCase() === f.name.toLowerCase() + 'id'
+          sf.name === f.name + 'Id' || sf.name === f.name + '_id'
         )
       );
-      if (hasFk) {
-        edges.push({ from: model.name, to: base, oneToMany: false });
-      }
+      if (!hasFk) continue;
+      edges.push({ from: model.name, fromFieldIdx: fi, to: base });
     }
   }
   return edges;
@@ -365,19 +365,23 @@ export default function OrmEditor({ state, setState }: Props) {
             position: 'absolute', transformOrigin: '0 0',
             transform: `translate(${pan.x}px,${pan.y}px) scale(${scale})`,
           }}>
-            {/* SVG edges */}
+            {/* SVG edges — use style={} not presentation attrs so CSS vars work */}
             <svg style={{ position: 'absolute', overflow: 'visible', width: 0, height: 0, pointerEvents: 'none' }}>
               <defs>
-                <marker id="vt-arrow" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
-                  <path d="M0,0.5 L0,5.5 L6,3 z" fill="var(--edge-arrow)" />
+                <marker id="vt-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                  <path d="M0,0.5 L0,5.5 L6.5,3 z" style={{ fill: 'var(--edge-arrow, rgba(99,102,241,0.8))' }} />
                 </marker>
               </defs>
               {edges.map((edge, i) => {
                 const from = positions[edge.from];
                 const to   = positions[edge.to];
                 if (!from || !to) return null;
-                const fh = nodeHeight(models.find(m => m.name === edge.from)!);
-                const th = nodeHeight(models.find(m => m.name === edge.to)!);
+                const fromModel = models.find(m => m.name === edge.from);
+                const toModel   = models.find(m => m.name === edge.to);
+                if (!fromModel || !toModel) return null;
+                // Y: center of the relation field row on source; header center on target
+                const y1 = from.y + HEADER_H + edge.fromFieldIdx * FIELD_H + FIELD_H / 2;
+                const y2 = to.y + HEADER_H / 2;
                 // Pick nearest horizontal sides
                 const fromRight = from.x + NODE_W;
                 const toLeft    = to.x;
@@ -386,17 +390,19 @@ export default function OrmEditor({ state, setState }: Props) {
                 const useRight  = Math.abs(fromRight - toLeft) <= Math.abs(fromLeft - toRight);
                 const x1 = useRight ? fromRight : fromLeft;
                 const x2 = useRight ? toLeft    : toRight;
-                const y1 = from.y + fh / 2;
-                const y2 = to.y   + th / 2;
-                const dx = Math.abs(x2 - x1) * 0.5;
+                const dx = Math.max(40, Math.abs(x2 - x1) * 0.5);
                 const c1x = x1 + (useRight ?  dx : -dx);
                 const c2x = x2 + (useRight ? -dx :  dx);
                 return (
-                  <path key={i}
-                    d={`M${x1} ${y1} C${c1x} ${y1},${c2x} ${y2},${x2} ${y2}`}
-                    fill="none" stroke="var(--edge-color)" strokeWidth="1.5"
-                    strokeDasharray="5 3" markerEnd="url(#vt-arrow)"
-                  />
+                  <g key={i}>
+                    <path
+                      d={`M${x1} ${y1} C${c1x} ${y1},${c2x} ${y2},${x2} ${y2}`}
+                      fill="none"
+                      style={{ stroke: 'var(--edge-color, rgba(99,102,241,0.55))', strokeWidth: 1.5 }}
+                      markerEnd="url(#vt-arrow)"
+                    />
+                    <circle cx={x1} cy={y1} r={3} style={{ fill: 'var(--edge-color, rgba(99,102,241,0.55))' }} />
+                  </g>
                 );
               })}
             </svg>
