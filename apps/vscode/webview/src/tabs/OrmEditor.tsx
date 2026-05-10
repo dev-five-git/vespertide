@@ -17,6 +17,19 @@ type EdgeDef = {
   fkField:       string;
 };
 
+type RelType = 'many-to-one' | 'one-to-many';
+
+type AddRelForm = {
+  target:      string;    // target model name
+  relType:     RelType;
+  relField:    string;    // relation field name added to source model
+  fkField:     string;    // FK scalar field name (many-to-one only)
+  fkType:      string;    // FK scalar type  e.g. "Int"
+  refField:    string;    // referenced field in target  e.g. "id"
+  backRef:     string;    // back-reference field name added to target
+  addBackRef:  boolean;   // whether to add back-reference
+};
+
 // ── Prisma parser ─────────────────────────────────────────────────────────────
 
 const PRISMA_SCALARS = new Set([
@@ -101,16 +114,41 @@ function deletePrismaRelation(
   return removeFieldsFromModel(src, modelName, [relationField, fkField]);
 }
 
-function addPrismaRelation(src: string, fromModel: string, toModel: string): string {
-  const fkName  = toModel[0].toLowerCase() + toModel.slice(1) + 'Id';
-  const relName = toModel[0].toLowerCase() + toModel.slice(1);
-  const backRef = fromModel[0].toLowerCase() + fromModel.slice(1) + 's';
-  src = addFieldsToModel(src, fromModel, [
-    `${fkName}   Int`,
-    `${relName}  ${toModel}  @relation(fields: [${fkName}], references: [id])`,
-  ]);
-  src = addFieldsToModel(src, toModel, [`${backRef}  ${fromModel}[]`]);
+function addPrismaRelation(src: string, fromModel: string, form: AddRelForm): string {
+  if (form.relType === 'many-to-one') {
+    src = addFieldsToModel(src, fromModel, [
+      `${form.fkField}   ${form.fkType}`,
+      `${form.relField}  ${form.target}  @relation(fields: [${form.fkField}], references: [${form.refField}])`,
+    ]);
+    if (form.addBackRef && form.backRef) {
+      src = addFieldsToModel(src, form.target, [`${form.backRef}  ${fromModel}[]`]);
+    }
+  } else {
+    src = addFieldsToModel(src, fromModel, [`${form.relField}  ${form.target}[]`]);
+    if (form.addBackRef && form.backRef) {
+      src = addFieldsToModel(src, form.target, [
+        `${form.backRef}Id   ${form.fkType}`,
+        `${form.backRef}  ${fromModel}  @relation(fields: [${form.backRef}Id], references: [${form.refField}])`,
+      ]);
+    }
+  }
   return src;
+}
+
+function defaultAddRelForm(fromModel: string, toModel: string, targetModels: Model[]): AddRelForm {
+  const lc = (s: string) => s[0].toLowerCase() + s.slice(1);
+  const target = targetModels.find((m) => m.name === toModel);
+  const pkField = target?.fields.find((f) => f.isPrimary)?.name ?? 'id';
+  return {
+    target:     toModel,
+    relType:    'many-to-one',
+    relField:   lc(toModel),
+    fkField:    lc(toModel) + 'Id',
+    fkType:     'Int',
+    refField:   pkField,
+    backRef:    lc(fromModel) + 's',
+    addBackRef: true,
+  };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -234,8 +272,7 @@ export default function OrmEditor({ state, setState }: Props) {
   const [positions,    setPositions]    = useState<Record<string, Pos>>({});
   const [selected,     setSelected]     = useState<Model | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<EdgeDef | null>(null);
-  const [showAddRel,   setShowAddRel]   = useState(false);
-  const [addRelTarget, setAddRelTarget] = useState('');
+  const [addRelForm,   setAddRelForm]   = useState<AddRelForm | null>(null);
   const [showCode,     setShowCode]     = useState(false);
   const [lockMode,     setLockMode]     = useState(false);
   const [pan,   setPan]   = useState<Pos>({ x: 32, y: 32 });
@@ -342,7 +379,7 @@ export default function OrmEditor({ state, setState }: Props) {
     e.stopPropagation();
     if (!lockMode && !didDragRef.current) {
       setSelectedEdge(null);
-      setShowAddRel(false);
+      setAddRelForm(null);
       setSelected((prev) => (prev?.name === model.name ? null : model));
     }
   };
@@ -381,7 +418,7 @@ export default function OrmEditor({ state, setState }: Props) {
   const handleEdgeClick = (e: React.MouseEvent, edge: EdgeDef) => {
     e.stopPropagation();
     setSelected(null);
-    setShowAddRel(false);
+    setAddRelForm(null);
     setSelectedEdge((prev) =>
       prev?.from === edge.from && prev?.fromFieldIdx === edge.fromFieldIdx ? null : edge
     );
@@ -398,23 +435,27 @@ export default function OrmEditor({ state, setState }: Props) {
     setSelectedEdge(null);
   };
 
-  const handleAddRelation = () => {
-    if (!selected || !addRelTarget || state.ormType !== 'prisma') return;
-    const newSrc = addPrismaRelation(state.ormSource, selected.name, addRelTarget);
-    setState((p) => ({ ...p, ormSource: newSrc }));
-    setShowAddRel(false);
-    setAddRelTarget('');
+  const openAddRelForm = (fromModel: string) => {
+    const firstTarget = models.find((m) => m.name !== fromModel);
+    if (!firstTarget) return;
+    setAddRelForm(defaultAddRelForm(fromModel, firstTarget.name, models));
   };
+
+  const handleAddRelation = () => {
+    if (!selected || !addRelForm || state.ormType !== 'prisma') return;
+    const newSrc = addPrismaRelation(state.ormSource, selected.name, addRelForm);
+    setState((p) => ({ ...p, ormSource: newSrc }));
+    setAddRelForm(null);
+  };
+
+  const patchForm = (patch: Partial<AddRelForm>) =>
+    setAddRelForm((f) => f ? { ...f, ...patch } : f);
 
   // ── Derived ───────────────────────────────────────────────────────────────────
 
   const edges = getEdges(models);
   const isEdgeSel = (e: EdgeDef) =>
     selectedEdge?.from === e.from && selectedEdge?.fromFieldIdx === e.fromFieldIdx;
-
-  const otherModels = selected
-    ? models.filter((m) => m.name !== selected.name)
-    : [];
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -445,7 +486,7 @@ export default function OrmEditor({ state, setState }: Props) {
         <div
           ref={canvasRef}
           onMouseDown={startPan}
-          onClick={() => { setSelected(null); setSelectedEdge(null); setShowAddRel(false); }}
+          onClick={() => { setSelected(null); setSelectedEdge(null); setAddRelForm(null); }}
           style={{
             flex: 1, position: 'relative', overflow: 'hidden',
             cursor: lockMode ? 'grab' : 'default',
@@ -745,63 +786,30 @@ export default function OrmEditor({ state, setState }: Props) {
                 {/* Add Relation — only for Prisma */}
                 {state.ormType === 'prisma' && (
                   <div style={{
-                    padding: '10px 14px', flexShrink: 0,
+                    flexShrink: 0,
                     borderTop: '1px solid rgba(255,255,255,0.06)',
                   }}>
-                    {!showAddRel ? (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setShowAddRel(true); setAddRelTarget(otherModels[0]?.name ?? ''); }}
-                        style={{
-                          width: '100%', padding: '5px 0',
-                          border: '1px dashed rgba(99,102,241,0.4)',
-                          borderRadius: 5, background: 'transparent',
-                          color: '#a5b4fc', fontSize: 11, cursor: 'pointer',
-                        }}
-                      >+ Relation 추가</button>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <span style={{ fontSize: 10, opacity: 0.5 }}>
-                          {selected.name} → 연결할 모델
-                        </span>
-                        <select
-                          value={addRelTarget}
-                          onChange={(e) => setAddRelTarget(e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
+                    {!addRelForm ? (
+                      <div style={{ padding: '10px 14px' }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openAddRelForm(selected.name); }}
                           style={{
-                            background: 'var(--vscode-input-background, #3c3c3c)',
-                            color: 'var(--vscode-foreground)',
-                            border: '1px solid var(--vscode-input-border, rgba(255,255,255,0.2))',
-                            borderRadius: 3, padding: '4px 6px', fontSize: 12, width: '100%',
+                            width: '100%', padding: '5px 0',
+                            border: '1px dashed rgba(99,102,241,0.4)',
+                            borderRadius: 5, background: 'transparent',
+                            color: '#a5b4fc', fontSize: 11, cursor: 'pointer',
                           }}
-                        >
-                          {otherModels.map((m) => (
-                            <option key={m.name} value={m.name}>{m.name}</option>
-                          ))}
-                        </select>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleAddRelation(); }}
-                            disabled={!addRelTarget}
-                            style={{
-                              flex: 1, padding: '4px 0', borderRadius: 3, border: 'none',
-                              background: addRelTarget
-                                ? 'var(--vscode-button-background, #0e639c)'
-                                : 'rgba(255,255,255,0.08)',
-                              color: 'var(--vscode-button-foreground, #fff)',
-                              fontSize: 11, cursor: addRelTarget ? 'pointer' : 'default',
-                            }}
-                          >추가</button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setShowAddRel(false); }}
-                            style={{
-                              padding: '4px 10px', borderRadius: 3,
-                              border: '1px solid rgba(255,255,255,0.15)',
-                              background: 'transparent', color: 'var(--vscode-foreground)',
-                              fontSize: 11, cursor: 'pointer',
-                            }}
-                          >취소</button>
-                        </div>
+                        >+ Relation 추가</button>
                       </div>
+                    ) : (
+                      <AddRelFormPanel
+                        form={addRelForm}
+                        fromModel={selected.name}
+                        allModels={models}
+                        onPatch={patchForm}
+                        onConfirm={(e) => { e.stopPropagation(); handleAddRelation(); }}
+                        onCancel={(e) => { e.stopPropagation(); setAddRelForm(null); }}
+                      />
                     )}
                   </div>
                 )}
@@ -923,6 +931,156 @@ export default function OrmEditor({ state, setState }: Props) {
           />
         </div>
       )}
+    </div>
+  );
+}
+
+// ── AddRelFormPanel ───────────────────────────────────────────────────────────
+
+const FK_TYPES = ['Int', 'String', 'BigInt'];
+
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: '3px 6px', borderRadius: 3, fontSize: 11,
+  background: 'var(--vscode-input-background, #3c3c3c)',
+  color: 'var(--vscode-foreground)',
+  border: '1px solid var(--vscode-input-border, rgba(255,255,255,0.18))',
+  outline: 'none',
+};
+
+const labelStyle: React.CSSProperties = {
+  fontSize: 10, opacity: 0.45, marginBottom: 2, display: 'block',
+};
+
+function AddRelFormPanel({
+  form, fromModel, allModels, onPatch, onConfirm, onCancel,
+}: {
+  form:       AddRelForm;
+  fromModel:  string;
+  allModels:  Model[];
+  onPatch:    (patch: Partial<AddRelForm>) => void;
+  onConfirm:  (e: React.MouseEvent) => void;
+  onCancel:   (e: React.MouseEvent) => void;
+}) {
+  const otherModels = allModels.filter((m) => m.name !== fromModel);
+  const targetModel = allModels.find((m) => m.name === form.target);
+  const scalarFields = targetModel?.fields.filter((f) => !f.isRelation) ?? [];
+
+  const handleTargetChange = (name: string) => {
+    const lc = (s: string) => s[0].toLowerCase() + s.slice(1);
+    const t = allModels.find((m) => m.name === name);
+    const pkField = t?.fields.find((f) => f.isPrimary)?.name ?? 'id';
+    onPatch({
+      target:   name,
+      relField: lc(name),
+      fkField:  lc(name) + 'Id',
+      refField: pkField,
+    });
+  };
+
+  const handleRelTypeChange = (relType: RelType) => {
+    const lc = (s: string) => s[0].toLowerCase() + s.slice(1);
+    if (relType === 'many-to-one') {
+      onPatch({ relType, relField: lc(form.target), fkField: lc(form.target) + 'Id', backRef: lc(fromModel) + 's' });
+    } else {
+      onPatch({ relType, relField: lc(form.target) + 's', backRef: lc(fromModel) });
+    }
+  };
+
+  const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <div style={{ marginBottom: 8 }}>
+      <span style={labelStyle}>{label}</span>
+      {children}
+    </div>
+  );
+
+  return (
+    <div style={{ padding: '10px 14px' }} onClick={(e) => e.stopPropagation()}>
+      {/* Header */}
+      <div style={{ fontSize: 10, fontWeight: 700, opacity: 0.4, letterSpacing: '0.06em', marginBottom: 10 }}>
+        NEW RELATION
+      </div>
+
+      {/* Target model */}
+      <Row label="연결할 모델">
+        <select value={form.target} onChange={(e) => handleTargetChange(e.target.value)} style={inputStyle}>
+          {otherModels.map((m) => <option key={m.name} value={m.name}>{m.name}</option>)}
+        </select>
+      </Row>
+
+      {/* Relation type */}
+      <Row label="방향">
+        <div style={{ display: 'flex', gap: 4 }}>
+          {(['many-to-one', 'one-to-many'] as RelType[]).map((t) => (
+            <button key={t} onClick={() => handleRelTypeChange(t)} style={{
+              flex: 1, padding: '3px 0', fontSize: 10, borderRadius: 3,
+              border: '1px solid',
+              borderColor: form.relType === t ? 'var(--vscode-focusBorder,#007acc)' : 'rgba(255,255,255,0.15)',
+              background:  form.relType === t ? 'rgba(0,122,204,0.15)' : 'transparent',
+              color: 'var(--vscode-foreground)', cursor: 'pointer',
+            }}>{t === 'many-to-one' ? `${fromModel} → ${form.target}` : `${fromModel} ← ${form.target}`}</button>
+          ))}
+        </div>
+      </Row>
+
+      {/* Relation field name */}
+      <Row label="relation 필드명 (이 모델에 추가)">
+        <input style={inputStyle} value={form.relField}
+          onChange={(e) => onPatch({ relField: e.target.value })} />
+      </Row>
+
+      {/* FK field (many-to-one only) */}
+      {form.relType === 'many-to-one' && (
+        <Row label="FK 필드명">
+          <div style={{ display: 'flex', gap: 4 }}>
+            <input style={{ ...inputStyle, flex: 1 }} value={form.fkField}
+              onChange={(e) => onPatch({ fkField: e.target.value })} />
+            <select value={form.fkType} onChange={(e) => onPatch({ fkType: e.target.value })}
+              style={{ ...inputStyle, width: 60 }}>
+              {FK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+        </Row>
+      )}
+
+      {/* Referenced field */}
+      <Row label={`참조 필드 (${form.target})`}>
+        <select value={form.refField} onChange={(e) => onPatch({ refField: e.target.value })} style={inputStyle}>
+          {scalarFields.map((f) => <option key={f.name} value={f.name}>{f.name}</option>)}
+        </select>
+      </Row>
+
+      {/* Back-reference */}
+      <div style={{ marginBottom: 8 }}>
+        <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', opacity: 1 }}>
+          <input
+            type="checkbox"
+            checked={form.addBackRef}
+            onChange={(e) => onPatch({ addBackRef: e.target.checked })}
+            style={{ accentColor: '#6366f1' }}
+          />
+          <span style={{ fontSize: 10, opacity: 0.45 }}>역참조 추가 ({form.target} 모델에)</span>
+        </label>
+        {form.addBackRef && (
+          <input style={{ ...inputStyle, marginTop: 4 }} value={form.backRef}
+            onChange={(e) => onPatch({ backRef: e.target.value })} />
+        )}
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+        <button onClick={onConfirm} style={{
+          flex: 1, padding: '5px 0', borderRadius: 3, border: 'none',
+          background: 'var(--vscode-button-background, #0e639c)',
+          color: 'var(--vscode-button-foreground, #fff)',
+          fontSize: 11, cursor: 'pointer',
+        }}>추가</button>
+        <button onClick={onCancel} style={{
+          padding: '5px 12px', borderRadius: 3,
+          border: '1px solid rgba(255,255,255,0.15)',
+          background: 'transparent', color: 'var(--vscode-foreground)',
+          fontSize: 11, cursor: 'pointer',
+        }}>취소</button>
+      </div>
     </div>
   );
 }
