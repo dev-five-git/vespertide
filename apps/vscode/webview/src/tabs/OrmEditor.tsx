@@ -6,7 +6,7 @@ import { DEFAULT_SCHEMAS } from '../App';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type Field = { name: string; type: string; isPrimary: boolean; isRelation: boolean };
+type Field = { name: string; type: string; isPrimary: boolean; isRelation: boolean; refField?: string };
 type Model = { name: string; fields: Field[] };
 type Pos   = { x: number; y: number };
 type EdgeDef = {
@@ -15,6 +15,14 @@ type EdgeDef = {
   to:            string;
   relationField: string;
   fkField:       string;
+  refField:      string;   // referenced field in target model (e.g. "id")
+  toFieldIdx:    number;   // index of refField in target model's fields array
+};
+
+type DraggingEndpoint = {
+  edge: EdgeDef;
+  x: number;  // canvas-space (before pan/scale)
+  y: number;
 };
 
 type RelType = 'many-to-one' | 'one-to-many';
@@ -47,13 +55,15 @@ function parsePrisma(src: string): Model[] {
       .map((l) => l.trim())
       .filter((l) => l && !l.startsWith('//') && !l.startsWith('@@'))
       .map((l) => {
-        const parts = l.split(/\s+/);
-        const base  = (parts[1] ?? '').replace('[]', '').replace('?', '');
+        const parts    = l.split(/\s+/);
+        const base     = (parts[1] ?? '').replace('[]', '').replace('?', '');
+        const refMatch = l.match(/@relation\([^)]*references:\s*\[([^\]]+)\]/);
         return {
           name:       parts[0],
           type:       parts[1] ?? '',
           isPrimary:  l.includes('@id'),
           isRelation: !PRISMA_SCALARS.has(base) && /^[A-Z]/.test(base),
+          refField:   refMatch ? refMatch[1].split(',')[0].trim() : undefined,
         };
       });
     models.push({ name: m[1], fields });
@@ -193,7 +203,14 @@ function getEdges(models: Model[]): EdgeDef[] {
         (sf) => !sf.isRelation && (sf.name === f.name + 'Id' || sf.name === f.name + '_id')
       );
       if (!fkField) continue;
-      edges.push({ from: model.name, fromFieldIdx: fi, to: base, relationField: f.name, fkField: fkField.name });
+      const tgt          = models.find((m) => m.name === base);
+      const refFieldName = f.refField ?? tgt?.fields.find((tf) => tf.isPrimary)?.name ?? 'id';
+      const toFieldIdx   = Math.max(0, tgt?.fields.findIndex((tf) => tf.name === refFieldName) ?? 0);
+      edges.push({
+        from: model.name, fromFieldIdx: fi, to: base,
+        relationField: f.name, fkField: fkField.name,
+        refField: refFieldName, toFieldIdx,
+      });
     }
   }
   return edges;
@@ -213,6 +230,71 @@ const FIELD_H        = 23;
 const DRAG_THRESHOLD = 5;
 
 function nodeHeight(m: Model) { return HEADER_H + m.fields.length * FIELD_H + 6; }
+
+// ── Endpoint reroute helpers ──────────────────────────────────────────────────
+
+/** Returns which model+field is at canvas-space point (x, y), null if none. */
+function getFieldAtPoint(
+  models: Model[],
+  positions: Record<string, Pos>,
+  x: number,
+  y: number,
+): { model: string; field: string; fieldIdx: number } | null {
+  for (const model of models) {
+    const pos = positions[model.name];
+    if (!pos) continue;
+    if (x < pos.x || x > pos.x + NODE_W) continue;
+    const relY = y - pos.y - HEADER_H;
+    if (relY < 0 || relY > model.fields.length * FIELD_H) continue;
+    const fieldIdx = Math.floor(relY / FIELD_H);
+    const field = model.fields[fieldIdx];
+    if (!field) continue;
+    return { model: model.name, field: field.name, fieldIdx };
+  }
+  return null;
+}
+
+/** Update @relation(references: [...]) and the type token in the relation field line. */
+function reroutePrismaRelation(
+  src: string,
+  fromModel: string,
+  relationField: string,
+  newToModel: string,
+  newRefField: string,
+): string {
+  const lines = src.split('\n');
+  let inModel = false;
+  let depth = 0;
+  return lines.map((line) => {
+    if (!inModel) {
+      if (new RegExp(`^model\\s+${fromModel}\\s*\\{`).test(line)) { inModel = true; depth = 1; }
+      return line;
+    }
+    depth += (line.match(/\{/g) ?? []).length - (line.match(/\}/g) ?? []).length;
+    if (depth <= 0) { inModel = false; return line; }
+
+    const parts = line.trim().split(/\s+/);
+    if (parts[0] !== relationField) return line;
+
+    // Update type (e.g. User → Category)
+    const oldType = (parts[1] ?? '').replace(/[?[\]]/g, '');
+    let updated = line;
+    if (oldType !== newToModel) {
+      updated = updated.replace(
+        new RegExp(`\\b${oldType.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`),
+        newToModel,
+      );
+    }
+    // Update references: [...]
+    if (updated.includes('@relation(')) {
+      updated = updated.replace(
+        /references:\s*\[[^\]]*\]/,
+        `references: [${newRefField}]`,
+      );
+    }
+    return updated;
+  }).join('\n');
+}
 
 // ── Layout algorithms ─────────────────────────────────────────────────────────
 
@@ -397,7 +479,8 @@ export default function OrmEditor({ state, setState }: Props) {
   const [selected,     setSelected]     = useState<Model | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<EdgeDef | null>(null);
   const [addRelForm,      setAddRelForm]      = useState<AddRelForm | null>(null);
-  const [showLayoutMenu, setShowLayoutMenu]  = useState(false);
+  const [showLayoutMenu,    setShowLayoutMenu]    = useState(false);
+  const [draggingEndpoint,  setDraggingEndpoint]  = useState<DraggingEndpoint | null>(null);
   const [showCode,     setShowCode]     = useState(false);
   const [lockMode,     setLockMode]     = useState(false);
   const [pan,   setPan]   = useState<Pos>({ x: 32, y: 32 });
@@ -412,7 +495,17 @@ export default function OrmEditor({ state, setState }: Props) {
   const draggingRef = useRef<{ id: string; ox: number; oy: number } | null>(null);
   const didDragRef  = useRef(false);
   const panningRef  = useRef<{ mx: number; my: number; px: number; py: number } | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debounceRef        = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draggingEpRef      = useRef<DraggingEndpoint | null>(null);
+  const modelsRef          = useRef(models);
+  const positionsRef       = useRef(positions);
+  const ormSourceRef       = useRef(state.ormSource);
+  const setOrmSource       = useCallback((src: string) => setState((p) => ({ ...p, ormSource: src })), [setState]);
+  const setOrmSourceRef    = useRef(setOrmSource);
+  useEffect(() => { modelsRef.current      = models; },          [models]);
+  useEffect(() => { positionsRef.current   = positions; },       [positions]);
+  useEffect(() => { ormSourceRef.current   = state.ormSource; }, [state.ormSource]);
+  useEffect(() => { setOrmSourceRef.current = setOrmSource; },   [setOrmSource]);
   const canvasRef   = useRef<HTMLDivElement>(null);
 
   // ── Parse source ─────────────────────────────────────────────────────────────
@@ -447,6 +540,16 @@ export default function OrmEditor({ state, setState }: Props) {
     const { x: px, y: py } = panRef.current;
     const sc = scaleRef.current;
 
+    if (draggingEpRef.current) {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (rect) {
+        const cx = (e.clientX - rect.left - px) / sc;
+        const cy = (e.clientY - rect.top  - py) / sc;
+        setDraggingEndpoint({ edge: draggingEpRef.current.edge, x: cx, y: cy });
+      }
+      return;
+    }
+
     if (pendingRef.current && !draggingRef.current) {
       const dx = Math.abs(e.clientX - pendingRef.current.sx);
       const dy = Math.abs(e.clientY - pendingRef.current.sy);
@@ -469,7 +572,28 @@ export default function OrmEditor({ state, setState }: Props) {
     }
   }, []);
 
-  const onMouseUp = useCallback(() => {
+  const onMouseUp = useCallback((e: MouseEvent) => {
+    if (draggingEpRef.current) {
+      const ep = draggingEpRef.current;
+      draggingEpRef.current = null;
+      setDraggingEndpoint(null);
+
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (rect) {
+        const { x: px, y: py } = panRef.current;
+        const sc = scaleRef.current;
+        const cx = (e.clientX - rect.left - px) / sc;
+        const cy = (e.clientY - rect.top  - py) / sc;
+        const hit = getFieldAtPoint(modelsRef.current, positionsRef.current, cx, cy);
+        if (hit && (hit.model !== ep.edge.to || hit.field !== ep.edge.refField)) {
+          const newSrc = reroutePrismaRelation(
+            ormSourceRef.current, ep.edge.from, ep.edge.relationField,
+            hit.model, hit.field,
+          );
+          setOrmSourceRef.current(newSrc);
+        }
+      }
+    }
     pendingRef.current  = null;
     draggingRef.current = null;
     panningRef.current  = null;
@@ -548,6 +672,20 @@ export default function OrmEditor({ state, setState }: Props) {
     setSelectedEdge((prev) =>
       prev?.from === edge.from && prev?.fromFieldIdx === edge.fromFieldIdx ? null : edge
     );
+  };
+
+  const startEndpointDrag = (e: React.MouseEvent, edge: EdgeDef) => {
+    if (lockMode) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const { x: px, y: py } = panRef.current;
+    const sc = scaleRef.current;
+    const cx = (e.clientX - rect.left - px) / sc;
+    const cy = (e.clientY - rect.top  - py) / sc;
+    draggingEpRef.current = { edge, x: cx, y: cy };
+    setDraggingEndpoint({ edge, x: cx, y: cy });
   };
 
   // ── Relation editing ──────────────────────────────────────────────────────────
@@ -655,6 +793,22 @@ export default function OrmEditor({ state, setState }: Props) {
               </marker>
             </defs>
             <g transform={`translate(${pan.x},${pan.y}) scale(${scale})`}>
+              {/* Field highlight under cursor during endpoint drag */}
+              {draggingEndpoint && (() => {
+                const hit = getFieldAtPoint(models, positions, draggingEndpoint.x, draggingEndpoint.y);
+                if (!hit) return null;
+                const pos = positions[hit.model];
+                if (!pos) return null;
+                return (
+                  <rect
+                    x={pos.x} y={pos.y + HEADER_H + hit.fieldIdx * FIELD_H}
+                    width={NODE_W} height={FIELD_H}
+                    fill="#818cf8" fillOpacity={0.22} rx={2}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                );
+              })()}
+
               {edges.map((edge, i) => {
                 const from = positions[edge.from];
                 const to   = positions[edge.to];
@@ -664,7 +818,7 @@ export default function OrmEditor({ state, setState }: Props) {
                 if (!fromModel || !toModel) return null;
 
                 const y1 = from.y + HEADER_H + edge.fromFieldIdx * FIELD_H + FIELD_H / 2;
-                const y2 = to.y + HEADER_H / 2;
+                const y2 = to.y + HEADER_H + edge.toFieldIdx * FIELD_H + FIELD_H / 2;
                 const fromRight = from.x + NODE_W;
                 const toLeft    = to.x;
                 const fromLeft  = from.x;
@@ -677,6 +831,9 @@ export default function OrmEditor({ state, setState }: Props) {
                 const c2x = x2 + (useRight ? -dx :  dx);
                 const d = `M${x1} ${y1} C${c1x} ${y1},${c2x} ${y2},${x2} ${y2}`;
                 const sel = isEdgeSel(edge);
+                const isDraggingThis = draggingEndpoint !== null &&
+                  draggingEndpoint.edge.from === edge.from &&
+                  draggingEndpoint.edge.fromFieldIdx === edge.fromFieldIdx;
                 const edgeColor = sel ? '#818cf8' : 'rgba(99,102,241,0.55)';
 
                 return (
@@ -690,22 +847,43 @@ export default function OrmEditor({ state, setState }: Props) {
                       style={{ pointerEvents: lockMode ? 'none' : 'stroke', cursor: lockMode ? 'grab' : 'pointer' }}
                       onClick={(e) => handleEdgeClick(e, edge)}
                     />
-                    {/* Visible path */}
+                    {/* Visible path (dashed when its endpoint is being dragged) */}
                     <path
                       d={d}
                       fill="none"
                       stroke={edgeColor}
                       strokeWidth={sel ? 2.5 : 1.5}
-                      strokeDasharray={sel ? undefined : undefined}
-                      markerEnd={sel ? 'url(#vt-arrow-sel)' : 'url(#vt-arrow)'}
+                      strokeDasharray={isDraggingThis ? '5 3' : undefined}
+                      strokeOpacity={isDraggingThis ? 0.4 : 1}
+                      markerEnd={isDraggingThis ? undefined : (sel ? 'url(#vt-arrow-sel)' : 'url(#vt-arrow)')}
                       style={{ pointerEvents: 'none' }}
                     />
+                    {/* Ghost line to cursor while dragging */}
+                    {isDraggingThis && (
+                      <line
+                        x1={x1} y1={y1}
+                        x2={draggingEndpoint!.x} y2={draggingEndpoint!.y}
+                        stroke="#818cf8" strokeWidth={2}
+                        strokeDasharray="6 3"
+                        markerEnd="url(#vt-arrow-sel)"
+                        style={{ pointerEvents: 'none' }}
+                      />
+                    )}
                     {/* Origin dot */}
                     <circle
                       cx={x1} cy={y1} r={sel ? 4 : 3}
                       fill={edgeColor}
                       style={{ pointerEvents: 'none' }}
                     />
+                    {/* Endpoint drag handle — visible when selected, not currently dragging */}
+                    {sel && !draggingEndpoint && (
+                      <circle
+                        cx={x2} cy={y2} r={5}
+                        fill="#818cf8" stroke="var(--vscode-editor-background,#1e1e1e)" strokeWidth={1.5}
+                        style={{ pointerEvents: 'all', cursor: 'grab' }}
+                        onMouseDown={(e) => startEndpointDrag(e, edge)}
+                      />
+                    )}
                   </g>
                 );
               })}
