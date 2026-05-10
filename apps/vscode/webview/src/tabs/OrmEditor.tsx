@@ -416,6 +416,7 @@ export default function OrmEditor({ state, setState }: Props) {
   // ── Edge click ────────────────────────────────────────────────────────────────
 
   const handleEdgeClick = (e: React.MouseEvent, edge: EdgeDef) => {
+    if (lockMode) return;
     e.stopPropagation();
     setSelected(null);
     setAddRelForm(null);
@@ -551,7 +552,7 @@ export default function OrmEditor({ state, setState }: Props) {
                       fill="none"
                       stroke="transparent"
                       strokeWidth={14}
-                      style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+                      style={{ pointerEvents: lockMode ? 'none' : 'stroke', cursor: lockMode ? 'grab' : 'pointer' }}
                       onClick={(e) => handleEdgeClick(e, edge)}
                     />
                     {/* Visible path */}
@@ -593,7 +594,7 @@ export default function OrmEditor({ state, setState }: Props) {
                   style={{
                     position: 'absolute', left: pos.x, top: pos.y,
                     width: NODE_W, height: nodeHeight(model),
-                    borderRadius: 8, overflow: 'hidden', userSelect: 'none', cursor: 'pointer',
+                    borderRadius: 8, overflow: 'hidden', userSelect: 'none', cursor: lockMode ? 'grab' : 'pointer',
                     border: `1.5px solid ${isSel ? color : hasSelEdge ? color + '88' : 'var(--node-border)'}`,
                     boxShadow: isSel
                       ? `0 0 0 3px ${color}28, 0 4px 18px rgba(0,0,0,0.35)`
