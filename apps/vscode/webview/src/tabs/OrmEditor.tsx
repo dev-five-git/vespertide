@@ -214,7 +214,131 @@ const DRAG_THRESHOLD = 5;
 
 function nodeHeight(m: Model) { return HEADER_H + m.fields.length * FIELD_H + 6; }
 
+// ── Layout algorithms ─────────────────────────────────────────────────────────
+
+type LayoutType = 'lr' | 'snowflake' | 'compact';
+
+function layoutLeftRight(models: Model[], edges: EdgeDef[]): Record<string, Pos> {
+  const COL_GAP = 80, ROW_GAP = 36, OFF = 40;
+  const successors = new Map<string, string[]>();
+  const inDeg      = new Map<string, number>();
+  for (const m of models) { successors.set(m.name, []); inDeg.set(m.name, 0); }
+  for (const e of edges) {
+    successors.get(e.from)?.push(e.to);
+    inDeg.set(e.to, (inDeg.get(e.to) ?? 0) + 1);
+  }
+
+  // Longest-path column assignment
+  const col   = new Map<string, number>();
+  const queue: string[] = [];
+  for (const m of models) {
+    if ((inDeg.get(m.name) ?? 0) === 0) { col.set(m.name, 0); queue.push(m.name); }
+  }
+  if (queue.length === 0) models.forEach((m) => { col.set(m.name, 0); queue.push(m.name); });
+
+  for (let i = 0; i < queue.length; i++) {
+    const d = col.get(queue[i]) ?? 0;
+    for (const next of successors.get(queue[i]) ?? []) {
+      if ((col.get(next) ?? -1) < d + 1) {
+        col.set(next, d + 1);
+        if (!queue.includes(next)) queue.push(next);
+      }
+    }
+  }
+  let maxC = 0;
+  for (const c of col.values()) maxC = Math.max(maxC, c);
+  for (const m of models) if (!col.has(m.name)) col.set(m.name, maxC + 1);
+
+  // Group & position
+  const groups = new Map<number, string[]>();
+  for (const [name, c] of col) {
+    if (!groups.has(c)) groups.set(c, []);
+    groups.get(c)!.push(name);
+  }
+  for (const names of groups.values()) names.sort();
+
+  const pos: Record<string, Pos> = {};
+  for (const [c, names] of groups) {
+    const x = OFF + c * (NODE_W + COL_GAP);
+    let y = OFF;
+    for (const name of names) {
+      pos[name] = { x, y };
+      y += nodeHeight(models.find((m) => m.name === name)!) + ROW_GAP;
+    }
+  }
+  return pos;
+}
+
+function layoutSnowflake(models: Model[], edges: EdgeDef[]): Record<string, Pos> {
+  if (models.length === 0) return {};
+  const degree = new Map<string, number>();
+  for (const m of models) degree.set(m.name, 0);
+  for (const e of edges) {
+    degree.set(e.from, (degree.get(e.from) ?? 0) + 1);
+    degree.set(e.to,   (degree.get(e.to)   ?? 0) + 1);
+  }
+  const sorted = [...models].sort((a, b) =>
+    ((degree.get(b.name) ?? 0) - (degree.get(a.name) ?? 0)) || a.name.localeCompare(b.name)
+  );
+
+  const CX = 420, CY = 320;
+  const pos: Record<string, Pos> = {};
+  pos[sorted[0].name] = { x: CX - NODE_W / 2, y: CY - nodeHeight(sorted[0]) / 2 };
+
+  const RADII = [240, 460, 680];
+  let idx = 1;
+  for (const r of RADII) {
+    if (idx >= sorted.length) break;
+    const cap = Math.min(
+      sorted.length - idx,
+      Math.max(1, Math.floor((2 * Math.PI * r) / (NODE_W + 50)))
+    );
+    const step = (2 * Math.PI) / cap;
+    for (let i = 0; i < cap && idx < sorted.length; i++, idx++) {
+      const angle = -Math.PI / 2 + i * step;
+      const m = sorted[idx];
+      pos[m.name] = {
+        x: CX + r * Math.cos(angle) - NODE_W / 2,
+        y: CY + r * Math.sin(angle) - nodeHeight(m) / 2,
+      };
+    }
+  }
+  return pos;
+}
+
+function layoutCompact(models: Model[], _edges: EdgeDef[]): Record<string, Pos> {
+  if (models.length === 0) return {};
+  const COL_GAP = 40, ROW_GAP = 36, OFF = 40;
+  const cols = Math.ceil(Math.sqrt(models.length));
+  const pos: Record<string, Pos> = {};
+
+  for (let i = 0; i < models.length; i++) {
+    const c = i % cols;
+    const r = Math.floor(i / cols);
+    // Row Y uses tallest node in row as row height
+    const rowStart = r * cols;
+    const rowH = Math.max(...models.slice(rowStart, rowStart + cols).map(nodeHeight));
+    const y = OFF + Array.from({ length: r }, (_, ri) => {
+      const rs = ri * cols;
+      return Math.max(...models.slice(rs, rs + cols).map(nodeHeight)) + ROW_GAP;
+    }).reduce((s, v) => s + v, 0);
+    pos[models[i].name] = { x: OFF + c * (NODE_W + COL_GAP), y };
+    void rowH;
+  }
+  return pos;
+}
+
 // ── Icons ─────────────────────────────────────────────────────────────────────
+
+const IconLayout = () => (
+  <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="1"  y="1"  width="5" height="5" rx="1"/>
+    <rect x="14" y="1"  width="5" height="5" rx="1"/>
+    <rect x="7"  y="13" width="6" height="6" rx="1"/>
+    <line x1="6"  y1="3.5" x2="14" y2="3.5"/>
+    <line x1="10" y1="6"   x2="10" y2="13"/>
+  </svg>
+);
 
 const IconFit = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
@@ -272,7 +396,8 @@ export default function OrmEditor({ state, setState }: Props) {
   const [positions,    setPositions]    = useState<Record<string, Pos>>({});
   const [selected,     setSelected]     = useState<Model | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<EdgeDef | null>(null);
-  const [addRelForm,   setAddRelForm]   = useState<AddRelForm | null>(null);
+  const [addRelForm,      setAddRelForm]      = useState<AddRelForm | null>(null);
+  const [showLayoutMenu, setShowLayoutMenu]  = useState(false);
   const [showCode,     setShowCode]     = useState(false);
   const [lockMode,     setLockMode]     = useState(false);
   const [pan,   setPan]   = useState<Pos>({ x: 32, y: 32 });
@@ -452,6 +577,16 @@ export default function OrmEditor({ state, setState }: Props) {
   const patchForm = (patch: Partial<AddRelForm>) =>
     setAddRelForm((f) => f ? { ...f, ...patch } : f);
 
+  const applyLayout = (type: LayoutType) => {
+    const fn = type === 'lr' ? layoutLeftRight
+             : type === 'snowflake' ? layoutSnowflake
+             : layoutCompact;
+    setPositions(fn(models, edges));
+    setScale(1);
+    setPan({ x: 40, y: 40 });
+    setShowLayoutMenu(false);
+  };
+
   // ── Derived ───────────────────────────────────────────────────────────────────
 
   const edges = getEdges(models);
@@ -487,7 +622,7 @@ export default function OrmEditor({ state, setState }: Props) {
         <div
           ref={canvasRef}
           onMouseDown={startPan}
-          onClick={() => { setSelected(null); setSelectedEdge(null); setAddRelForm(null); }}
+          onClick={() => { setSelected(null); setSelectedEdge(null); setAddRelForm(null); setShowLayoutMenu(false); }}
           style={{
             flex: 1, position: 'relative', overflow: 'hidden',
             cursor: lockMode ? 'grab' : 'default',
@@ -691,6 +826,61 @@ export default function OrmEditor({ state, setState }: Props) {
               onClick={() => { setScale(1); setPan({ x: 32, y: 32 }); }}>
               <IconFit />
             </button>
+
+            <div style={navDivider} />
+
+            {/* Layout button + popover */}
+            <div style={{ position: 'relative' }}>
+              <button
+                style={navBtn(showLayoutMenu)}
+                title="레이아웃 정렬"
+                onClick={(e) => { e.stopPropagation(); setShowLayoutMenu((v) => !v); }}
+              >
+                <IconLayout />
+              </button>
+              {showLayoutMenu && (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    position: 'absolute', bottom: 'calc(100% + 8px)', left: '50%',
+                    transform: 'translateX(-50%)',
+                    background: 'var(--navbar-bg)',
+                    border: '1px solid var(--navbar-border)',
+                    borderRadius: 7,
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+                    overflow: 'hidden',
+                    minWidth: 110,
+                    zIndex: 20,
+                  }}
+                >
+                  {([
+                    { type: 'lr',        label: 'Left-right' },
+                    { type: 'snowflake', label: 'Snowflake'  },
+                    { type: 'compact',   label: 'Compact'    },
+                  ] as { type: LayoutType; label: string }[]).map(({ type, label }) => (
+                    <button
+                      key={type}
+                      onClick={() => applyLayout(type)}
+                      style={{
+                        display: 'block', width: '100%',
+                        padding: '7px 14px', border: 'none',
+                        background: 'transparent',
+                        color: 'var(--vscode-foreground)',
+                        fontSize: 11, textAlign: 'left', cursor: 'pointer',
+                        borderBottom: type !== 'compact'
+                          ? '1px solid var(--navbar-border)' : 'none',
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.background = 'rgba(99,102,241,0.15)';
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                      }}
+                    >{label}</button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             <div style={navDivider} />
 
