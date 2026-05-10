@@ -477,10 +477,12 @@ export default function OrmEditor({ state, setState }: Props) {
   const [models,       setModels]       = useState<Model[]>([]);
   const [positions,    setPositions]    = useState<Record<string, Pos>>({});
   const [selected,     setSelected]     = useState<Model | null>(null);
+  const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set());
   const [selectedEdge, setSelectedEdge] = useState<EdgeDef | null>(null);
   const [addRelForm,      setAddRelForm]      = useState<AddRelForm | null>(null);
   const [showLayoutMenu,    setShowLayoutMenu]    = useState(false);
   const [draggingEndpoint,  setDraggingEndpoint]  = useState<DraggingEndpoint | null>(null);
+  const [rubberBand, setRubberBand] = useState<{x1:number;y1:number;x2:number;y2:number}|null>(null);
   const [showCode,     setShowCode]     = useState(false);
   const [lockMode,     setLockMode]     = useState(false);
   const [pan,   setPan]   = useState<Pos>({ x: 32, y: 32 });
@@ -491,8 +493,9 @@ export default function OrmEditor({ state, setState }: Props) {
   useEffect(() => { panRef.current = pan; },   [pan]);
   useEffect(() => { scaleRef.current = scale; }, [scale]);
 
-  const pendingRef  = useRef<{ id: string; ox: number; oy: number; sx: number; sy: number } | null>(null);
-  const draggingRef = useRef<{ id: string; ox: number; oy: number } | null>(null);
+  type DragState = { ids: string[]; offsets: Record<string, {ox:number;oy:number}>; sx:number; sy:number };
+  const pendingRef  = useRef<DragState | null>(null);
+  const draggingRef = useRef<DragState | null>(null);
   const didDragRef  = useRef(false);
   const panningRef  = useRef<{ mx: number; my: number; px: number; py: number } | null>(null);
   const debounceRef        = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -502,10 +505,14 @@ export default function OrmEditor({ state, setState }: Props) {
   const ormSourceRef       = useRef(state.ormSource);
   const setOrmSource       = useCallback((src: string) => setState((p) => ({ ...p, ormSource: src })), [setState]);
   const setOrmSourceRef    = useRef(setOrmSource);
+  const selectedNodesRef   = useRef(selectedNodes);
+  const rubberBandRef      = useRef<{sx:number;sy:number}|null>(null);
+  const rbDidDragRef       = useRef(false);
   useEffect(() => { modelsRef.current      = models; },          [models]);
   useEffect(() => { positionsRef.current   = positions; },       [positions]);
   useEffect(() => { ormSourceRef.current   = state.ormSource; }, [state.ormSource]);
   useEffect(() => { setOrmSourceRef.current = setOrmSource; },   [setOrmSource]);
+  useEffect(() => { selectedNodesRef.current = selectedNodes; }, [selectedNodes]);
   const canvasRef   = useRef<HTMLDivElement>(null);
 
   // ── Parse source ─────────────────────────────────────────────────────────────
@@ -561,14 +568,32 @@ export default function OrmEditor({ state, setState }: Props) {
     }
 
     if (draggingRef.current) {
-      const { id, ox, oy } = draggingRef.current;
-      setPositions((prev) => ({
-        ...prev,
-        [id]: { x: (e.clientX - px) / sc - ox, y: (e.clientY - py) / sc - oy },
-      }));
+      const { ids, offsets } = draggingRef.current;
+      setPositions((prev) => {
+        const next = { ...prev };
+        for (const nodeId of ids) {
+          const { ox, oy } = offsets[nodeId];
+          next[nodeId] = { x: (e.clientX - px) / sc - ox, y: (e.clientY - py) / sc - oy };
+        }
+        return next;
+      });
     } else if (panningRef.current) {
       const { mx, my, px: ppx, py: ppy } = panningRef.current;
       setPan({ x: ppx + e.clientX - mx, y: ppy + e.clientY - my });
+    }
+
+    // Rubber-band selection rect
+    if (rubberBandRef.current) {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (rect) {
+        const { sx, sy } = rubberBandRef.current;
+        const ex = e.clientX - rect.left;
+        const ey = e.clientY - rect.top;
+        if (Math.abs(ex - sx) > DRAG_THRESHOLD || Math.abs(ey - sy) > DRAG_THRESHOLD) {
+          rbDidDragRef.current = true;
+          setRubberBand({ x1: sx, y1: sy, x2: ex, y2: ey });
+        }
+      }
     }
   }, []);
 
@@ -594,6 +619,40 @@ export default function OrmEditor({ state, setState }: Props) {
         }
       }
     }
+
+    // Finalize rubber-band selection
+    if (rubberBandRef.current && rbDidDragRef.current) {
+      const { sx, sy } = rubberBandRef.current;
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (rect) {
+        const ex = e.clientX - rect.left;
+        const ey = e.clientY - rect.top;
+        const { x: px, y: py } = panRef.current;
+        const sc = scaleRef.current;
+        const cx1 = (Math.min(sx, ex) - px) / sc;
+        const cy1 = (Math.min(sy, ey) - py) / sc;
+        const cx2 = (Math.max(sx, ex) - px) / sc;
+        const cy2 = (Math.max(sy, ey) - py) / sc;
+        const hit = new Set<string>();
+        for (const m of modelsRef.current) {
+          const pos = positionsRef.current[m.name];
+          if (!pos) continue;
+          if (pos.x < cx2 && pos.x + NODE_W > cx1 &&
+              pos.y < cy2 && pos.y + nodeHeight(m) > cy1) {
+            hit.add(m.name);
+          }
+        }
+        if (hit.size > 0) {
+          setSelectedNodes(hit);
+          setSelected(null);
+        }
+      }
+    }
+    rubberBandRef.current = null;
+    // rbDidDragRef stays true until onClick resets it, so the canvas click
+    // handler doesn't immediately clear the selection we just made
+    setRubberBand(null);
+
     pendingRef.current  = null;
     draggingRef.current = null;
     panningRef.current  = null;
@@ -612,16 +671,24 @@ export default function OrmEditor({ state, setState }: Props) {
     if (lockMode) return;
     e.stopPropagation();
     didDragRef.current = false;
-    const pos = positions[id] ?? { x: 0, y: 0 };
     const sc  = scaleRef.current;
     const { x: px, y: py } = panRef.current;
-    pendingRef.current = {
-      id,
-      ox: (e.clientX - px) / sc - pos.x,
-      oy: (e.clientY - py) / sc - pos.y,
-      sx: e.clientX,
-      sy: e.clientY,
-    };
+
+    // If this node is part of a multi-selection, drag all selected nodes together
+    const inSel = selectedNodesRef.current.has(id);
+    const ids = (!e.shiftKey && inSel && selectedNodesRef.current.size > 1)
+      ? [...selectedNodesRef.current]
+      : [id];
+
+    const offsets: Record<string, {ox:number;oy:number}> = {};
+    for (const nodeId of ids) {
+      const pos = positionsRef.current[nodeId] ?? { x: 0, y: 0 };
+      offsets[nodeId] = {
+        ox: (e.clientX - px) / sc - pos.x,
+        oy: (e.clientY - py) / sc - pos.y,
+      };
+    }
+    pendingRef.current = { ids, offsets, sx: e.clientX, sy: e.clientY };
   };
 
   const handleNodeClick = (e: React.MouseEvent, model: Model) => {
@@ -629,12 +696,29 @@ export default function OrmEditor({ state, setState }: Props) {
     if (!lockMode && !didDragRef.current) {
       setSelectedEdge(null);
       setAddRelForm(null);
-      setSelected((prev) => (prev?.name === model.name ? null : model));
+      if (e.shiftKey) {
+        setSelectedNodes((prev) => {
+          const next = new Set(prev);
+          if (next.has(model.name)) next.delete(model.name);
+          else next.add(model.name);
+          return next;
+        });
+      } else {
+        setSelectedNodes(new Set([model.name]));
+        setSelected((prev) => (prev?.name === model.name ? null : model));
+      }
     }
   };
 
   const startPan = (e: React.MouseEvent) => {
     panningRef.current = { mx: e.clientX, my: e.clientY, px: pan.x, py: pan.y };
+  };
+
+  const startRubberBand = (e: React.MouseEvent) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    rbDidDragRef.current = false;
+    rubberBandRef.current = { sx: e.clientX - rect.left, sy: e.clientY - rect.top };
   };
 
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -759,8 +843,12 @@ export default function OrmEditor({ state, setState }: Props) {
         {/* Canvas */}
         <div
           ref={canvasRef}
-          onMouseDown={startPan}
-          onClick={() => { setSelected(null); setSelectedEdge(null); setAddRelForm(null); setShowLayoutMenu(false); }}
+          onMouseDown={(e) => lockMode ? startPan(e) : startRubberBand(e)}
+          onClick={() => {
+            if (rbDidDragRef.current) { rbDidDragRef.current = false; return; }
+            setSelected(null); setSelectedNodes(new Set());
+            setSelectedEdge(null); setAddRelForm(null); setShowLayoutMenu(false);
+          }}
           style={{
             flex: 1, position: 'relative', overflow: 'hidden',
             cursor: lockMode ? 'grab' : 'default',
@@ -792,6 +880,21 @@ export default function OrmEditor({ state, setState }: Props) {
                 <path d="M0,0.5 L0,5.5 L6.5,3 z" fill="#818cf8" />
               </marker>
             </defs>
+            {/* Rubber-band selection rect — screen space, outside pan/scale group */}
+            {rubberBand && (
+              <rect
+                x={Math.min(rubberBand.x1, rubberBand.x2)}
+                y={Math.min(rubberBand.y1, rubberBand.y2)}
+                width={Math.abs(rubberBand.x2 - rubberBand.x1)}
+                height={Math.abs(rubberBand.y2 - rubberBand.y1)}
+                fill="rgba(99,102,241,0.07)"
+                stroke="#818cf8"
+                strokeWidth={1}
+                strokeDasharray="4 2"
+                style={{ pointerEvents: 'none' }}
+              />
+            )}
+
             <g transform={`translate(${pan.x},${pan.y}) scale(${scale})`}>
               {/* Field highlight under cursor during endpoint drag */}
               {draggingEndpoint && (() => {
@@ -898,7 +1001,7 @@ export default function OrmEditor({ state, setState }: Props) {
             {models.map((model) => {
               const pos   = positions[model.name] ?? { x: 0, y: 0 };
               const color = modelColor(model.name);
-              const isSel = selected?.name === model.name;
+              const isSel = selectedNodes.has(model.name) || selected?.name === model.name;
               const hasSelEdge = selectedEdge?.from === model.name || selectedEdge?.to === model.name;
               return (
                 <div key={model.name}
@@ -1065,7 +1168,7 @@ export default function OrmEditor({ state, setState }: Props) {
             <button
               style={navBtn(lockMode)}
               title={lockMode ? '이동 모드 (클릭하여 편집 모드로)' : '편집 모드 (클릭하여 이동 모드로)'}
-              onClick={() => { setLockMode((v) => !v); if (lockMode) setSelected(null); }}
+              onClick={() => { setLockMode((v) => !v); if (lockMode) { setSelected(null); setSelectedNodes(new Set()); } }}
             >
               <IconHand />
             </button>
