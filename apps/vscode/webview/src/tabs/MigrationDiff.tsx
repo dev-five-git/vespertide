@@ -8,12 +8,13 @@ type Dialect  = 'postgres' | 'mysql' | 'sqlite';
 type FileKind = 'create' | 'alter' | 'drop' | 'index';
 
 interface SqlFile {
-  id:      string;
-  name:    string;
-  kind:    FileKind;
-  sql:     string;
-  adds:    number;
-  removes: number;
+  id:        string;
+  name:      string;
+  kind:      FileKind;
+  sql:       string;
+  adds:      number;
+  removes:   number;
+  startLine: number;   // 1-based line offset in the full combined SQL output
 }
 
 interface DiffLine {
@@ -166,38 +167,79 @@ const SQ_TAG_ON_POSTS = `CREATE TABLE "tag_on_posts" (
 const SQ_INDEXES = `CREATE INDEX "ix_posts__author_id" ON "posts" ("author_id");
 CREATE INDEX "ix_tag_on_posts__tag_id" ON "tag_on_posts" ("tag_id");`;
 
-function makeFile(id: string, name: string, kind: FileKind, sql: string): SqlFile {
-  const lines = sql.split('\n').filter((l) => l.trim());
-  const adds    = kind === 'create' || kind === 'index' ? lines.length : lines.filter(l => /^\s+ADD/i.test(l)).length;
-  const removes = kind === 'drop' ? lines.length : lines.filter(l => /^\s+DROP/i.test(l)).length;
-  return { id, name, kind, sql, adds, removes };
+// ── Alter examples (mixed add + drop) ────────────────────────────────────────
+
+const PG_ALTER_USERS = `ALTER TABLE "users"
+  ADD COLUMN "phone" TEXT,
+  ADD COLUMN "avatar_url" TEXT,
+  DROP COLUMN "name",
+  DROP COLUMN "created_at";`;
+
+const MY_ALTER_USERS = `ALTER TABLE \`users\`
+  ADD COLUMN \`phone\` VARCHAR(191),
+  ADD COLUMN \`avatar_url\` VARCHAR(512),
+  DROP COLUMN \`name\`,
+  DROP COLUMN \`created_at\`;`;
+
+const SQ_ALTER_USERS = `ALTER TABLE "users"
+  ADD COLUMN "phone" TEXT,
+  ADD COLUMN "avatar_url" TEXT,
+  DROP COLUMN "name",
+  DROP COLUMN "created_at";`;
+
+// ── Drop examples ─────────────────────────────────────────────────────────────
+
+const PG_DROP_SESSIONS = `DROP TABLE IF EXISTS "sessions";`;
+const MY_DROP_SESSIONS = `DROP TABLE IF EXISTS \`sessions\`;`;
+const SQ_DROP_SESSIONS = `DROP TABLE IF EXISTS "sessions";`;
+
+function makeFile(id: string, name: string, kind: FileKind, sql: string, startLine: number): SqlFile {
+  const allLines = sql.split('\n');
+  const adds    = kind === 'create' || kind === 'index' ? allLines.filter(l => l.trim()).length : allLines.filter(l => /^\s+ADD/i.test(l)).length;
+  const removes = kind === 'drop' ? allLines.filter(l => l.trim()).length : allLines.filter(l => /^\s+DROP/i.test(l)).length;
+  return { id, name, kind, sql, adds, removes, startLine };
+}
+
+function buildDummyFiles(items: Array<[string, string, FileKind, string]>): SqlFile[] {
+  let cursor = 1;
+  return items.map(([id, name, kind, sql]) => {
+    const file = makeFile(id, name, kind, sql, cursor);
+    cursor += sql.split('\n').length + 1; // +1 for blank separator between statements
+    return file;
+  });
 }
 
 const DUMMY_FILES: Record<Dialect, SqlFile[]> = {
-  postgres: [
-    makeFile('0', 'users',        'create', PG_USERS),
-    makeFile('1', 'profiles',     'create', PG_PROFILES),
-    makeFile('2', 'posts',        'create', PG_POSTS),
-    makeFile('3', 'tags',         'create', PG_TAGS),
-    makeFile('4', 'tag_on_posts', 'create', PG_TAG_ON_POSTS),
-    makeFile('5', 'indexes',      'index',  PG_INDEXES),
-  ],
-  mysql: [
-    makeFile('0', 'users',        'create', MY_USERS),
-    makeFile('1', 'profiles',     'create', MY_PROFILES),
-    makeFile('2', 'posts',        'create', MY_POSTS),
-    makeFile('3', 'tags',         'create', MY_TAGS),
-    makeFile('4', 'tag_on_posts', 'create', MY_TAG_ON_POSTS),
-    makeFile('5', 'indexes',      'index',  MY_INDEXES),
-  ],
-  sqlite: [
-    makeFile('0', 'users',        'create', SQ_USERS),
-    makeFile('1', 'profiles',     'create', SQ_PROFILES),
-    makeFile('2', 'posts',        'create', SQ_POSTS),
-    makeFile('3', 'tags',         'create', SQ_TAGS),
-    makeFile('4', 'tag_on_posts', 'create', SQ_TAG_ON_POSTS),
-    makeFile('5', 'indexes',      'index',  SQ_INDEXES),
-  ],
+  postgres: buildDummyFiles([
+    ['0', 'users',        'create', PG_USERS],
+    ['1', 'profiles',     'create', PG_PROFILES],
+    ['2', 'posts',        'create', PG_POSTS],
+    ['3', 'tags',         'create', PG_TAGS],
+    ['4', 'tag_on_posts', 'create', PG_TAG_ON_POSTS],
+    ['5', 'indexes',      'index',  PG_INDEXES],
+    ['6', 'users',        'alter',  PG_ALTER_USERS],
+    ['7', 'sessions',     'drop',   PG_DROP_SESSIONS],
+  ]),
+  mysql: buildDummyFiles([
+    ['0', 'users',        'create', MY_USERS],
+    ['1', 'profiles',     'create', MY_PROFILES],
+    ['2', 'posts',        'create', MY_POSTS],
+    ['3', 'tags',         'create', MY_TAGS],
+    ['4', 'tag_on_posts', 'create', MY_TAG_ON_POSTS],
+    ['5', 'indexes',      'index',  MY_INDEXES],
+    ['6', 'users',        'alter',  MY_ALTER_USERS],
+    ['7', 'sessions',     'drop',   MY_DROP_SESSIONS],
+  ]),
+  sqlite: buildDummyFiles([
+    ['0', 'users',        'create', SQ_USERS],
+    ['1', 'profiles',     'create', SQ_PROFILES],
+    ['2', 'posts',        'create', SQ_POSTS],
+    ['3', 'tags',         'create', SQ_TAGS],
+    ['4', 'tag_on_posts', 'create', SQ_TAG_ON_POSTS],
+    ['5', 'indexes',      'index',  SQ_INDEXES],
+    ['6', 'users',        'alter',  SQ_ALTER_USERS],
+    ['7', 'sessions',     'drop',   SQ_DROP_SESSIONS],
+  ]),
 };
 
 // ── SQL parser (for real WASM output) ────────────────────────────────────────
@@ -216,24 +258,31 @@ function extractName(stmt: string, keyword: string): string {
 
 function parseSql(sql: string): SqlFile[] {
   if (!sql.trim()) return [];
-  const stmts = sql
-    .split(/;[ \t]*\n/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((s) => (s.endsWith(';') ? s : s + ';'));
+
+  // Split on statement boundaries while preserving line position tracking
+  const rawParts = sql.split(/;[ \t]*\n/);
+  let lineOffset = 1;
+  const stmtInfos: Array<{ stmt: string; startLine: number }> = [];
+  for (const part of rawParts) {
+    const trimmed = part.trim();
+    if (trimmed) {
+      stmtInfos.push({ stmt: trimmed.endsWith(';') ? trimmed : trimmed + ';', startLine: lineOffset });
+    }
+    lineOffset += part.split('\n').length;
+  }
 
   const byKey = new Map<string, SqlFile>();
   let idx = 0;
 
-  for (const stmt of stmts) {
+  for (const { stmt, startLine } of stmtInfos) {
     const up = stmt.trimStart().toUpperCase();
     let kind: FileKind;
     let name: string;
 
-    if (up.startsWith('CREATE TABLE'))         { kind = 'create'; name = extractName(stmt, 'CREATE TABLE'); }
-    else if (up.startsWith('ALTER TABLE'))      { kind = 'alter';  name = extractName(stmt, 'ALTER TABLE'); }
-    else if (up.startsWith('DROP TABLE'))       { kind = 'drop';   name = extractName(stmt, 'DROP TABLE'); }
-    else if (up.includes('INDEX'))              { kind = 'index';  name = 'indexes'; }
+    if (up.startsWith('CREATE TABLE'))    { kind = 'create'; name = extractName(stmt, 'CREATE TABLE'); }
+    else if (up.startsWith('ALTER TABLE')) { kind = 'alter';  name = extractName(stmt, 'ALTER TABLE'); }
+    else if (up.startsWith('DROP TABLE'))  { kind = 'drop';   name = extractName(stmt, 'DROP TABLE'); }
+    else if (up.includes('INDEX'))         { kind = 'index';  name = 'indexes'; }
     else continue;
 
     const lines = stmt.split('\n');
@@ -251,8 +300,9 @@ function parseSql(sql: string): SqlFile[] {
       f.sql += '\n\n' + stmt;
       f.adds += adds;
       f.removes += removes;
+      // startLine stays as the first occurrence
     } else {
-      byKey.set(key, { id: String(idx++), name, kind, sql: stmt, adds, removes });
+      byKey.set(key, { id: String(idx++), name, kind, sql: stmt, adds, removes, startLine });
     }
   }
   return Array.from(byKey.values());
@@ -261,7 +311,8 @@ function parseSql(sql: string): SqlFile[] {
 // ── Diff line generator ───────────────────────────────────────────────────────
 
 function toDiffLines(file: SqlFile): DiffLine[] {
-  let oldN = 1, newN = 1;
+  // counters start at the actual line position in the full SQL output
+  let oldN = file.startLine, newN = file.startLine;
   return file.sql.split('\n').map((text) => {
     let type: DiffLine['type'] = 'ctx';
     if (file.kind === 'create' || file.kind === 'index') {
@@ -273,9 +324,9 @@ function toDiffLines(file: SqlFile): DiffLine[] {
       if (t.startsWith('ADD'))       type = 'add';
       else if (t.startsWith('DROP')) type = 'remove';
     }
-    if (type === 'add')    return { type, oldNum: null,    newNum: newN++, text };
-    if (type === 'remove') return { type, oldNum: oldN++,  newNum: null,   text };
-    return                        { type, oldNum: oldN++,  newNum: newN++, text };
+    if (type === 'add')    return { type, oldNum: null,   newNum: newN++, text };
+    if (type === 'remove') return { type, oldNum: oldN++, newNum: null,   text };
+    return                        { type, oldNum: oldN++, newNum: newN++, text };
   });
 }
 
