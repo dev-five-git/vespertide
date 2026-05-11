@@ -259,24 +259,28 @@ export default function Export({ state }: Props) {
         </div>
 
         {/* AI Agent button */}
-        <div style={{ flexShrink: 0, padding: '6px 8px', borderTop: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))' }}>
+        <div style={{ flexShrink: 0, padding: '8px', borderTop: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))' }}>
           <button
             onClick={() => setPanel({ kind: 'chat' })}
             style={{
-              width: '100%', padding: '5px 8px', borderRadius: 4,
-              background: panel.kind === 'chat' ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.08)',
-              border: `1px solid ${panel.kind === 'chat' ? 'rgba(99,102,241,0.5)' : 'rgba(99,102,241,0.2)'}`,
-              color: '#a5b4fc', fontSize: 11, fontWeight: 600, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: 6,
+              width: '100%', padding: '9px 12px', borderRadius: 6,
+              background: panel.kind === 'chat'
+                ? 'linear-gradient(135deg, rgba(99,102,241,0.35), rgba(139,92,246,0.35))'
+                : 'linear-gradient(135deg, rgba(99,102,241,0.15), rgba(139,92,246,0.15))',
+              border: `1px solid ${panel.kind === 'chat' ? 'rgba(139,92,246,0.6)' : 'rgba(99,102,241,0.3)'}`,
+              color: panel.kind === 'chat' ? '#c4b5fd' : '#a5b4fc',
+              fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 8,
+              letterSpacing: '0.02em',
             }}
           >
-            <span>✦</span>
+            <span style={{ fontSize: 14 }}>🤖</span>
             <span>AI Agent</span>
             {connectedAIs.length > 0 && (
               <span style={{
-                marginLeft: 'auto', fontSize: 9, padding: '1px 5px', borderRadius: 8,
-                background: 'rgba(74,222,128,0.15)', color: '#4ade80',
-              }}>{connectedAIs.length}</span>
+                marginLeft: 'auto', fontSize: 10, padding: '1px 6px', borderRadius: 8,
+                background: 'rgba(74,222,128,0.2)', color: '#4ade80', fontWeight: 600,
+              }}>{connectedAIs.length} 연결됨</span>
             )}
           </button>
         </div>
@@ -577,7 +581,7 @@ function ChatPanel({ messages, loading, input, activeAI, connectedAIs, endRef, o
       <div style={{ flex: 1, overflow: 'auto', padding: '12px 16px' }}>
         {messages.length === 0 && (
           <div style={{ opacity: 0.35, fontSize: 12, lineHeight: 1.7, textAlign: 'center', marginTop: 40 }}>
-            <div style={{ fontSize: 24, marginBottom: 8 }}>✦</div>
+            <div style={{ fontSize: 24, marginBottom: 8 }}>🤖</div>
             <div>현재 스키마를 컨텍스트로 자동 첨부합니다.</div>
             <div style={{ marginTop: 8, opacity: 0.7 }}>
               "Notion에 스키마 정리해줘"<br />
@@ -591,7 +595,6 @@ function ChatPanel({ messages, loading, input, activeAI, connectedAIs, endRef, o
         ))}
         {loading && (
           <div style={{ display: 'flex', gap: 6, padding: '8px 0', alignItems: 'center' }}>
-            <span style={{ fontSize: 18 }}>✦</span>
             <span style={{ fontSize: 12, opacity: 0.5 }}>응답 생성 중...</span>
           </div>
         )}
@@ -632,7 +635,7 @@ function ChatBubble({ message }: { message: ChatMessage }) {
       marginBottom: 10,
     }}>
       {!isUser && (
-        <span style={{ fontSize: 16, marginRight: 8, alignSelf: 'flex-start', marginTop: 2 }}>✦</span>
+        <span style={{ fontSize: 14, marginRight: 6, alignSelf: 'flex-start', marginTop: 3, opacity: 0.5 }}>🤖</span>
       )}
       <div style={{
         maxWidth: '80%', padding: '8px 12px', borderRadius: isUser ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
