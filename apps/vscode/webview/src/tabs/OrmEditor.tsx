@@ -972,12 +972,42 @@ export default function OrmEditor({ state, setState }: Props) {
                         style={{ pointerEvents: 'none' }}
                       />
                     )}
-                    {/* Origin dot */}
-                    <circle
-                      cx={x1} cy={y1} r={sel ? 4 : 3}
-                      fill={edgeColor}
-                      style={{ pointerEvents: 'none' }}
-                    />
+                    {/* Cardinality badge "N" at source */}
+                    {!isDraggingThis && (
+                      <g style={{ pointerEvents: 'none' }}>
+                        <circle
+                          cx={x1 + (useRight ? 13 : -13)} cy={y1}
+                          r={8}
+                          fill="var(--node-bg)"
+                          stroke={edgeColor}
+                          strokeWidth={1.2}
+                        />
+                        <text
+                          x={x1 + (useRight ? 13 : -13)} y={y1}
+                          textAnchor="middle" dominantBaseline="central"
+                          fontSize={8} fontWeight="700"
+                          fill={edgeColor}
+                        >N</text>
+                      </g>
+                    )}
+                    {/* Cardinality badge "1" at target */}
+                    {!isDraggingThis && (
+                      <g style={{ pointerEvents: 'none' }}>
+                        <circle
+                          cx={x2 + (useRight ? -13 : 13)} cy={y2}
+                          r={8}
+                          fill="var(--node-bg)"
+                          stroke={edgeColor}
+                          strokeWidth={1.2}
+                        />
+                        <text
+                          x={x2 + (useRight ? -13 : 13)} y={y2}
+                          textAnchor="middle" dominantBaseline="central"
+                          fontSize={8} fontWeight="700"
+                          fill={edgeColor}
+                        >1</text>
+                      </g>
+                    )}
                     {/* Endpoint drag handle — visible when selected, not currently dragging */}
                     {sel && !draggingEndpoint && (
                       <circle
@@ -1010,42 +1040,89 @@ export default function OrmEditor({ state, setState }: Props) {
                   style={{
                     position: 'absolute', left: pos.x, top: pos.y,
                     width: NODE_W, height: nodeHeight(model),
-                    borderRadius: 8, overflow: 'hidden', userSelect: 'none', cursor: lockMode ? 'grab' : 'pointer',
-                    border: `1.5px solid ${isSel ? color : hasSelEdge ? color + '88' : 'var(--node-border)'}`,
+                    borderRadius: 8, overflow: 'hidden', userSelect: 'none',
+                    cursor: lockMode ? 'grab' : 'pointer',
+                    border: `1px solid ${isSel ? color : hasSelEdge ? color + '55' : 'var(--node-border)'}`,
                     boxShadow: isSel
-                      ? `0 0 0 3px ${color}28, 0 4px 18px rgba(0,0,0,0.35)`
-                      : hasSelEdge ? `0 0 0 2px ${color}18` : 'var(--node-shadow)',
+                      ? `0 0 0 2.5px ${color}38, 0 8px 28px rgba(0,0,0,0.32)`
+                      : hasSelEdge ? `0 0 0 1.5px ${color}22, var(--node-shadow)` : 'var(--node-shadow)',
                     background: 'var(--node-bg)',
                     transition: 'border-color 0.12s, box-shadow 0.12s',
                   }}
                 >
+                  {/* ── Accent bar ── */}
+                  <div style={{ height: 3, background: color, flexShrink: 0 }} />
+
+                  {/* ── Header ── */}
                   <div style={{
-                    height: HEADER_H, display: 'flex', alignItems: 'center',
-                    padding: '0 12px', gap: 8,
-                    background: `${color}18`, borderBottom: `1px solid ${color}28`,
+                    height: HEADER_H - 3,
+                    display: 'flex', alignItems: 'center',
+                    padding: '0 10px', gap: 7,
+                    background: `${color}10`,
+                    borderBottom: '1px solid var(--node-field-divider)',
                   }}>
-                    <div style={{ width: 9, height: 9, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                    <span style={{ fontWeight: 700, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {/* Table icon */}
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none"
+                      style={{ flexShrink: 0, color, opacity: 0.8 }}>
+                      <rect x="1.5" y="1.5" width="13" height="13" rx="2"
+                        stroke="currentColor" strokeWidth="1.5"/>
+                      <line x1="1.5" y1="6"    x2="14.5" y2="6"    stroke="currentColor" strokeWidth="1"/>
+                      <line x1="1.5" y1="10.5" x2="14.5" y2="10.5" stroke="currentColor" strokeWidth="1"/>
+                      <line x1="6"   y1="6"    x2="6"    y2="14.5" stroke="currentColor" strokeWidth="1"/>
+                    </svg>
+                    <span style={{
+                      fontWeight: 700, fontSize: 12, flex: 1,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
                       {model.name}
                     </span>
+                    <span style={{ fontSize: 9, opacity: 0.28, flexShrink: 0 }}>
+                      {model.fields.length}
+                    </span>
                   </div>
+
+                  {/* ── Fields ── */}
                   {model.fields.map((f, fi) => (
                     <div key={f.name} style={{
-                      height: FIELD_H, display: 'flex', alignItems: 'center',
-                      padding: '0 12px', gap: 6,
+                      height: FIELD_H,
+                      display: 'flex', alignItems: 'center',
+                      padding: '0 10px', gap: 6,
                       borderBottom: fi < model.fields.length - 1
                         ? '1px solid var(--node-field-divider)' : 'none',
                     }}>
-                      <span style={{ fontSize: 9, width: 10, textAlign: 'center', flexShrink: 0, opacity: 0.5 }}>
-                        {f.isPrimary ? '⬡' : f.isRelation ? '⇢' : '·'}
-                      </span>
-                      <span style={{ fontSize: 11, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {/* Left icon: key for PK, filled dot for FK/relation, hollow dot for scalar */}
+                      {f.isPrimary ? (
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                          style={{ flexShrink: 0, color: '#f59e0b' }}>
+                          <circle cx="7.5" cy="15.5" r="5" stroke="currentColor" strokeWidth="2"/>
+                          <path d="M21.5 2.5L13 11m0 0l2.5 2.5M13 11l-2.5 2.5"
+                            stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                        </svg>
+                      ) : (
+                        <div style={{
+                          width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+                          background: f.isRelation ? color : 'transparent',
+                          border: `1.5px solid ${f.isRelation ? 'transparent' : 'rgba(150,155,185,0.28)'}`,
+                        }} />
+                      )}
+
+                      {/* Field name */}
+                      <span style={{
+                        fontSize: 11, flex: 1,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        fontWeight: f.isPrimary ? 600 : 400,
+                      }}>
                         {f.name}
                       </span>
+
+                      {/* Type label */}
                       <span style={{
-                        fontSize: 10, flexShrink: 0, fontFamily: 'monospace',
-                        opacity: f.isRelation ? 0.8 : 0.4,
-                        color: f.isRelation ? color : 'inherit',
+                        fontSize: 10, flexShrink: 0,
+                        fontFamily: 'var(--vscode-editor-font-family, monospace)',
+                        color: f.isPrimary ? '#f59e0b'
+                             : f.isRelation ? color
+                             : 'var(--node-type-color)',
+                        opacity: f.isPrimary ? 0.9 : 1,
                       }}>
                         {f.type}
                       </span>
