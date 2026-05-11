@@ -181,9 +181,19 @@ export default function Export({ state }: Props) {
   function sendChat() {
     const text = chatInput.trim();
     if (!text || chatLoading) return;
+    setChatInput('');
+
+    if (connectedAIs.length === 0) {
+      setChatMessages((prev) => [
+        ...prev,
+        { role: 'user', content: text },
+        { role: 'assistant', content: '왼쪽 CONNECTIONS에서 AI 서비스(Claude, OpenAI, Gemini)를 먼저 연결해주세요.' },
+      ]);
+      return;
+    }
+
     const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: text }];
     setChatMessages(newMessages);
-    setChatInput('');
     setChatLoading(true);
     const ctx = [
       state.ormSource ? `ORM Source:\n${state.ormSource}` : '',
@@ -599,7 +609,7 @@ function ChatPanel({ messages, loading, input, activeAI, connectedAIs, endRef, o
           onChange={(e) => onInputChange(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && onSend()}
           placeholder="Notion에 스키마 정리해줘..."
-          disabled={connectedAIs.length === 0 || loading}
+          disabled={loading}
           style={{
             flex: 1, padding: '6px 10px', borderRadius: 4, fontSize: 12,
             background: 'var(--vscode-input-background, rgba(255,255,255,0.06))',
@@ -607,7 +617,7 @@ function ChatPanel({ messages, loading, input, activeAI, connectedAIs, endRef, o
             color: 'var(--vscode-foreground, #ccc)', outline: 'none',
           }}
         />
-        <button onClick={onSend} disabled={!input.trim() || loading || connectedAIs.length === 0}
+        <button onClick={onSend} disabled={!input.trim() || loading}
           style={btnStyle('primary')}>전송</button>
       </div>
     </div>

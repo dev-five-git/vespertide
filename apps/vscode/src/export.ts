@@ -5,6 +5,11 @@ import { svgToPdf } from './wasm-host';
 let currentSchema: Schema = {};
 let currentSvg = '';
 
+function defaultSaveUri(filename: string): vscode.Uri {
+  const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
+  return folder ? vscode.Uri.joinPath(folder, filename) : vscode.Uri.file(filename);
+}
+
 export function setCurrentSchema(schema: Schema): void {
   currentSchema = schema;
 }
@@ -18,7 +23,7 @@ export function setCurrentSvg(svg: string): void {
 export async function exportSql(content: string, dialect: DbDialect): Promise<string | undefined> {
   const suffix = dialect === 'postgres' ? 'postgres' : dialect === 'mysql' ? 'mysql' : 'sqlite';
   const uri = await vscode.window.showSaveDialog({
-    defaultUri: vscode.Uri.file(`migration.${suffix}.sql`),
+    defaultUri: defaultSaveUri(`migration.${suffix}.sql`),
     filters: { 'SQL 파일': ['sql'] },
   });
   if (!uri) return undefined;
@@ -40,7 +45,7 @@ export async function exportSchema(content: string, ormType: OrmType): Promise<s
   };
   const ext = extMap[ormType] ?? 'txt';
   const uri = await vscode.window.showSaveDialog({
-    defaultUri: vscode.Uri.file(`schema.${ext}`),
+    defaultUri: defaultSaveUri(`schema.${ext}`),
     filters: {},
   });
   if (!uri) return undefined;
@@ -58,7 +63,7 @@ export async function exportSvg(): Promise<string | undefined> {
   }
 
   const uri = await vscode.window.showSaveDialog({
-    defaultUri: vscode.Uri.file('erd-diagram.svg'),
+    defaultUri: defaultSaveUri('erd-diagram.svg'),
     filters: { 'SVG 파일': ['svg'] },
   });
   if (!uri) return undefined;
@@ -77,7 +82,7 @@ export async function exportPdf(): Promise<string | undefined> {
   }
 
   const uri = await vscode.window.showSaveDialog({
-    defaultUri: vscode.Uri.file('erd-diagram.pdf'),
+    defaultUri: defaultSaveUri('erd-diagram.pdf'),
     filters: { 'PDF 파일': ['pdf'] },
   });
   if (!uri) return undefined;
@@ -114,7 +119,7 @@ export async function exportSchemaJson(): Promise<string | undefined> {
     return undefined;
   }
   const uri = await vscode.window.showSaveDialog({
-    defaultUri: vscode.Uri.file('schema.json'),
+    defaultUri: defaultSaveUri('schema.json'),
     filters: { 'JSON 파일': ['json'] },
   });
   if (!uri) return undefined;
