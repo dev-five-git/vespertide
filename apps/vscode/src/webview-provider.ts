@@ -6,22 +6,36 @@ import { initWasm, parseOrm, renderErd, convertOrm, generateMigration } from './
 import {
   exportSvg,
   exportPdf,
-  exportMcp,
+  exportSql,
+  exportSchema,
+  exportSchemaJson,
   setCurrentSchema,
   setCurrentSvg,
 } from './export';
+import {
+  saveConnector,
+  deleteConnector,
+  loadConnectors,
+  callAI,
+  sendSlack,
+  createNotionPage,
+  createJiraIssue,
+} from './connectors';
 
 export class VespertideWebviewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'vespertide.mainPanel';
 
   private _view?: vscode.WebviewView;
 
-  constructor(private readonly _extensionUri: vscode.Uri) {}
+  constructor(
+    private readonly _extensionUri: vscode.Uri,
+    private readonly _ctx: vscode.ExtensionContext,
+  ) {}
 
   resolveWebviewView(
     webviewView: vscode.WebviewView,
     _context: vscode.WebviewViewResolveContext,
-    _token: vscode.CancellationToken
+    _token: vscode.CancellationToken,
   ): void {
     this._view = webviewView;
 
@@ -39,8 +53,14 @@ export class VespertideWebviewProvider implements vscode.WebviewViewProvider {
       await this._handleMessage(msg);
     });
 
-    // Initialize WASM after panel resolves
     initWasm(this._extensionUri.fsPath).catch(console.error);
+
+    // Push initial connector status once the panel is ready
+    setTimeout(() => {
+      loadConnectors(this._ctx).then((connectors) => {
+        this._post({ type: 'connector_status', connectors });
+      }).catch(console.error);
+    }, 500);
   }
 
   // ── Message handler ────────────────────────────────────────────────────────
@@ -85,9 +105,57 @@ export class VespertideWebviewProvider implements vscode.WebviewViewProvider {
           break;
         }
 
-        case 'export_mcp': {
-          await exportMcp(msg.schema);
-          this._post({ type: 'export_done' });
+        case 'export_sql': {
+          const filePath = await exportSql(msg.content, msg.dialect);
+          this._post({ type: 'export_done', path: filePath });
+          break;
+        }
+
+        case 'export_schema': {
+          const filePath = await exportSchema(msg.content, msg.ormType);
+          this._post({ type: 'export_done', path: filePath });
+          break;
+        }
+
+        case 'connector_save': {
+          await saveConnector(msg.service, msg.key, this._ctx);
+          const connectors = await loadConnectors(this._ctx);
+          this._post({ type: 'connector_status', connectors });
+          break;
+        }
+
+        case 'connector_delete': {
+          await deleteConnector(msg.service, this._ctx);
+          const connectors = await loadConnectors(this._ctx);
+          this._post({ type: 'connector_status', connectors });
+          break;
+        }
+
+        case 'connector_load': {
+          const connectors = await loadConnectors(this._ctx);
+          this._post({ type: 'connector_status', connectors });
+          break;
+        }
+
+        case 'ai_chat': {
+          this._post({ type: 'ai_response', content: '', done: false });
+
+          if (msg.service === 'slack') {
+            const lastMsg = msg.messages[msg.messages.length - 1];
+            await sendSlack(lastMsg?.content ?? '', this._ctx);
+            this._post({ type: 'ai_response', content: 'Slack 메시지를 전송했습니다.', done: true });
+          } else if (msg.service === 'notion') {
+            const lastMsg = msg.messages[msg.messages.length - 1];
+            const url = await createNotionPage('Vespertide 스키마', lastMsg?.content ?? msg.context, this._ctx);
+            this._post({ type: 'ai_response', content: `Notion 페이지가 생성되었습니다:\n${url}`, done: true });
+          } else if (msg.service === 'jira') {
+            const lastMsg = msg.messages[msg.messages.length - 1];
+            const url = await createJiraIssue('Vespertide 작업', lastMsg?.content ?? '', this._ctx);
+            this._post({ type: 'ai_response', content: `Jira 이슈가 생성되었습니다:\n${url}`, done: true });
+          } else {
+            const text = await callAI(msg.service, msg.messages, msg.context, this._ctx);
+            this._post({ type: 'ai_response', content: text, done: true });
+          }
           break;
         }
       }
@@ -111,14 +179,12 @@ export class VespertideWebviewProvider implements vscode.WebviewViewProvider {
       const nonce = randomNonce();
       let html = fs.readFileSync(indexPath, 'utf-8');
 
-      // Rewrite asset paths to webview URIs
       html = html.replace(/(src|href)="(\.\/[^"]+|\/[^"]+)"/g, (_m, attr, val) => {
         const relative = val.replace(/^\//, '').replace(/^\.\//, '');
         const uri = webview.asWebviewUri(vscode.Uri.joinPath(webviewDist, relative));
         return `${attr}="${uri}"`;
       });
 
-      // Inject CSP
       const csp = [
         `default-src 'none'`,
         `script-src 'nonce-${nonce}' 'unsafe-eval'`,
@@ -128,12 +194,10 @@ export class VespertideWebviewProvider implements vscode.WebviewViewProvider {
       ].join('; ');
 
       html = html.replace('<head>', `<head><meta http-equiv="Content-Security-Policy" content="${csp}">`);
-      // Add nonce to all inline scripts
       html = html.replace(/<script(?!.*nonce)/g, `<script nonce="${nonce}"`);
       return html;
     }
 
-    // Dev / first-run fallback
     return buildFallbackHtml();
   }
 }
@@ -172,7 +236,7 @@ function buildFallbackHtml(): string {
   <p>Webview 빌드가 필요합니다.</p>
   <p>1. <code>cd apps/vscode/webview &amp;&amp; npm install &amp;&amp; npm run build</code></p>
   <p>2. <code>cd apps/vscode &amp;&amp; npm install &amp;&amp; npm run build:ext</code></p>
-  <p>3. VS Code에서 <code>F5</code> 로 Extension 재시작</p>
+  <p>3. VS Code에서 재시작</p>
 </body>
 </html>`;
 }
