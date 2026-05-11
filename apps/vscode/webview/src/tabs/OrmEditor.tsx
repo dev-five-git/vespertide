@@ -254,6 +254,38 @@ function getFieldAtPoint(
   return null;
 }
 
+// ── Snap helpers ─────────────────────────────────────────────────────────────
+
+const SNAP_THRESHOLD = 28;
+
+type SnapPoint = { model: string; field: string; fieldIdx: number; x: number; y: number };
+
+/** All connection points (left + right edge of every field row). */
+function getSnapPoints(models: Model[], positions: Record<string, Pos>): SnapPoint[] {
+  const pts: SnapPoint[] = [];
+  for (const m of models) {
+    const pos = positions[m.name];
+    if (!pos) continue;
+    for (let fi = 0; fi < m.fields.length; fi++) {
+      const cy = pos.y + HEADER_H + fi * FIELD_H + FIELD_H / 2;
+      pts.push({ model: m.name, field: m.fields[fi].name, fieldIdx: fi, x: pos.x,          y: cy });
+      pts.push({ model: m.name, field: m.fields[fi].name, fieldIdx: fi, x: pos.x + NODE_W, y: cy });
+    }
+  }
+  return pts;
+}
+
+/** Nearest snap point within SNAP_THRESHOLD, or null. */
+function findNearestSnap(pts: SnapPoint[], x: number, y: number): SnapPoint | null {
+  let best: SnapPoint | null = null;
+  let bestD = SNAP_THRESHOLD;
+  for (const pt of pts) {
+    const d = Math.hypot(pt.x - x, pt.y - y);
+    if (d < bestD) { bestD = d; best = pt; }
+  }
+  return best;
+}
+
 /** Update @relation(references: [...]) and the type token in the relation field line. */
 function reroutePrismaRelation(
   src: string,
@@ -609,7 +641,12 @@ export default function OrmEditor({ state, setState }: Props) {
         const sc = scaleRef.current;
         const cx = (e.clientX - rect.left - px) / sc;
         const cy = (e.clientY - rect.top  - py) / sc;
-        const hit = getFieldAtPoint(modelsRef.current, positionsRef.current, cx, cy);
+        const snapTarget = findNearestSnap(
+          getSnapPoints(modelsRef.current, positionsRef.current), cx, cy
+        );
+        const hit = snapTarget
+          ? { model: snapTarget.model, field: snapTarget.field, fieldIdx: snapTarget.fieldIdx }
+          : getFieldAtPoint(modelsRef.current, positionsRef.current, cx, cy);
         if (hit && (hit.model !== ep.edge.to || hit.field !== ep.edge.refField)) {
           const newSrc = reroutePrismaRelation(
             ormSourceRef.current, ep.edge.from, ep.edge.relationField,
@@ -815,6 +852,11 @@ export default function OrmEditor({ state, setState }: Props) {
   const isEdgeSel = (e: EdgeDef) =>
     selectedEdge?.from === e.from && selectedEdge?.fromFieldIdx === e.fromFieldIdx;
 
+  const snapPts = draggingEndpoint ? getSnapPoints(models, positions) : null;
+  const nearestSnap = snapPts && draggingEndpoint
+    ? findNearestSnap(snapPts, draggingEndpoint.x, draggingEndpoint.y)
+    : null;
+
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
@@ -896,17 +938,18 @@ export default function OrmEditor({ state, setState }: Props) {
             )}
 
             <g transform={`translate(${pan.x},${pan.y}) scale(${scale})`}>
-              {/* Field highlight under cursor during endpoint drag */}
+              {/* Field row highlight — prefers nearest snap, falls back to cursor hit */}
               {draggingEndpoint && (() => {
-                const hit = getFieldAtPoint(models, positions, draggingEndpoint.x, draggingEndpoint.y);
-                if (!hit) return null;
-                const pos = positions[hit.model];
+                const target = nearestSnap
+                  ?? getFieldAtPoint(models, positions, draggingEndpoint.x, draggingEndpoint.y);
+                if (!target) return null;
+                const pos = positions[target.model];
                 if (!pos) return null;
                 return (
                   <rect
-                    x={pos.x} y={pos.y + HEADER_H + hit.fieldIdx * FIELD_H}
+                    x={pos.x} y={pos.y + HEADER_H + target.fieldIdx * FIELD_H}
                     width={NODE_W} height={FIELD_H}
-                    fill="#818cf8" fillOpacity={0.22} rx={2}
+                    fill="#818cf8" fillOpacity={0.18} rx={2}
                     style={{ pointerEvents: 'none' }}
                   />
                 );
@@ -961,11 +1004,12 @@ export default function OrmEditor({ state, setState }: Props) {
                       markerEnd={isDraggingThis ? undefined : (sel ? 'url(#vt-arrow-sel)' : 'url(#vt-arrow)')}
                       style={{ pointerEvents: 'none' }}
                     />
-                    {/* Ghost line to cursor while dragging */}
+                    {/* Ghost line — snaps to nearest snap point when within threshold */}
                     {isDraggingThis && (
                       <line
                         x1={x1} y1={y1}
-                        x2={draggingEndpoint!.x} y2={draggingEndpoint!.y}
+                        x2={nearestSnap?.x ?? draggingEndpoint!.x}
+                        y2={nearestSnap?.y ?? draggingEndpoint!.y}
                         stroke="#818cf8" strokeWidth={2}
                         strokeDasharray="6 3"
                         markerEnd="url(#vt-arrow-sel)"
@@ -1132,6 +1176,43 @@ export default function OrmEditor({ state, setState }: Props) {
               );
             })}
           </div>
+
+          {/* ── Snap dot overlay — rendered above node divs ── */}
+          {draggingEndpoint && snapPts && (
+            <div style={{
+              position: 'absolute', top: 0, left: 0,
+              transformOrigin: '0 0',
+              transform: `translate(${pan.x}px,${pan.y}px) scale(${scale})`,
+              pointerEvents: 'none',
+            }}>
+              {snapPts
+                .filter((pt) => {
+                  const mpos = positions[pt.model];
+                  if (!mpos) return false;
+                  // Show only the side of each model that faces the cursor
+                  const isLeft = pt.x === mpos.x;
+                  const cursorLeft = draggingEndpoint.x < mpos.x + NODE_W / 2;
+                  return isLeft === cursorLeft;
+                })
+                .map((pt, i) => {
+                  const isNearest = nearestSnap !== null &&
+                    pt.x === nearestSnap.x && pt.y === nearestSnap.y;
+                  const r = isNearest ? 7 : 4;
+                  return (
+                    <div key={i} style={{
+                      position: 'absolute',
+                      left: pt.x - r, top: pt.y - r,
+                      width: r * 2, height: r * 2,
+                      borderRadius: '50%',
+                      background: isNearest ? '#818cf8' : 'var(--node-bg)',
+                      border: `${isNearest ? 2 : 1.5}px solid ${isNearest ? '#818cf8' : 'rgba(129,140,248,0.65)'}`,
+                      boxShadow: isNearest ? '0 0 0 4px rgba(129,140,248,0.22)' : 'none',
+                      transition: 'all 0.08s ease',
+                    }} />
+                  );
+                })}
+            </div>
+          )}
 
           {models.length === 0 && (
             <div style={{
