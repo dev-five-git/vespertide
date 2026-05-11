@@ -1117,10 +1117,11 @@ export default function OrmEditor({ state, setState }: Props) {
                     <span style={{
                       fontWeight: 700, fontSize: 12, flex: 1,
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      color: 'var(--node-text)',
                     }}>
                       {model.name}
                     </span>
-                    <span style={{ fontSize: 9, opacity: 0.28, flexShrink: 0 }}>
+                    <span style={{ fontSize: 9, flexShrink: 0, color: 'var(--node-text-dim)' }}>
                       {model.fields.length}
                     </span>
                   </div>
@@ -1155,6 +1156,7 @@ export default function OrmEditor({ state, setState }: Props) {
                         fontSize: 11, flex: 1,
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         fontWeight: f.isPrimary ? 600 : 400,
+                        color: 'var(--node-text)',
                       }}>
                         {f.name}
                       </span>
@@ -1165,8 +1167,7 @@ export default function OrmEditor({ state, setState }: Props) {
                         fontFamily: 'var(--vscode-editor-font-family, monospace)',
                         color: f.isPrimary ? '#f59e0b'
                              : f.isRelation ? color
-                             : 'var(--node-type-color)',
-                        opacity: f.isPrimary ? 0.9 : 1,
+                             : 'var(--node-text-dim)',
                       }}>
                         {f.type}
                       </span>
