@@ -1531,35 +1531,68 @@ export default function OrmEditor({ state, setState }: Props) {
           display: 'flex', flexDirection: 'column',
           animation: 'slideInUp 0.15s ease-out',
         }}>
+          {/* ORM type tabs */}
           <div style={{
             display: 'flex', gap: 4, padding: '5px 10px', flexShrink: 0, alignItems: 'center',
-            borderBottom: '1px solid rgba(255,255,255,0.05)',
+            borderBottom: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))',
+            background: 'var(--diff-header-bg, #2d2d2d)',
           }}>
             {ORM_TYPES.map((orm) => (
               <button key={orm}
                 onClick={() => setState((p) => ({ ...p, ormType: orm, ormSource: DEFAULT_SCHEMAS[orm] }))}
                 style={{
                   padding: '2px 8px', border: '1px solid', borderRadius: 3, fontSize: 10, cursor: 'pointer',
-                  borderColor: state.ormType === orm ? 'var(--vscode-focusBorder, #007acc)' : 'rgba(255,255,255,0.15)',
+                  borderColor: state.ormType === orm ? 'var(--vscode-focusBorder, #007acc)' : 'var(--node-text)',
                   background:  state.ormType === orm ? 'var(--vscode-button-background, #0e639c)' : 'transparent',
-                  color:       state.ormType === orm ? 'var(--vscode-button-foreground, #fff)' : 'var(--vscode-foreground)',
+                  color:       state.ormType === orm ? 'var(--vscode-button-foreground, #fff)' : 'var(--diff-header-text, #cccccc)',
                 }}
               >{orm}</button>
             ))}
           </div>
-          <textarea
-            value={state.ormSource}
-            onChange={(e) => setState((p) => ({ ...p, ormSource: e.target.value }))}
-            spellCheck={false}
-            style={{
-              flex: 1, resize: 'none', border: 'none', outline: 'none',
-              padding: '8px 12px',
-              fontFamily: 'var(--vscode-editor-font-family, Consolas, monospace)',
-              fontSize: 12, color: 'var(--vscode-editor-foreground, #d4d4d4)',
-              background: 'var(--vscode-editor-background, #1e1e1e)',
-              lineHeight: 1.6,
-            }}
-          />
+          {/* Editor: line-number gutter + editable textarea */}
+          <div style={{
+            flex: 1, display: 'flex', overflow: 'hidden',
+            background: 'var(--diff-bg, #1e1e1e)',
+            fontFamily: 'var(--vscode-editor-font-family, Consolas, "Courier New", monospace)',
+            fontSize: 12, lineHeight: '19.2px',
+          }}>
+            {/* Gutter */}
+            <div
+              ref={(el) => { if (el) (el as HTMLDivElement & { _ta?: HTMLTextAreaElement })._ta = undefined; }}
+              id="code-drawer-gutter"
+              style={{
+                width: 44, paddingTop: 8, flexShrink: 0,
+                textAlign: 'right', paddingRight: 10,
+                color: 'var(--diff-linenum, rgba(255,255,255,0.25))',
+                fontSize: 12, lineHeight: '19.2px',
+                userSelect: 'none', overflowY: 'hidden',
+                borderRight: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))',
+                background: 'var(--diff-bg, #1e1e1e)',
+              }}
+            >
+              {state.ormSource.split('\n').map((_, i) => (
+                <div key={i} style={{ height: '19.2px' }}>{i + 1}</div>
+              ))}
+            </div>
+            {/* Textarea */}
+            <textarea
+              value={state.ormSource}
+              onChange={(e) => setState((p) => ({ ...p, ormSource: e.target.value }))}
+              onScroll={(e) => {
+                const gutter = document.getElementById('code-drawer-gutter');
+                if (gutter) gutter.scrollTop = e.currentTarget.scrollTop;
+              }}
+              spellCheck={false}
+              style={{
+                flex: 1, resize: 'none', border: 'none', outline: 'none',
+                padding: '8px 12px',
+                fontFamily: 'inherit', fontSize: 12, lineHeight: '19.2px',
+                color: 'var(--diff-text, #d4d4d4)',
+                background: 'var(--diff-bg, #1e1e1e)',
+                overflowY: 'auto',
+              }}
+            />
+          </div>
         </div>
       )}
     </div>
