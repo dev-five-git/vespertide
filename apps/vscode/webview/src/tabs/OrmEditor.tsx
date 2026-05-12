@@ -1404,15 +1404,25 @@ export default function OrmEditor({ state, setState }: Props) {
                 <div style={{ padding: '8px 14px 4px', fontSize: 10, opacity: 0.38, flexShrink: 0, letterSpacing: '0.06em' }}>
                   EXPORT JSON
                 </div>
-                <pre style={{
-                  flex: 1, margin: 0, padding: '0 14px 14px', overflow: 'auto',
+                <div style={{
+                  flex: 1, overflow: 'auto',
                   fontFamily: 'var(--vscode-editor-font-family, Consolas, monospace)',
-                  fontSize: 11, lineHeight: 1.65,
-                  color: 'var(--vscode-editor-foreground, #d4d4d4)',
-                  background: 'transparent', whiteSpace: 'pre',
+                  fontSize: 11, lineHeight: '18px',
+                  color: 'var(--diff-text, #d4d4d4)',
+                  paddingBottom: 14,
                 }}>
-                  {JSON.stringify(modelToJson(selected, state.ormType), null, 2)}
-                </pre>
+                  {JSON.stringify(modelToJson(selected, state.ormType), null, 2).split('\n').map((line, i) => (
+                    <div key={i} style={{ display: 'flex', minHeight: 18 }}>
+                      <span style={{
+                        width: 32, flexShrink: 0, textAlign: 'right', paddingRight: 8,
+                        color: 'var(--diff-linenum, rgba(255,255,255,0.25))',
+                        userSelect: 'none', lineHeight: '18px',
+                        borderRight: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))',
+                      }}>{i + 1}</span>
+                      <span style={{ paddingLeft: 10, whiteSpace: 'pre', lineHeight: '18px' }}>{line}</span>
+                    </div>
+                  ))}
+                </div>
 
                 {/* Add Relation — only for Prisma */}
                 {state.ormType === 'prisma' && (
@@ -1554,24 +1564,23 @@ export default function OrmEditor({ state, setState }: Props) {
             flex: 1, display: 'flex', overflow: 'hidden',
             background: 'var(--diff-bg, #1e1e1e)',
             fontFamily: 'var(--vscode-editor-font-family, Consolas, "Courier New", monospace)',
-            fontSize: 12, lineHeight: '19.2px',
+            fontSize: 12,
           }}>
-            {/* Gutter */}
+            {/* Gutter — paddingTop must exactly match textarea's paddingTop */}
             <div
-              ref={(el) => { if (el) (el as HTMLDivElement & { _ta?: HTMLTextAreaElement })._ta = undefined; }}
               id="code-drawer-gutter"
               style={{
-                width: 44, paddingTop: 8, flexShrink: 0,
+                width: 44, paddingTop: 8, paddingBottom: 8, flexShrink: 0,
                 textAlign: 'right', paddingRight: 10,
                 color: 'var(--diff-linenum, rgba(255,255,255,0.25))',
-                fontSize: 12, lineHeight: '19.2px',
+                fontSize: 12, lineHeight: '20px',
                 userSelect: 'none', overflowY: 'hidden',
                 borderRight: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))',
                 background: 'var(--diff-bg, #1e1e1e)',
               }}
             >
               {state.ormSource.split('\n').map((_, i) => (
-                <div key={i} style={{ height: '19.2px' }}>{i + 1}</div>
+                <div key={i} style={{ height: 20 }}>{i + 1}</div>
               ))}
             </div>
             {/* Textarea */}
@@ -1586,7 +1595,7 @@ export default function OrmEditor({ state, setState }: Props) {
               style={{
                 flex: 1, resize: 'none', border: 'none', outline: 'none',
                 padding: '8px 12px',
-                fontFamily: 'inherit', fontSize: 12, lineHeight: '19.2px',
+                fontFamily: 'inherit', fontSize: 12, lineHeight: '20px',
                 color: 'var(--diff-text, #d4d4d4)',
                 background: 'var(--diff-bg, #1e1e1e)',
                 overflowY: 'auto',
