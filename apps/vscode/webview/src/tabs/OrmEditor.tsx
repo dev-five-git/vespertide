@@ -1343,13 +1343,15 @@ export default function OrmEditor({ state, setState }: Props) {
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                     <div style={{ width: 10, height: 10, borderRadius: '50%', background: modelColor(selected.name), flexShrink: 0 }} />
-                    <span style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--node-text)' }}>
                       {selected.name}
                     </span>
                     <span style={{
                       fontSize: 10, padding: '1px 7px', borderRadius: 10, flexShrink: 0,
-                      background: 'rgba(99,102,241,0.12)', color: '#a5b4fc',
-                      border: '1px solid rgba(99,102,241,0.22)',
+                      background: 'rgba(99,102,241,0.15)',
+                      color: 'var(--vscode-focusBorder, #4f46e5)',
+                      border: '1px solid var(--vscode-focusBorder, #4f46e5)',
+                      fontWeight: 600,
                     }}>{state.ormType}</span>
                   </div>
                   <button
@@ -1367,10 +1369,10 @@ export default function OrmEditor({ state, setState }: Props) {
                       </span>
                       <span style={{ fontSize: 12, flex: 1, color: 'var(--node-text)' }}>{f.name}</span>
                       <span style={{
-                        fontSize: 10, fontFamily: 'monospace', flexShrink: 0,
+                        fontSize: 11, fontFamily: 'monospace', flexShrink: 0, fontWeight: 500,
                         color: f.isRelation
                           ? modelColor(f.type.replace('[]','').replace('?',''))
-                          : 'var(--node-text-dim)',
+                          : 'var(--node-text, #111827)',
                       }}>
                         {f.type}
                       </span>
@@ -1414,9 +1416,9 @@ export default function OrmEditor({ state, setState }: Props) {
                           onClick={(e) => { e.stopPropagation(); openAddRelForm(selected.name); }}
                           style={{
                             width: '100%', padding: '5px 0',
-                            border: '1px dashed rgba(99,102,241,0.4)',
+                            border: '1px dashed var(--vscode-focusBorder, #4f46e5)',
                             borderRadius: 5, background: 'transparent',
-                            color: '#a5b4fc', fontSize: 11, cursor: 'pointer',
+                            color: 'var(--vscode-focusBorder, #4f46e5)', fontSize: 11, cursor: 'pointer',
                           }}
                         >+ Relation 추가</button>
                       </div>
@@ -1593,14 +1595,14 @@ const FK_TYPES = ['Int', 'String', 'BigInt'];
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '3px 6px', borderRadius: 3, fontSize: 11,
-  background: 'var(--vscode-input-background, #3c3c3c)',
-  color: 'var(--vscode-foreground)',
-  border: '1px solid var(--vscode-input-border, rgba(255,255,255,0.18))',
+  background: 'var(--node-bg)',
+  color: 'var(--node-text)',
+  border: '1px solid var(--node-border)',
   outline: 'none',
 };
 
 const labelStyle: React.CSSProperties = {
-  fontSize: 10, opacity: 0.45, marginBottom: 2, display: 'block',
+  fontSize: 10, color: 'var(--node-text-dim)', marginBottom: 2, display: 'block',
 };
 
 function AddRelFormPanel({
@@ -1648,7 +1650,7 @@ function AddRelFormPanel({
   return (
     <div style={{ padding: '10px 14px' }} onClick={(e) => e.stopPropagation()}>
       {/* Header */}
-      <div style={{ fontSize: 10, fontWeight: 700, opacity: 0.4, letterSpacing: '0.06em', marginBottom: 10 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--node-text-dim)', letterSpacing: '0.06em', marginBottom: 10 }}>
         NEW RELATION
       </div>
 
@@ -1666,9 +1668,9 @@ function AddRelFormPanel({
             <button key={t} onClick={() => handleRelTypeChange(t)} style={{
               flex: 1, padding: '3px 0', fontSize: 10, borderRadius: 3,
               border: '1px solid',
-              borderColor: form.relType === t ? 'var(--vscode-focusBorder,#007acc)' : 'rgba(255,255,255,0.15)',
-              background:  form.relType === t ? 'rgba(0,122,204,0.15)' : 'transparent',
-              color: 'var(--vscode-foreground)', cursor: 'pointer',
+              borderColor: form.relType === t ? 'var(--vscode-focusBorder,#007acc)' : 'var(--node-border)',
+              background:  form.relType === t ? 'rgba(99,102,241,0.15)' : 'transparent',
+              color: 'var(--node-text)', cursor: 'pointer',
             }}>{t === 'many-to-one' ? `${fromModel} → ${form.target}` : `${fromModel} ← ${form.target}`}</button>
           ))}
         </div>
@@ -1710,7 +1712,7 @@ function AddRelFormPanel({
             onChange={(e) => onPatch({ addBackRef: e.target.checked })}
             style={{ accentColor: '#6366f1' }}
           />
-          <span style={{ fontSize: 10, opacity: 0.45 }}>역참조 추가 ({form.target} 모델에)</span>
+          <span style={{ fontSize: 10, color: 'var(--node-text-dim)' }}>역참조 추가 ({form.target} 모델에)</span>
         </label>
         {form.addBackRef && (
           <input style={{ ...inputStyle, marginTop: 4 }} value={form.backRef}
@@ -1728,8 +1730,8 @@ function AddRelFormPanel({
         }}>추가</button>
         <button onClick={onCancel} style={{
           padding: '5px 12px', borderRadius: 3,
-          border: '1px solid rgba(255,255,255,0.15)',
-          background: 'transparent', color: 'var(--vscode-foreground)',
+          border: '1px solid var(--node-border)',
+          background: 'transparent', color: 'var(--node-text)',
           fontSize: 11, cursor: 'pointer',
         }}>취소</button>
       </div>
