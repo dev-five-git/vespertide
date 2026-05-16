@@ -29,7 +29,8 @@ export type WebviewMessage =
   | { type: 'connector_save'; service: ConnectorService; key: string }
   | { type: 'connector_delete'; service: ConnectorService }
   | { type: 'connector_load' }
-  | { type: 'ai_chat'; service: ConnectorService; messages: ChatMessage[]; context: string };
+  | { type: 'ai_chat'; service: ConnectorService; messages: ChatMessage[]; context: string }
+  | { type: 'open_external'; url: string };
 
 // Host → Webview
 export type HostMessage =

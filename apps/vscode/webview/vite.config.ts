@@ -8,6 +8,10 @@ export default defineConfig({
     outDir: resolve(__dirname, '../dist/webview'),
     emptyOutDir: true,
     rollupOptions: {
+      input: {
+        index: resolve(__dirname, 'index.html'),
+        'ai-agent': resolve(__dirname, 'ai-agent.html'),
+      },
       output: {
         // Stable filenames — required for webview URI mapping
         entryFileNames: 'assets/[name].js',

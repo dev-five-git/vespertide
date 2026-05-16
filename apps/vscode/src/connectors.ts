@@ -129,8 +129,12 @@ export async function createJiraIssue(
     },
   });
 
+  const authHeader = key.startsWith('__bearer__:')
+    ? `Bearer ${key.slice('__bearer__:'.length)}`
+    : `Basic ${Buffer.from(key).toString('base64')}`;
+
   const resp = await postJson(`${baseUrl}/rest/api/3/issue`, body, {
-    Authorization: `Basic ${Buffer.from(key).toString('base64')}`,
+    Authorization: authHeader,
   });
   const parsed = JSON.parse(resp) as { key?: string; self?: string };
   return parsed.key ? `${baseUrl}/browse/${parsed.key}` : '(Jira 이슈 생성 완료)';
@@ -195,9 +199,17 @@ async function callGemini(apiKey: string, system: string, messages: ChatMessage[
   ];
 
   const body = JSON.stringify({ contents });
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  let url: string;
+  let extraHeaders: Record<string, string>;
+  if (apiKey.startsWith('__bearer__:')) {
+    url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+    extraHeaders = { Authorization: `Bearer ${apiKey.slice('__bearer__:'.length)}` };
+  } else {
+    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    extraHeaders = {};
+  }
 
-  const resp = await postJson(url, body, {});
+  const resp = await postJson(url, body, extraHeaders);
   const parsed = JSON.parse(resp) as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
     error?: { message: string };

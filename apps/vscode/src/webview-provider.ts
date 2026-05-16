@@ -137,6 +137,11 @@ export class VespertideWebviewProvider implements vscode.WebviewViewProvider {
           break;
         }
 
+        case 'open_external': {
+          await vscode.env.openExternal(vscode.Uri.parse(msg.url));
+          break;
+        }
+
         case 'ai_chat': {
           this._post({ type: 'ai_response', content: '', done: false });
 
@@ -187,7 +192,7 @@ export class VespertideWebviewProvider implements vscode.WebviewViewProvider {
 
       const csp = [
         `default-src 'none'`,
-        `script-src 'nonce-${nonce}' 'unsafe-eval'`,
+        `script-src 'nonce-${nonce}' 'unsafe-eval' ${webview.cspSource}`,
         `style-src ${webview.cspSource} 'unsafe-inline'`,
         `img-src ${webview.cspSource} data:`,
         `font-src ${webview.cspSource}`,
