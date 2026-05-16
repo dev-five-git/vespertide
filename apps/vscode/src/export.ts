@@ -1,11 +1,14 @@
 import * as vscode from 'vscode';
-import * as http from 'http';
-import * as https from 'https';
-import type { Schema } from './messages';
+import type { DbDialect, OrmType, Schema } from './messages';
 import { svgToPdf } from './wasm-host';
 
 let currentSchema: Schema = {};
 let currentSvg = '';
+
+function defaultSaveUri(filename: string): vscode.Uri {
+  const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
+  return folder ? vscode.Uri.joinPath(folder, filename) : vscode.Uri.file(filename);
+}
 
 export function setCurrentSchema(schema: Schema): void {
   currentSchema = schema;
@@ -15,6 +18,44 @@ export function setCurrentSvg(svg: string): void {
   currentSvg = svg;
 }
 
+// ── SQL ────────────────────────────────────────────────────────────────────────
+
+export async function exportSql(content: string, dialect: DbDialect): Promise<string | undefined> {
+  const suffix = dialect === 'postgres' ? 'postgres' : dialect === 'mysql' ? 'mysql' : 'sqlite';
+  const uri = await vscode.window.showSaveDialog({
+    defaultUri: defaultSaveUri(`migration.${suffix}.sql`),
+    filters: { 'SQL 파일': ['sql'] },
+  });
+  if (!uri) return undefined;
+  await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf-8'));
+  vscode.window.showInformationMessage(`Vespertide: SQL 저장 완료 — ${uri.fsPath}`);
+  return uri.fsPath;
+}
+
+// ── Schema / ORM source ────────────────────────────────────────────────────────
+
+export async function exportSchema(content: string, ormType: OrmType): Promise<string | undefined> {
+  const extMap: Record<OrmType, string> = {
+    prisma:     'prisma',
+    drizzle:    'ts',
+    typeorm:    'ts',
+    gorm:       'go',
+    jpa:        'java',
+    sqlalchemy: 'py',
+  };
+  const ext = extMap[ormType] ?? 'txt';
+  const uri = await vscode.window.showSaveDialog({
+    defaultUri: defaultSaveUri(`schema.${ext}`),
+    filters: {},
+  });
+  if (!uri) return undefined;
+  await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf-8'));
+  vscode.window.showInformationMessage(`Vespertide: 스키마 저장 완료 — ${uri.fsPath}`);
+  return uri.fsPath;
+}
+
+// ── SVG ────────────────────────────────────────────────────────────────────────
+
 export async function exportSvg(): Promise<string | undefined> {
   if (!currentSvg) {
     vscode.window.showErrorMessage('Vespertide: ERD SVG가 아직 생성되지 않았습니다.');
@@ -22,7 +63,7 @@ export async function exportSvg(): Promise<string | undefined> {
   }
 
   const uri = await vscode.window.showSaveDialog({
-    defaultUri: vscode.Uri.file('erd.svg'),
+    defaultUri: defaultSaveUri('erd-diagram.svg'),
     filters: { 'SVG 파일': ['svg'] },
   });
   if (!uri) return undefined;
@@ -32,6 +73,8 @@ export async function exportSvg(): Promise<string | undefined> {
   return uri.fsPath;
 }
 
+// ── PDF ────────────────────────────────────────────────────────────────────────
+
 export async function exportPdf(): Promise<string | undefined> {
   if (!currentSvg) {
     vscode.window.showErrorMessage('Vespertide: ERD SVG가 아직 생성되지 않았습니다.');
@@ -39,28 +82,25 @@ export async function exportPdf(): Promise<string | undefined> {
   }
 
   const uri = await vscode.window.showSaveDialog({
-    defaultUri: vscode.Uri.file('erd.pdf'),
+    defaultUri: defaultSaveUri('erd-diagram.pdf'),
     filters: { 'PDF 파일': ['pdf'] },
   });
   if (!uri) return undefined;
 
-  // 1) Try WASM svg_to_pdf
   let pdfBuffer = await svgToPdf(currentSvg);
 
-  // 2) Fallback: jsPDF
   if (!pdfBuffer) {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
       const { jsPDF } = require('jspdf') as any;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const doc = new jsPDF({ orientation: 'landscape', unit: 'px', format: [800, 600] }) as any;
-      const svgDataUrl =
-        'data:image/svg+xml;base64,' + Buffer.from(currentSvg).toString('base64');
+      const svgDataUrl = 'data:image/svg+xml;base64,' + Buffer.from(currentSvg).toString('base64');
       doc.addImage(svgDataUrl, 'JPEG', 0, 0, 800, 600);
       pdfBuffer = Buffer.from(doc.output('arraybuffer') as ArrayBuffer);
     } catch {
       vscode.window.showErrorMessage(
-        'Vespertide: PDF 변환 실패 — jspdf가 설치되어 있지 않습니다. (npm install jspdf)'
+        'Vespertide: PDF 변환 실패 — jspdf가 설치되어 있지 않습니다. (npm install jspdf)',
       );
       return undefined;
     }
@@ -71,47 +111,19 @@ export async function exportPdf(): Promise<string | undefined> {
   return uri.fsPath;
 }
 
-export async function exportMcp(schema: Schema): Promise<void> {
-  const config = vscode.workspace.getConfiguration('vespertide');
-  const endpoint: string = config.get('mcpEndpoint') ?? 'http://localhost:3456';
+// ── JSON schema ────────────────────────────────────────────────────────────────
 
-  const body = JSON.stringify(schema);
-
-  let url: URL;
-  try {
-    url = new URL(endpoint);
-  } catch {
-    vscode.window.showErrorMessage(`Vespertide: 잘못된 MCP 엔드포인트 URL — ${endpoint}`);
-    return;
+export async function exportSchemaJson(): Promise<string | undefined> {
+  if (!Object.keys(currentSchema).length) {
+    vscode.window.showErrorMessage('Vespertide: 스키마가 아직 생성되지 않았습니다.');
+    return undefined;
   }
-
-  const options: http.RequestOptions = {
-    hostname: url.hostname,
-    port: url.port || (url.protocol === 'https:' ? 443 : 80),
-    path: url.pathname || '/',
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(body),
-    },
-  };
-
-  await new Promise<void>((resolve, reject) => {
-    const transport = url.protocol === 'https:' ? https : http;
-    const req = transport.request(options, (res) => {
-      const { statusCode = 0 } = res;
-      if (statusCode >= 200 && statusCode < 300) {
-        resolve();
-      } else {
-        reject(new Error(`HTTP ${statusCode}`));
-      }
-    });
-    req.on('error', reject);
-    req.write(body);
-    req.end();
-  }).then(
-    () => vscode.window.showInformationMessage(`Vespertide: MCP 전송 완료 → ${endpoint}`),
-    (err: Error) =>
-      vscode.window.showErrorMessage(`Vespertide: MCP 전송 실패 — ${err.message}`)
-  );
+  const uri = await vscode.window.showSaveDialog({
+    defaultUri: defaultSaveUri('schema.json'),
+    filters: { 'JSON 파일': ['json'] },
+  });
+  if (!uri) return undefined;
+  await vscode.workspace.fs.writeFile(uri, Buffer.from(JSON.stringify(currentSchema, null, 2), 'utf-8'));
+  vscode.window.showInformationMessage(`Vespertide: JSON 저장 완료 — ${uri.fsPath}`);
+  return uri.fsPath;
 }
