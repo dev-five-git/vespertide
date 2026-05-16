@@ -7,8 +7,8 @@
       "command": "npm run build:ext",
       "options": { "cwd": "${workspaceFolder}" },
       "group": { "kind": "build", "isDefault": true },
-      "presentation": { "reveal": "silent" },
-      "problemMatcher": "$tsc"
+      "presentation": { "reveal": "always" },
+      "problemMatcher": []
     }
   ]
 }

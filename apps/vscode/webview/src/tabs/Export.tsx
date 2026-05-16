@@ -338,7 +338,7 @@ export default function Export({ state }: Props) {
 
 function SectionHeader({ label }: { label: string }) {
   return (
-    <div style={{ padding: '8px 10px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', opacity: 0.4, flexShrink: 0 }}>
+    <div style={{ padding: '8px 10px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--node-text-dim)', flexShrink: 0 }}>
       {label}
     </div>
   );
@@ -346,7 +346,7 @@ function SectionHeader({ label }: { label: string }) {
 
 function GroupLabel({ label }: { label: string }) {
   return (
-    <div style={{ padding: '6px 10px 2px', fontSize: 9, fontWeight: 600, opacity: 0.3, letterSpacing: '0.06em' }}>
+    <div style={{ padding: '6px 10px 2px', fontSize: 9, fontWeight: 600, color: 'var(--node-text-dim)', letterSpacing: '0.06em' }}>
       {label}
     </div>
   );
@@ -360,13 +360,13 @@ function FileRow({ f, active, onClick }: { f: ExportFile; active: boolean; onCli
       background: active ? 'rgba(99,102,241,0.15)' : 'transparent',
       borderLeft: active ? '2px solid var(--vscode-focusBorder, #007acc)' : '2px solid transparent',
     }}>
-      <span style={{ fontSize: 10, opacity: 0.3, flexShrink: 0 }}>
+      <span style={{ fontSize: 10, color: 'var(--node-text-dim)', flexShrink: 0 }}>
         {f.ext === '.sql' ? '≡' : f.ext === '.svg' || f.ext === '.pdf' ? '◫' : '{ }'}
       </span>
-      <span style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {f.label}<span style={{ opacity: 0.35 }}>{f.ext}</span>
+      <span style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--node-text)' }}>
+        {f.label}<span style={{ color: 'var(--node-text-dim)' }}>{f.ext}</span>
       </span>
-      {f.isDummy && <span style={{ fontSize: 9, opacity: 0.35 }}>~</span>}
+      {f.isDummy && <span style={{ fontSize: 9, color: 'var(--node-text-dim)' }}>~</span>}
     </div>
   );
 }
@@ -384,24 +384,24 @@ function ConnectorRow({ meta, connected, active, onClick }: {
       {/* Icon */}
       <span style={{
         width: 22, height: 22, borderRadius: 5, flexShrink: 0,
-        background: 'rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center',
-        justifyContent: 'center', fontSize: 12,
+        background: 'var(--vscode-editorWidget-background)', border: '1px solid var(--node-border)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12,
       }}>{meta.icon}</span>
 
       {/* Name */}
-      <span style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--node-text)' }}>
         {meta.label}
       </span>
 
       {/* Status */}
       {connected ? (
-        <span style={{ fontSize: 10, color: '#4ade80', fontWeight: 600, flexShrink: 0 }}>Connected</span>
+        <span style={{ fontSize: 10, color: 'var(--diff-add-sign)', fontWeight: 600, flexShrink: 0 }}>Connected</span>
       ) : (
-        <span style={{ fontSize: 10, opacity: 0.35, flexShrink: 0 }}>Connect</span>
+        <span style={{ fontSize: 10, color: 'var(--node-text-dim)', flexShrink: 0 }}>Connect</span>
       )}
 
       {/* Chevron */}
-      <span style={{ fontSize: 9, opacity: 0.35, flexShrink: 0 }}>{active ? '▲' : '▼'}</span>
+      <span style={{ fontSize: 9, color: 'var(--node-text-dim)', flexShrink: 0 }}>{active ? '▲' : '▼'}</span>
     </div>
   );
 }
@@ -416,7 +416,7 @@ function FileHeader({ file, copied, onCopy, onSave }: {
       background: 'var(--vscode-editorGroupHeader-tabsBackground, #2d2d2d)', fontSize: 12,
     }}>
       <span style={{ fontWeight: 600 }}>{file.label}</span>
-      <span style={{ opacity: 0.35 }}>{file.ext}</span>
+      <span style={{ color: 'var(--node-text-dim)' }}>{file.ext}</span>
       <span style={{
         fontSize: 9, padding: '1px 6px', borderRadius: 3,
         background: 'rgba(99,102,241,0.15)', color: '#a5b4fc',
@@ -480,7 +480,7 @@ function FilePreviewBody({ file }: { file: ExportFile }) {
           <span style={{
             minWidth: 44, paddingRight: 10, textAlign: 'right', flexShrink: 0,
             fontSize: 11, lineHeight: '20px', userSelect: 'none',
-            color: 'var(--vscode-editorLineNumber-foreground, rgba(255,255,255,0.2))',
+            color: 'var(--diff-linenum)',
           }}>{i + 1}</span>
           <span style={{ flex: 1, paddingRight: 16, lineHeight: '20px', whiteSpace: 'pre', color: 'var(--vscode-editor-foreground, #d4d4d4)' }}>{line}</span>
         </div>
@@ -499,25 +499,25 @@ function ConnectorPanel({ meta, connected, keyValue, saving, onKeyChange, onSave
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
         <div style={{
           width: 40, height: 40, borderRadius: 10,
-          background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+          background: 'var(--vscode-editorWidget-background)', border: '1px solid var(--node-border)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20,
         }}>{meta.icon}</div>
         <div>
-          <div style={{ fontWeight: 700, fontSize: 14 }}>{meta.label}</div>
-          {meta.subtitle && <div style={{ fontSize: 11, opacity: 0.5, marginTop: 1 }}>{meta.subtitle}</div>}
+          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--node-text)' }}>{meta.label}</div>
+          {meta.subtitle && <div style={{ fontSize: 11, color: 'var(--node-text-dim)', marginTop: 1 }}>{meta.subtitle}</div>}
         </div>
         <div style={{ marginLeft: 'auto' }}>
           {connected ? (
-            <span style={{ fontSize: 12, color: '#4ade80', fontWeight: 600 }}>● Connected</span>
+            <span style={{ fontSize: 12, color: 'var(--diff-add-sign)', fontWeight: 600 }}>● Connected</span>
           ) : (
-            <span style={{ fontSize: 12, opacity: 0.4 }}>Not connected</span>
+            <span style={{ fontSize: 12, color: 'var(--node-text-dim)' }}>Not connected</span>
           )}
         </div>
       </div>
 
       {/* Key input */}
       <div style={{ marginBottom: 16 }}>
-        <label style={{ fontSize: 11, opacity: 0.6, display: 'block', marginBottom: 6 }}>
+        <label style={{ fontSize: 11, color: 'var(--node-text-dim)', display: 'block', marginBottom: 6 }}>
           {meta.keyLabel}
         </label>
         <input
@@ -534,7 +534,7 @@ function ConnectorPanel({ meta, connected, keyValue, saving, onKeyChange, onSave
           }}
         />
         {meta.keyHelp && (
-          <div style={{ fontSize: 10, opacity: 0.4, marginTop: 5 }}>{meta.keyHelp}</div>
+          <div style={{ fontSize: 10, color: 'var(--node-text-dim)', marginTop: 5 }}>{meta.keyHelp}</div>
         )}
       </div>
 
@@ -562,16 +562,16 @@ function ChatPanel({ messages, loading, input, activeAI, connectedAIs, endRef, o
         padding: '8px 12px', borderBottom: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))',
         display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
       }}>
-        <span style={{ fontSize: 11, opacity: 0.5 }}>AI:</span>
+        <span style={{ fontSize: 11, color: 'var(--node-text-dim)' }}>AI:</span>
         {connectedAIs.length === 0 ? (
-          <span style={{ fontSize: 11, opacity: 0.4 }}>왼쪽에서 AI 서비스를 먼저 연결하세요</span>
+          <span style={{ fontSize: 11, color: 'var(--node-text-dim)' }}>왼쪽에서 AI 서비스를 먼저 연결하세요</span>
         ) : (
           connectedAIs.map((ai) => (
             <button key={ai.service} onClick={() => onAIChange(ai.service)} style={{
               padding: '2px 10px', borderRadius: 12, fontSize: 11, cursor: 'pointer',
               background: activeAI === ai.service ? 'rgba(99,102,241,0.25)' : 'transparent',
-              border: `1px solid ${activeAI === ai.service ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.1)'}`,
-              color: activeAI === ai.service ? '#a5b4fc' : 'var(--vscode-foreground)',
+              border: `1px solid ${activeAI === ai.service ? 'rgba(99,102,241,0.5)' : 'var(--node-border)'}`,
+              color: activeAI === ai.service ? '#818cf8' : 'var(--node-text)',
             }}>{ai.icon} {ai.label}</button>
           ))
         )}
@@ -580,10 +580,10 @@ function ChatPanel({ messages, loading, input, activeAI, connectedAIs, endRef, o
       {/* Messages */}
       <div style={{ flex: 1, overflow: 'auto', padding: '12px 16px' }}>
         {messages.length === 0 && (
-          <div style={{ opacity: 0.35, fontSize: 12, lineHeight: 1.7, textAlign: 'center', marginTop: 40 }}>
+          <div style={{ color: 'var(--node-text-dim)', fontSize: 12, lineHeight: 1.7, textAlign: 'center', marginTop: 40 }}>
             <div style={{ fontSize: 24, marginBottom: 8 }}>🤖</div>
             <div>현재 스키마를 컨텍스트로 자동 첨부합니다.</div>
-            <div style={{ marginTop: 8, opacity: 0.7 }}>
+            <div style={{ marginTop: 8 }}>
               "Notion에 스키마 정리해줘"<br />
               "Slack에 migration 변경사항 요약 보내줘"<br />
               "이 마이그레이션 검토해줘"
@@ -595,7 +595,7 @@ function ChatPanel({ messages, loading, input, activeAI, connectedAIs, endRef, o
         ))}
         {loading && (
           <div style={{ display: 'flex', gap: 6, padding: '8px 0', alignItems: 'center' }}>
-            <span style={{ fontSize: 12, opacity: 0.5 }}>응답 생성 중...</span>
+            <span style={{ fontSize: 12, color: 'var(--node-text-dim)' }}>응답 생성 중...</span>
           </div>
         )}
         <div ref={endRef} />
@@ -639,10 +639,10 @@ function ChatBubble({ message }: { message: ChatMessage }) {
       )}
       <div style={{
         maxWidth: '80%', padding: '8px 12px', borderRadius: isUser ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
-        background: isUser ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.06)',
-        border: `1px solid ${isUser ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.08)'}`,
+        background: isUser ? 'rgba(99,102,241,0.15)' : 'var(--vscode-editorWidget-background)',
+        border: `1px solid ${isUser ? 'rgba(99,102,241,0.35)' : 'var(--node-border)'}`,
         fontSize: 12, lineHeight: 1.7,
-        color: 'var(--vscode-editor-foreground, #d4d4d4)',
+        color: 'var(--node-text)',
         whiteSpace: 'pre-wrap', wordBreak: 'break-word',
       }}>
         {message.content}
@@ -661,5 +661,5 @@ function btnStyle(variant: 'primary' | 'default' | 'green' | 'danger'): React.CS
   if (variant === 'primary') return { ...base, background: 'var(--vscode-button-background, #0e639c)', color: 'var(--vscode-button-foreground, #fff)' };
   if (variant === 'green')   return { ...base, background: 'rgba(74,222,128,0.12)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.25)' };
   if (variant === 'danger')  return { ...base, background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' };
-  return { ...base, background: 'transparent', color: 'var(--vscode-foreground)', border: '1px solid var(--vscode-input-border, rgba(255,255,255,0.2))' };
+  return { ...base, background: 'transparent', color: 'var(--node-text)', border: '1px solid var(--node-border)' };
 }

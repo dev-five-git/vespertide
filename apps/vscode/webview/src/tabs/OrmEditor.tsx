@@ -1375,24 +1375,23 @@ export default function OrmEditor({ state, setState }: Props) {
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); setSelected(null); }}
-                    style={{ background: 'none', border: 'none', color: 'var(--vscode-foreground)', fontSize: 14, cursor: 'pointer', opacity: 0.45, padding: 2 }}
+                    style={{ background: 'none', border: 'none', color: 'var(--node-text-dim)', fontSize: 14, cursor: 'pointer', padding: 2 }}
                   >✕</button>
                 </div>
 
                 {/* Fields */}
-                <div style={{ padding: '10px 14px', flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ padding: '10px 14px', flexShrink: 0, borderBottom: '1px solid var(--node-field-divider)' }}>
                   {selected.fields.map((f) => (
                     <div key={f.name} style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 5 }}>
-                      <span style={{ fontSize: 9, width: 12, textAlign: 'center', opacity: 0.4, flexShrink: 0 }}>
+                      <span style={{ fontSize: 9, width: 12, textAlign: 'center', color: 'var(--node-text-dim)', flexShrink: 0 }}>
                         {f.isPrimary ? '⬡' : f.isRelation ? '⇢' : '·'}
                       </span>
-                      <span style={{ fontSize: 12, flex: 1 }}>{f.name}</span>
+                      <span style={{ fontSize: 12, flex: 1, color: 'var(--node-text)' }}>{f.name}</span>
                       <span style={{
                         fontSize: 10, fontFamily: 'monospace', flexShrink: 0,
-                        opacity: f.isRelation ? 0.75 : 0.4,
                         color: f.isRelation
                           ? modelColor(f.type.replace('[]','').replace('?',''))
-                          : 'inherit',
+                          : 'var(--node-text-dim)',
                       }}>
                         {f.type}
                       </span>
@@ -1401,7 +1400,7 @@ export default function OrmEditor({ state, setState }: Props) {
                 </div>
 
                 {/* Export JSON */}
-                <div style={{ padding: '8px 14px 4px', fontSize: 10, opacity: 0.38, flexShrink: 0, letterSpacing: '0.06em' }}>
+                <div style={{ padding: '8px 14px 4px', fontSize: 10, color: 'var(--node-text-dim)', flexShrink: 0, letterSpacing: '0.06em' }}>
                   EXPORT JSON
                 </div>
                 <div style={{
@@ -1428,7 +1427,7 @@ export default function OrmEditor({ state, setState }: Props) {
                 {state.ormType === 'prisma' && (
                   <div style={{
                     flexShrink: 0,
-                    borderTop: '1px solid rgba(255,255,255,0.06)',
+                    borderTop: '1px solid var(--node-field-divider)',
                   }}>
                     {!addRelForm ? (
                       <div style={{ padding: '10px 14px' }}>
@@ -1465,12 +1464,12 @@ export default function OrmEditor({ state, setState }: Props) {
                   borderBottom: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 10, opacity: 0.5 }}>⇢</span>
-                    <span style={{ fontWeight: 700, fontSize: 13 }}>Relation</span>
+                    <span style={{ fontSize: 10, color: 'var(--node-text-dim)' }}>⇢</span>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--node-text)' }}>Relation</span>
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); setSelectedEdge(null); }}
-                    style={{ background: 'none', border: 'none', color: 'var(--vscode-foreground)', fontSize: 14, cursor: 'pointer', opacity: 0.45, padding: 2 }}
+                    style={{ background: 'none', border: 'none', color: 'var(--node-text-dim)', fontSize: 14, cursor: 'pointer', padding: 2 }}
                   >✕</button>
                 </div>
 
@@ -1481,13 +1480,13 @@ export default function OrmEditor({ state, setState }: Props) {
                     display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16,
                     padding: '8px 12px', borderRadius: 6,
                     background: 'rgba(99,102,241,0.08)',
-                    border: '1px solid rgba(99,102,241,0.18)',
+                    border: '1px solid rgba(99,102,241,0.25)',
                   }}>
                     <span style={{
                       fontWeight: 700, fontSize: 13,
                       color: modelColor(selectedEdge.from),
                     }}>{selectedEdge.from}</span>
-                    <span style={{ fontSize: 11, opacity: 0.5 }}>→</span>
+                    <span style={{ fontSize: 11, color: 'var(--node-text-dim)' }}>→</span>
                     <span style={{
                       fontWeight: 700, fontSize: 13,
                       color: modelColor(selectedEdge.to),
@@ -1495,7 +1494,8 @@ export default function OrmEditor({ state, setState }: Props) {
                     <span style={{
                       marginLeft: 'auto', fontSize: 9, padding: '1px 6px',
                       borderRadius: 10, background: 'rgba(99,102,241,0.15)',
-                      color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.25)',
+                      color: '#818cf8', border: '1px solid rgba(99,102,241,0.35)',
+                      fontWeight: 600,
                     }}>many-to-one</span>
                   </div>
 
@@ -1505,8 +1505,8 @@ export default function OrmEditor({ state, setState }: Props) {
                     { label: 'fk field',       value: selectedEdge.fkField },
                   ].map(({ label, value }) => (
                     <div key={label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 12 }}>
-                      <span style={{ opacity: 0.45, fontSize: 11 }}>{label}</span>
-                      <span style={{ fontFamily: 'monospace', fontSize: 11 }}>{value}</span>
+                      <span style={{ color: 'var(--node-text-dim)', fontSize: 11 }}>{label}</span>
+                      <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--node-text)' }}>{value}</span>
                     </div>
                   ))}
                 </div>
@@ -1515,7 +1515,7 @@ export default function OrmEditor({ state, setState }: Props) {
 
                 {/* Delete button — only for Prisma */}
                 {state.ormType === 'prisma' && (
-                  <div style={{ padding: '10px 14px', flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ padding: '10px 14px', flexShrink: 0, borderTop: '1px solid var(--node-field-divider)' }}>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDeleteRelation(); }}
                       style={{

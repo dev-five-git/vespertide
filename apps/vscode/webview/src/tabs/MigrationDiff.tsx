@@ -335,10 +335,10 @@ function toDiffLines(file: SqlFile): DiffLine[] {
 const DIALECT_LABELS: Record<Dialect, string> = { postgres: 'PG', mysql: 'MY', sqlite: 'SQ' };
 
 function kindBadge(kind: FileKind) {
-  if (kind === 'create') return { label: 'A', color: '#4ade80' };
-  if (kind === 'drop')   return { label: 'D', color: '#f87171' };
-  if (kind === 'index')  return { label: 'I', color: '#60a5fa' };
-  return { label: 'M', color: '#fbbf24' };
+  if (kind === 'create') return { label: 'A', color: 'var(--diff-add-sign)' };
+  if (kind === 'drop')   return { label: 'D', color: 'var(--diff-rm-sign)' };
+  if (kind === 'index')  return { label: 'I', color: '#3b82f6' };
+  return { label: 'M', color: '#d97706' };
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -400,17 +400,17 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
           justifyContent: 'space-between',
           borderBottom: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))',
         }}>
-          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', opacity: 0.4 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--node-text-dim)' }}>
             CHANGES
           </span>
           {/* Dialect toggle */}
-          <div style={{ display: 'flex', gap: 1, padding: 2, background: 'rgba(0,0,0,0.25)', borderRadius: 5 }}>
+          <div style={{ display: 'flex', gap: 1, padding: 2, background: 'var(--vscode-editorWidget-background, rgba(0,0,0,0.25))', borderRadius: 5, border: '1px solid var(--node-border)' }}>
             {(['postgres', 'mysql', 'sqlite'] as Dialect[]).map((d) => (
               <button key={d} onClick={() => setDialect(d)} style={{
                 padding: '2px 7px', border: 'none', borderRadius: 4, cursor: 'pointer',
                 fontSize: 10, fontWeight: 600,
                 background: dialect === d ? 'var(--vscode-button-background, #0e639c)' : 'transparent',
-                color:      dialect === d ? '#fff' : 'var(--vscode-tab-inactiveForeground, #888)',
+                color:      dialect === d ? '#fff' : 'var(--node-text-dim)',
                 transition: 'background 0.1s',
               }}>{DIALECT_LABELS[d]}</button>
             ))}
@@ -418,10 +418,10 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
         </div>
 
         {/* Summary */}
-        <div style={{ padding: '4px 10px', fontSize: 10, display: 'flex', gap: 6, alignItems: 'center', opacity: 0.5, flexShrink: 0 }}>
+        <div style={{ padding: '4px 10px', fontSize: 10, display: 'flex', gap: 6, alignItems: 'center', color: 'var(--node-text-dim)', flexShrink: 0 }}>
           <span>{files.length} files</span>
-          {totalAdds    > 0 && <span style={{ color: '#4ade80' }}>+{totalAdds}</span>}
-          {totalRemoves > 0 && <span style={{ color: '#f87171' }}>−{totalRemoves}</span>}
+          {totalAdds    > 0 && <span style={{ color: 'var(--diff-add-sign)' }}>+{totalAdds}</span>}
+          {totalRemoves > 0 && <span style={{ color: 'var(--diff-rm-sign)' }}>−{totalRemoves}</span>}
           {!hasReal && (
             <span style={{
               marginLeft: 'auto', fontSize: 9, padding: '1px 5px', borderRadius: 3,
@@ -443,14 +443,14 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
                 background: isSel ? 'rgba(99,102,241,0.15)' : 'transparent',
                 borderLeft: isSel ? '2px solid var(--vscode-focusBorder, #007acc)' : '2px solid transparent',
               }}>
-                <span style={{ fontSize: 11, opacity: 0.3, flexShrink: 0 }}>
+                <span style={{ fontSize: 11, color: 'var(--node-text-dim)', flexShrink: 0 }}>
                   {f.kind === 'index' ? '⊞' : '≡'}
                 </span>
-                <span style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {f.name}<span style={{ opacity: 0.35 }}>.sql</span>
+                <span style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--diff-sidebar-text)' }}>
+                  {f.name}<span style={{ color: 'var(--node-text-dim)' }}>.sql</span>
                 </span>
-                {f.adds    > 0 && <span style={{ fontSize: 10, color: '#4ade80', flexShrink: 0 }}>+{f.adds}</span>}
-                {f.removes > 0 && <span style={{ fontSize: 10, color: '#f87171', flexShrink: 0 }}>−{f.removes}</span>}
+                {f.adds    > 0 && <span style={{ fontSize: 10, color: 'var(--diff-add-sign)', flexShrink: 0, fontWeight: 600 }}>+{f.adds}</span>}
+                {f.removes > 0 && <span style={{ fontSize: 10, color: 'var(--diff-rm-sign)',  flexShrink: 0, fontWeight: 600 }}>−{f.removes}</span>}
                 <span style={{ fontSize: 10, fontWeight: 700, color: badge.color, width: 12, textAlign: 'right', flexShrink: 0 }}>
                   {badge.label}
                 </span>
@@ -472,18 +472,18 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
             color: 'var(--diff-header-text, #cccccc)',
             fontSize: 12,
           }}>
-            <span style={{ opacity: 0.35 }}>{selected.kind === 'index' ? '⊞' : '≡'}</span>
+            <span style={{ color: 'var(--node-text-dim)' }}>{selected.kind === 'index' ? '⊞' : '≡'}</span>
             <span style={{ fontWeight: 600 }}>{selected.name}</span>
-            <span style={{ opacity: 0.35 }}>.sql</span>
+            <span style={{ color: 'var(--node-text-dim)' }}>.sql</span>
             <div style={{ flex: 1 }} />
-            {selected.adds    > 0 && <span style={{ fontSize: 11, color: '#4ade80' }}>+{selected.adds}</span>}
-            {selected.removes > 0 && <span style={{ fontSize: 11, color: '#f87171' }}>−{selected.removes}</span>}
+            {selected.adds    > 0 && <span style={{ fontSize: 11, color: 'var(--diff-add-sign)', fontWeight: 600 }}>+{selected.adds}</span>}
+            {selected.removes > 0 && <span style={{ fontSize: 11, color: 'var(--diff-rm-sign)',  fontWeight: 600 }}>−{selected.removes}</span>}
             <button
               onClick={() => navigator.clipboard.writeText(selected.sql).catch(console.error)}
               style={{
                 background: 'transparent', cursor: 'pointer',
-                border: '1px solid var(--vscode-input-border, rgba(255,255,255,0.2))',
-                borderRadius: 3, color: 'var(--vscode-foreground)',
+                border: '1px solid var(--node-border)',
+                borderRadius: 3, color: 'var(--diff-header-text)',
                 padding: '1px 8px', fontSize: 10,
               }}
             >복사</button>
