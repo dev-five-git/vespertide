@@ -44,6 +44,7 @@ const CONNECTORS: ConnectorMeta[] = [
     keyLabel: 'API Key', keyPlaceholder: 'sk-proj-...', isAI: true,
     keyHelp: 'platform.openai.com에서 발급',
   },
+  
   {
     service: 'gemini', label: 'Gemini', icon: '✦', subtitle: 'Google',
     keyLabel: 'API Key', keyPlaceholder: 'AIzaSy...', isAI: true,
@@ -237,6 +238,53 @@ export default function Export({ state }: Props) {
           ))}
         </div>
 
+        {/* Divider */}
+        <div style={{ borderTop: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))', flexShrink: 0 }} />
+
+        {/* Connections */}
+        <div style={{ flexShrink: 0, maxHeight: '42%', overflow: 'auto' }}>
+          <SectionHeader label="CONNECTIONS" />
+          {CONNECTORS.map((meta) => {
+            const connected = !!connStatusMap[meta.service];
+            const isActive  = panel.kind === 'connector' && panel.service === meta.service;
+            return (
+              <ConnectorRow
+                key={meta.service}
+                meta={meta}
+                connected={connected}
+                active={isActive}
+                onClick={() => toggleConnector(meta.service)}
+              />
+            );
+          })}
+        </div>
+
+        {/* AI Agent button */}
+        <div style={{ flexShrink: 0, padding: '8px', borderTop: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))' }}>
+          <button
+            onClick={() => setPanel({ kind: 'chat' })}
+            style={{
+              width: '100%', padding: '9px 12px', borderRadius: 6,
+              background: panel.kind === 'chat'
+                ? 'linear-gradient(135deg, rgba(99,102,241,0.35), rgba(139,92,246,0.35))'
+                : 'linear-gradient(135deg, rgba(99,102,241,0.15), rgba(139,92,246,0.15))',
+              border: `1px solid ${panel.kind === 'chat' ? 'rgba(139,92,246,0.6)' : 'rgba(99,102,241,0.3)'}`,
+              color: panel.kind === 'chat' ? '#c4b5fd' : '#a5b4fc',
+              fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 8,
+              letterSpacing: '0.02em',
+            }}
+          >
+            <span style={{ fontSize: 14 }}>🤖</span>
+            <span>AI Agent</span>
+            {connectedAIs.length > 0 && (
+              <span style={{
+                marginLeft: 'auto', fontSize: 10, padding: '1px 6px', borderRadius: 8,
+                background: 'rgba(74,222,128,0.2)', color: '#4ade80', fontWeight: 600,
+              }}>{connectedAIs.length} 연결됨</span>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* ── Right panel ── */}
@@ -255,6 +303,33 @@ export default function Export({ state }: Props) {
           </>
         )}
 
+        {/* CONNECTOR SETUP */}
+        {panel.kind === 'connector' && (
+          <ConnectorPanel
+            meta={CONNECTORS.find((c) => c.service === panel.service)!}
+            connected={!!connStatusMap[panel.service]}
+            keyValue={keyInputs[panel.service] ?? ''}
+            saving={saving === panel.service}
+            onKeyChange={(v) => setKeyInputs((prev) => ({ ...prev, [panel.service]: v }))}
+            onSave={() => saveConnectorKey(panel.service)}
+            onDisconnect={() => disconnectConnector(panel.service)}
+          />
+        )}
+
+        {/* AI CHAT */}
+        {panel.kind === 'chat' && (
+          <ChatPanel
+            messages={chatMessages}
+            loading={chatLoading}
+            input={chatInput}
+            activeAI={activeAI}
+            connectedAIs={connectedAIs}
+            endRef={chatEndRef}
+            onInputChange={setChatInput}
+            onSend={sendChat}
+            onAIChange={setActiveAI}
+          />
+        )}
       </div>
     </div>
   );
