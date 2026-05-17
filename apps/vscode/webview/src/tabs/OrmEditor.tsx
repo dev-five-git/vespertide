@@ -466,18 +466,6 @@ const IconHand = () => (
   </svg>
 );
 
-const IconSun = () => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-    <circle cx="12" cy="12" r="4"/>
-    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
-  </svg>
-);
-
-const IconMoon = () => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-  </svg>
-);
 
 // ── Button styles ─────────────────────────────────────────────────────────────
 
@@ -1117,10 +1105,11 @@ export default function OrmEditor({ state, setState }: Props) {
                     <span style={{
                       fontWeight: 700, fontSize: 12, flex: 1,
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      color: 'var(--node-text)',
                     }}>
                       {model.name}
                     </span>
-                    <span style={{ fontSize: 9, opacity: 0.28, flexShrink: 0 }}>
+                    <span style={{ fontSize: 9, flexShrink: 0, color: 'var(--node-text-dim)' }}>
                       {model.fields.length}
                     </span>
                   </div>
@@ -1155,6 +1144,7 @@ export default function OrmEditor({ state, setState }: Props) {
                         fontSize: 11, flex: 1,
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         fontWeight: f.isPrimary ? 600 : 400,
+                        color: 'var(--node-text)',
                       }}>
                         {f.name}
                       </span>
@@ -1165,8 +1155,7 @@ export default function OrmEditor({ state, setState }: Props) {
                         fontFamily: 'var(--vscode-editor-font-family, monospace)',
                         color: f.isPrimary ? '#f59e0b'
                              : f.isRelation ? color
-                             : 'var(--node-type-color)',
-                        opacity: f.isPrimary ? 0.9 : 1,
+                             : 'var(--node-text-dim)',
                       }}>
                         {f.type}
                       </span>
@@ -1331,15 +1320,6 @@ export default function OrmEditor({ state, setState }: Props) {
               <IconHand />
             </button>
 
-            <div style={navDivider} />
-
-            <button
-              style={navBtn()}
-              title={state.theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
-              onClick={() => setState((p) => ({ ...p, theme: p.theme === 'dark' ? 'light' : 'dark' }))}
-            >
-              {state.theme === 'dark' ? <IconSun /> : <IconMoon />}
-            </button>
           </div>
         </div>
 
@@ -1363,35 +1343,36 @@ export default function OrmEditor({ state, setState }: Props) {
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                     <div style={{ width: 10, height: 10, borderRadius: '50%', background: modelColor(selected.name), flexShrink: 0 }} />
-                    <span style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--node-text)' }}>
                       {selected.name}
                     </span>
                     <span style={{
                       fontSize: 10, padding: '1px 7px', borderRadius: 10, flexShrink: 0,
-                      background: 'rgba(99,102,241,0.12)', color: '#a5b4fc',
-                      border: '1px solid rgba(99,102,241,0.22)',
+                      background: 'rgba(99,102,241,0.15)',
+                      color: 'var(--vscode-focusBorder, #4f46e5)',
+                      border: '1px solid var(--vscode-focusBorder, #4f46e5)',
+                      fontWeight: 600,
                     }}>{state.ormType}</span>
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); setSelected(null); }}
-                    style={{ background: 'none', border: 'none', color: 'var(--vscode-foreground)', fontSize: 14, cursor: 'pointer', opacity: 0.45, padding: 2 }}
+                    style={{ background: 'none', border: 'none', color: 'var(--node-text-dim)', fontSize: 14, cursor: 'pointer', padding: 2 }}
                   >✕</button>
                 </div>
 
                 {/* Fields */}
-                <div style={{ padding: '10px 14px', flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ padding: '10px 14px', flexShrink: 0, borderBottom: '1px solid var(--node-field-divider)' }}>
                   {selected.fields.map((f) => (
                     <div key={f.name} style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 5 }}>
-                      <span style={{ fontSize: 9, width: 12, textAlign: 'center', opacity: 0.4, flexShrink: 0 }}>
+                      <span style={{ fontSize: 9, width: 12, textAlign: 'center', color: 'var(--node-text-dim)', flexShrink: 0 }}>
                         {f.isPrimary ? '⬡' : f.isRelation ? '⇢' : '·'}
                       </span>
-                      <span style={{ fontSize: 12, flex: 1 }}>{f.name}</span>
+                      <span style={{ fontSize: 12, flex: 1, color: 'var(--node-text)' }}>{f.name}</span>
                       <span style={{
-                        fontSize: 10, fontFamily: 'monospace', flexShrink: 0,
-                        opacity: f.isRelation ? 0.75 : 0.4,
+                        fontSize: 11, fontFamily: 'monospace', flexShrink: 0, fontWeight: 500,
                         color: f.isRelation
                           ? modelColor(f.type.replace('[]','').replace('?',''))
-                          : 'inherit',
+                          : 'var(--node-text, #111827)',
                       }}>
                         {f.type}
                       </span>
@@ -1400,24 +1381,34 @@ export default function OrmEditor({ state, setState }: Props) {
                 </div>
 
                 {/* Export JSON */}
-                <div style={{ padding: '8px 14px 4px', fontSize: 10, opacity: 0.38, flexShrink: 0, letterSpacing: '0.06em' }}>
+                <div style={{ padding: '8px 14px 4px', fontSize: 10, color: 'var(--node-text-dim)', flexShrink: 0, letterSpacing: '0.06em' }}>
                   EXPORT JSON
                 </div>
-                <pre style={{
-                  flex: 1, margin: 0, padding: '0 14px 14px', overflow: 'auto',
+                <div style={{
+                  flex: 1, overflow: 'auto',
                   fontFamily: 'var(--vscode-editor-font-family, Consolas, monospace)',
-                  fontSize: 11, lineHeight: 1.65,
-                  color: 'var(--vscode-editor-foreground, #d4d4d4)',
-                  background: 'transparent', whiteSpace: 'pre',
+                  fontSize: 11, lineHeight: '18px',
+                  color: 'var(--diff-text, #d4d4d4)',
+                  paddingBottom: 14,
                 }}>
-                  {JSON.stringify(modelToJson(selected, state.ormType), null, 2)}
-                </pre>
+                  {JSON.stringify(modelToJson(selected, state.ormType), null, 2).split('\n').map((line, i) => (
+                    <div key={i} style={{ display: 'flex', minHeight: 18 }}>
+                      <span style={{
+                        width: 32, flexShrink: 0, textAlign: 'right', paddingRight: 8,
+                        color: 'var(--diff-linenum, rgba(255,255,255,0.25))',
+                        userSelect: 'none', lineHeight: '18px',
+                        borderRight: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))',
+                      }}>{i + 1}</span>
+                      <span style={{ paddingLeft: 10, whiteSpace: 'pre', lineHeight: '18px' }}>{line}</span>
+                    </div>
+                  ))}
+                </div>
 
                 {/* Add Relation — only for Prisma */}
                 {state.ormType === 'prisma' && (
                   <div style={{
                     flexShrink: 0,
-                    borderTop: '1px solid rgba(255,255,255,0.06)',
+                    borderTop: '1px solid var(--node-field-divider)',
                   }}>
                     {!addRelForm ? (
                       <div style={{ padding: '10px 14px' }}>
@@ -1425,9 +1416,9 @@ export default function OrmEditor({ state, setState }: Props) {
                           onClick={(e) => { e.stopPropagation(); openAddRelForm(selected.name); }}
                           style={{
                             width: '100%', padding: '5px 0',
-                            border: '1px dashed rgba(99,102,241,0.4)',
+                            border: '1px dashed var(--vscode-focusBorder, #4f46e5)',
                             borderRadius: 5, background: 'transparent',
-                            color: '#a5b4fc', fontSize: 11, cursor: 'pointer',
+                            color: 'var(--vscode-focusBorder, #4f46e5)', fontSize: 11, cursor: 'pointer',
                           }}
                         >+ Relation 추가</button>
                       </div>
@@ -1454,12 +1445,12 @@ export default function OrmEditor({ state, setState }: Props) {
                   borderBottom: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 10, opacity: 0.5 }}>⇢</span>
-                    <span style={{ fontWeight: 700, fontSize: 13 }}>Relation</span>
+                    <span style={{ fontSize: 10, color: 'var(--node-text-dim)' }}>⇢</span>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--node-text)' }}>Relation</span>
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); setSelectedEdge(null); }}
-                    style={{ background: 'none', border: 'none', color: 'var(--vscode-foreground)', fontSize: 14, cursor: 'pointer', opacity: 0.45, padding: 2 }}
+                    style={{ background: 'none', border: 'none', color: 'var(--node-text-dim)', fontSize: 14, cursor: 'pointer', padding: 2 }}
                   >✕</button>
                 </div>
 
@@ -1470,13 +1461,13 @@ export default function OrmEditor({ state, setState }: Props) {
                     display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16,
                     padding: '8px 12px', borderRadius: 6,
                     background: 'rgba(99,102,241,0.08)',
-                    border: '1px solid rgba(99,102,241,0.18)',
+                    border: '1px solid rgba(99,102,241,0.25)',
                   }}>
                     <span style={{
                       fontWeight: 700, fontSize: 13,
                       color: modelColor(selectedEdge.from),
                     }}>{selectedEdge.from}</span>
-                    <span style={{ fontSize: 11, opacity: 0.5 }}>→</span>
+                    <span style={{ fontSize: 11, color: 'var(--node-text-dim)' }}>→</span>
                     <span style={{
                       fontWeight: 700, fontSize: 13,
                       color: modelColor(selectedEdge.to),
@@ -1484,7 +1475,8 @@ export default function OrmEditor({ state, setState }: Props) {
                     <span style={{
                       marginLeft: 'auto', fontSize: 9, padding: '1px 6px',
                       borderRadius: 10, background: 'rgba(99,102,241,0.15)',
-                      color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.25)',
+                      color: '#818cf8', border: '1px solid rgba(99,102,241,0.35)',
+                      fontWeight: 600,
                     }}>many-to-one</span>
                   </div>
 
@@ -1494,8 +1486,8 @@ export default function OrmEditor({ state, setState }: Props) {
                     { label: 'fk field',       value: selectedEdge.fkField },
                   ].map(({ label, value }) => (
                     <div key={label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 12 }}>
-                      <span style={{ opacity: 0.45, fontSize: 11 }}>{label}</span>
-                      <span style={{ fontFamily: 'monospace', fontSize: 11 }}>{value}</span>
+                      <span style={{ color: 'var(--node-text-dim)', fontSize: 11 }}>{label}</span>
+                      <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--node-text)' }}>{value}</span>
                     </div>
                   ))}
                 </div>
@@ -1504,7 +1496,7 @@ export default function OrmEditor({ state, setState }: Props) {
 
                 {/* Delete button — only for Prisma */}
                 {state.ormType === 'prisma' && (
-                  <div style={{ padding: '10px 14px', flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ padding: '10px 14px', flexShrink: 0, borderTop: '1px solid var(--node-field-divider)' }}>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDeleteRelation(); }}
                       style={{
@@ -1530,35 +1522,67 @@ export default function OrmEditor({ state, setState }: Props) {
           display: 'flex', flexDirection: 'column',
           animation: 'slideInUp 0.15s ease-out',
         }}>
+          {/* ORM type tabs */}
           <div style={{
             display: 'flex', gap: 4, padding: '5px 10px', flexShrink: 0, alignItems: 'center',
-            borderBottom: '1px solid rgba(255,255,255,0.05)',
+            borderBottom: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))',
+            background: 'var(--diff-header-bg, #2d2d2d)',
           }}>
             {ORM_TYPES.map((orm) => (
               <button key={orm}
                 onClick={() => setState((p) => ({ ...p, ormType: orm, ormSource: DEFAULT_SCHEMAS[orm] }))}
                 style={{
                   padding: '2px 8px', border: '1px solid', borderRadius: 3, fontSize: 10, cursor: 'pointer',
-                  borderColor: state.ormType === orm ? 'var(--vscode-focusBorder, #007acc)' : 'rgba(255,255,255,0.15)',
+                  borderColor: state.ormType === orm ? 'var(--vscode-focusBorder, #007acc)' : 'var(--node-text)',
                   background:  state.ormType === orm ? 'var(--vscode-button-background, #0e639c)' : 'transparent',
-                  color:       state.ormType === orm ? 'var(--vscode-button-foreground, #fff)' : 'var(--vscode-foreground)',
+                  color:       state.ormType === orm ? 'var(--vscode-button-foreground, #fff)' : 'var(--diff-header-text, #cccccc)',
                 }}
               >{orm}</button>
             ))}
           </div>
-          <textarea
-            value={state.ormSource}
-            onChange={(e) => setState((p) => ({ ...p, ormSource: e.target.value }))}
-            spellCheck={false}
-            style={{
-              flex: 1, resize: 'none', border: 'none', outline: 'none',
-              padding: '8px 12px',
-              fontFamily: 'var(--vscode-editor-font-family, Consolas, monospace)',
-              fontSize: 12, color: 'var(--vscode-editor-foreground, #d4d4d4)',
-              background: 'var(--vscode-editor-background, #1e1e1e)',
-              lineHeight: 1.6,
-            }}
-          />
+          {/* Editor: line-number gutter + editable textarea */}
+          <div style={{
+            flex: 1, display: 'flex', overflow: 'hidden',
+            background: 'var(--diff-bg, #1e1e1e)',
+            fontFamily: 'var(--vscode-editor-font-family, Consolas, "Courier New", monospace)',
+            fontSize: 12,
+          }}>
+            {/* Gutter — paddingTop must exactly match textarea's paddingTop */}
+            <div
+              id="code-drawer-gutter"
+              style={{
+                width: 44, paddingTop: 8, paddingBottom: 8, flexShrink: 0,
+                textAlign: 'right', paddingRight: 10,
+                color: 'var(--diff-linenum, rgba(255,255,255,0.25))',
+                fontSize: 12, lineHeight: '20px',
+                userSelect: 'none', overflowY: 'hidden',
+                borderRight: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))',
+                background: 'var(--diff-bg, #1e1e1e)',
+              }}
+            >
+              {state.ormSource.split('\n').map((_, i) => (
+                <div key={i} style={{ height: 20 }}>{i + 1}</div>
+              ))}
+            </div>
+            {/* Textarea */}
+            <textarea
+              value={state.ormSource}
+              onChange={(e) => setState((p) => ({ ...p, ormSource: e.target.value }))}
+              onScroll={(e) => {
+                const gutter = document.getElementById('code-drawer-gutter');
+                if (gutter) gutter.scrollTop = e.currentTarget.scrollTop;
+              }}
+              spellCheck={false}
+              style={{
+                flex: 1, resize: 'none', border: 'none', outline: 'none',
+                padding: '8px 12px',
+                fontFamily: 'inherit', fontSize: 12, lineHeight: '20px',
+                color: 'var(--diff-text, #d4d4d4)',
+                background: 'var(--diff-bg, #1e1e1e)',
+                overflowY: 'auto',
+              }}
+            />
+          </div>
         </div>
       )}
     </div>
@@ -1571,14 +1595,14 @@ const FK_TYPES = ['Int', 'String', 'BigInt'];
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '3px 6px', borderRadius: 3, fontSize: 11,
-  background: 'var(--vscode-input-background, #3c3c3c)',
-  color: 'var(--vscode-foreground)',
-  border: '1px solid var(--vscode-input-border, rgba(255,255,255,0.18))',
+  background: 'var(--node-bg)',
+  color: 'var(--node-text)',
+  border: '1px solid var(--node-border)',
   outline: 'none',
 };
 
 const labelStyle: React.CSSProperties = {
-  fontSize: 10, opacity: 0.45, marginBottom: 2, display: 'block',
+  fontSize: 10, color: 'var(--node-text-dim)', marginBottom: 2, display: 'block',
 };
 
 function AddRelFormPanel({
@@ -1626,7 +1650,7 @@ function AddRelFormPanel({
   return (
     <div style={{ padding: '10px 14px' }} onClick={(e) => e.stopPropagation()}>
       {/* Header */}
-      <div style={{ fontSize: 10, fontWeight: 700, opacity: 0.4, letterSpacing: '0.06em', marginBottom: 10 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--node-text-dim)', letterSpacing: '0.06em', marginBottom: 10 }}>
         NEW RELATION
       </div>
 
@@ -1644,9 +1668,9 @@ function AddRelFormPanel({
             <button key={t} onClick={() => handleRelTypeChange(t)} style={{
               flex: 1, padding: '3px 0', fontSize: 10, borderRadius: 3,
               border: '1px solid',
-              borderColor: form.relType === t ? 'var(--vscode-focusBorder,#007acc)' : 'rgba(255,255,255,0.15)',
-              background:  form.relType === t ? 'rgba(0,122,204,0.15)' : 'transparent',
-              color: 'var(--vscode-foreground)', cursor: 'pointer',
+              borderColor: form.relType === t ? 'var(--vscode-focusBorder,#007acc)' : 'var(--node-border)',
+              background:  form.relType === t ? 'rgba(99,102,241,0.15)' : 'transparent',
+              color: 'var(--node-text)', cursor: 'pointer',
             }}>{t === 'many-to-one' ? `${fromModel} → ${form.target}` : `${fromModel} ← ${form.target}`}</button>
           ))}
         </div>
@@ -1688,7 +1712,7 @@ function AddRelFormPanel({
             onChange={(e) => onPatch({ addBackRef: e.target.checked })}
             style={{ accentColor: '#6366f1' }}
           />
-          <span style={{ fontSize: 10, opacity: 0.45 }}>역참조 추가 ({form.target} 모델에)</span>
+          <span style={{ fontSize: 10, color: 'var(--node-text-dim)' }}>역참조 추가 ({form.target} 모델에)</span>
         </label>
         {form.addBackRef && (
           <input style={{ ...inputStyle, marginTop: 4 }} value={form.backRef}
@@ -1706,8 +1730,8 @@ function AddRelFormPanel({
         }}>추가</button>
         <button onClick={onCancel} style={{
           padding: '5px 12px', borderRadius: 3,
-          border: '1px solid rgba(255,255,255,0.15)',
-          background: 'transparent', color: 'var(--vscode-foreground)',
+          border: '1px solid var(--node-border)',
+          background: 'transparent', color: 'var(--node-text)',
           fontSize: 11, cursor: 'pointer',
         }}>취소</button>
       </div>

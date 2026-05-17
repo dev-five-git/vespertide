@@ -7,8 +7,8 @@
       "command": "npm run build",
       "options": { "cwd": "${workspaceFolder}/apps/vscode" },
       "group": { "kind": "build", "isDefault": true },
-      "presentation": { "reveal": "silent" },
-      "problemMatcher": "$tsc"
+      "presentation": { "reveal": "always" },
+      "problemMatcher": []
     }
   ]
 }

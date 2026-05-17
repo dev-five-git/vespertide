@@ -11,6 +11,23 @@
   "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
+    "commands": [
+      {
+        "command": "vespertide.openAIAgent",
+        "title": "AI Agent",
+        "icon": "$(comment-discussion)",
+        "category": "Vespertide"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "vespertide.openAIAgent",
+          "when": "view == vespertide.mainPanel",
+          "group": "navigation"
+        }
+      ]
+    },
     "viewsContainers": {
       "activitybar": [
         {
@@ -36,6 +53,41 @@
           "type": "string",
           "default": "http://localhost:3456",
           "description": "MCP 서버 엔드포인트 URL"
+        },
+        "vespertide.oauth.slack.clientId": {
+          "type": "string",
+          "default": "",
+          "description": "Slack OAuth App Client ID (https://api.slack.com/apps)"
+        },
+        "vespertide.oauth.slack.clientSecret": {
+          "type": "string",
+          "default": "",
+          "description": "Slack OAuth App Client Secret"
+        },
+        "vespertide.oauth.notion.clientId": {
+          "type": "string",
+          "default": "",
+          "description": "Notion OAuth Client ID (https://www.notion.so/my-integrations)"
+        },
+        "vespertide.oauth.notion.clientSecret": {
+          "type": "string",
+          "default": "",
+          "description": "Notion OAuth Client Secret"
+        },
+        "vespertide.oauth.jira.clientId": {
+          "type": "string",
+          "default": "",
+          "description": "Atlassian OAuth App Client ID (https://developer.atlassian.com/console/myapps/)"
+        },
+        "vespertide.oauth.gemini.clientId": {
+          "type": "string",
+          "default": "",
+          "description": "Google OAuth Client ID (https://console.cloud.google.com/apis/credentials) — use Desktop app type"
+        },
+        "vespertide.oauth.gemini.clientSecret": {
+          "type": "string",
+          "default": "",
+          "description": "Google OAuth Client Secret"
         }
       }
     }

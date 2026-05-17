@@ -8,18 +8,20 @@ type Dialect  = 'postgres' | 'mysql' | 'sqlite';
 type FileKind = 'create' | 'alter' | 'drop' | 'index';
 
 interface SqlFile {
-  id:      string;
-  name:    string;
-  kind:    FileKind;
-  sql:     string;
-  adds:    number;
-  removes: number;
+  id:        string;
+  name:      string;
+  kind:      FileKind;
+  sql:       string;
+  adds:      number;
+  removes:   number;
+  startLine: number;   // 1-based line offset in the full combined SQL output
 }
 
 interface DiffLine {
-  type: 'add' | 'remove' | 'ctx';
-  num:  number;
-  text: string;
+  type:   'add' | 'remove' | 'ctx';
+  oldNum: number | null;
+  newNum: number | null;
+  text:   string;
 }
 
 // ── Pre-built dummy files (avoids runtime parse failure) ──────────────────────
@@ -165,38 +167,79 @@ const SQ_TAG_ON_POSTS = `CREATE TABLE "tag_on_posts" (
 const SQ_INDEXES = `CREATE INDEX "ix_posts__author_id" ON "posts" ("author_id");
 CREATE INDEX "ix_tag_on_posts__tag_id" ON "tag_on_posts" ("tag_id");`;
 
-function makeFile(id: string, name: string, kind: FileKind, sql: string): SqlFile {
-  const lines = sql.split('\n').filter((l) => l.trim());
-  const adds    = kind === 'create' || kind === 'index' ? lines.length : lines.filter(l => /^\s+ADD/i.test(l)).length;
-  const removes = kind === 'drop' ? lines.length : lines.filter(l => /^\s+DROP/i.test(l)).length;
-  return { id, name, kind, sql, adds, removes };
+// ── Alter examples (mixed add + drop) ────────────────────────────────────────
+
+const PG_ALTER_USERS = `ALTER TABLE "users"
+  ADD COLUMN "phone" TEXT,
+  ADD COLUMN "avatar_url" TEXT,
+  DROP COLUMN "name",
+  DROP COLUMN "created_at";`;
+
+const MY_ALTER_USERS = `ALTER TABLE \`users\`
+  ADD COLUMN \`phone\` VARCHAR(191),
+  ADD COLUMN \`avatar_url\` VARCHAR(512),
+  DROP COLUMN \`name\`,
+  DROP COLUMN \`created_at\`;`;
+
+const SQ_ALTER_USERS = `ALTER TABLE "users"
+  ADD COLUMN "phone" TEXT,
+  ADD COLUMN "avatar_url" TEXT,
+  DROP COLUMN "name",
+  DROP COLUMN "created_at";`;
+
+// ── Drop examples ─────────────────────────────────────────────────────────────
+
+const PG_DROP_SESSIONS = `DROP TABLE IF EXISTS "sessions";`;
+const MY_DROP_SESSIONS = `DROP TABLE IF EXISTS \`sessions\`;`;
+const SQ_DROP_SESSIONS = `DROP TABLE IF EXISTS "sessions";`;
+
+function makeFile(id: string, name: string, kind: FileKind, sql: string, startLine: number): SqlFile {
+  const allLines = sql.split('\n');
+  const adds    = kind === 'create' || kind === 'index' ? allLines.filter(l => l.trim()).length : allLines.filter(l => /^\s+ADD/i.test(l)).length;
+  const removes = kind === 'drop' ? allLines.filter(l => l.trim()).length : allLines.filter(l => /^\s+DROP/i.test(l)).length;
+  return { id, name, kind, sql, adds, removes, startLine };
+}
+
+function buildDummyFiles(items: Array<[string, string, FileKind, string]>): SqlFile[] {
+  let cursor = 1;
+  return items.map(([id, name, kind, sql]) => {
+    const file = makeFile(id, name, kind, sql, cursor);
+    cursor += sql.split('\n').length + 1; // +1 for blank separator between statements
+    return file;
+  });
 }
 
 const DUMMY_FILES: Record<Dialect, SqlFile[]> = {
-  postgres: [
-    makeFile('0', 'users',        'create', PG_USERS),
-    makeFile('1', 'profiles',     'create', PG_PROFILES),
-    makeFile('2', 'posts',        'create', PG_POSTS),
-    makeFile('3', 'tags',         'create', PG_TAGS),
-    makeFile('4', 'tag_on_posts', 'create', PG_TAG_ON_POSTS),
-    makeFile('5', 'indexes',      'index',  PG_INDEXES),
-  ],
-  mysql: [
-    makeFile('0', 'users',        'create', MY_USERS),
-    makeFile('1', 'profiles',     'create', MY_PROFILES),
-    makeFile('2', 'posts',        'create', MY_POSTS),
-    makeFile('3', 'tags',         'create', MY_TAGS),
-    makeFile('4', 'tag_on_posts', 'create', MY_TAG_ON_POSTS),
-    makeFile('5', 'indexes',      'index',  MY_INDEXES),
-  ],
-  sqlite: [
-    makeFile('0', 'users',        'create', SQ_USERS),
-    makeFile('1', 'profiles',     'create', SQ_PROFILES),
-    makeFile('2', 'posts',        'create', SQ_POSTS),
-    makeFile('3', 'tags',         'create', SQ_TAGS),
-    makeFile('4', 'tag_on_posts', 'create', SQ_TAG_ON_POSTS),
-    makeFile('5', 'indexes',      'index',  SQ_INDEXES),
-  ],
+  postgres: buildDummyFiles([
+    ['0', 'users',        'create', PG_USERS],
+    ['1', 'profiles',     'create', PG_PROFILES],
+    ['2', 'posts',        'create', PG_POSTS],
+    ['3', 'tags',         'create', PG_TAGS],
+    ['4', 'tag_on_posts', 'create', PG_TAG_ON_POSTS],
+    ['5', 'indexes',      'index',  PG_INDEXES],
+    ['6', 'users',        'alter',  PG_ALTER_USERS],
+    ['7', 'sessions',     'drop',   PG_DROP_SESSIONS],
+  ]),
+  mysql: buildDummyFiles([
+    ['0', 'users',        'create', MY_USERS],
+    ['1', 'profiles',     'create', MY_PROFILES],
+    ['2', 'posts',        'create', MY_POSTS],
+    ['3', 'tags',         'create', MY_TAGS],
+    ['4', 'tag_on_posts', 'create', MY_TAG_ON_POSTS],
+    ['5', 'indexes',      'index',  MY_INDEXES],
+    ['6', 'users',        'alter',  MY_ALTER_USERS],
+    ['7', 'sessions',     'drop',   MY_DROP_SESSIONS],
+  ]),
+  sqlite: buildDummyFiles([
+    ['0', 'users',        'create', SQ_USERS],
+    ['1', 'profiles',     'create', SQ_PROFILES],
+    ['2', 'posts',        'create', SQ_POSTS],
+    ['3', 'tags',         'create', SQ_TAGS],
+    ['4', 'tag_on_posts', 'create', SQ_TAG_ON_POSTS],
+    ['5', 'indexes',      'index',  SQ_INDEXES],
+    ['6', 'users',        'alter',  SQ_ALTER_USERS],
+    ['7', 'sessions',     'drop',   SQ_DROP_SESSIONS],
+  ]),
 };
 
 // ── SQL parser (for real WASM output) ────────────────────────────────────────
@@ -215,24 +258,31 @@ function extractName(stmt: string, keyword: string): string {
 
 function parseSql(sql: string): SqlFile[] {
   if (!sql.trim()) return [];
-  const stmts = sql
-    .split(/;[ \t]*\n/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((s) => (s.endsWith(';') ? s : s + ';'));
+
+  // Split on statement boundaries while preserving line position tracking
+  const rawParts = sql.split(/;[ \t]*\n/);
+  let lineOffset = 1;
+  const stmtInfos: Array<{ stmt: string; startLine: number }> = [];
+  for (const part of rawParts) {
+    const trimmed = part.trim();
+    if (trimmed) {
+      stmtInfos.push({ stmt: trimmed.endsWith(';') ? trimmed : trimmed + ';', startLine: lineOffset });
+    }
+    lineOffset += part.split('\n').length;
+  }
 
   const byKey = new Map<string, SqlFile>();
   let idx = 0;
 
-  for (const stmt of stmts) {
+  for (const { stmt, startLine } of stmtInfos) {
     const up = stmt.trimStart().toUpperCase();
     let kind: FileKind;
     let name: string;
 
-    if (up.startsWith('CREATE TABLE'))         { kind = 'create'; name = extractName(stmt, 'CREATE TABLE'); }
-    else if (up.startsWith('ALTER TABLE'))      { kind = 'alter';  name = extractName(stmt, 'ALTER TABLE'); }
-    else if (up.startsWith('DROP TABLE'))       { kind = 'drop';   name = extractName(stmt, 'DROP TABLE'); }
-    else if (up.includes('INDEX'))              { kind = 'index';  name = 'indexes'; }
+    if (up.startsWith('CREATE TABLE'))    { kind = 'create'; name = extractName(stmt, 'CREATE TABLE'); }
+    else if (up.startsWith('ALTER TABLE')) { kind = 'alter';  name = extractName(stmt, 'ALTER TABLE'); }
+    else if (up.startsWith('DROP TABLE'))  { kind = 'drop';   name = extractName(stmt, 'DROP TABLE'); }
+    else if (up.includes('INDEX'))         { kind = 'index';  name = 'indexes'; }
     else continue;
 
     const lines = stmt.split('\n');
@@ -250,8 +300,9 @@ function parseSql(sql: string): SqlFile[] {
       f.sql += '\n\n' + stmt;
       f.adds += adds;
       f.removes += removes;
+      // startLine stays as the first occurrence
     } else {
-      byKey.set(key, { id: String(idx++), name, kind, sql: stmt, adds, removes });
+      byKey.set(key, { id: String(idx++), name, kind, sql: stmt, adds, removes, startLine });
     }
   }
   return Array.from(byKey.values());
@@ -260,7 +311,8 @@ function parseSql(sql: string): SqlFile[] {
 // ── Diff line generator ───────────────────────────────────────────────────────
 
 function toDiffLines(file: SqlFile): DiffLine[] {
-  let num = 1;
+  // counters start at the actual line position in the full SQL output
+  let oldN = file.startLine, newN = file.startLine;
   return file.sql.split('\n').map((text) => {
     let type: DiffLine['type'] = 'ctx';
     if (file.kind === 'create' || file.kind === 'index') {
@@ -269,10 +321,12 @@ function toDiffLines(file: SqlFile): DiffLine[] {
       type = 'remove';
     } else {
       const t = text.trim().toUpperCase();
-      if (t.startsWith('ADD'))  type = 'add';
+      if (t.startsWith('ADD'))       type = 'add';
       else if (t.startsWith('DROP')) type = 'remove';
     }
-    return { type, num: num++, text };
+    if (type === 'add')    return { type, oldNum: null,   newNum: newN++, text };
+    if (type === 'remove') return { type, oldNum: oldN++, newNum: null,   text };
+    return                        { type, oldNum: oldN++, newNum: newN++, text };
   });
 }
 
@@ -281,10 +335,10 @@ function toDiffLines(file: SqlFile): DiffLine[] {
 const DIALECT_LABELS: Record<Dialect, string> = { postgres: 'PG', mysql: 'MY', sqlite: 'SQ' };
 
 function kindBadge(kind: FileKind) {
-  if (kind === 'create') return { label: 'A', color: '#4ade80' };
-  if (kind === 'drop')   return { label: 'D', color: '#f87171' };
-  if (kind === 'index')  return { label: 'I', color: '#60a5fa' };
-  return { label: 'M', color: '#fbbf24' };
+  if (kind === 'create') return { label: 'A', color: 'var(--diff-add-sign)' };
+  if (kind === 'drop')   return { label: 'D', color: 'var(--diff-rm-sign)' };
+  if (kind === 'index')  return { label: 'I', color: '#3b82f6' };
+  return { label: 'M', color: '#d97706' };
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -337,7 +391,8 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
       <div style={{
         width: 224, flexShrink: 0, display: 'flex', flexDirection: 'column',
         borderRight: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))',
-        background: 'var(--vscode-sideBar-background, #252526)',
+        background: 'var(--diff-sidebar-bg, #252526)',
+        color: 'var(--diff-sidebar-text, #cccccc)',
       }}>
         {/* Header */}
         <div style={{
@@ -345,17 +400,17 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
           justifyContent: 'space-between',
           borderBottom: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))',
         }}>
-          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', opacity: 0.4 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--node-text-dim)' }}>
             CHANGES
           </span>
           {/* Dialect toggle */}
-          <div style={{ display: 'flex', gap: 1, padding: 2, background: 'rgba(0,0,0,0.25)', borderRadius: 5 }}>
+          <div style={{ display: 'flex', gap: 1, padding: 2, background: 'var(--vscode-editorWidget-background, rgba(0,0,0,0.25))', borderRadius: 5, border: '1px solid var(--node-border)' }}>
             {(['postgres', 'mysql', 'sqlite'] as Dialect[]).map((d) => (
               <button key={d} onClick={() => setDialect(d)} style={{
                 padding: '2px 7px', border: 'none', borderRadius: 4, cursor: 'pointer',
                 fontSize: 10, fontWeight: 600,
                 background: dialect === d ? 'var(--vscode-button-background, #0e639c)' : 'transparent',
-                color:      dialect === d ? '#fff' : 'var(--vscode-tab-inactiveForeground, #888)',
+                color:      dialect === d ? '#fff' : 'var(--node-text-dim)',
                 transition: 'background 0.1s',
               }}>{DIALECT_LABELS[d]}</button>
             ))}
@@ -363,10 +418,10 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
         </div>
 
         {/* Summary */}
-        <div style={{ padding: '4px 10px', fontSize: 10, display: 'flex', gap: 6, alignItems: 'center', opacity: 0.5, flexShrink: 0 }}>
+        <div style={{ padding: '4px 10px', fontSize: 10, display: 'flex', gap: 6, alignItems: 'center', color: 'var(--node-text-dim)', flexShrink: 0 }}>
           <span>{files.length} files</span>
-          {totalAdds    > 0 && <span style={{ color: '#4ade80' }}>+{totalAdds}</span>}
-          {totalRemoves > 0 && <span style={{ color: '#f87171' }}>−{totalRemoves}</span>}
+          {totalAdds    > 0 && <span style={{ color: 'var(--diff-add-sign)' }}>+{totalAdds}</span>}
+          {totalRemoves > 0 && <span style={{ color: 'var(--diff-rm-sign)' }}>−{totalRemoves}</span>}
           {!hasReal && (
             <span style={{
               marginLeft: 'auto', fontSize: 9, padding: '1px 5px', borderRadius: 3,
@@ -388,14 +443,14 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
                 background: isSel ? 'rgba(99,102,241,0.15)' : 'transparent',
                 borderLeft: isSel ? '2px solid var(--vscode-focusBorder, #007acc)' : '2px solid transparent',
               }}>
-                <span style={{ fontSize: 11, opacity: 0.3, flexShrink: 0 }}>
+                <span style={{ fontSize: 11, color: 'var(--node-text-dim)', flexShrink: 0 }}>
                   {f.kind === 'index' ? '⊞' : '≡'}
                 </span>
-                <span style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {f.name}<span style={{ opacity: 0.35 }}>.sql</span>
+                <span style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--diff-sidebar-text)' }}>
+                  {f.name}<span style={{ color: 'var(--node-text-dim)' }}>.sql</span>
                 </span>
-                {f.adds    > 0 && <span style={{ fontSize: 10, color: '#4ade80', flexShrink: 0 }}>+{f.adds}</span>}
-                {f.removes > 0 && <span style={{ fontSize: 10, color: '#f87171', flexShrink: 0 }}>−{f.removes}</span>}
+                {f.adds    > 0 && <span style={{ fontSize: 10, color: 'var(--diff-add-sign)', flexShrink: 0, fontWeight: 600 }}>+{f.adds}</span>}
+                {f.removes > 0 && <span style={{ fontSize: 10, color: 'var(--diff-rm-sign)',  flexShrink: 0, fontWeight: 600 }}>−{f.removes}</span>}
                 <span style={{ fontSize: 10, fontWeight: 700, color: badge.color, width: 12, textAlign: 'right', flexShrink: 0 }}>
                   {badge.label}
                 </span>
@@ -413,21 +468,22 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8, padding: '5px 12px', flexShrink: 0,
             borderBottom: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))',
-            background: 'var(--vscode-editorGroupHeader-tabsBackground, #2d2d2d)',
+            background: 'var(--diff-header-bg, #2d2d2d)',
+            color: 'var(--diff-header-text, #cccccc)',
             fontSize: 12,
           }}>
-            <span style={{ opacity: 0.35 }}>{selected.kind === 'index' ? '⊞' : '≡'}</span>
+            <span style={{ color: 'var(--node-text-dim)' }}>{selected.kind === 'index' ? '⊞' : '≡'}</span>
             <span style={{ fontWeight: 600 }}>{selected.name}</span>
-            <span style={{ opacity: 0.35 }}>.sql</span>
+            <span style={{ color: 'var(--node-text-dim)' }}>.sql</span>
             <div style={{ flex: 1 }} />
-            {selected.adds    > 0 && <span style={{ fontSize: 11, color: '#4ade80' }}>+{selected.adds}</span>}
-            {selected.removes > 0 && <span style={{ fontSize: 11, color: '#f87171' }}>−{selected.removes}</span>}
+            {selected.adds    > 0 && <span style={{ fontSize: 11, color: 'var(--diff-add-sign)', fontWeight: 600 }}>+{selected.adds}</span>}
+            {selected.removes > 0 && <span style={{ fontSize: 11, color: 'var(--diff-rm-sign)',  fontWeight: 600 }}>−{selected.removes}</span>}
             <button
               onClick={() => navigator.clipboard.writeText(selected.sql).catch(console.error)}
               style={{
                 background: 'transparent', cursor: 'pointer',
-                border: '1px solid var(--vscode-input-border, rgba(255,255,255,0.2))',
-                borderRadius: 3, color: 'var(--vscode-foreground)',
+                border: '1px solid var(--node-border)',
+                borderRadius: 3, color: 'var(--diff-header-text)',
                 padding: '1px 8px', fontSize: 10,
               }}
             >복사</button>
@@ -437,7 +493,7 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
         {/* Diff lines */}
         <div style={{
           flex: 1, overflow: 'auto',
-          background: 'var(--vscode-editor-background, #1e1e1e)',
+          background: 'var(--diff-bg, #1e1e1e)',
           fontFamily: 'var(--vscode-editor-font-family, Consolas, "Courier New", monospace)',
           fontSize: 12, lineHeight: '20px',
         }}>
@@ -445,30 +501,43 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
             <div key={i} style={{
               display: 'flex', minHeight: 20,
               background:
-                line.type === 'add'    ? 'rgba(74,222,128,0.08)'  :
-                line.type === 'remove' ? 'rgba(248,113,113,0.08)' : 'transparent',
+                line.type === 'add'    ? 'var(--diff-add-bg)'  :
+                line.type === 'remove' ? 'var(--diff-rm-bg)'   : 'transparent',
               borderLeft:
-                line.type === 'add'    ? '3px solid rgba(74,222,128,0.45)'  :
-                line.type === 'remove' ? '3px solid rgba(248,113,113,0.45)' : '3px solid transparent',
+                line.type === 'add'    ? '3px solid var(--diff-add-border)'  :
+                line.type === 'remove' ? '3px solid var(--diff-rm-border)'   : '3px solid transparent',
             }}>
+              {/* Old line number */}
               <span style={{
-                minWidth: 44, paddingRight: 10, textAlign: 'right', flexShrink: 0,
+                minWidth: 40, paddingRight: 6, textAlign: 'right', flexShrink: 0,
                 fontSize: 11, lineHeight: '20px', userSelect: 'none',
-                color: 'var(--vscode-editorLineNumber-foreground, rgba(255,255,255,0.2))',
-              }}>{line.num}</span>
+                color: 'var(--diff-linenum)',
+              }}>{line.oldNum ?? ''}</span>
+              {/* New line number */}
+              <span style={{
+                minWidth: 40, paddingRight: 8, textAlign: 'right', flexShrink: 0,
+                fontSize: 11, lineHeight: '20px', userSelect: 'none',
+                color: 'var(--diff-linenum)',
+                borderRight: '1px solid var(--vscode-panel-border, rgba(128,128,128,0.2))',
+                marginRight: 4,
+              }}>{line.newNum ?? ''}</span>
+              {/* +/- sign */}
               <span style={{
                 width: 18, flexShrink: 0, textAlign: 'center', lineHeight: '20px',
-                fontSize: 12, userSelect: 'none',
-                color: line.type === 'add' ? '#4ade80' : line.type === 'remove' ? '#f87171' : 'transparent',
+                fontSize: 12, fontWeight: 700, userSelect: 'none',
+                color:
+                  line.type === 'add'    ? 'var(--diff-add-sign)' :
+                  line.type === 'remove' ? 'var(--diff-rm-sign)'  : 'transparent',
               }}>
                 {line.type === 'add' ? '+' : line.type === 'remove' ? '−' : ' '}
               </span>
+              {/* Code text */}
               <span style={{
                 flex: 1, paddingRight: 16, lineHeight: '20px', whiteSpace: 'pre',
                 color:
-                  line.type === 'add'    ? '#bbf7d0' :
-                  line.type === 'remove' ? '#fecaca' :
-                  'var(--vscode-editor-foreground, #d4d4d4)',
+                  line.type === 'add'    ? 'var(--diff-add-text)' :
+                  line.type === 'remove' ? 'var(--diff-rm-text)'  :
+                  'var(--diff-text)',
               }}>{line.text}</span>
             </div>
           ))}
