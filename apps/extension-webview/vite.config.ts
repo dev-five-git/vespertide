@@ -6,7 +6,7 @@ import { resolve } from 'path';
 export default defineConfig({
   plugins: [react(), DevupUI()],
   build: {
-    outDir: resolve(__dirname, '../dist/webview'),
+    outDir: resolve(__dirname, '../vscode/dist/webview'),
     emptyOutDir: true,
     rollupOptions: {
       input: {

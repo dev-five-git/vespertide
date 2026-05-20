@@ -1,5 +1,5 @@
 {
-  "name": "vespertide-webview",
+  "name": "extension-webview",
   "private": true,
   "version": "0.1.61",
   "type": "module",
