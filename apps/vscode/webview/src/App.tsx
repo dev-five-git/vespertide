@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Box, Flex } from '@devup-ui/react';
 import { onMessage } from './vscode';
 import type { HostMessage, OrmType, Schema } from './vscode';
 import OrmEditor from './tabs/OrmEditor';
@@ -187,79 +188,82 @@ export default function App() {
   }, []);
 
   return (
-    <div data-theme={state.theme} style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      <div
+    <Box data-theme={state.theme} display="flex" flexDir="column" h="100vh">
+      <Flex
         role="tablist"
-        style={{
-          display: 'flex', alignItems: 'stretch',
-          borderBottom: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))',
-          background: 'var(--vscode-editorGroupHeader-tabsBackground, #2d2d2d)',
-          flexShrink: 0,
-        }}
+        alignItems="stretch"
+        borderBottom="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+        bg="var(--vscode-editorGroupHeader-tabsBackground, #2d2d2d)"
+        flexShrink={0}
       >
         {TABS.map(({ id, label }) => (
-          <button
+          <Box
             key={id}
+            as="button"
             role="tab"
             aria-selected={tab === id}
             onClick={() => setTab(id)}
-            style={{
-              flex: 1,
-              padding: '8px 4px',
-              border: 'none',
-              borderBottom: tab === id
-                ? '2px solid var(--vscode-focusBorder, #007acc)'
-                : '2px solid transparent',
-              background: 'transparent',
-              color: tab === id
-                ? 'var(--vscode-foreground)'
-                : 'var(--vscode-tab-inactiveForeground, #8e8e8e)',
-              fontSize: '11px',
-              fontWeight: tab === id ? 600 : 400,
-              cursor: 'pointer',
-              transition: 'color 0.1s, border-color 0.1s',
-            }}
+            flex={1}
+            py="8px"
+            px="4px"
+            border="none"
+            borderBottom={tab === id
+              ? '2px solid var(--vscode-focusBorder, #007acc)'
+              : '2px solid transparent'}
+            bg="transparent"
+            color={tab === id
+              ? 'var(--vscode-foreground)'
+              : 'var(--vscode-tab-inactiveForeground, #8e8e8e)'}
+            fontSize="11px"
+            fontWeight={tab === id ? 600 : 400}
+            cursor="pointer"
+            transition="color 0.1s, border-color 0.1s"
           >
             {label}
-          </button>
+          </Box>
         ))}
 
-        {/* Theme toggle — far right of tab bar */}
-        <button
+        {/* Theme toggle */}
+        <Box
+          as="button"
           onClick={() => setState((p) => ({ ...p, theme: p.theme === 'dark' ? 'light' : 'dark' }))}
           title={state.theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
-          style={{
-            width: 36, flexShrink: 0,
-            border: 'none', borderBottom: '2px solid transparent',
-            background: 'transparent',
-            color: 'var(--vscode-tab-inactiveForeground, #8e8e8e)',
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
+          w="36px"
+          flexShrink={0}
+          border="none"
+          borderBottom="2px solid transparent"
+          bg="transparent"
+          color="var(--vscode-tab-inactiveForeground, #8e8e8e)"
+          cursor="pointer"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
         >
           {state.theme === 'dark'
             ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
             : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
           }
-        </button>
-      </div>
+        </Box>
+      </Flex>
 
       {state.error && (
-        <div style={{
-          padding: '6px 12px',
-          background: 'var(--vscode-inputValidation-errorBackground, rgba(90,29,29,0.9))',
-          color: 'var(--vscode-inputValidation-errorForeground, #f48771)',
-          fontSize: '12px',
-          flexShrink: 0,
-        }}>
+        <Box
+          py="6px"
+          px="12px"
+          bg="var(--vscode-inputValidation-errorBackground, rgba(90,29,29,0.9))"
+          color="var(--vscode-inputValidation-errorForeground, #f48771)"
+          fontSize="12px"
+          flexShrink={0}
+        >
           {state.error}
-        </div>
+        </Box>
       )}
 
-      <div style={{ flex: 1, overflow: 'hidden' }}>
+      <Box flex={1} overflow="hidden">
         {tab === 'editor'    && <OrmEditor    state={state} setState={setState} />}
         {tab === 'migration' && <MigrationDiff state={state} setState={setState} />}
         {tab === 'export'    && <Export       state={state} setState={setState} />}
-      </div>
-    </div>
+      </Box>
+    </Box>
   );
 }

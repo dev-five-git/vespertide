@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Box, Flex } from '@devup-ui/react';
 import { postMessage } from '../vscode';
 import type { OrmType } from '../vscode';
 import type { AppState } from '../App';
@@ -32,138 +33,133 @@ export default function OrmConverter({ state, setState }: Props) {
   };
 
   return (
-    <div
-      style={{
-        padding: 16,
-        height: '100%',
-        overflow: 'auto',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 16,
-      }}
+    <Box
+      p="16px"
+      h="100%"
+      overflow="auto"
+      display="flex"
+      flexDir="column"
+      gap="16px"
     >
       {/* ORM buttons */}
-      <div>
-        <div style={{ fontSize: 11, opacity: 0.55, marginBottom: 8, letterSpacing: '0.03em' }}>
+      <Box>
+        <Box fontSize="11px" opacity={0.55} mb="8px" letterSpacing="0.03em">
           변환할 대상 ORM 선택
-        </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        </Box>
+        <Flex flexWrap="wrap" gap="8px">
           {ORM_TYPES.map((orm) => {
             const isCurrent = orm === state.ormType;
             const isTarget  = orm === target;
             return (
-              <button
+              <Box
                 key={orm}
+                as="button"
                 onClick={() => !isCurrent && setTarget(isTarget ? null : orm)}
                 disabled={isCurrent}
                 title={isCurrent ? '현재 ORM' : `${ORM_LABELS[orm]}으로 변환`}
-                style={{
-                  padding: '6px 14px',
-                  border: '1px solid',
-                  borderColor: isCurrent
-                    ? 'var(--vscode-focusBorder, #007acc)'
-                    : isTarget
-                    ? 'var(--vscode-charts-green, #4caf50)'
-                    : 'var(--vscode-input-border, rgba(255,255,255,0.2))',
-                  borderRadius: 4,
-                  background: isCurrent
-                    ? 'var(--vscode-button-background, #0e639c)'
-                    : isTarget
-                    ? 'rgba(76,175,80,0.15)'
-                    : 'transparent',
-                  color: isCurrent
-                    ? 'var(--vscode-button-foreground, #fff)'
-                    : 'var(--vscode-foreground)',
-                  fontSize: 12,
-                  opacity: isCurrent ? 1 : 0.9,
-                  cursor: isCurrent ? 'not-allowed' : 'pointer',
-                  transition: 'all 0.1s',
-                }}
+                py="6px"
+                px="14px"
+                border="1px solid"
+                borderColor={
+                  isCurrent ? 'var(--vscode-focusBorder, #007acc)'
+                  : isTarget ? 'var(--vscode-charts-green, #4caf50)'
+                  : 'var(--vscode-input-border, rgba(255,255,255,0.2))'
+                }
+                borderRadius="4px"
+                bg={
+                  isCurrent ? 'var(--vscode-button-background, #0e639c)'
+                  : isTarget ? 'rgba(76,175,80,0.15)'
+                  : 'transparent'
+                }
+                color={
+                  isCurrent ? 'var(--vscode-button-foreground, #fff)'
+                  : 'var(--vscode-foreground)'
+                }
+                fontSize="12px"
+                opacity={isCurrent ? 1 : 0.9}
+                cursor={isCurrent ? 'not-allowed' : 'pointer'}
+                transition="all 0.1s"
               >
                 {ORM_LABELS[orm]}
                 {isCurrent && (
-                  <span style={{ marginLeft: 6, fontSize: 10, opacity: 0.7 }}>현재</span>
+                  <Box as="span" ml="6px" fontSize="10px" opacity={0.7}>현재</Box>
                 )}
-              </button>
+              </Box>
             );
           })}
-        </div>
-      </div>
+        </Flex>
+      </Box>
 
       {/* Conversion confirmation bar */}
       {target && target !== state.ormType && (
-        <div
-          style={{
-            padding: '12px 16px',
-            borderRadius: 4,
-            background: 'var(--vscode-editorWidget-background, #252526)',
-            border: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-          }}
+        <Flex
+          py="12px"
+          px="16px"
+          borderRadius="4px"
+          bg="var(--vscode-editorWidget-background, #252526)"
+          border="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+          alignItems="center"
+          justifyContent="space-between"
+          gap="12px"
         >
-          <span style={{ fontSize: 12 }}>
+          <Box as="span" fontSize="12px">
             <strong>{ORM_LABELS[state.ormType]}</strong>
             {' → '}
             <strong>{ORM_LABELS[target]}</strong>
             {'  으로 변환'}
-          </span>
-          <button
+          </Box>
+          <Box
+            as="button"
             onClick={handleConvert}
             disabled={!canConvert}
-            style={{
-              padding: '6px 18px',
-              background: canConvert
-                ? 'var(--vscode-button-background, #0e639c)'
-                : 'var(--vscode-button-secondaryBackground, #3a3a3a)',
-              color: 'var(--vscode-button-foreground, #fff)',
-              border: 'none',
-              borderRadius: 3,
-              fontSize: 12,
-              cursor: canConvert ? 'pointer' : 'not-allowed',
-              opacity: canConvert ? 1 : 0.5,
-              whiteSpace: 'nowrap',
-            }}
+            py="6px"
+            px="18px"
+            bg={canConvert
+              ? 'var(--vscode-button-background, #0e639c)'
+              : 'var(--vscode-button-secondaryBackground, #3a3a3a)'}
+            color="var(--vscode-button-foreground, #fff)"
+            border="none"
+            borderRadius="3px"
+            fontSize="12px"
+            cursor={canConvert ? 'pointer' : 'not-allowed'}
+            opacity={canConvert ? 1 : 0.5}
+            whiteSpace="nowrap"
           >
             변환
-          </button>
-        </div>
+          </Box>
+        </Flex>
       )}
 
       {!state.ormSource && (
-        <p style={{ margin: 0, opacity: 0.5, fontSize: 12 }}>
+        <Box as="p" m={0} opacity={0.5} fontSize="12px">
           ORM Editor 탭에서 먼저 스키마 코드를 입력하세요.
-        </p>
+        </Box>
       )}
 
       {/* Current source preview */}
       {state.ormSource && (
-        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ fontSize: 11, opacity: 0.55, marginBottom: 6 }}>
+        <Box flex={1} overflow="hidden" display="flex" flexDir="column">
+          <Box fontSize="11px" opacity={0.55} mb="6px">
             현재 스키마 ({ORM_LABELS[state.ormType]})
-          </div>
-          <pre
-            style={{
-              margin: 0,
-              padding: 12,
-              flex: 1,
-              overflow: 'auto',
-              background: 'var(--vscode-editor-background, #1e1e1e)',
-              borderRadius: 4,
-              fontSize: 12,
-              fontFamily:
-                'var(--vscode-editor-font-family, Consolas, "Courier New", monospace)',
-              color: 'var(--vscode-editor-foreground, #d4d4d4)',
-              lineHeight: 1.5,
-              whiteSpace: 'pre',
-            }}
+          </Box>
+          <Box
+            as="pre"
+            m={0}
+            p="12px"
+            flex={1}
+            overflow="auto"
+            bg="var(--vscode-editor-background, #1e1e1e)"
+            borderRadius="4px"
+            fontSize="12px"
+            fontFamily="var(--vscode-editor-font-family, Consolas, 'Courier New', monospace)"
+            color="var(--vscode-editor-foreground, #d4d4d4)"
+            lineHeight={1.5}
+            whiteSpace="pre"
           >
             {state.ormSource}
-          </pre>
-        </div>
+          </Box>
+        </Box>
       )}
-    </div>
+    </Box>
   );
 }

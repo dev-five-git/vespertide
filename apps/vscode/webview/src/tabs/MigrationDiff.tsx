@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Box, Flex } from '@devup-ui/react';
 import { postMessage } from '../vscode';
 import type { AppState } from '../App';
 
@@ -14,7 +15,7 @@ interface SqlFile {
   sql:       string;
   adds:      number;
   removes:   number;
-  startLine: number;   // 1-based line offset in the full combined SQL output
+  startLine: number;
 }
 
 interface DiffLine {
@@ -24,7 +25,7 @@ interface DiffLine {
   text:   string;
 }
 
-// ── Pre-built dummy files (avoids runtime parse failure) ──────────────────────
+// ── Pre-built dummy files ──────────────────────────────────────────────────────
 
 const PG_USERS = `CREATE TABLE "users" (
   "id" SERIAL NOT NULL,
@@ -167,8 +168,6 @@ const SQ_TAG_ON_POSTS = `CREATE TABLE "tag_on_posts" (
 const SQ_INDEXES = `CREATE INDEX "ix_posts__author_id" ON "posts" ("author_id");
 CREATE INDEX "ix_tag_on_posts__tag_id" ON "tag_on_posts" ("tag_id");`;
 
-// ── Alter examples (mixed add + drop) ────────────────────────────────────────
-
 const PG_ALTER_USERS = `ALTER TABLE "users"
   ADD COLUMN "phone" TEXT,
   ADD COLUMN "avatar_url" TEXT,
@@ -187,8 +186,6 @@ const SQ_ALTER_USERS = `ALTER TABLE "users"
   DROP COLUMN "name",
   DROP COLUMN "created_at";`;
 
-// ── Drop examples ─────────────────────────────────────────────────────────────
-
 const PG_DROP_SESSIONS = `DROP TABLE IF EXISTS "sessions";`;
 const MY_DROP_SESSIONS = `DROP TABLE IF EXISTS \`sessions\`;`;
 const SQ_DROP_SESSIONS = `DROP TABLE IF EXISTS "sessions";`;
@@ -204,7 +201,7 @@ function buildDummyFiles(items: Array<[string, string, FileKind, string]>): SqlF
   let cursor = 1;
   return items.map(([id, name, kind, sql]) => {
     const file = makeFile(id, name, kind, sql, cursor);
-    cursor += sql.split('\n').length + 1; // +1 for blank separator between statements
+    cursor += sql.split('\n').length + 1;
     return file;
   });
 }
@@ -242,10 +239,10 @@ const DUMMY_FILES: Record<Dialect, SqlFile[]> = {
   ]),
 };
 
-// ── SQL parser (for real WASM output) ────────────────────────────────────────
+// ── SQL parser ────────────────────────────────────────────────────────────────
 
 function stripQuotes(s: string) {
-  return s.replace(/^["`[\u0060]/, '').replace(/["`\]]$/, '');
+  return s.replace(/^["`[`]/, '').replace(/["`\]]$/, '');
 }
 
 function extractName(stmt: string, keyword: string): string {
@@ -258,8 +255,6 @@ function extractName(stmt: string, keyword: string): string {
 
 function parseSql(sql: string): SqlFile[] {
   if (!sql.trim()) return [];
-
-  // Split on statement boundaries while preserving line position tracking
   const rawParts = sql.split(/;[ \t]*\n/);
   let lineOffset = 1;
   const stmtInfos: Array<{ stmt: string; startLine: number }> = [];
@@ -300,7 +295,6 @@ function parseSql(sql: string): SqlFile[] {
       f.sql += '\n\n' + stmt;
       f.adds += adds;
       f.removes += removes;
-      // startLine stays as the first occurrence
     } else {
       byKey.set(key, { id: String(idx++), name, kind, sql: stmt, adds, removes, startLine });
     }
@@ -311,7 +305,6 @@ function parseSql(sql: string): SqlFile[] {
 // ── Diff line generator ───────────────────────────────────────────────────────
 
 function toDiffLines(file: SqlFile): DiffLine[] {
-  // counters start at the actual line position in the full SQL output
   let oldN = file.startLine, newN = file.startLine;
   return file.sql.split('\n').map((text) => {
     let type: DiffLine['type'] = 'ctx';
@@ -367,7 +360,6 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
     postMessage({ type: 'generate_migration', schema: state.schema, db: 'postgres' });
   }, [state.schema, requested]);
 
-  // Real SQL from WASM; fall back to pre-built dummy files
   const realSql =
     dialect === 'postgres' ? state.postgres :
     dialect === 'mysql'    ? state.mysql    : state.sqlite;
@@ -375,7 +367,6 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
   const hasReal = !!realSql;
   const files   = hasReal ? parseSql(realSql) : DUMMY_FILES[dialect];
 
-  // Reset selection to first file when dialect changes
   useEffect(() => { setSelectedId('0'); }, [dialect]);
 
   const selected  = files.find((f) => f.id === selectedId) ?? files[0];
@@ -385,164 +376,231 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
   const totalRemoves = files.reduce((s, f) => s + f.removes, 0);
 
   return (
-    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+    <Flex h="100%" overflow="hidden">
 
       {/* ── Left: file list ── */}
-      <div style={{
-        width: 224, flexShrink: 0, display: 'flex', flexDirection: 'column',
-        borderRight: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))',
-        background: 'var(--diff-sidebar-bg, #252526)',
-        color: 'var(--diff-sidebar-text, #cccccc)',
-      }}>
+      <Flex
+        w="224px"
+        flexShrink={0}
+        flexDir="column"
+        borderRight="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+        bg="var(--diff-sidebar-bg, #252526)"
+        color="var(--diff-sidebar-text, #cccccc)"
+      >
         {/* Header */}
-        <div style={{
-          padding: '8px 10px 6px', flexShrink: 0, display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between',
-          borderBottom: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))',
-        }}>
-          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--node-text-dim)' }}>
+        <Flex
+          py="8px"
+          px="10px"
+          pb="6px"
+          flexShrink={0}
+          alignItems="center"
+          justifyContent="space-between"
+          borderBottom="1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))"
+        >
+          <Box as="span" fontSize="10px" fontWeight={700} letterSpacing="0.08em" color="var(--node-text-dim)">
             CHANGES
-          </span>
+          </Box>
           {/* Dialect toggle */}
-          <div style={{ display: 'flex', gap: 1, padding: 2, background: 'var(--vscode-editorWidget-background, rgba(0,0,0,0.25))', borderRadius: 5, border: '1px solid var(--node-border)' }}>
+          <Flex
+            gap="1px"
+            p="2px"
+            bg="var(--vscode-editorWidget-background, rgba(0,0,0,0.25))"
+            borderRadius="5px"
+            border="1px solid var(--node-border)"
+          >
             {(['postgres', 'mysql', 'sqlite'] as Dialect[]).map((d) => (
-              <button key={d} onClick={() => setDialect(d)} style={{
-                padding: '2px 7px', border: 'none', borderRadius: 4, cursor: 'pointer',
-                fontSize: 10, fontWeight: 600,
-                background: dialect === d ? 'var(--vscode-button-background, #0e639c)' : 'transparent',
-                color:      dialect === d ? '#fff' : 'var(--node-text-dim)',
-                transition: 'background 0.1s',
-              }}>{DIALECT_LABELS[d]}</button>
+              <Box
+                key={d}
+                as="button"
+                onClick={() => setDialect(d)}
+                py="2px"
+                px="7px"
+                border="none"
+                borderRadius="4px"
+                cursor="pointer"
+                fontSize="10px"
+                fontWeight={600}
+                bg={dialect === d ? 'var(--vscode-button-background, #0e639c)' : 'transparent'}
+                color={dialect === d ? '#fff' : 'var(--node-text-dim)'}
+                transition="background 0.1s"
+              >{DIALECT_LABELS[d]}</Box>
             ))}
-          </div>
-        </div>
+          </Flex>
+        </Flex>
 
         {/* Summary */}
-        <div style={{ padding: '4px 10px', fontSize: 10, display: 'flex', gap: 6, alignItems: 'center', color: 'var(--node-text-dim)', flexShrink: 0 }}>
+        <Flex py="4px" px="10px" fontSize="10px" gap="6px" alignItems="center" color="var(--node-text-dim)" flexShrink={0}>
           <span>{files.length} files</span>
-          {totalAdds    > 0 && <span style={{ color: 'var(--diff-add-sign)' }}>+{totalAdds}</span>}
-          {totalRemoves > 0 && <span style={{ color: 'var(--diff-rm-sign)' }}>−{totalRemoves}</span>}
+          {totalAdds    > 0 && <Box as="span" color="var(--diff-add-sign)">+{totalAdds}</Box>}
+          {totalRemoves > 0 && <Box as="span" color="var(--diff-rm-sign)">−{totalRemoves}</Box>}
           {!hasReal && (
-            <span style={{
-              marginLeft: 'auto', fontSize: 9, padding: '1px 5px', borderRadius: 3,
-              background: 'rgba(251,191,36,0.15)', color: '#fbbf24',
-              border: '1px solid rgba(251,191,36,0.28)',
-            }}>PREVIEW</span>
+            <Box
+              as="span"
+              ml="auto"
+              fontSize="9px"
+              py="1px"
+              px="5px"
+              borderRadius="3px"
+              bg="rgba(251,191,36,0.15)"
+              color="#fbbf24"
+              border="1px solid rgba(251,191,36,0.28)"
+            >PREVIEW</Box>
           )}
-        </div>
+        </Flex>
 
         {/* File list */}
-        <div style={{ flex: 1, overflowY: 'auto' }}>
+        <Box flex={1} overflowY="auto">
           {files.map((f) => {
             const isSel = f.id === selectedId;
             const badge = kindBadge(f.kind);
             return (
-              <div key={f.id} onClick={() => setSelectedId(f.id)} style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '5px 10px', cursor: 'pointer',
-                background: isSel ? 'rgba(99,102,241,0.15)' : 'transparent',
-                borderLeft: isSel ? '2px solid var(--vscode-focusBorder, #007acc)' : '2px solid transparent',
-              }}>
-                <span style={{ fontSize: 11, color: 'var(--node-text-dim)', flexShrink: 0 }}>
+              <Flex
+                key={f.id}
+                onClick={() => setSelectedId(f.id)}
+                alignItems="center"
+                gap="6px"
+                py="5px"
+                px="10px"
+                cursor="pointer"
+                bg={isSel ? 'rgba(99,102,241,0.15)' : 'transparent'}
+                borderLeft={isSel ? '2px solid var(--vscode-focusBorder, #007acc)' : '2px solid transparent'}
+              >
+                <Box as="span" fontSize="11px" color="var(--node-text-dim)" flexShrink={0}>
                   {f.kind === 'index' ? '⊞' : '≡'}
-                </span>
-                <span style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--diff-sidebar-text)' }}>
-                  {f.name}<span style={{ color: 'var(--node-text-dim)' }}>.sql</span>
-                </span>
-                {f.adds    > 0 && <span style={{ fontSize: 10, color: 'var(--diff-add-sign)', flexShrink: 0, fontWeight: 600 }}>+{f.adds}</span>}
-                {f.removes > 0 && <span style={{ fontSize: 10, color: 'var(--diff-rm-sign)',  flexShrink: 0, fontWeight: 600 }}>−{f.removes}</span>}
-                <span style={{ fontSize: 10, fontWeight: 700, color: badge.color, width: 12, textAlign: 'right', flexShrink: 0 }}>
+                </Box>
+                <Box as="span" flex={1} fontSize="12px" overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap" color="var(--diff-sidebar-text)">
+                  {f.name}<Box as="span" color="var(--node-text-dim)">.sql</Box>
+                </Box>
+                {f.adds    > 0 && <Box as="span" fontSize="10px" color="var(--diff-add-sign)" flexShrink={0} fontWeight={600}>+{f.adds}</Box>}
+                {f.removes > 0 && <Box as="span" fontSize="10px" color="var(--diff-rm-sign)"  flexShrink={0} fontWeight={600}>−{f.removes}</Box>}
+                <Box as="span" fontSize="10px" fontWeight={700} color={badge.color} w="12px" textAlign="right" flexShrink={0}>
                   {badge.label}
-                </span>
-              </div>
+                </Box>
+              </Flex>
             );
           })}
-        </div>
-      </div>
+        </Box>
+      </Flex>
 
       {/* ── Right: diff viewer ── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <Flex flex={1} flexDir="column" overflow="hidden">
 
         {/* File header */}
         {selected && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8, padding: '5px 12px', flexShrink: 0,
-            borderBottom: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))',
-            background: 'var(--diff-header-bg, #2d2d2d)',
-            color: 'var(--diff-header-text, #cccccc)',
-            fontSize: 12,
-          }}>
-            <span style={{ color: 'var(--node-text-dim)' }}>{selected.kind === 'index' ? '⊞' : '≡'}</span>
-            <span style={{ fontWeight: 600 }}>{selected.name}</span>
-            <span style={{ color: 'var(--node-text-dim)' }}>.sql</span>
-            <div style={{ flex: 1 }} />
-            {selected.adds    > 0 && <span style={{ fontSize: 11, color: 'var(--diff-add-sign)', fontWeight: 600 }}>+{selected.adds}</span>}
-            {selected.removes > 0 && <span style={{ fontSize: 11, color: 'var(--diff-rm-sign)',  fontWeight: 600 }}>−{selected.removes}</span>}
-            <button
+          <Flex
+            alignItems="center"
+            gap="8px"
+            py="5px"
+            px="12px"
+            flexShrink={0}
+            borderBottom="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+            bg="var(--diff-header-bg, #2d2d2d)"
+            color="var(--diff-header-text, #cccccc)"
+            fontSize="12px"
+          >
+            <Box as="span" color="var(--node-text-dim)">{selected.kind === 'index' ? '⊞' : '≡'}</Box>
+            <Box as="span" fontWeight={600}>{selected.name}</Box>
+            <Box as="span" color="var(--node-text-dim)">.sql</Box>
+            <Box flex={1} />
+            {selected.adds    > 0 && <Box as="span" fontSize="11px" color="var(--diff-add-sign)" fontWeight={600}>+{selected.adds}</Box>}
+            {selected.removes > 0 && <Box as="span" fontSize="11px" color="var(--diff-rm-sign)"  fontWeight={600}>−{selected.removes}</Box>}
+            <Box
+              as="button"
               onClick={() => navigator.clipboard.writeText(selected.sql).catch(console.error)}
-              style={{
-                background: 'transparent', cursor: 'pointer',
-                border: '1px solid var(--node-border)',
-                borderRadius: 3, color: 'var(--diff-header-text)',
-                padding: '1px 8px', fontSize: 10,
-              }}
-            >복사</button>
-          </div>
+              bg="transparent"
+              cursor="pointer"
+              border="1px solid var(--node-border)"
+              borderRadius="3px"
+              color="var(--diff-header-text)"
+              py="1px"
+              px="8px"
+              fontSize="10px"
+            >복사</Box>
+          </Flex>
         )}
 
         {/* Diff lines */}
-        <div style={{
-          flex: 1, overflow: 'auto',
-          background: 'var(--diff-bg, #1e1e1e)',
-          fontFamily: 'var(--vscode-editor-font-family, Consolas, "Courier New", monospace)',
-          fontSize: 12, lineHeight: '20px',
-        }}>
+        <Box
+          flex={1}
+          overflow="auto"
+          bg="var(--diff-bg, #1e1e1e)"
+          fontFamily="var(--vscode-editor-font-family, Consolas, 'Courier New', monospace)"
+          fontSize="12px"
+          lineHeight="20px"
+        >
           {diffLines.map((line, i) => (
-            <div key={i} style={{
-              display: 'flex', minHeight: 20,
-              background:
+            <Flex
+              key={i}
+              minH="20px"
+              bg={
                 line.type === 'add'    ? 'var(--diff-add-bg)'  :
-                line.type === 'remove' ? 'var(--diff-rm-bg)'   : 'transparent',
-              borderLeft:
+                line.type === 'remove' ? 'var(--diff-rm-bg)'   : 'transparent'
+              }
+              borderLeft={
                 line.type === 'add'    ? '3px solid var(--diff-add-border)'  :
-                line.type === 'remove' ? '3px solid var(--diff-rm-border)'   : '3px solid transparent',
-            }}>
+                line.type === 'remove' ? '3px solid var(--diff-rm-border)'   : '3px solid transparent'
+              }
+            >
               {/* Old line number */}
-              <span style={{
-                minWidth: 40, paddingRight: 6, textAlign: 'right', flexShrink: 0,
-                fontSize: 11, lineHeight: '20px', userSelect: 'none',
-                color: 'var(--diff-linenum)',
-              }}>{line.oldNum ?? ''}</span>
+              <Box
+                as="span"
+                minW="40px"
+                pr="6px"
+                textAlign="right"
+                flexShrink={0}
+                fontSize="11px"
+                lineHeight="20px"
+                userSelect="none"
+                color="var(--diff-linenum)"
+              >{line.oldNum ?? ''}</Box>
               {/* New line number */}
-              <span style={{
-                minWidth: 40, paddingRight: 8, textAlign: 'right', flexShrink: 0,
-                fontSize: 11, lineHeight: '20px', userSelect: 'none',
-                color: 'var(--diff-linenum)',
-                borderRight: '1px solid var(--vscode-panel-border, rgba(128,128,128,0.2))',
-                marginRight: 4,
-              }}>{line.newNum ?? ''}</span>
+              <Box
+                as="span"
+                minW="40px"
+                pr="8px"
+                textAlign="right"
+                flexShrink={0}
+                fontSize="11px"
+                lineHeight="20px"
+                userSelect="none"
+                color="var(--diff-linenum)"
+                borderRight="1px solid var(--vscode-panel-border, rgba(128,128,128,0.2))"
+                mr="4px"
+              >{line.newNum ?? ''}</Box>
               {/* +/- sign */}
-              <span style={{
-                width: 18, flexShrink: 0, textAlign: 'center', lineHeight: '20px',
-                fontSize: 12, fontWeight: 700, userSelect: 'none',
-                color:
+              <Box
+                as="span"
+                w="18px"
+                flexShrink={0}
+                textAlign="center"
+                lineHeight="20px"
+                fontSize="12px"
+                fontWeight={700}
+                userSelect="none"
+                color={
                   line.type === 'add'    ? 'var(--diff-add-sign)' :
-                  line.type === 'remove' ? 'var(--diff-rm-sign)'  : 'transparent',
-              }}>
+                  line.type === 'remove' ? 'var(--diff-rm-sign)'  : 'transparent'
+                }
+              >
                 {line.type === 'add' ? '+' : line.type === 'remove' ? '−' : ' '}
-              </span>
+              </Box>
               {/* Code text */}
-              <span style={{
-                flex: 1, paddingRight: 16, lineHeight: '20px', whiteSpace: 'pre',
-                color:
+              <Box
+                as="span"
+                flex={1}
+                pr="16px"
+                lineHeight="20px"
+                whiteSpace="pre"
+                color={
                   line.type === 'add'    ? 'var(--diff-add-text)' :
                   line.type === 'remove' ? 'var(--diff-rm-text)'  :
-                  'var(--diff-text)',
-              }}>{line.text}</span>
-            </div>
+                  'var(--diff-text)'
+                }
+              >{line.text}</Box>
+            </Flex>
           ))}
-        </div>
-      </div>
-    </div>
+        </Box>
+      </Flex>
+    </Flex>
   );
 }
