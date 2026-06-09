@@ -1,6 +1,6 @@
 id = "vespertide"
 name = "Vespertide"
-version = "0.1.0"
+version = "0.2.1"
 schema_version = 1
 authors = ["DevFive <hello@devfive.kr>"]
 description = "Language support for Vespertide schema files — diagnostics, hover, go-to-definition, completion, and drift detection"
