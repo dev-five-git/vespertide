@@ -2807,9 +2807,9 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
-version = "1.23.2"
+version = "1.23.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d258b83ceec21034727ecee8c382cfa6c3e133699b0742c64571814fb420c9f7"
+checksum = "144d6b123cef80b301b8f72a9e2ca4370ddec21950d0a103dd22c437006d2db7"
 dependencies = [
  "getrandom 0.4.2",
  "js-sys",
@@ -2836,7 +2836,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vespertide"
-version = "0.1.61"
+version = "0.2.1"
 dependencies = [
  "sea-orm",
  "tokio",
@@ -2846,7 +2846,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-cli"
-version = "0.1.61"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2878,7 +2878,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-config"
-version = "0.1.61"
+version = "0.2.1"
 dependencies = [
  "clap",
  "schemars",
@@ -2888,7 +2888,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-core"
-version = "0.1.61"
+version = "0.2.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -2903,7 +2903,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-exporter"
-version = "0.1.61"
+version = "0.2.1"
 dependencies = [
  "criterion",
  "insta",
@@ -2932,7 +2932,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-loader"
-version = "0.1.61"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "rayon",
@@ -2948,7 +2948,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-lsp"
-version = "0.1.61"
+version = "0.2.1"
 dependencies = [
  "dashmap",
  "insta",
@@ -2977,7 +2977,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-macro"
-version = "0.1.61"
+version = "0.2.1"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -2996,7 +2996,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-naming"
-version = "0.1.61"
+version = "0.2.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -3004,7 +3004,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-planner"
-version = "0.1.61"
+version = "0.2.1"
 dependencies = [
  "criterion",
  "insta",
@@ -3019,7 +3019,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-query"
-version = "0.1.61"
+version = "0.2.1"
 dependencies = [
  "criterion",
  "insta",
