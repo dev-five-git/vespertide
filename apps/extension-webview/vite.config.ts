@@ -1,11 +1,12 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { DevupUI } from '@devup-ui/vite-plugin';
 import { resolve } from 'path';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), DevupUI()],
   build: {
-    outDir: resolve(__dirname, '../dist/webview'),
+    outDir: resolve(__dirname, '../vscode/dist/webview'),
     emptyOutDir: true,
     rollupOptions: {
       input: {

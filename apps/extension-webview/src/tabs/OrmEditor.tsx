@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Box, Flex } from '@devup-ui/react';
 import { postMessage } from '../vscode';
 import type { OrmType } from '../vscode';
 import type { AppState } from '../App';
@@ -15,27 +16,27 @@ type EdgeDef = {
   to:            string;
   relationField: string;
   fkField:       string;
-  refField:      string;   // referenced field in target model (e.g. "id")
-  toFieldIdx:    number;   // index of refField in target model's fields array
+  refField:      string;
+  toFieldIdx:    number;
 };
 
 type DraggingEndpoint = {
   edge: EdgeDef;
-  x: number;  // canvas-space (before pan/scale)
+  x: number;
   y: number;
 };
 
 type RelType = 'many-to-one' | 'one-to-many';
 
 type AddRelForm = {
-  target:      string;    // target model name
+  target:      string;
   relType:     RelType;
-  relField:    string;    // relation field name added to source model
-  fkField:     string;    // FK scalar field name (many-to-one only)
-  fkType:      string;    // FK scalar type  e.g. "Int"
-  refField:    string;    // referenced field in target  e.g. "id"
-  backRef:     string;    // back-reference field name added to target
-  addBackRef:  boolean;   // whether to add back-reference
+  relField:    string;
+  fkField:     string;
+  fkType:      string;
+  refField:    string;
+  backRef:     string;
+  addBackRef:  boolean;
 };
 
 // ── Prisma parser ─────────────────────────────────────────────────────────────
@@ -76,7 +77,7 @@ function parseSource(src: string, orm: OrmType): Model[] {
   return orm === 'prisma' ? parsePrisma(src) : [];
 }
 
-// ── Prisma source manipulation ────────────────────────────────────────────────
+// ── Prisma source manipulation ─────────────────────────────────────────────────
 
 function removeFieldsFromModel(src: string, modelName: string, fieldNames: string[]): string {
   const fieldSet = new Set(fieldNames);
@@ -233,7 +234,6 @@ function nodeHeight(m: Model) { return HEADER_H + m.fields.length * FIELD_H + 6;
 
 // ── Endpoint reroute helpers ──────────────────────────────────────────────────
 
-/** Returns which model+field is at canvas-space point (x, y), null if none. */
 function getFieldAtPoint(
   models: Model[],
   positions: Record<string, Pos>,
@@ -254,13 +254,12 @@ function getFieldAtPoint(
   return null;
 }
 
-// ── Snap helpers ─────────────────────────────────────────────────────────────
+// ── Snap helpers ──────────────────────────────────────────────────────────────
 
 const SNAP_THRESHOLD = 28;
 
 type SnapPoint = { model: string; field: string; fieldIdx: number; x: number; y: number };
 
-/** All connection points (left + right edge of every field row). */
 function getSnapPoints(models: Model[], positions: Record<string, Pos>): SnapPoint[] {
   const pts: SnapPoint[] = [];
   for (const m of models) {
@@ -275,7 +274,6 @@ function getSnapPoints(models: Model[], positions: Record<string, Pos>): SnapPoi
   return pts;
 }
 
-/** Nearest snap point within SNAP_THRESHOLD, or null. */
 function findNearestSnap(pts: SnapPoint[], x: number, y: number): SnapPoint | null {
   let best: SnapPoint | null = null;
   let bestD = SNAP_THRESHOLD;
@@ -286,7 +284,6 @@ function findNearestSnap(pts: SnapPoint[], x: number, y: number): SnapPoint | nu
   return best;
 }
 
-/** Update @relation(references: [...]) and the type token in the relation field line. */
 function reroutePrismaRelation(
   src: string,
   fromModel: string,
@@ -308,7 +305,6 @@ function reroutePrismaRelation(
     const parts = line.trim().split(/\s+/);
     if (parts[0] !== relationField) return line;
 
-    // Update type (e.g. User → Category)
     const oldType = (parts[1] ?? '').replace(/[?[\]]/g, '');
     let updated = line;
     if (oldType !== newToModel) {
@@ -317,7 +313,6 @@ function reroutePrismaRelation(
         newToModel,
       );
     }
-    // Update references: [...]
     if (updated.includes('@relation(')) {
       updated = updated.replace(
         /references:\s*\[[^\]]*\]/,
@@ -342,7 +337,6 @@ function layoutLeftRight(models: Model[], edges: EdgeDef[]): Record<string, Pos>
     inDeg.set(e.to, (inDeg.get(e.to) ?? 0) + 1);
   }
 
-  // Longest-path column assignment
   const col   = new Map<string, number>();
   const queue: string[] = [];
   for (const m of models) {
@@ -363,7 +357,6 @@ function layoutLeftRight(models: Model[], edges: EdgeDef[]): Record<string, Pos>
   for (const c of col.values()) maxC = Math.max(maxC, c);
   for (const m of models) if (!col.has(m.name)) col.set(m.name, maxC + 1);
 
-  // Group & position
   const groups = new Map<number, string[]>();
   for (const [name, c] of col) {
     if (!groups.has(c)) groups.set(c, []);
@@ -429,7 +422,6 @@ function layoutCompact(models: Model[], _edges: EdgeDef[]): Record<string, Pos> 
   for (let i = 0; i < models.length; i++) {
     const c = i % cols;
     const r = Math.floor(i / cols);
-    // Row Y uses tallest node in row as row height
     const rowStart = r * cols;
     const rowH = Math.max(...models.slice(rowStart, rowStart + cols).map(nodeHeight));
     const y = OFF + Array.from({ length: r }, (_, ri) => {
@@ -466,28 +458,26 @@ const IconHand = () => (
   </svg>
 );
 
+// ── Nav button props helper ───────────────────────────────────────────────────
 
-// ── Button styles ─────────────────────────────────────────────────────────────
-
-const btnBase: React.CSSProperties = {
-  padding: '2px 8px', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 3,
-  background: 'transparent', color: 'var(--vscode-foreground)', fontSize: 11, cursor: 'pointer',
-};
-
-const navBtn = (active = false): React.CSSProperties => ({
-  display: 'flex', alignItems: 'center', justifyContent: 'center',
-  width: 28, height: 26, border: 'none', borderRadius: 5, cursor: 'pointer',
-  background: active ? 'rgba(99,102,241,0.18)' : 'transparent',
+const navBtnProps = (active = false) => ({
+  display: 'flex' as const,
+  alignItems: 'center' as const,
+  justifyContent: 'center' as const,
+  w: '28px',
+  h: '26px',
+  border: 'none' as const,
+  borderRadius: '5px',
+  cursor: 'pointer' as const,
+  bg: active ? 'rgba(99,102,241,0.18)' : 'transparent',
   color: active ? '#a5b4fc' : 'var(--vscode-foreground)',
   opacity: active ? 1 : 0.7,
   transition: 'background 0.12s, color 0.12s, opacity 0.12s',
 });
 
-const navDivider: React.CSSProperties = {
-  width: 1, height: 16,
-  background: 'var(--vscode-panel-border, rgba(255,255,255,0.12))',
-  margin: '0 3px', flexShrink: 0,
-};
+const NavDivider = () => (
+  <Box w="1px" h="16px" bg="var(--vscode-panel-border, rgba(255,255,255,0.12))" mx="3px" flexShrink={0} />
+);
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -535,7 +525,7 @@ export default function OrmEditor({ state, setState }: Props) {
   useEffect(() => { selectedNodesRef.current = selectedNodes; }, [selectedNodes]);
   const canvasRef   = useRef<HTMLDivElement>(null);
 
-  // ── Parse source ─────────────────────────────────────────────────────────────
+  // ── Parse source ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -602,7 +592,6 @@ export default function OrmEditor({ state, setState }: Props) {
       setPan({ x: ppx + e.clientX - mx, y: ppy + e.clientY - my });
     }
 
-    // Rubber-band selection rect
     if (rubberBandRef.current) {
       const rect = canvasRef.current?.getBoundingClientRect();
       if (rect) {
@@ -645,7 +634,6 @@ export default function OrmEditor({ state, setState }: Props) {
       }
     }
 
-    // Finalize rubber-band selection
     if (rubberBandRef.current && rbDidDragRef.current) {
       const { sx, sy } = rubberBandRef.current;
       const rect = canvasRef.current?.getBoundingClientRect();
@@ -674,8 +662,6 @@ export default function OrmEditor({ state, setState }: Props) {
       }
     }
     rubberBandRef.current = null;
-    // rbDidDragRef stays true until onClick resets it, so the canvas click
-    // handler doesn't immediately clear the selection we just made
     setRubberBand(null);
 
     pendingRef.current  = null;
@@ -699,7 +685,6 @@ export default function OrmEditor({ state, setState }: Props) {
     const sc  = scaleRef.current;
     const { x: px, y: py } = panRef.current;
 
-    // If this node is part of a multi-selection, drag all selected nodes together
     const inSel = selectedNodesRef.current.has(id);
     const ids = (!e.shiftKey && inSel && selectedNodesRef.current.size > 1)
       ? [...selectedNodesRef.current]
@@ -771,8 +756,6 @@ export default function OrmEditor({ state, setState }: Props) {
     return () => el.removeEventListener('wheel', handleWheel);
   }, [handleWheel]);
 
-  // ── Edge click ────────────────────────────────────────────────────────────────
-
   const handleEdgeClick = (e: React.MouseEvent, edge: EdgeDef) => {
     if (lockMode) return;
     e.stopPropagation();
@@ -796,8 +779,6 @@ export default function OrmEditor({ state, setState }: Props) {
     draggingEpRef.current = { edge, x: cx, y: cy };
     setDraggingEndpoint({ edge, x: cx, y: cy });
   };
-
-  // ── Relation editing ──────────────────────────────────────────────────────────
 
   const handleDeleteRelation = () => {
     if (!selectedEdge || state.ormType !== 'prisma') return;
@@ -848,52 +829,65 @@ export default function OrmEditor({ state, setState }: Props) {
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <Flex flexDir="column" h="100%">
 
       {/* ── Toolbar ── */}
-      <div style={{
-        display: 'flex', alignItems: 'center', padding: '5px 10px', flexShrink: 0,
-        background: 'var(--vscode-editorWidget-background, #252526)',
-        borderBottom: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))',
-      }}>
-        <div style={{ flex: 1 }} />
-        <button
-          style={{
-            ...btnBase,
-            borderColor: showCode ? 'var(--vscode-focusBorder,#007acc)' : 'rgba(255,255,255,0.15)',
-            background:  showCode ? 'rgba(0,122,204,0.15)' : 'transparent',
-          }}
+      <Flex
+        alignItems="center"
+        py="5px"
+        px="10px"
+        flexShrink={0}
+        bg="var(--vscode-editorWidget-background, #252526)"
+        borderBottom="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+      >
+        <Box flex={1} />
+        <Box
+          as="button"
+          py="2px"
+          px="8px"
+          border={showCode ? '1px solid var(--vscode-focusBorder,#007acc)' : '1px solid rgba(255,255,255,0.15)'}
+          borderRadius="3px"
+          bg={showCode ? 'rgba(0,122,204,0.15)' : 'transparent'}
+          color="var(--vscode-foreground)"
+          fontSize="11px"
+          cursor="pointer"
           onClick={() => setShowCode((v) => !v)}
-        >{'</>'} Code</button>
-      </div>
+        >{'</>'} Code</Box>
+      </Flex>
 
       {/* ── Canvas + Detail panel ── */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      <Flex flex={1} overflow="hidden">
 
         {/* Canvas */}
-        <div
+        <Box
           ref={canvasRef}
-          onMouseDown={(e) => lockMode ? startPan(e) : startRubberBand(e)}
+          onMouseDown={(e: React.MouseEvent) => lockMode ? startPan(e) : startRubberBand(e)}
           onClick={() => {
             if (rbDidDragRef.current) { rbDidDragRef.current = false; return; }
             setSelected(null); setSelectedNodes(new Set());
             setSelectedEdge(null); setAddRelForm(null); setShowLayoutMenu(false);
           }}
-          style={{
-            flex: 1, position: 'relative', overflow: 'hidden',
-            cursor: lockMode ? 'grab' : 'default',
-            background: 'var(--vscode-editor-background, #1e1e1e)',
-          }}
+          flex={1}
+          position="relative"
+          overflow="hidden"
+          cursor={lockMode ? 'grab' : 'default'}
+          bg="var(--vscode-editor-background, #1e1e1e)"
         >
           {/* Dot grid */}
-          <div style={{
-            position: 'absolute', inset: 0, pointerEvents: 'none',
-            backgroundImage: 'radial-gradient(circle, var(--canvas-dot) 1px, transparent 1px)',
-            backgroundSize: `${24 * scale}px ${24 * scale}px`,
-            backgroundPosition: `${pan.x % (24 * scale)}px ${pan.y % (24 * scale)}px`,
-          }} />
+          <Box
+            position="absolute"
+            inset={0}
+            pointerEvents="none"
+            bgImage="radial-gradient(circle, var(--canvas-dot) 1px, transparent 1px)"
+            styleVars={{
+              '--bg-sz': `${24 * scale}px ${24 * scale}px`,
+              '--bg-pos': `${pan.x % (24 * scale)}px ${pan.y % (24 * scale)}px`,
+            }}
+            backgroundSize="var(--bg-sz)"
+            backgroundPosition="var(--bg-pos)"
+          />
 
-          {/* ── SVG for edges — fills full canvas, pan/scale via <g> ── */}
+          {/* SVG for edges */}
           <svg
             style={{
               position: 'absolute', inset: 0,
@@ -910,7 +904,6 @@ export default function OrmEditor({ state, setState }: Props) {
                 <path d="M0,0.5 L0,5.5 L6.5,3 z" fill="#818cf8" />
               </marker>
             </defs>
-            {/* Rubber-band selection rect — screen space, outside pan/scale group */}
             {rubberBand && (
               <rect
                 x={Math.min(rubberBand.x1, rubberBand.x2)}
@@ -926,7 +919,6 @@ export default function OrmEditor({ state, setState }: Props) {
             )}
 
             <g transform={`translate(${pan.x},${pan.y}) scale(${scale})`}>
-              {/* Field row highlight — prefers nearest snap, falls back to cursor hit */}
               {draggingEndpoint && (() => {
                 const target = nearestSnap
                   ?? getFieldAtPoint(models, positions, draggingEndpoint.x, draggingEndpoint.y);
@@ -972,7 +964,6 @@ export default function OrmEditor({ state, setState }: Props) {
 
                 return (
                   <g key={i}>
-                    {/* Fat transparent hit area */}
                     <path
                       d={d}
                       fill="none"
@@ -981,7 +972,6 @@ export default function OrmEditor({ state, setState }: Props) {
                       style={{ pointerEvents: lockMode ? 'none' : 'stroke', cursor: lockMode ? 'grab' : 'pointer' }}
                       onClick={(e) => handleEdgeClick(e, edge)}
                     />
-                    {/* Visible path (dashed when its endpoint is being dragged) */}
                     <path
                       d={d}
                       fill="none"
@@ -992,7 +982,6 @@ export default function OrmEditor({ state, setState }: Props) {
                       markerEnd={isDraggingThis ? undefined : (sel ? 'url(#vt-arrow-sel)' : 'url(#vt-arrow)')}
                       style={{ pointerEvents: 'none' }}
                     />
-                    {/* Ghost line — snaps to nearest snap point when within threshold */}
                     {isDraggingThis && (
                       <line
                         x1={x1} y1={y1}
@@ -1004,7 +993,6 @@ export default function OrmEditor({ state, setState }: Props) {
                         style={{ pointerEvents: 'none' }}
                       />
                     )}
-                    {/* Cardinality badge "N" at source */}
                     {!isDraggingThis && (
                       <g style={{ pointerEvents: 'none' }}>
                         <circle
@@ -1022,7 +1010,6 @@ export default function OrmEditor({ state, setState }: Props) {
                         >N</text>
                       </g>
                     )}
-                    {/* Cardinality badge "1" at target */}
                     {!isDraggingThis && (
                       <g style={{ pointerEvents: 'none' }}>
                         <circle
@@ -1040,7 +1027,6 @@ export default function OrmEditor({ state, setState }: Props) {
                         >1</text>
                       </g>
                     )}
-                    {/* Endpoint drag handle — visible when selected, not currently dragging */}
                     {sel && !draggingEndpoint && (
                       <circle
                         cx={x2} cy={y2} r={5}
@@ -1055,45 +1041,56 @@ export default function OrmEditor({ state, setState }: Props) {
             </g>
           </svg>
 
-          {/* ── Node divs (same z-layer, after SVG) ── */}
-          <div style={{
-            position: 'absolute', transformOrigin: '0 0',
-            transform: `translate(${pan.x}px,${pan.y}px) scale(${scale})`,
-          }}>
+          {/* Node divs */}
+          <Box
+            position="absolute"
+            transformOrigin="0 0"
+            transform={`translate(${pan.x}px,${pan.y}px) scale(${scale})`}
+          >
             {models.map((model) => {
               const pos   = positions[model.name] ?? { x: 0, y: 0 };
               const color = modelColor(model.name);
               const isSel = selectedNodes.has(model.name) || selected?.name === model.name;
               const hasSelEdge = selectedEdge?.from === model.name || selectedEdge?.to === model.name;
               return (
-                <div key={model.name}
-                  onMouseDown={(e) => startNodeDrag(e, model.name)}
-                  onClick={(e) => handleNodeClick(e, model)}
-                  style={{
-                    position: 'absolute', left: pos.x, top: pos.y,
-                    width: NODE_W, height: nodeHeight(model),
-                    borderRadius: 8, overflow: 'hidden', userSelect: 'none',
-                    cursor: lockMode ? 'grab' : 'pointer',
-                    border: `1px solid ${isSel ? color : hasSelEdge ? color + '55' : 'var(--node-border)'}`,
-                    boxShadow: isSel
-                      ? `0 0 0 2.5px ${color}38, 0 8px 28px rgba(0,0,0,0.32)`
-                      : hasSelEdge ? `0 0 0 1.5px ${color}22, var(--node-shadow)` : 'var(--node-shadow)',
-                    background: 'var(--node-bg)',
-                    transition: 'border-color 0.12s, box-shadow 0.12s',
+                <Box
+                  key={model.name}
+                  onMouseDown={(e: React.MouseEvent) => startNodeDrag(e, model.name)}
+                  onClick={(e: React.MouseEvent) => handleNodeClick(e, model)}
+                  position="absolute"
+                  styleVars={{
+                    '--nx': `${pos.x}px`,
+                    '--ny': `${pos.y}px`,
+                    '--nh': `${nodeHeight(model)}px`,
                   }}
+                  left="var(--nx)"
+                  top="var(--ny)"
+                  w={`${NODE_W}px`}
+                  h="var(--nh)"
+                  borderRadius="8px"
+                  overflow="hidden"
+                  userSelect="none"
+                  cursor={lockMode ? 'grab' : 'pointer'}
+                  border={`1px solid ${isSel ? color : hasSelEdge ? color + '55' : 'var(--node-border)'}`}
+                  boxShadow={isSel
+                    ? `0 0 0 2.5px ${color}38, 0 8px 28px rgba(0,0,0,0.32)`
+                    : hasSelEdge ? `0 0 0 1.5px ${color}22, var(--node-shadow)` : 'var(--node-shadow)'}
+                  bg="var(--node-bg)"
+                  transition="border-color 0.12s, box-shadow 0.12s"
                 >
-                  {/* ── Accent bar ── */}
-                  <div style={{ height: 3, background: color, flexShrink: 0 }} />
+                  {/* Accent bar */}
+                  <Box h="3px" bg={color} flexShrink={0} />
 
-                  {/* ── Header ── */}
-                  <div style={{
-                    height: HEADER_H - 3,
-                    display: 'flex', alignItems: 'center',
-                    padding: '0 10px', gap: 7,
-                    background: `${color}10`,
-                    borderBottom: '1px solid var(--node-field-divider)',
-                  }}>
-                    {/* Table icon */}
+                  {/* Header */}
+                  <Flex
+                    h={`${HEADER_H - 3}px`}
+                    alignItems="center"
+                    py={0}
+                    px="10px"
+                    gap="7px"
+                    bg={`${color}10`}
+                    borderBottom="1px solid var(--node-field-divider)"
+                  >
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="none"
                       style={{ flexShrink: 0, color, opacity: 0.8 }}>
                       <rect x="1.5" y="1.5" width="13" height="13" rx="2"
@@ -1102,28 +1099,35 @@ export default function OrmEditor({ state, setState }: Props) {
                       <line x1="1.5" y1="10.5" x2="14.5" y2="10.5" stroke="currentColor" strokeWidth="1"/>
                       <line x1="6"   y1="6"    x2="6"    y2="14.5" stroke="currentColor" strokeWidth="1"/>
                     </svg>
-                    <span style={{
-                      fontWeight: 700, fontSize: 12, flex: 1,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      color: 'var(--node-text)',
-                    }}>
+                    <Box
+                      as="span"
+                      fontWeight={700}
+                      fontSize="12px"
+                      flex={1}
+                      overflow="hidden"
+                      textOverflow="ellipsis"
+                      whiteSpace="nowrap"
+                      color="var(--node-text)"
+                    >
                       {model.name}
-                    </span>
-                    <span style={{ fontSize: 9, flexShrink: 0, color: 'var(--node-text-dim)' }}>
+                    </Box>
+                    <Box as="span" fontSize="9px" flexShrink={0} color="var(--node-text-dim)">
                       {model.fields.length}
-                    </span>
-                  </div>
+                    </Box>
+                  </Flex>
 
-                  {/* ── Fields ── */}
+                  {/* Fields */}
                   {model.fields.map((f, fi) => (
-                    <div key={f.name} style={{
-                      height: FIELD_H,
-                      display: 'flex', alignItems: 'center',
-                      padding: '0 10px', gap: 6,
-                      borderBottom: fi < model.fields.length - 1
-                        ? '1px solid var(--node-field-divider)' : 'none',
-                    }}>
-                      {/* Left icon: key for PK, filled dot for FK/relation, hollow dot for scalar */}
+                    <Flex
+                      key={f.name}
+                      h={`${FIELD_H}px`}
+                      alignItems="center"
+                      py={0}
+                      px="10px"
+                      gap="6px"
+                      borderBottom={fi < model.fields.length - 1
+                        ? '1px solid var(--node-field-divider)' : 'none'}
+                    >
                       {f.isPrimary ? (
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
                           style={{ flexShrink: 0, color: '#f59e0b' }}>
@@ -1132,53 +1136,59 @@ export default function OrmEditor({ state, setState }: Props) {
                             stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
                         </svg>
                       ) : (
-                        <div style={{
-                          width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-                          background: f.isRelation ? color : 'transparent',
-                          border: `1.5px solid ${f.isRelation ? 'transparent' : 'rgba(150,155,185,0.28)'}`,
-                        }} />
+                        <Box
+                          w="7px"
+                          h="7px"
+                          borderRadius="50%"
+                          flexShrink={0}
+                          bg={f.isRelation ? color : 'transparent'}
+                          border={`1.5px solid ${f.isRelation ? 'transparent' : 'rgba(150,155,185,0.28)'}`}
+                        />
                       )}
 
-                      {/* Field name */}
-                      <span style={{
-                        fontSize: 11, flex: 1,
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        fontWeight: f.isPrimary ? 600 : 400,
-                        color: 'var(--node-text)',
-                      }}>
+                      <Box
+                        as="span"
+                        fontSize="11px"
+                        flex={1}
+                        overflow="hidden"
+                        textOverflow="ellipsis"
+                        whiteSpace="nowrap"
+                        fontWeight={f.isPrimary ? 600 : 400}
+                        color="var(--node-text)"
+                      >
                         {f.name}
-                      </span>
+                      </Box>
 
-                      {/* Type label */}
-                      <span style={{
-                        fontSize: 10, flexShrink: 0,
-                        fontFamily: 'var(--vscode-editor-font-family, monospace)',
-                        color: f.isPrimary ? '#f59e0b'
-                             : f.isRelation ? color
-                             : 'var(--node-text-dim)',
-                      }}>
+                      <Box
+                        as="span"
+                        fontSize="10px"
+                        flexShrink={0}
+                        fontFamily="var(--vscode-editor-font-family, monospace)"
+                        color={f.isPrimary ? '#f59e0b' : f.isRelation ? color : 'var(--node-text-dim)'}
+                      >
                         {f.type}
-                      </span>
-                    </div>
+                      </Box>
+                    </Flex>
                   ))}
-                </div>
+                </Box>
               );
             })}
-          </div>
+          </Box>
 
-          {/* ── Snap dot overlay — rendered above node divs ── */}
+          {/* Snap dot overlay */}
           {draggingEndpoint && snapPts && (
-            <div style={{
-              position: 'absolute', top: 0, left: 0,
-              transformOrigin: '0 0',
-              transform: `translate(${pan.x}px,${pan.y}px) scale(${scale})`,
-              pointerEvents: 'none',
-            }}>
+            <Box
+              position="absolute"
+              top={0}
+              left={0}
+              transformOrigin="0 0"
+              transform={`translate(${pan.x}px,${pan.y}px) scale(${scale})`}
+              pointerEvents="none"
+            >
               {snapPts
                 .filter((pt) => {
                   const mpos = positions[pt.model];
                   if (!mpos) return false;
-                  // Show only the side of each model that faces the cursor
                   const isLeft = pt.x === mpos.x;
                   const cursorLeft = draggingEndpoint.x < mpos.x + NODE_W / 2;
                   return isLeft === cursorLeft;
@@ -1188,240 +1198,298 @@ export default function OrmEditor({ state, setState }: Props) {
                     pt.x === nearestSnap.x && pt.y === nearestSnap.y;
                   const r = isNearest ? 7 : 4;
                   return (
-                    <div key={i} style={{
-                      position: 'absolute',
-                      left: pt.x - r, top: pt.y - r,
-                      width: r * 2, height: r * 2,
-                      borderRadius: '50%',
-                      background: isNearest ? '#818cf8' : 'var(--node-bg)',
-                      border: `${isNearest ? 2 : 1.5}px solid ${isNearest ? '#818cf8' : 'rgba(129,140,248,0.65)'}`,
-                      boxShadow: isNearest ? '0 0 0 4px rgba(129,140,248,0.22)' : 'none',
-                      transition: 'all 0.08s ease',
-                    }} />
+                    <Box
+                      key={i}
+                      position="absolute"
+                      styleVars={{
+                        '--sx': `${pt.x - r}px`,
+                        '--sy': `${pt.y - r}px`,
+                        '--ss': `${r * 2}px`,
+                      }}
+                      left="var(--sx)"
+                      top="var(--sy)"
+                      w="var(--ss)"
+                      h="var(--ss)"
+                      borderRadius="50%"
+                      bg={isNearest ? '#818cf8' : 'var(--node-bg)'}
+                      border={`${isNearest ? 2 : 1.5}px solid ${isNearest ? '#818cf8' : 'rgba(129,140,248,0.65)'}`}
+                      boxShadow={isNearest ? '0 0 0 4px rgba(129,140,248,0.22)' : 'none'}
+                      transition="all 0.08s ease"
+                    />
                   );
                 })}
-            </div>
+            </Box>
           )}
 
           {models.length === 0 && (
-            <div style={{
-              position: 'absolute', inset: 0, display: 'flex',
-              alignItems: 'center', justifyContent: 'center',
-              opacity: 0.3, pointerEvents: 'none',
-            }}>
-              <span style={{ fontSize: 12 }}>스키마를 파싱하는 중...</span>
-            </div>
+            <Flex
+              position="absolute"
+              inset={0}
+              alignItems="center"
+              justifyContent="center"
+              opacity={0.3}
+              pointerEvents="none"
+            >
+              <Box as="span" fontSize="12px">스키마를 파싱하는 중...</Box>
+            </Flex>
           )}
 
-          {/* ── Bottom nav bar ── */}
-          <div style={{
-            position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)',
-            display: 'flex', alignItems: 'center', gap: 2,
-            padding: '4px 8px',
-            background: 'var(--navbar-bg)',
-            border: '1px solid var(--navbar-border)',
-            borderRadius: 9,
-            boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
-            backdropFilter: 'blur(8px)',
-            userSelect: 'none',
-            zIndex: 10,
-          }}>
-            <button style={navBtn()} title="축소 (10%)"
-              onClick={() => setScale((s) => Math.max(0.25, +(s - 0.1).toFixed(2)))}>
+          {/* Bottom nav bar */}
+          <Flex
+            position="absolute"
+            bottom="14px"
+            left="50%"
+            transform="translateX(-50%)"
+            alignItems="center"
+            gap="2px"
+            py="4px"
+            px="8px"
+            bg="var(--navbar-bg)"
+            border="1px solid var(--navbar-border)"
+            borderRadius="9px"
+            boxShadow="0 4px 16px rgba(0,0,0,0.25)"
+            backdropFilter="blur(8px)"
+            userSelect="none"
+            zIndex={10}
+          >
+            <Box
+              as="button"
+              {...navBtnProps()}
+              title="축소 (10%)"
+              onClick={() => setScale((s) => Math.max(0.25, +(s - 0.1).toFixed(2)))}
+            >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
                 <line x1="5" y1="12" x2="19" y2="12"/>
               </svg>
-            </button>
+            </Box>
 
-            <button
-              style={{ ...navBtn(), width: 44, fontSize: 11, fontVariantNumeric: 'tabular-nums' }}
+            <Box
+              as="button"
+              {...navBtnProps()}
+              w="44px"
+              fontSize="11px"
+              fontVariantNumeric="tabular-nums"
               title="100%로 초기화"
               onClick={() => { setScale(1); setPan({ x: 32, y: 32 }); }}
             >
               {Math.round(scale * 100)}%
-            </button>
+            </Box>
 
-            <button style={navBtn()} title="확대 (10%)"
-              onClick={() => setScale((s) => Math.min(2, +(s + 0.1).toFixed(2)))}>
+            <Box
+              as="button"
+              {...navBtnProps()}
+              title="확대 (10%)"
+              onClick={() => setScale((s) => Math.min(2, +(s + 0.1).toFixed(2)))}
+            >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
                 <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
               </svg>
-            </button>
+            </Box>
 
-            <div style={navDivider} />
+            <NavDivider />
 
-            <button style={navBtn()} title="화면에 맞추기"
-              onClick={() => { setScale(1); setPan({ x: 32, y: 32 }); }}>
+            <Box
+              as="button"
+              {...navBtnProps()}
+              title="화면에 맞추기"
+              onClick={() => { setScale(1); setPan({ x: 32, y: 32 }); }}
+            >
               <IconFit />
-            </button>
+            </Box>
 
-            <div style={navDivider} />
+            <NavDivider />
 
             {/* Layout button + popover */}
-            <div style={{ position: 'relative' }}>
-              <button
-                style={navBtn(showLayoutMenu)}
+            <Box position="relative">
+              <Box
+                as="button"
+                {...navBtnProps(showLayoutMenu)}
                 title="레이아웃 정렬"
-                onClick={(e) => { e.stopPropagation(); setShowLayoutMenu((v) => !v); }}
+                onClick={(e: React.MouseEvent) => { e.stopPropagation(); setShowLayoutMenu((v) => !v); }}
               >
                 <IconLayout />
-              </button>
+              </Box>
               {showLayoutMenu && (
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    position: 'absolute', bottom: 'calc(100% + 8px)', left: '50%',
-                    transform: 'translateX(-50%)',
-                    background: 'var(--navbar-bg)',
-                    border: '1px solid var(--navbar-border)',
-                    borderRadius: 7,
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
-                    overflow: 'hidden',
-                    minWidth: 110,
-                    zIndex: 20,
-                  }}
+                <Box
+                  onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                  position="absolute"
+                  bottom="calc(100% + 8px)"
+                  left="50%"
+                  transform="translateX(-50%)"
+                  bg="var(--navbar-bg)"
+                  border="1px solid var(--navbar-border)"
+                  borderRadius="7px"
+                  boxShadow="0 4px 16px rgba(0,0,0,0.3)"
+                  overflow="hidden"
+                  minW="110px"
+                  zIndex={20}
                 >
                   {([
                     { type: 'lr',        label: 'Left-right' },
                     { type: 'snowflake', label: 'Snowflake'  },
                     { type: 'compact',   label: 'Compact'    },
                   ] as { type: LayoutType; label: string }[]).map(({ type, label }) => (
-                    <button
+                    <Box
                       key={type}
+                      as="button"
                       onClick={() => applyLayout(type)}
-                      style={{
-                        display: 'block', width: '100%',
-                        padding: '7px 14px', border: 'none',
-                        background: 'transparent',
-                        color: 'var(--vscode-foreground)',
-                        fontSize: 11, textAlign: 'left', cursor: 'pointer',
-                        borderBottom: type !== 'compact'
-                          ? '1px solid var(--navbar-border)' : 'none',
-                      }}
-                      onMouseEnter={(e) => {
-                        (e.currentTarget as HTMLButtonElement).style.background = 'rgba(99,102,241,0.15)';
-                      }}
-                      onMouseLeave={(e) => {
-                        (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-                      }}
-                    >{label}</button>
+                      display="block"
+                      w="100%"
+                      py="7px"
+                      px="14px"
+                      border="none"
+                      bg="transparent"
+                      _hover={{ bg: 'rgba(99,102,241,0.15)' }}
+                      color="var(--vscode-foreground)"
+                      fontSize="11px"
+                      textAlign="left"
+                      cursor="pointer"
+                      borderBottom={type !== 'compact'
+                        ? '1px solid var(--navbar-border)' : 'none'}
+                    >{label}</Box>
                   ))}
-                </div>
+                </Box>
               )}
-            </div>
+            </Box>
 
-            <div style={navDivider} />
+            <NavDivider />
 
-            <button
-              style={navBtn(lockMode)}
+            <Box
+              as="button"
+              {...navBtnProps(lockMode)}
               title={lockMode ? '이동 모드 (클릭하여 편집 모드로)' : '편집 모드 (클릭하여 이동 모드로)'}
               onClick={() => { setLockMode((v) => !v); if (lockMode) { setSelected(null); setSelectedNodes(new Set()); } }}
             >
               <IconHand />
-            </button>
+            </Box>
 
-          </div>
-        </div>
+          </Flex>
+        </Box>
 
-        {/* ── Detail panel (model or relation) ── */}
+        {/* Detail panel */}
         {(selected || selectedEdge) && (
-          <div style={{
-            width: 276, flexShrink: 0,
-            borderLeft: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))',
-            display: 'flex', flexDirection: 'column',
-            background: 'var(--vscode-sideBar-background, #252526)',
-            animation: 'slideInRight 0.15s ease-out',
-          }}>
+          <Flex
+            w="276px"
+            flexShrink={0}
+            borderLeft="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+            flexDir="column"
+            bg="var(--vscode-sideBar-background, #252526)"
+            animation="slideInRight 0.15s ease-out"
+          >
             {selected ? (
-              /* ── Model detail ── */
               <>
                 {/* Header */}
-                <div style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '10px 14px', flexShrink: 0,
-                  borderBottom: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: modelColor(selected.name), flexShrink: 0 }} />
-                    <span style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--node-text)' }}>
+                <Flex
+                  alignItems="center"
+                  justifyContent="space-between"
+                  py="10px"
+                  px="14px"
+                  flexShrink={0}
+                  borderBottom="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+                >
+                  <Flex alignItems="center" gap="8px" minW={0}>
+                    <Box w="10px" h="10px" borderRadius="50%" bg={modelColor(selected.name)} flexShrink={0} />
+                    <Box as="span" fontWeight={700} fontSize="13px" overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap" color="var(--node-text)">
                       {selected.name}
-                    </span>
-                    <span style={{
-                      fontSize: 10, padding: '1px 7px', borderRadius: 10, flexShrink: 0,
-                      background: 'rgba(99,102,241,0.15)',
-                      color: 'var(--vscode-focusBorder, #4f46e5)',
-                      border: '1px solid var(--vscode-focusBorder, #4f46e5)',
-                      fontWeight: 600,
-                    }}>{state.ormType}</span>
-                  </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setSelected(null); }}
-                    style={{ background: 'none', border: 'none', color: 'var(--node-text-dim)', fontSize: 14, cursor: 'pointer', padding: 2 }}
-                  >✕</button>
-                </div>
+                    </Box>
+                    <Box
+                      as="span"
+                      fontSize="10px"
+                      py="1px"
+                      px="7px"
+                      borderRadius="10px"
+                      flexShrink={0}
+                      bg="rgba(99,102,241,0.15)"
+                      color="var(--vscode-focusBorder, #4f46e5)"
+                      border="1px solid var(--vscode-focusBorder, #4f46e5)"
+                      fontWeight={600}
+                    >{state.ormType}</Box>
+                  </Flex>
+                  <Box
+                    as="button"
+                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); setSelected(null); }}
+                    bg="none"
+                    border="none"
+                    color="var(--node-text-dim)"
+                    fontSize="14px"
+                    cursor="pointer"
+                    p="2px"
+                  >✕</Box>
+                </Flex>
 
                 {/* Fields */}
-                <div style={{ padding: '10px 14px', flexShrink: 0, borderBottom: '1px solid var(--node-field-divider)' }}>
+                <Box py="10px" px="14px" flexShrink={0} borderBottom="1px solid var(--node-field-divider)">
                   {selected.fields.map((f) => (
-                    <div key={f.name} style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 5 }}>
-                      <span style={{ fontSize: 9, width: 12, textAlign: 'center', color: 'var(--node-text-dim)', flexShrink: 0 }}>
+                    <Flex key={f.name} alignItems="baseline" gap="6px" mb="5px">
+                      <Box as="span" fontSize="9px" w="12px" textAlign="center" color="var(--node-text-dim)" flexShrink={0}>
                         {f.isPrimary ? '⬡' : f.isRelation ? '⇢' : '·'}
-                      </span>
-                      <span style={{ fontSize: 12, flex: 1, color: 'var(--node-text)' }}>{f.name}</span>
-                      <span style={{
-                        fontSize: 11, fontFamily: 'monospace', flexShrink: 0, fontWeight: 500,
-                        color: f.isRelation
+                      </Box>
+                      <Box as="span" fontSize="12px" flex={1} color="var(--node-text)">{f.name}</Box>
+                      <Box
+                        as="span"
+                        fontSize="11px"
+                        fontFamily="monospace"
+                        flexShrink={0}
+                        fontWeight={500}
+                        color={f.isRelation
                           ? modelColor(f.type.replace('[]','').replace('?',''))
-                          : 'var(--node-text, #111827)',
-                      }}>
+                          : 'var(--node-text, #111827)'}
+                      >
                         {f.type}
-                      </span>
-                    </div>
+                      </Box>
+                    </Flex>
                   ))}
-                </div>
+                </Box>
 
                 {/* Export JSON */}
-                <div style={{ padding: '8px 14px 4px', fontSize: 10, color: 'var(--node-text-dim)', flexShrink: 0, letterSpacing: '0.06em' }}>
+                <Box py="8px" px="14px" pb="4px" fontSize="10px" color="var(--node-text-dim)" flexShrink={0} letterSpacing="0.06em">
                   EXPORT JSON
-                </div>
-                <div style={{
-                  flex: 1, overflow: 'auto',
-                  fontFamily: 'var(--vscode-editor-font-family, Consolas, monospace)',
-                  fontSize: 11, lineHeight: '18px',
-                  color: 'var(--diff-text, #d4d4d4)',
-                  paddingBottom: 14,
-                }}>
+                </Box>
+                <Box
+                  flex={1}
+                  overflow="auto"
+                  fontFamily="var(--vscode-editor-font-family, Consolas, monospace)"
+                  fontSize="11px"
+                  lineHeight="18px"
+                  color="var(--diff-text, #d4d4d4)"
+                  pb="14px"
+                >
                   {JSON.stringify(modelToJson(selected, state.ormType), null, 2).split('\n').map((line, i) => (
-                    <div key={i} style={{ display: 'flex', minHeight: 18 }}>
-                      <span style={{
-                        width: 32, flexShrink: 0, textAlign: 'right', paddingRight: 8,
-                        color: 'var(--diff-linenum, rgba(255,255,255,0.25))',
-                        userSelect: 'none', lineHeight: '18px',
-                        borderRight: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))',
-                      }}>{i + 1}</span>
-                      <span style={{ paddingLeft: 10, whiteSpace: 'pre', lineHeight: '18px' }}>{line}</span>
-                    </div>
+                    <Flex key={i} minH="18px">
+                      <Box
+                        as="span"
+                        w="32px"
+                        flexShrink={0}
+                        textAlign="right"
+                        pr="8px"
+                        color="var(--diff-linenum, rgba(255,255,255,0.25))"
+                        userSelect="none"
+                        lineHeight="18px"
+                        borderRight="1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))"
+                      >{i + 1}</Box>
+                      <Box as="span" pl="10px" whiteSpace="pre" lineHeight="18px">{line}</Box>
+                    </Flex>
                   ))}
-                </div>
+                </Box>
 
-                {/* Add Relation — only for Prisma */}
+                {/* Add Relation */}
                 {state.ormType === 'prisma' && (
-                  <div style={{
-                    flexShrink: 0,
-                    borderTop: '1px solid var(--node-field-divider)',
-                  }}>
+                  <Box flexShrink={0} borderTop="1px solid var(--node-field-divider)">
                     {!addRelForm ? (
-                      <div style={{ padding: '10px 14px' }}>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openAddRelForm(selected.name); }}
-                          style={{
-                            width: '100%', padding: '5px 0',
-                            border: '1px dashed var(--vscode-focusBorder, #4f46e5)',
-                            borderRadius: 5, background: 'transparent',
-                            color: 'var(--vscode-focusBorder, #4f46e5)', fontSize: 11, cursor: 'pointer',
-                          }}
-                        >+ Relation 추가</button>
-                      </div>
+                      <Box py="10px" px="14px">
+                        <Box
+                          as="button"
+                          onClick={(e: React.MouseEvent) => { e.stopPropagation(); openAddRelForm(selected.name); }}
+                          w="100%"
+                          py="5px"
+                          border="1px dashed var(--vscode-focusBorder, #4f46e5)"
+                          borderRadius="5px"
+                          bg="transparent"
+                          color="var(--vscode-focusBorder, #4f46e5)"
+                          fontSize="11px"
+                          cursor="pointer"
+                        >+ Relation 추가</Box>
+                      </Box>
                     ) : (
                       <AddRelFormPanel
                         form={addRelForm}
@@ -1432,177 +1500,210 @@ export default function OrmEditor({ state, setState }: Props) {
                         onCancel={(e) => { e.stopPropagation(); setAddRelForm(null); }}
                       />
                     )}
-                  </div>
+                  </Box>
                 )}
               </>
             ) : selectedEdge ? (
-              /* ── Relation detail ── */
               <>
                 {/* Header */}
-                <div style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '10px 14px', flexShrink: 0,
-                  borderBottom: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 10, color: 'var(--node-text-dim)' }}>⇢</span>
-                    <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--node-text)' }}>Relation</span>
-                  </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setSelectedEdge(null); }}
-                    style={{ background: 'none', border: 'none', color: 'var(--node-text-dim)', fontSize: 14, cursor: 'pointer', padding: 2 }}
-                  >✕</button>
-                </div>
+                <Flex
+                  alignItems="center"
+                  justifyContent="space-between"
+                  py="10px"
+                  px="14px"
+                  flexShrink={0}
+                  borderBottom="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+                >
+                  <Flex alignItems="center" gap="8px">
+                    <Box as="span" fontSize="10px" color="var(--node-text-dim)">⇢</Box>
+                    <Box as="span" fontWeight={700} fontSize="13px" color="var(--node-text)">Relation</Box>
+                  </Flex>
+                  <Box
+                    as="button"
+                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); setSelectedEdge(null); }}
+                    bg="none"
+                    border="none"
+                    color="var(--node-text-dim)"
+                    fontSize="14px"
+                    cursor="pointer"
+                    p="2px"
+                  >✕</Box>
+                </Flex>
 
                 {/* Relation info */}
-                <div style={{ padding: '14px', flexShrink: 0 }}>
-                  {/* From → To */}
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16,
-                    padding: '8px 12px', borderRadius: 6,
-                    background: 'rgba(99,102,241,0.08)',
-                    border: '1px solid rgba(99,102,241,0.25)',
-                  }}>
-                    <span style={{
-                      fontWeight: 700, fontSize: 13,
-                      color: modelColor(selectedEdge.from),
-                    }}>{selectedEdge.from}</span>
-                    <span style={{ fontSize: 11, color: 'var(--node-text-dim)' }}>→</span>
-                    <span style={{
-                      fontWeight: 700, fontSize: 13,
-                      color: modelColor(selectedEdge.to),
-                    }}>{selectedEdge.to}</span>
-                    <span style={{
-                      marginLeft: 'auto', fontSize: 9, padding: '1px 6px',
-                      borderRadius: 10, background: 'rgba(99,102,241,0.15)',
-                      color: '#818cf8', border: '1px solid rgba(99,102,241,0.35)',
-                      fontWeight: 600,
-                    }}>many-to-one</span>
-                  </div>
+                <Box p="14px" flexShrink={0}>
+                  <Flex
+                    alignItems="center"
+                    gap="8px"
+                    mb="16px"
+                    py="8px"
+                    px="12px"
+                    borderRadius="6px"
+                    bg="rgba(99,102,241,0.08)"
+                    border="1px solid rgba(99,102,241,0.25)"
+                  >
+                    <Box as="span" fontWeight={700} fontSize="13px" color={modelColor(selectedEdge.from)}>{selectedEdge.from}</Box>
+                    <Box as="span" fontSize="11px" color="var(--node-text-dim)">→</Box>
+                    <Box as="span" fontWeight={700} fontSize="13px" color={modelColor(selectedEdge.to)}>{selectedEdge.to}</Box>
+                    <Box
+                      as="span"
+                      ml="auto"
+                      fontSize="9px"
+                      py="1px"
+                      px="6px"
+                      borderRadius="10px"
+                      bg="rgba(99,102,241,0.15)"
+                      color="#818cf8"
+                      border="1px solid rgba(99,102,241,0.35)"
+                      fontWeight={600}
+                    >many-to-one</Box>
+                  </Flex>
 
-                  {/* Field details */}
                   {[
                     { label: 'relation field', value: selectedEdge.relationField },
                     { label: 'fk field',       value: selectedEdge.fkField },
                   ].map(({ label, value }) => (
-                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 12 }}>
-                      <span style={{ color: 'var(--node-text-dim)', fontSize: 11 }}>{label}</span>
-                      <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--node-text)' }}>{value}</span>
-                    </div>
+                    <Flex key={label} justifyContent="space-between" mb="8px" fontSize="12px">
+                      <Box as="span" color="var(--node-text-dim)" fontSize="11px">{label}</Box>
+                      <Box as="span" fontFamily="monospace" fontSize="11px" color="var(--node-text)">{value}</Box>
+                    </Flex>
                   ))}
-                </div>
+                </Box>
 
-                <div style={{ flex: 1 }} />
+                <Box flex={1} />
 
-                {/* Delete button — only for Prisma */}
                 {state.ormType === 'prisma' && (
-                  <div style={{ padding: '10px 14px', flexShrink: 0, borderTop: '1px solid var(--node-field-divider)' }}>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleDeleteRelation(); }}
-                      style={{
-                        width: '100%', padding: '6px 0',
-                        border: '1px solid rgba(248,113,113,0.35)',
-                        borderRadius: 5, background: 'rgba(248,113,113,0.08)',
-                        color: '#f87171', fontSize: 11, cursor: 'pointer',
-                      }}
-                    >Relation 삭제</button>
-                  </div>
+                  <Box py="10px" px="14px" flexShrink={0} borderTop="1px solid var(--node-field-divider)">
+                    <Box
+                      as="button"
+                      onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleDeleteRelation(); }}
+                      w="100%"
+                      py="6px"
+                      border="1px solid rgba(248,113,113,0.35)"
+                      borderRadius="5px"
+                      bg="rgba(248,113,113,0.08)"
+                      color="#f87171"
+                      fontSize="11px"
+                      cursor="pointer"
+                    >Relation 삭제</Box>
+                  </Box>
                 )}
               </>
             ) : null}
-          </div>
+          </Flex>
         )}
-      </div>
+      </Flex>
 
-      {/* ── Code drawer ── */}
+      {/* Code drawer */}
       {showCode && (
-        <div style={{
-          height: 220, flexShrink: 0,
-          borderTop: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))',
-          display: 'flex', flexDirection: 'column',
-          animation: 'slideInUp 0.15s ease-out',
-        }}>
+        <Flex
+          h="220px"
+          flexShrink={0}
+          borderTop="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+          flexDir="column"
+          animation="slideInUp 0.15s ease-out"
+        >
           {/* ORM type tabs */}
-          <div style={{
-            display: 'flex', gap: 4, padding: '5px 10px', flexShrink: 0, alignItems: 'center',
-            borderBottom: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))',
-            background: 'var(--diff-header-bg, #2d2d2d)',
-          }}>
+          <Flex
+            gap="4px"
+            py="5px"
+            px="10px"
+            flexShrink={0}
+            alignItems="center"
+            borderBottom="1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))"
+            bg="var(--diff-header-bg, #2d2d2d)"
+          >
             {ORM_TYPES.map((orm) => (
-              <button key={orm}
+              <Box
+                key={orm}
+                as="button"
                 onClick={() => setState((p) => ({ ...p, ormType: orm, ormSource: DEFAULT_SCHEMAS[orm] }))}
-                style={{
-                  padding: '2px 8px', border: '1px solid', borderRadius: 3, fontSize: 10, cursor: 'pointer',
-                  borderColor: state.ormType === orm ? 'var(--vscode-focusBorder, #007acc)' : 'var(--node-text)',
-                  background:  state.ormType === orm ? 'var(--vscode-button-background, #0e639c)' : 'transparent',
-                  color:       state.ormType === orm ? 'var(--vscode-button-foreground, #fff)' : 'var(--diff-header-text, #cccccc)',
-                }}
-              >{orm}</button>
+                py="2px"
+                px="8px"
+                border="1px solid"
+                borderRadius="3px"
+                fontSize="10px"
+                cursor="pointer"
+                borderColor={state.ormType === orm ? 'var(--vscode-focusBorder, #007acc)' : 'var(--node-text)'}
+                bg={state.ormType === orm ? 'var(--vscode-button-background, #0e639c)' : 'transparent'}
+                color={state.ormType === orm ? 'var(--vscode-button-foreground, #fff)' : 'var(--diff-header-text, #cccccc)'}
+              >{orm}</Box>
             ))}
-          </div>
-          {/* Editor: line-number gutter + editable textarea */}
-          <div style={{
-            flex: 1, display: 'flex', overflow: 'hidden',
-            background: 'var(--diff-bg, #1e1e1e)',
-            fontFamily: 'var(--vscode-editor-font-family, Consolas, "Courier New", monospace)',
-            fontSize: 12,
-          }}>
-            {/* Gutter — paddingTop must exactly match textarea's paddingTop */}
-            <div
+          </Flex>
+
+          {/* Editor: gutter + textarea */}
+          <Flex
+            flex={1}
+            overflow="hidden"
+            bg="var(--diff-bg, #1e1e1e)"
+            fontFamily="var(--vscode-editor-font-family, Consolas, 'Courier New', monospace)"
+            fontSize="12px"
+          >
+            {/* Gutter */}
+            <Box
               id="code-drawer-gutter"
-              style={{
-                width: 44, paddingTop: 8, paddingBottom: 8, flexShrink: 0,
-                textAlign: 'right', paddingRight: 10,
-                color: 'var(--diff-linenum, rgba(255,255,255,0.25))',
-                fontSize: 12, lineHeight: '20px',
-                userSelect: 'none', overflowY: 'hidden',
-                borderRight: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))',
-                background: 'var(--diff-bg, #1e1e1e)',
-              }}
+              w="44px"
+              pt="8px"
+              pb="8px"
+              flexShrink={0}
+              textAlign="right"
+              pr="10px"
+              color="var(--diff-linenum, rgba(255,255,255,0.25))"
+              fontSize="12px"
+              lineHeight="20px"
+              userSelect="none"
+              overflowY="hidden"
+              borderRight="1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))"
+              bg="var(--diff-bg, #1e1e1e)"
             >
               {state.ormSource.split('\n').map((_, i) => (
-                <div key={i} style={{ height: 20 }}>{i + 1}</div>
+                <Box key={i} h="20px">{i + 1}</Box>
               ))}
-            </div>
+            </Box>
             {/* Textarea */}
-            <textarea
+            <Box
+              as="textarea"
               value={state.ormSource}
-              onChange={(e) => setState((p) => ({ ...p, ormSource: e.target.value }))}
-              onScroll={(e) => {
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setState((p) => ({ ...p, ormSource: e.target.value }))}
+              onScroll={(e: React.UIEvent<HTMLTextAreaElement>) => {
                 const gutter = document.getElementById('code-drawer-gutter');
-                if (gutter) gutter.scrollTop = e.currentTarget.scrollTop;
+                if (gutter) gutter.scrollTop = (e.currentTarget as HTMLTextAreaElement).scrollTop;
               }}
               spellCheck={false}
-              style={{
-                flex: 1, resize: 'none', border: 'none', outline: 'none',
-                padding: '8px 12px',
-                fontFamily: 'inherit', fontSize: 12, lineHeight: '20px',
-                color: 'var(--diff-text, #d4d4d4)',
-                background: 'var(--diff-bg, #1e1e1e)',
-                overflowY: 'auto',
-              }}
+              flex={1}
+              resize="none"
+              border="none"
+              outline="none"
+              py="8px"
+              px="12px"
+              fontFamily="inherit"
+              fontSize="12px"
+              lineHeight="20px"
+              color="var(--diff-text, #d4d4d4)"
+              bg="var(--diff-bg, #1e1e1e)"
+              overflowY="auto"
             />
-          </div>
-        </div>
+          </Flex>
+        </Flex>
       )}
-    </div>
+    </Flex>
   );
 }
 
-// ── AddRelFormPanel ───────────────────────────────────────────────────────────
+// ── AddRelFormPanel ────────────────────────────────────────────────────────────
 
 const FK_TYPES = ['Int', 'String', 'BigInt'];
 
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '3px 6px', borderRadius: 3, fontSize: 11,
-  background: 'var(--node-bg)',
+const inputProps = {
+  w: '100%',
+  py: '3px',
+  px: '6px',
+  borderRadius: '3px',
+  fontSize: '11px',
+  bg: 'var(--node-bg)',
   color: 'var(--node-text)',
   border: '1px solid var(--node-border)',
   outline: 'none',
-};
-
-const labelStyle: React.CSSProperties = {
-  fontSize: 10, color: 'var(--node-text-dim)', marginBottom: 2, display: 'block',
 };
 
 function AddRelFormPanel({
@@ -1641,100 +1742,121 @@ function AddRelFormPanel({
   };
 
   const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <div style={{ marginBottom: 8 }}>
-      <span style={labelStyle}>{label}</span>
+    <Box mb="8px">
+      <Box as="span" fontSize="10px" color="var(--node-text-dim)" mb="2px" display="block">{label}</Box>
       {children}
-    </div>
+    </Box>
   );
 
   return (
-    <div style={{ padding: '10px 14px' }} onClick={(e) => e.stopPropagation()}>
-      {/* Header */}
-      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--node-text-dim)', letterSpacing: '0.06em', marginBottom: 10 }}>
+    <Box py="10px" px="14px" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+      <Box fontSize="10px" fontWeight={700} color="var(--node-text-dim)" letterSpacing="0.06em" mb="10px">
         NEW RELATION
-      </div>
+      </Box>
 
-      {/* Target model */}
       <Row label="연결할 모델">
-        <select value={form.target} onChange={(e) => handleTargetChange(e.target.value)} style={inputStyle}>
+        <Box as="select" value={form.target} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleTargetChange(e.target.value)} {...inputProps}>
           {otherModels.map((m) => <option key={m.name} value={m.name}>{m.name}</option>)}
-        </select>
+        </Box>
       </Row>
 
-      {/* Relation type */}
       <Row label="방향">
-        <div style={{ display: 'flex', gap: 4 }}>
+        <Flex gap="4px">
           {(['many-to-one', 'one-to-many'] as RelType[]).map((t) => (
-            <button key={t} onClick={() => handleRelTypeChange(t)} style={{
-              flex: 1, padding: '3px 0', fontSize: 10, borderRadius: 3,
-              border: '1px solid',
-              borderColor: form.relType === t ? 'var(--vscode-focusBorder,#007acc)' : 'var(--node-border)',
-              background:  form.relType === t ? 'rgba(99,102,241,0.15)' : 'transparent',
-              color: 'var(--node-text)', cursor: 'pointer',
-            }}>{t === 'many-to-one' ? `${fromModel} → ${form.target}` : `${fromModel} ← ${form.target}`}</button>
+            <Box
+              key={t}
+              as="button"
+              onClick={() => handleRelTypeChange(t)}
+              flex={1}
+              py="3px"
+              fontSize="10px"
+              borderRadius="3px"
+              border="1px solid"
+              borderColor={form.relType === t ? 'var(--vscode-focusBorder,#007acc)' : 'var(--node-border)'}
+              bg={form.relType === t ? 'rgba(99,102,241,0.15)' : 'transparent'}
+              color="var(--node-text)"
+              cursor="pointer"
+            >{t === 'many-to-one' ? `${fromModel} → ${form.target}` : `${fromModel} ← ${form.target}`}</Box>
           ))}
-        </div>
+        </Flex>
       </Row>
 
-      {/* Relation field name */}
       <Row label="relation 필드명 (이 모델에 추가)">
-        <input style={inputStyle} value={form.relField}
-          onChange={(e) => onPatch({ relField: e.target.value })} />
+        <Box as="input" {...inputProps} value={form.relField}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => onPatch({ relField: e.target.value })} />
       </Row>
 
-      {/* FK field (many-to-one only) */}
       {form.relType === 'many-to-one' && (
         <Row label="FK 필드명">
-          <div style={{ display: 'flex', gap: 4 }}>
-            <input style={{ ...inputStyle, flex: 1 }} value={form.fkField}
-              onChange={(e) => onPatch({ fkField: e.target.value })} />
-            <select value={form.fkType} onChange={(e) => onPatch({ fkType: e.target.value })}
-              style={{ ...inputStyle, width: 60 }}>
+          <Flex gap="4px">
+            <Box as="input" {...inputProps} flex={1} value={form.fkField}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => onPatch({ fkField: e.target.value })} />
+            <Box as="select" value={form.fkType} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => onPatch({ fkType: e.target.value })}
+              {...inputProps} w="60px">
               {FK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
+            </Box>
+          </Flex>
         </Row>
       )}
 
-      {/* Referenced field */}
       <Row label={`참조 필드 (${form.target})`}>
-        <select value={form.refField} onChange={(e) => onPatch({ refField: e.target.value })} style={inputStyle}>
+        <Box as="select" value={form.refField} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => onPatch({ refField: e.target.value })} {...inputProps}>
           {scalarFields.map((f) => <option key={f.name} value={f.name}>{f.name}</option>)}
-        </select>
+        </Box>
       </Row>
 
-      {/* Back-reference */}
-      <div style={{ marginBottom: 8 }}>
-        <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', opacity: 1 }}>
+      <Box mb="8px">
+        <Box
+          as="label"
+          fontSize="10px"
+          color="var(--node-text-dim)"
+          mb="2px"
+          display="flex"
+          alignItems="center"
+          gap="6px"
+          cursor="pointer"
+          opacity={1}
+        >
           <input
             type="checkbox"
             checked={form.addBackRef}
             onChange={(e) => onPatch({ addBackRef: e.target.checked })}
             style={{ accentColor: '#6366f1' }}
           />
-          <span style={{ fontSize: 10, color: 'var(--node-text-dim)' }}>역참조 추가 ({form.target} 모델에)</span>
-        </label>
+          <Box as="span" fontSize="10px" color="var(--node-text-dim)">역참조 추가 ({form.target} 모델에)</Box>
+        </Box>
         {form.addBackRef && (
-          <input style={{ ...inputStyle, marginTop: 4 }} value={form.backRef}
-            onChange={(e) => onPatch({ backRef: e.target.value })} />
+          <Box as="input" {...inputProps} mt="4px" value={form.backRef}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => onPatch({ backRef: e.target.value })} />
         )}
-      </div>
+      </Box>
 
-      {/* Actions */}
-      <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-        <button onClick={onConfirm} style={{
-          flex: 1, padding: '5px 0', borderRadius: 3, border: 'none',
-          background: 'var(--vscode-button-background, #0e639c)',
-          color: 'var(--vscode-button-foreground, #fff)',
-          fontSize: 11, cursor: 'pointer',
-        }}>추가</button>
-        <button onClick={onCancel} style={{
-          padding: '5px 12px', borderRadius: 3,
-          border: '1px solid var(--node-border)',
-          background: 'transparent', color: 'var(--node-text)',
-          fontSize: 11, cursor: 'pointer',
-        }}>취소</button>
-      </div>
-    </div>
+      <Flex gap="6px" mt="4px">
+        <Box
+          as="button"
+          onClick={onConfirm}
+          flex={1}
+          py="5px"
+          borderRadius="3px"
+          border="none"
+          bg="var(--vscode-button-background, #0e639c)"
+          color="var(--vscode-button-foreground, #fff)"
+          fontSize="11px"
+          cursor="pointer"
+        >추가</Box>
+        <Box
+          as="button"
+          onClick={onCancel}
+          py="5px"
+          px="12px"
+          borderRadius="3px"
+          border="1px solid var(--node-border)"
+          bg="transparent"
+          color="var(--node-text)"
+          fontSize="11px"
+          cursor="pointer"
+        >취소</Box>
+      </Flex>
+    </Box>
   );
 }

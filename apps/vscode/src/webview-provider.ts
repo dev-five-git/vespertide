@@ -239,7 +239,7 @@ function buildFallbackHtml(): string {
 <body>
   <h2>Vespertide</h2>
   <p>Webview 빌드가 필요합니다.</p>
-  <p>1. <code>cd apps/vscode/webview &amp;&amp; npm install &amp;&amp; npm run build</code></p>
+  <p>1. <code>cd apps/extension-webview &amp;&amp; npm install &amp;&amp; npm run build</code></p>
   <p>2. <code>cd apps/vscode &amp;&amp; npm install &amp;&amp; npm run build:ext</code></p>
   <p>3. VS Code에서 재시작</p>
 </body>

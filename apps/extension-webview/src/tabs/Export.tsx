@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Box, Flex } from '@devup-ui/react';
 import { postMessage, onMessage } from '../vscode';
 import type { AppState } from '../App';
 import { DEFAULT_SCHEMAS } from '../App';
@@ -19,8 +20,6 @@ type ExportFile = {
   content: string;
   isDummy: boolean;
 };
-
-// ── Connector metadata ────────────────────────────────────────────────────────
 
 type ConnectorMeta = {
   service: ConnectorService;
@@ -86,7 +85,6 @@ export default function Export({ state }: Props) {
   const [saving, setSaving]           = useState<ConnectorService | null>(null);
   const [copied, setCopied]           = useState<string | null>(null);
 
-  // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput]       = useState('');
   const [chatLoading, setChatLoading]   = useState(false);
@@ -205,17 +203,18 @@ export default function Export({ state }: Props) {
   const connStatusMap = Object.fromEntries(connectors.map((c) => [c.service, c.connected])) as Record<ConnectorService, boolean>;
 
   return (
-    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+    <Flex h="100%" overflow="hidden">
 
       {/* ── Left sidebar ── */}
-      <div style={{
-        width: 220, flexShrink: 0, display: 'flex', flexDirection: 'column',
-        borderRight: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))',
-        background: 'var(--vscode-sideBar-background, #252526)',
-        overflow: 'hidden',
-      }}>
-        {/* Export files */}
-        <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+      <Flex
+        w="220px"
+        flexShrink={0}
+        flexDir="column"
+        borderRight="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+        bg="var(--vscode-sideBar-background, #252526)"
+        overflow="hidden"
+      >
+        <Box flex={1} overflow="auto" minH={0}>
           <SectionHeader label="EXPORT FILES" />
 
           <GroupLabel label="MIGRATION SQL" />
@@ -235,14 +234,12 @@ export default function Export({ state }: Props) {
             <FileRow key={f.id} f={f} active={panel.kind === 'file' && panel.id === f.id}
               onClick={() => setPanel({ kind: 'file', id: f.id })} />
           ))}
-        </div>
-
-      </div>
+        </Box>
+      </Flex>
 
       {/* ── Right panel ── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <Flex flex={1} flexDir="column" overflow="hidden">
 
-        {/* FILE PREVIEW */}
         {panel.kind === 'file' && selectedFile && (
           <>
             <FileHeader
@@ -255,8 +252,8 @@ export default function Export({ state }: Props) {
           </>
         )}
 
-      </div>
-    </div>
+      </Flex>
+    </Flex>
   );
 }
 
@@ -264,36 +261,40 @@ export default function Export({ state }: Props) {
 
 function SectionHeader({ label }: { label: string }) {
   return (
-    <div style={{ padding: '8px 10px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--node-text-dim)', flexShrink: 0 }}>
+    <Box py="8px" px="10px" pb="4px" fontSize="10px" fontWeight={700} letterSpacing="0.08em" color="var(--node-text-dim)" flexShrink={0}>
       {label}
-    </div>
+    </Box>
   );
 }
 
 function GroupLabel({ label }: { label: string }) {
   return (
-    <div style={{ padding: '6px 10px 2px', fontSize: 9, fontWeight: 600, color: 'var(--node-text-dim)', letterSpacing: '0.06em' }}>
+    <Box py="6px" px="10px" pb="2px" fontSize="9px" fontWeight={600} color="var(--node-text-dim)" letterSpacing="0.06em">
       {label}
-    </div>
+    </Box>
   );
 }
 
 function FileRow({ f, active, onClick }: { f: ExportFile; active: boolean; onClick: () => void }) {
   return (
-    <div onClick={onClick} style={{
-      display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
-      cursor: 'pointer',
-      background: active ? 'rgba(99,102,241,0.15)' : 'transparent',
-      borderLeft: active ? '2px solid var(--vscode-focusBorder, #007acc)' : '2px solid transparent',
-    }}>
-      <span style={{ fontSize: 10, color: 'var(--node-text-dim)', flexShrink: 0 }}>
+    <Flex
+      onClick={onClick}
+      alignItems="center"
+      gap="6px"
+      py="4px"
+      px="10px"
+      cursor="pointer"
+      bg={active ? 'rgba(99,102,241,0.15)' : 'transparent'}
+      borderLeft={active ? '2px solid var(--vscode-focusBorder, #007acc)' : '2px solid transparent'}
+    >
+      <Box as="span" fontSize="10px" color="var(--node-text-dim)" flexShrink={0}>
         {f.ext === '.sql' ? '≡' : f.ext === '.svg' || f.ext === '.pdf' ? '◫' : '{ }'}
-      </span>
-      <span style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--node-text)' }}>
-        {f.label}<span style={{ color: 'var(--node-text-dim)' }}>{f.ext}</span>
-      </span>
-      {f.isDummy && <span style={{ fontSize: 9, color: 'var(--node-text-dim)' }}>~</span>}
-    </div>
+      </Box>
+      <Box as="span" flex={1} fontSize="12px" overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap" color="var(--node-text)">
+        {f.label}<Box as="span" color="var(--node-text-dim)">{f.ext}</Box>
+      </Box>
+      {f.isDummy && <Box as="span" fontSize="9px" color="var(--node-text-dim)">~</Box>}
+    </Flex>
   );
 }
 
@@ -301,34 +302,40 @@ function ConnectorRow({ meta, connected, active, onClick }: {
   meta: ConnectorMeta; connected: boolean; active: boolean; onClick: () => void;
 }) {
   return (
-    <div onClick={onClick} style={{
-      display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px',
-      cursor: 'pointer',
-      background: active ? 'rgba(99,102,241,0.12)' : 'transparent',
-      borderLeft: active ? '2px solid var(--vscode-focusBorder, #007acc)' : '2px solid transparent',
-    }}>
-      {/* Icon */}
-      <span style={{
-        width: 22, height: 22, borderRadius: 5, flexShrink: 0,
-        background: 'var(--vscode-editorWidget-background)', border: '1px solid var(--node-border)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12,
-      }}>{meta.icon}</span>
+    <Flex
+      onClick={onClick}
+      alignItems="center"
+      gap="8px"
+      py="7px"
+      px="10px"
+      cursor="pointer"
+      bg={active ? 'rgba(99,102,241,0.12)' : 'transparent'}
+      borderLeft={active ? '2px solid var(--vscode-focusBorder, #007acc)' : '2px solid transparent'}
+    >
+      <Flex
+        w="22px"
+        h="22px"
+        borderRadius="5px"
+        flexShrink={0}
+        bg="var(--vscode-editorWidget-background)"
+        border="1px solid var(--node-border)"
+        alignItems="center"
+        justifyContent="center"
+        fontSize="12px"
+      >{meta.icon}</Flex>
 
-      {/* Name */}
-      <span style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--node-text)' }}>
+      <Box as="span" flex={1} fontSize="12px" overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap" color="var(--node-text)">
         {meta.label}
-      </span>
+      </Box>
 
-      {/* Status */}
       {connected ? (
-        <span style={{ fontSize: 10, color: 'var(--diff-add-sign)', fontWeight: 600, flexShrink: 0 }}>Connected</span>
+        <Box as="span" fontSize="10px" color="var(--diff-add-sign)" fontWeight={600} flexShrink={0}>Connected</Box>
       ) : (
-        <span style={{ fontSize: 10, color: 'var(--node-text-dim)', flexShrink: 0 }}>Connect</span>
+        <Box as="span" fontSize="10px" color="var(--node-text-dim)" flexShrink={0}>Connect</Box>
       )}
 
-      {/* Chevron */}
-      <span style={{ fontSize: 9, color: 'var(--node-text-dim)', flexShrink: 0 }}>{active ? '▲' : '▼'}</span>
-    </div>
+      <Box as="span" fontSize="9px" color="var(--node-text-dim)" flexShrink={0}>{active ? '▲' : '▼'}</Box>
+    </Flex>
   );
 }
 
@@ -336,82 +343,120 @@ function FileHeader({ file, copied, onCopy, onSave }: {
   file: ExportFile; copied: boolean; onCopy: () => void; onSave: () => void;
 }) {
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 8, padding: '5px 12px', flexShrink: 0,
-      borderBottom: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))',
-      background: 'var(--vscode-editorGroupHeader-tabsBackground, #2d2d2d)', fontSize: 12,
-    }}>
-      <span style={{ fontWeight: 600 }}>{file.label}</span>
-      <span style={{ color: 'var(--node-text-dim)' }}>{file.ext}</span>
-      <span style={{
-        fontSize: 9, padding: '1px 6px', borderRadius: 3,
-        background: 'rgba(99,102,241,0.15)', color: '#a5b4fc',
-        border: '1px solid rgba(99,102,241,0.25)', fontWeight: 700,
-      }}>{file.lang}</span>
+    <Flex
+      alignItems="center"
+      gap="8px"
+      py="5px"
+      px="12px"
+      flexShrink={0}
+      borderBottom="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+      bg="var(--vscode-editorGroupHeader-tabsBackground, #2d2d2d)"
+      fontSize="12px"
+    >
+      <Box as="span" fontWeight={600}>{file.label}</Box>
+      <Box as="span" color="var(--node-text-dim)">{file.ext}</Box>
+      <Box
+        as="span"
+        fontSize="9px"
+        py="1px"
+        px="6px"
+        borderRadius="3px"
+        bg="rgba(99,102,241,0.15)"
+        color="#a5b4fc"
+        border="1px solid rgba(99,102,241,0.25)"
+        fontWeight={700}
+      >{file.lang}</Box>
       {file.isDummy && (
-        <span style={{
-          fontSize: 9, padding: '1px 6px', borderRadius: 3,
-          background: 'rgba(251,191,36,0.12)', color: '#fbbf24',
-          border: '1px solid rgba(251,191,36,0.25)',
-        }}>PREVIEW</span>
+        <Box
+          as="span"
+          fontSize="9px"
+          py="1px"
+          px="6px"
+          borderRadius="3px"
+          bg="rgba(251,191,36,0.12)"
+          color="#fbbf24"
+          border="1px solid rgba(251,191,36,0.25)"
+        >PREVIEW</Box>
       )}
-      <div style={{ flex: 1 }} />
-      <button onClick={onCopy} style={btnStyle(copied ? 'green' : 'default')}>
+      <Box flex={1} />
+      <Box as="button" onClick={onCopy} {...btnStyle(copied ? 'green' : 'default')}>
         {copied ? '✓ 복사됨' : '복사'}
-      </button>
-      <button onClick={onSave} style={btnStyle('primary')}>저장</button>
-    </div>
+      </Box>
+      <Box as="button" onClick={onSave} {...btnStyle('primary')}>저장</Box>
+    </Flex>
   );
 }
 
 function FilePreviewBody({ file }: { file: ExportFile }) {
   if (file.id === 'erd-pdf') {
     return (
-      <div style={{ flex: 1, overflow: 'auto', padding: 24, background: 'var(--vscode-editor-background, #1e1e1e)' }}>
-        <div style={{
-          padding: '16px 20px', borderRadius: 8,
-          background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)',
-          fontSize: 13, lineHeight: 1.8, color: 'var(--vscode-editor-foreground, #d4d4d4)',
-        }}>
+      <Box flex={1} overflow="auto" p="24px" bg="var(--vscode-editor-background, #1e1e1e)">
+        <Box
+          py="16px"
+          px="20px"
+          borderRadius="8px"
+          bg="rgba(99,102,241,0.08)"
+          border="1px solid rgba(99,102,241,0.2)"
+          fontSize="13px"
+          lineHeight={1.8}
+          color="var(--vscode-editor-foreground, #d4d4d4)"
+        >
           PDF export converts the ERD diagram SVG to a portable document.{'\n\n'}
           Click "저장" to generate the PDF file.{'\n'}
           {file.isDummy ? '⚠ ORM Editor에서 스키마를 먼저 입력하세요.' : '✓ ERD 준비 완료.'}
-        </div>
-      </div>
+        </Box>
+      </Box>
     );
   }
 
   if (file.id === 'erd-svg' && file.content.startsWith('<svg')) {
     return (
-      <div style={{ flex: 1, overflow: 'auto', padding: 24, background: 'var(--vscode-editor-background, #1e1e1e)' }}>
+      <Box flex={1} overflow="auto" p="24px" bg="var(--vscode-editor-background, #1e1e1e)">
         <div dangerouslySetInnerHTML={{ __html: file.content }} style={{ maxWidth: '100%' }} />
-        <div style={{ marginTop: 16, fontSize: 11, opacity: 0.4 }}>SVG 소스:</div>
-        <pre style={{
-          marginTop: 8, padding: '10px 14px', background: 'rgba(0,0,0,0.2)',
-          borderRadius: 6, fontSize: 11, lineHeight: 1.6, whiteSpace: 'pre',
-          overflowX: 'auto', color: 'var(--vscode-editor-foreground, #d4d4d4)',
-        }}>{file.content}</pre>
-      </div>
+        <Box mt="16px" fontSize="11px" opacity={0.4}>SVG 소스:</Box>
+        <Box
+          as="pre"
+          mt="8px"
+          py="10px"
+          px="14px"
+          bg="rgba(0,0,0,0.2)"
+          borderRadius="6px"
+          fontSize="11px"
+          lineHeight={1.6}
+          whiteSpace="pre"
+          overflowX="auto"
+          color="var(--vscode-editor-foreground, #d4d4d4)"
+        >{file.content}</Box>
+      </Box>
     );
   }
 
   return (
-    <div style={{
-      flex: 1, overflow: 'auto', background: 'var(--vscode-editor-background, #1e1e1e)',
-      fontFamily: 'var(--vscode-editor-font-family, Consolas, "Courier New", monospace)',
-      fontSize: 12, lineHeight: '20px',
-    }}>
+    <Box
+      flex={1}
+      overflow="auto"
+      bg="var(--vscode-editor-background, #1e1e1e)"
+      fontFamily="var(--vscode-editor-font-family, Consolas, 'Courier New', monospace)"
+      fontSize="12px"
+      lineHeight="20px"
+    >
       {file.content.split('\n').map((line, i) => (
-        <div key={i} style={{ display: 'flex', minHeight: 20 }}>
-          <span style={{
-            minWidth: 44, paddingRight: 10, textAlign: 'right', flexShrink: 0,
-            fontSize: 11, lineHeight: '20px', userSelect: 'none',
-            color: 'var(--diff-linenum)',
-          }}>{i + 1}</span>
-          <span style={{ flex: 1, paddingRight: 16, lineHeight: '20px', whiteSpace: 'pre', color: 'var(--vscode-editor-foreground, #d4d4d4)' }}>{line}</span>
-        </div>
+        <Flex key={i} minH="20px">
+          <Box
+            as="span"
+            minW="44px"
+            pr="10px"
+            textAlign="right"
+            flexShrink={0}
+            fontSize="11px"
+            lineHeight="20px"
+            userSelect="none"
+            color="var(--diff-linenum)"
+          >{i + 1}</Box>
+          <Box as="span" flex={1} pr="16px" lineHeight="20px" whiteSpace="pre" color="var(--vscode-editor-foreground, #d4d4d4)">{line}</Box>
+        </Flex>
       ))}
-    </div>
+    </Box>
   );
 }
 
@@ -420,59 +465,67 @@ function ConnectorPanel({ meta, connected, keyValue, saving, onKeyChange, onSave
   onKeyChange: (v: string) => void; onSave: () => void; onDisconnect: () => void;
 }) {
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: 24, background: 'var(--vscode-editor-background, #1e1e1e)' }}>
-      {/* Header row */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-        <div style={{
-          width: 40, height: 40, borderRadius: 10,
-          background: 'var(--vscode-editorWidget-background)', border: '1px solid var(--node-border)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20,
-        }}>{meta.icon}</div>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--node-text)' }}>{meta.label}</div>
-          {meta.subtitle && <div style={{ fontSize: 11, color: 'var(--node-text-dim)', marginTop: 1 }}>{meta.subtitle}</div>}
-        </div>
-        <div style={{ marginLeft: 'auto' }}>
+    <Box flex={1} overflow="auto" p="24px" bg="var(--vscode-editor-background, #1e1e1e)">
+      <Flex alignItems="center" gap="12px" mb="20px">
+        <Flex
+          w="40px"
+          h="40px"
+          borderRadius="10px"
+          bg="var(--vscode-editorWidget-background)"
+          border="1px solid var(--node-border)"
+          alignItems="center"
+          justifyContent="center"
+          fontSize="20px"
+        >{meta.icon}</Flex>
+        <Box>
+          <Box fontWeight={700} fontSize="14px" color="var(--node-text)">{meta.label}</Box>
+          {meta.subtitle && <Box fontSize="11px" color="var(--node-text-dim)" mt="1px">{meta.subtitle}</Box>}
+        </Box>
+        <Box ml="auto">
           {connected ? (
-            <span style={{ fontSize: 12, color: 'var(--diff-add-sign)', fontWeight: 600 }}>● Connected</span>
+            <Box as="span" fontSize="12px" color="var(--diff-add-sign)" fontWeight={600}>● Connected</Box>
           ) : (
-            <span style={{ fontSize: 12, color: 'var(--node-text-dim)' }}>Not connected</span>
+            <Box as="span" fontSize="12px" color="var(--node-text-dim)">Not connected</Box>
           )}
-        </div>
-      </div>
+        </Box>
+      </Flex>
 
-      {/* Key input */}
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ fontSize: 11, color: 'var(--node-text-dim)', display: 'block', marginBottom: 6 }}>
+      <Box mb="16px">
+        <Box as="label" fontSize="11px" color="var(--node-text-dim)" display="block" mb="6px">
           {meta.keyLabel}
-        </label>
-        <input
+        </Box>
+        <Box
+          as="input"
           type="password"
           value={keyValue}
-          onChange={(e) => onKeyChange(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => onKeyChange(e.target.value)}
           placeholder={meta.keyPlaceholder}
-          onKeyDown={(e) => e.key === 'Enter' && onSave()}
-          style={{
-            width: '100%', padding: '7px 10px', borderRadius: 4, fontSize: 12,
-            background: 'var(--vscode-input-background, rgba(255,255,255,0.06))',
-            border: '1px solid var(--vscode-input-border, rgba(255,255,255,0.15))',
-            color: 'var(--vscode-foreground, #ccc)', outline: 'none', boxSizing: 'border-box',
-          }}
+          onKeyDown={(e: React.KeyboardEvent) => e.key === 'Enter' && onSave()}
+          w="100%"
+          py="7px"
+          px="10px"
+          borderRadius="4px"
+          fontSize="12px"
+          bg="var(--vscode-input-background, rgba(255,255,255,0.06))"
+          border="1px solid var(--vscode-input-border, rgba(255,255,255,0.15))"
+          color="var(--vscode-foreground, #ccc)"
+          outline="none"
+          boxSizing="border-box"
         />
         {meta.keyHelp && (
-          <div style={{ fontSize: 10, color: 'var(--node-text-dim)', marginTop: 5 }}>{meta.keyHelp}</div>
+          <Box fontSize="10px" color="var(--node-text-dim)" mt="5px">{meta.keyHelp}</Box>
         )}
-      </div>
+      </Box>
 
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={onSave} disabled={saving || !keyValue.trim()} style={btnStyle('primary')}>
+      <Flex gap="8px">
+        <Box as="button" onClick={onSave} disabled={saving || !keyValue.trim()} {...btnStyle('primary')}>
           {saving ? '저장 중...' : connected ? 'Configure' : 'Connect'}
-        </button>
+        </Box>
         {connected && (
-          <button onClick={onDisconnect} style={btnStyle('danger')}>연결 해제</button>
+          <Box as="button" onClick={onDisconnect} {...btnStyle('danger')}>연결 해제</Box>
         )}
-      </div>
-    </div>
+      </Flex>
+    </Box>
   );
 }
 
@@ -482,110 +535,135 @@ function ChatPanel({ messages, loading, input, activeAI, connectedAIs, endRef, o
   onInputChange: (v: string) => void; onSend: () => void; onAIChange: (s: ConnectorService) => void;
 }) {
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--vscode-editor-background, #1e1e1e)' }}>
-      {/* AI selector */}
-      <div style={{
-        padding: '8px 12px', borderBottom: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))',
-        display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
-      }}>
-        <span style={{ fontSize: 11, color: 'var(--node-text-dim)' }}>AI:</span>
+    <Flex flex={1} flexDir="column" overflow="hidden" bg="var(--vscode-editor-background, #1e1e1e)">
+      <Flex
+        py="8px"
+        px="12px"
+        borderBottom="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+        alignItems="center"
+        gap="8px"
+        flexShrink={0}
+      >
+        <Box as="span" fontSize="11px" color="var(--node-text-dim)">AI:</Box>
         {connectedAIs.length === 0 ? (
-          <span style={{ fontSize: 11, color: 'var(--node-text-dim)' }}>왼쪽에서 AI 서비스를 먼저 연결하세요</span>
+          <Box as="span" fontSize="11px" color="var(--node-text-dim)">왼쪽에서 AI 서비스를 먼저 연결하세요</Box>
         ) : (
           connectedAIs.map((ai) => (
-            <button key={ai.service} onClick={() => onAIChange(ai.service)} style={{
-              padding: '2px 10px', borderRadius: 12, fontSize: 11, cursor: 'pointer',
-              background: activeAI === ai.service ? 'rgba(99,102,241,0.25)' : 'transparent',
-              border: `1px solid ${activeAI === ai.service ? 'rgba(99,102,241,0.5)' : 'var(--node-border)'}`,
-              color: activeAI === ai.service ? '#818cf8' : 'var(--node-text)',
-            }}>{ai.icon} {ai.label}</button>
+            <Box
+              key={ai.service}
+              as="button"
+              onClick={() => onAIChange(ai.service)}
+              py="2px"
+              px="10px"
+              borderRadius="12px"
+              fontSize="11px"
+              cursor="pointer"
+              bg={activeAI === ai.service ? 'rgba(99,102,241,0.25)' : 'transparent'}
+              border={`1px solid ${activeAI === ai.service ? 'rgba(99,102,241,0.5)' : 'var(--node-border)'}`}
+              color={activeAI === ai.service ? '#818cf8' : 'var(--node-text)'}
+            >{ai.icon} {ai.label}</Box>
           ))
         )}
-      </div>
+      </Flex>
 
-      {/* Messages */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '12px 16px' }}>
+      <Box flex={1} overflow="auto" py="12px" px="16px">
         {messages.length === 0 && (
-          <div style={{ color: 'var(--node-text-dim)', fontSize: 12, lineHeight: 1.7, textAlign: 'center', marginTop: 40 }}>
-            <div style={{ fontSize: 24, marginBottom: 8 }}>🤖</div>
-            <div>현재 스키마를 컨텍스트로 자동 첨부합니다.</div>
-            <div style={{ marginTop: 8 }}>
+          <Box color="var(--node-text-dim)" fontSize="12px" lineHeight={1.7} textAlign="center" mt="40px">
+            <Box fontSize="24px" mb="8px">🤖</Box>
+            <Box>현재 스키마를 컨텍스트로 자동 첨부합니다.</Box>
+            <Box mt="8px">
               "Notion에 스키마 정리해줘"<br />
               "Slack에 migration 변경사항 요약 보내줘"<br />
               "이 마이그레이션 검토해줘"
-            </div>
-          </div>
+            </Box>
+          </Box>
         )}
         {messages.map((m, i) => (
           <ChatBubble key={i} message={m} />
         ))}
         {loading && (
-          <div style={{ display: 'flex', gap: 6, padding: '8px 0', alignItems: 'center' }}>
-            <span style={{ fontSize: 12, color: 'var(--node-text-dim)' }}>응답 생성 중...</span>
-          </div>
+          <Flex gap="6px" py="8px" alignItems="center">
+            <Box as="span" fontSize="12px" color="var(--node-text-dim)">응답 생성 중...</Box>
+          </Flex>
         )}
         <div ref={endRef} />
-      </div>
+      </Box>
 
-      {/* Input */}
-      <div style={{
-        padding: '8px 12px', borderTop: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))',
-        display: 'flex', gap: 8, flexShrink: 0,
-        background: 'var(--vscode-sideBar-background, #252526)',
-      }}>
-        <input
+      <Flex
+        py="8px"
+        px="12px"
+        borderTop="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+        gap="8px"
+        flexShrink={0}
+        bg="var(--vscode-sideBar-background, #252526)"
+      >
+        <Box
+          as="input"
           value={input}
-          onChange={(e) => onInputChange(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && onSend()}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => onInputChange(e.target.value)}
+          onKeyDown={(e: React.KeyboardEvent) => e.key === 'Enter' && !(e as any).shiftKey && onSend()}
           placeholder="Notion에 스키마 정리해줘..."
           disabled={loading}
-          style={{
-            flex: 1, padding: '6px 10px', borderRadius: 4, fontSize: 12,
-            background: 'var(--vscode-input-background, rgba(255,255,255,0.06))',
-            border: '1px solid var(--vscode-input-border, rgba(255,255,255,0.15))',
-            color: 'var(--vscode-foreground, #ccc)', outline: 'none',
-          }}
+          flex={1}
+          py="6px"
+          px="10px"
+          borderRadius="4px"
+          fontSize="12px"
+          bg="var(--vscode-input-background, rgba(255,255,255,0.06))"
+          border="1px solid var(--vscode-input-border, rgba(255,255,255,0.15))"
+          color="var(--vscode-foreground, #ccc)"
+          outline="none"
         />
-        <button onClick={onSend} disabled={!input.trim() || loading}
-          style={btnStyle('primary')}>전송</button>
-      </div>
-    </div>
+        <Box as="button" onClick={onSend} disabled={!input.trim() || loading} {...btnStyle('primary')}>전송</Box>
+      </Flex>
+    </Flex>
   );
 }
 
 function ChatBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user';
   return (
-    <div style={{
-      display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start',
-      marginBottom: 10,
-    }}>
+    <Flex
+      justifyContent={isUser ? 'flex-end' : 'flex-start'}
+      mb="10px"
+    >
       {!isUser && (
-        <span style={{ fontSize: 14, marginRight: 6, alignSelf: 'flex-start', marginTop: 3, opacity: 0.5 }}>🤖</span>
+        <Box as="span" fontSize="14px" mr="6px" alignSelf="flex-start" mt="3px" opacity={0.5}>🤖</Box>
       )}
-      <div style={{
-        maxWidth: '80%', padding: '8px 12px', borderRadius: isUser ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
-        background: isUser ? 'rgba(99,102,241,0.15)' : 'var(--vscode-editorWidget-background)',
-        border: `1px solid ${isUser ? 'rgba(99,102,241,0.35)' : 'var(--node-border)'}`,
-        fontSize: 12, lineHeight: 1.7,
-        color: 'var(--node-text)',
-        whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-      }}>
+      <Box
+        maxW="80%"
+        py="8px"
+        px="12px"
+        borderRadius={isUser ? '12px 12px 2px 12px' : '12px 12px 12px 2px'}
+        bg={isUser ? 'rgba(99,102,241,0.15)' : 'var(--vscode-editorWidget-background)'}
+        border={`1px solid ${isUser ? 'rgba(99,102,241,0.35)' : 'var(--node-border)'}`}
+        fontSize="12px"
+        lineHeight={1.7}
+        color="var(--node-text)"
+        whiteSpace="pre-wrap"
+        wordBreak="break-word"
+      >
         {message.content}
-      </div>
-    </div>
+      </Box>
+    </Flex>
   );
 }
 
 // ── Style helpers ─────────────────────────────────────────────────────────────
 
-function btnStyle(variant: 'primary' | 'default' | 'green' | 'danger'): React.CSSProperties {
-  const base: React.CSSProperties = {
-    border: 'none', borderRadius: 3, padding: '3px 12px',
-    fontSize: 11, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
+function btnStyle(variant: 'primary' | 'default' | 'green' | 'danger') {
+  const base = {
+    border: 'none' as const,
+    borderRadius: '3px',
+    py: '3px',
+    px: '12px',
+    fontSize: '11px',
+    cursor: 'pointer' as const,
+    fontFamily: 'inherit',
+    flexShrink: 0,
   };
-  if (variant === 'primary') return { ...base, background: 'var(--vscode-button-background, #0e639c)', color: 'var(--vscode-button-foreground, #fff)' };
-  if (variant === 'green')   return { ...base, background: 'rgba(74,222,128,0.12)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.25)' };
-  if (variant === 'danger')  return { ...base, background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' };
-  return { ...base, background: 'transparent', color: 'var(--node-text)', border: '1px solid var(--node-border)' };
+  if (variant === 'primary') return { ...base, bg: 'var(--vscode-button-background, #0e639c)', color: 'var(--vscode-button-foreground, #fff)' };
+  if (variant === 'green')   return { ...base, bg: 'rgba(74,222,128,0.12)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.25)' };
+  if (variant === 'danger')  return { ...base, bg: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' };
+  return { ...base, bg: 'transparent', color: 'var(--node-text)', border: '1px solid var(--node-border)' };
 }

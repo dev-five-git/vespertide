@@ -95,9 +95,9 @@
   "scripts": {
     "build": "webpack --mode production && npm run build:webview",
     "build:ext": "webpack --mode production",
-    "build:webview": "cd webview && npm run build",
+    "build:webview": "cd ../extension-webview && npm run build",
     "dev": "webpack --mode development --watch",
-    "dev:webview": "cd webview && npm run dev",
+    "dev:webview": "cd ../extension-webview && npm run dev",
     "package": "vsce package",
     "compile": "tsc -p tsconfig.json --noEmit"
   },
