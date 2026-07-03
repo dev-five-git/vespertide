@@ -1,20 +1,49 @@
 [package]
 name = "vespertide-query"
-version = "0.1.61"
+version = "0.2.1"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 documentation.workspace = true
 description = "Converts migration actions into SQL statements with bind parameters"
+keywords = ["database", "migration", "schema", "orm", "sql"]
+categories = ["database"]
+readme = "../../README.md"
 
 [dependencies]
+rayon = { workspace = true }
 vespertide-core = { workspace = true }
 vespertide-naming = { workspace = true }
 vespertide-planner = { workspace = true }
 thiserror = "2"
-sea-query = "0.32"
+# Pinned to the sea-query release that `sea-orm 2.0.0-rc.38` hard-pins
+# (`=1.0.0-rc.33`). sea-orm is the primary dependency, so vespertide-query
+# tracks its sea-query line to keep a single unified version in the graph.
+# The caret form still permits stable 1.0.0 once sea-orm upgrades past the rc.
+sea-query = { version = "1.0.1", features = ["thread-safe"] }
 
 [dev-dependencies]
+criterion = { version = "0.8", features = ["html_reports"] }
 rstest = "0.26"
 insta = "1.47"
+proptest = "1"
+serial_test = "3.5"
+vespertide-core = { workspace = true, features = ["arbitrary"] }
+# Daemon-free SQL validation:
+# - rusqlite (bundled): in-memory SQLite for real execution checks (no system libsqlite needed)
+# - sqlparser:          pure-Rust 3-dialect SQL parser for Postgres/MySQL/SQLite syntax checks
+rusqlite = { version = "0.40", features = ["bundled"] }
+sqlparser = "0.62"
+# pg_query = PostgreSQL's real C parser (libpg_query) via FFI, for strict PG
+# SQL validation. Windows (MSVC + GNU) is supported since libpg_query 16-5.1.0
+# / pg_query v5+ and CI-tested upstream, so NO platform gate — the test must
+# compile on every platform to avoid blind spots (see sql_pg_query.rs).
+pg_query = "6"
+
+[[bench]]
+name = "sql_benchmarks"
+harness = false
+
+[lints]
+workspace = true

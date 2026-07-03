@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "dual")
+public class Dual {
+
+    @Id
+    @Column(name = "username", columnDefinition = "TEXT")
+    private String username;
+
+    protected Dual() {
+    }
+}

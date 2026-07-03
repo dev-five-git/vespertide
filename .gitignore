@@ -1,8 +1,171 @@
+# ─── Rust build artifacts ─────────────────────────────────────────────
 /target
-local.db
-settings.local.json
-coverage
+# criterion benchmark HTML reports
+target/criterion/
+# cargo profile-guided / llvm coverage raw data
+*.profraw
+# processed profile data
+*.profdata
+# Windows PDB debug symbols (occasionally leak outside target/)
+*.pdb
+# Windows cargo / rustc link tempfiles (e.g. tmp3vwkcx.exe, tmpXYZ.dll)
+tmp*.exe
+tmp*.dll
+tmp*.lib
+tmp*.exp
+# profiling visualization output
+flamegraph.svg
+# linux perf record output
+perf.data
+perf.data.old
+
+# ─── Insta snapshot review queue ──────────────────────────────────────
+# Pending snapshots awaiting `cargo insta accept` — CI gate fails on these.
+*.snap.new
+*.pending-snap
+
+# ─── cargo-mutants output (regenerated per run) ───────────────────────
+mutants-out*/
+# `mutants.out/` is the live run dir; cargo-mutants also leaves a
+# `mutants.out.old/` backup of the previous run — the trailing `*` catches both.
+mutants.out*/
+
+# ─── cargo-fuzz (corpus has gitkeep'd subdirs; artifacts are crash dumps) ──
+fuzz/target/
+fuzz/artifacts/
+fuzz/corpus/*
+!fuzz/corpus/*/
+!fuzz/corpus/*/.gitkeep
+
+# ─── CI temp / drift detection ────────────────────────────────────────
+# schema-drift job regenerates schemas to _tmp_schemas/ for `git diff`.
+# Generalised to any `_tmp_*/` so ad-hoc verification runs don't leak.
+_tmp_*/
+
+# ─── Ad-hoc command output captures ───────────────────────────────────
+# Diagnostic logs from `cargo clippy/build/test &> something_output.txt`.
+# Intentional outputs should be named without the `_output.txt` suffix.
+*_output.txt
+
+# ─── changepacks ──────────────────────────────────────────────────────
+# NOTE: `.changepacks/changepack_log_*.json` files ARE the committed bump
+# descriptors (written by `bunx @changepacks/cli`, consumed by
+# `changepacks/action` on merge — analogous to changesets' `.changeset/*.md`).
+# They MUST stay tracked; ignoring them makes the release Action see no pending
+# changepacks and never open the "Update Versions" PR. Only the CLI binary that
+# the Action downloads into the repo root during CI is a runtime artifact.
+/changepacks
+
+# ─── Coverage output ──────────────────────────────────────────────────
+coverage/
 lcov.info
+# cargo-tarpaulin HTML report
+tarpaulin-report.html
+# cargo-tarpaulin XML report
+cobertura.xml
+
+# ─── Vespertide local / dev-only files ────────────────────────────────
+# ad-hoc local SQLite for manual testing
+local.db
+# local overrides not committed
+settings.local.json
+
+# ─── Vespertide ERD CLI outputs (smoke tests / ad-hoc renders) ────────
+examples/**/erd.svg
+examples/**/erd.dot
+examples/**/erd.mermaid
+examples/**/erd.md
+
+# ─── OhMyOpenCode / agent infrastructure ──────────────────────────────
 .sisyphus
 .omc
+.omo
+.audit
+
+# ─── Local secrets / environment ──────────────────────────────────────
+.env
+.env.local
+.env.*.local
+# direnv auto-load (may contain secrets)
+.envrc
+
+# ─── Patch / conflict artifacts ───────────────────────────────────────
+*.bak
+*.orig
+*.rej
+
+# ─── Logs ─────────────────────────────────────────────────────────────
+*.log
+
+# ─── Editor / IDE ─────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.iml
+.fleet/
+
+# vim / emacs swap files
+*.swp
+*.swo
+*.swn
+*.swm
+*~
+
+# ─── OS junk ──────────────────────────────────────────────────────────
+# macOS Finder metadata
+.DS_Store
+# macOS resource forks
+._*
+# macOS metadata
+.AppleDouble
+.LSOverride
+# Windows Explorer thumbnails (current + encrypted + legacy)
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+# Windows folder settings
+desktop.ini
+# Windows recycle bin
+$RECYCLE.BIN/
+# Windows shortcuts
+*.lnk
+
+# ─── Nix build artifacts ──────────────────────────────────────────────
+# nix-build symlink
+result
+# nix-build flake outputs
+result-*
+
+# ─── Generic temp / scratch files ─────────────────────────────────────
+*.tmp
+*.temp
+# LibreOffice / OpenOffice lock files
+.~lock.*
+
+# ─── Node.js (apps/landing Next.js project from origin/main) ──────────
 node_modules
+
+# ─── Excluded workspace members ───────────────────────────────────────
+# `examples/app` and `tests/runtime-sqlite` live outside the main workspace
+# (see root Cargo.toml comment) because their `sqlx-sqlite` dep collides
+# with vespertide-query's rusqlite on `links = "sqlite3"`. `tools/lsp-profile`
+# is also out-of-workspace so cargo-flamegraph's custom release profile
+# doesn't bleed into the main lockfile. Each has its own build artefacts
+# and lockfile; all are treated as local-only so main workspace dep bumps
+# never have to chase secondary Cargo.lock files.
+examples/app/target/
+examples/app/Cargo.lock
+tests/runtime-sqlite/target/
+tests/runtime-sqlite/Cargo.lock
+# tools/* — dev-only out-of-workspace crates (lsp-profile and any future siblings)
+tools/*/target/
+tools/*/Cargo.lock
+
+# --- Frontend (apps/landing Next.js + devup-ui) build artifacts ---
+# Next.js build output
+.next/
+# devup-ui zero-runtime CSS cache: the build plugin regenerates `df/` and
+# writes a self-ignoring `df/.gitignore`; pin it at the repo root (and any
+# nested workspace) too so the cache never leaks regardless of where
+# bun/next is invoked.
+df/
+**/df/

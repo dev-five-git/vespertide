@@ -1,0 +1,32 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+enum TaskStatus {
+    pending,
+    in_progress,
+    completed;
+}
+
+@Entity
+@Table(name = "tasks")
+public class Tasks {
+
+    @Column(name = "id", nullable = false)
+    private Integer id;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private TaskStatus status = "pending";
+
+    @Column(name = "priority", nullable = false)
+    private Integer priority = 0;
+
+    @Column(name = "is_archived", nullable = false)
+    private Boolean isArchived = false;
+
+    protected Tasks() {
+    }
+}

@@ -1,0 +1,9 @@
+---
+source: crates/vespertide-query/src/sql/modify_column_type/mod.rs
+assertion_line: 894
+expression: sql
+---
+CREATE TABLE "events_temp" ( "at" timestamp_text NOT NULL );
+INSERT INTO "events_temp" ("at") SELECT "at" FROM "events";
+DROP TABLE "events";
+ALTER TABLE "events_temp" RENAME TO "events"

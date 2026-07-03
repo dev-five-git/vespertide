@@ -1,3 +1,10 @@
+# AGENTS.md policy: Every `.rs` file must stay ≤ 1000 lines.
+#
+# GitHub Actions pinning policy: third-party actions use major version tags
+# only (e.g. `@v6`, not `@v6.0.2`) so security patches and bug fixes within
+# the same major are picked up automatically. Dependabot proposes only
+# major bumps (see `.github/dependabot.yml`). The `changepacks/action@main`
+# reference is intentionally kept on `main` per project policy.
 name: CI
 
 on:
@@ -5,39 +12,613 @@ on:
     branches:
       - main
     paths-ignore:
-      - '**/*.md'
+      - "**/*.md"
       - LICENSE
-      - '**/*.gitignore'
+      - "**/*.gitignore"
       - .editorconfig
   pull_request:
   workflow_dispatch:
+    inputs:
+      zed_version:
+        description: "Manually publish the Zed extension at this version (e.g. 0.2.0). Leave empty for the normal LSP-triggered flow."
+        required: false
+        default: ""
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  fmt:
+    name: fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy
+      - name: Lint
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
   test:
-    name: Test
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Test
+        run: cargo test --workspace --all-features
+      # tests/runtime-sqlite is intentionally outside the workspace because
+      # its `sqlx-sqlite` dep conflicts on `links = "sqlite3"` with
+      # vespertide-query's rusqlite dev-dep. Run it separately so the
+      # sea-orm runtime integration tests still gate every PR.
+      - name: Test (runtime-sqlite excluded crate)
+        run: cargo test --manifest-path tests/runtime-sqlite/Cargo.toml
+
+  test-parallelism:
+    name: Parallelism (RAYON_NUM_THREADS=${{ matrix.threads }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        threads: ["1", "4"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Test with Rayon thread count
+        run: cargo test --workspace --all-features --exclude vespertide-fuzz
+        env:
+          RAYON_NUM_THREADS: ${{ matrix.threads }}
+
+  # SQL validity gates: daemon-free real-engine and parser-level validation.
+  # - SQLite: in-memory execution via rusqlite (bundled = static link)
+  # - PG/MySQL/SQLite syntax: sqlparser-rs pure Rust 3-dialect parser
+  # - PG strict: pg_query = PG's real C parser (FFI, Linux/macOS only)
+  # No Docker, no daemon, no service container — runs on plain ubuntu-latest.
+  sql-validity:
+    name: SQL validity (daemon-free)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install build-essential for pg_query (PG C parser)
+        run: sudo apt-get update && sudo apt-get install -y build-essential libreadline-dev zlib1g-dev flex bison
+      - name: Run SQLite in-memory exec property test
+        run: cargo test -p vespertide-query --test sql_sqlite_exec --release
+      - name: Run sqlparser 3-dialect parse property test
+        run: cargo test -p vespertide-query --test sql_dialect_parse --release
+      - name: Run pg_query (real PG parser) property test
+        run: cargo test -p vespertide-query --test sql_pg_query --release
+
+  # cargo-deny enforces license/advisory/multiple-version policy; cargo-semver-checks blocks accidental semver-major API changes.
+  deny:
+    name: cargo-deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check all
+
+  semver-checks:
+    name: cargo-semver-checks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      # Derive the cargo-semver-checks release-type from the changepack THIS PR
+      # introduces, instead of hardcoding it. Rationale: on a feature PR the crate
+      # versions are still un-bumped (changepacks bumps them on merge), so deriving
+      # the release type from Cargo.toml would wrongly demand a bump and risk a
+      # double-bump if done by hand.
+      #
+      # CRITICAL: we key off the PR DIFF (base...head), not the mere presence of a
+      # changepack file. A descriptor that already exists on the base branch must
+      # NOT relax the gate (otherwise every future PR would inherit it and the gate
+      # would be permanently disabled). No PR-introduced changepack => empty =>
+      # the action derives strictly from the Cargo.toml version, so accidental
+      # breaking changes on ordinary PRs still fail the gate.
+      - name: Determine semver release-type from PR-introduced changepack
+        id: rt
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          RT=""
+          CHANGED=$(git diff --name-only "$BASE_SHA"..."$HEAD_SHA" -- '.changepacks/changepack_log_*.json' || true)
+          if [ -n "$CHANGED" ]; then
+            LEVELS=$(grep -hoE '"(Major|Minor|Patch)"' $CHANGED | tr -d '"' | sort -u || true)
+            # For 0.x crates a breaking (minor) bump is a "major" release in
+            # cargo-semver-checks' compatibility model (e.g. 0.1.x -> 0.2.0).
+            CUR_MAJOR=$(grep -m1 -E '^version' crates/vespertide-core/Cargo.toml | sed -E 's/[^0-9]*([0-9]+).*/\1/')
+            if echo "$LEVELS" | grep -q Major; then
+              RT=major
+            elif echo "$LEVELS" | grep -q Minor; then
+              if [ "$CUR_MAJOR" = "0" ]; then RT=major; else RT=minor; fi
+            fi
+          fi
+          echo "release_type=$RT" >> "$GITHUB_OUTPUT"
+          echo "PR-introduced changepack: ${CHANGED:-<none>}"
+          echo "Computed cargo-semver-checks release-type: '${RT:-<derive-from-version>}'"
+      - uses: obi1kenobi/cargo-semver-checks-action@v2
+        with:
+          # Only check published crates; skip cli (binary) and schema-gen (publish=false)
+          package: vespertide,vespertide-core,vespertide-config,vespertide-loader,vespertide-naming,vespertide-planner,vespertide-query,vespertide-exporter,vespertide-macro
+          feature-group: default-features
+          # Empty => action derives strictly from the Cargo.toml version.
+          release-type: ${{ steps.rt.outputs.release_type }}
+
+  # publish
+  changepacks:
+    name: changepacks
+    runs-on: ubuntu-latest
+    needs:
+      - fmt
+      - clippy
+      - test
+      - test-parallelism
+      - sql-validity
+      - doc
+      - schema-drift
+      - insta-pending
+      - line-budget
+      - coverage
+      - deny
+      # NOTE: `semver-checks` is intentionally NOT a need here. It runs only on
+      # pull_request (`if: github.event_name == 'pull_request'`), so on a push to
+      # `main` it is SKIPPED — and a skipped job in `needs` propagates "skipped"
+      # to this job under default GitHub Actions semantics, which would silently
+      # prevent the release from ever running on merge. Semver is enforced as a
+      # PR gate before merge; it must not block the push-time release job.
+    permissions:
+      # create pull request comments
+      pull-requests: write
+
+      # Actions > General > Workflow permissions for creating pull request
+      # Create brench to create pull request
+      contents: write
+    outputs:
+      changepacks: ${{ steps.changepacks.outputs.changepacks }}
+      release_assets_urls: ${{ steps.changepacks.outputs.release_assets_urls }}
+    steps:
+      - uses: actions/checkout@v6
+      # changepacks/action@main: project-internal action intentionally tracks main.
+      # `publish: true` runs `cargo publish` for every Cargo.toml changed in this
+      # release wave. `release_assets_urls` output is consumed by the downstream
+      # `lsp-release` / `vscode-release` jobs to upload binary/VSIX assets onto
+      # the same GitHub Release that this action just created.
+      - uses: changepacks/action@main
+        id: changepacks
+        with:
+          publish: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Conditional release jobs — triggered when the matching package file
+  # appears in `needs.changepacks.outputs.changepacks`. Each job uploads
+  # its built artefact to the GitHub Release that changepacks just created
+  # via the `release_assets_urls` map.
+  # ──────────────────────────────────────────────────────────────────────
+
+  lsp-release:
+    name: LSP Release (${{ matrix.target }})
+    needs: changepacks
+    if: ${{ contains(needs.changepacks.outputs.changepacks, 'crates/vespertide-lsp/Cargo.toml') }}
+    runs-on: ${{ matrix.runs-on }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runs-on: ubuntu-latest
+            asset_name: vespertide-lsp-linux-x86_64
+            archive: tar.gz
+            use_cross: false
+          - target: aarch64-unknown-linux-gnu
+            runs-on: ubuntu-latest
+            asset_name: vespertide-lsp-linux-aarch64
+            archive: tar.gz
+            use_cross: true
+          - target: x86_64-apple-darwin
+            # GitHub retired the Intel `macos-13` runner, so that label now
+            # queues forever. Build the x86_64 binary by cross-compiling on the
+            # ARM `macos-latest` runner - Apple's toolchain targets both arches
+            # natively (no `cross` needed; setup-rust-toolchain adds the target).
+            runs-on: macos-latest
+            asset_name: vespertide-lsp-darwin-x86_64
+            archive: tar.gz
+            use_cross: false
+          - target: aarch64-apple-darwin
+            runs-on: macos-latest
+            asset_name: vespertide-lsp-darwin-aarch64
+            archive: tar.gz
+            use_cross: false
+          - target: x86_64-pc-windows-msvc
+            runs-on: windows-latest
+            asset_name: vespertide-lsp-windows-x86_64
+            archive: zip
+            use_cross: false
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Install cross (aarch64-unknown-linux-gnu only)
+        if: matrix.use_cross
+        uses: taiki-e/install-action@v2.81.6
+        with:
+          tool: cross
+
+      - name: Build (native)
+        if: ${{ !matrix.use_cross }}
+        run: cargo build -p vespertide-lsp --release --target ${{ matrix.target }}
+
+      - name: Build (cross)
+        if: matrix.use_cross
+        run: cross build -p vespertide-lsp --release --target ${{ matrix.target }}
+
+      - name: Strip (Unix, native only)
+        if: runner.os != 'Windows' && !matrix.use_cross
+        run: strip "target/${{ matrix.target }}/release/vespertide-lsp" || true
+        shell: bash
+
+      - name: Package (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        run: |
+          mkdir -p dist
+          cp "target/${{ matrix.target }}/release/vespertide-lsp" dist/
+          cd dist
+          tar -czf "${{ matrix.asset_name }}.tar.gz" vespertide-lsp
+          shasum -a 256 "${{ matrix.asset_name }}.tar.gz" > "${{ matrix.asset_name }}.tar.gz.sha256"
+        shell: bash
+
+      - name: Package (zip)
+        if: matrix.archive == 'zip'
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item "target\${{ matrix.target }}\release\vespertide-lsp.exe" "dist\"
+          Compress-Archive -Path "dist\vespertide-lsp.exe" -DestinationPath "dist\${{ matrix.asset_name }}.zip"
+          $hash = (Get-FileHash "dist\${{ matrix.asset_name }}.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  ${{ matrix.asset_name }}.zip" | Out-File -FilePath "dist\${{ matrix.asset_name }}.zip.sha256" -Encoding ascii
+        shell: pwsh
+
+      - name: Upload to changepacks release (archive)
+        uses: owjs3901/upload-github-release-asset@main
+        with:
+          upload_url: ${{ fromJson(needs.changepacks.outputs.release_assets_urls)['crates/vespertide-lsp/Cargo.toml'] }}
+          asset_path: dist/${{ matrix.asset_name }}.${{ matrix.archive }}
+
+      - name: Upload to changepacks release (sha256)
+        uses: owjs3901/upload-github-release-asset@main
+        with:
+          upload_url: ${{ fromJson(needs.changepacks.outputs.release_assets_urls)['crates/vespertide-lsp/Cargo.toml'] }}
+          asset_path: dist/${{ matrix.asset_name }}.${{ matrix.archive }}.sha256
+
+  vscode-release:
+    name: VSCode Release (${{ matrix.vsce_target }})
+    needs:
+      - changepacks
+      - lsp-release   # wait for new LSP binaries if LSP is also in this wave
+    # `always() && success(... or skipped(...))` lets vscode-release run when
+    # vscode-extension is the only package being released (lsp-release skipped).
+    if: |
+      always()
+      && contains(needs.changepacks.outputs.changepacks, 'apps/vscode-extension/package.json')
+      && (needs.lsp-release.result == 'success' || needs.lsp-release.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - vsce_target: linux-x64
+            asset_name: vespertide-lsp-linux-x86_64.tar.gz
+            binary_dir_name: linux-x64
+            archive_format: tar.gz
+          - vsce_target: linux-arm64
+            asset_name: vespertide-lsp-linux-aarch64.tar.gz
+            binary_dir_name: linux-arm64
+            archive_format: tar.gz
+          - vsce_target: darwin-x64
+            asset_name: vespertide-lsp-darwin-x86_64.tar.gz
+            binary_dir_name: darwin-x64
+            archive_format: tar.gz
+          - vsce_target: darwin-arm64
+            asset_name: vespertide-lsp-darwin-aarch64.tar.gz
+            binary_dir_name: darwin-arm64
+            archive_format: tar.gz
+          - vsce_target: win32-x64
+            asset_name: vespertide-lsp-windows-x86_64.zip
+            binary_dir_name: win32-x64
+            archive_format: zip
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # Decide which LSP release tag to bundle:
+      # - LSP is in this wave → use the changepacks release URL host as repo, fetch by tag from release_assets_urls.
+      # - LSP is NOT in this wave → fall back to the latest published lsp release on GitHub.
+      - name: Determine LSP asset source
+        id: lsp_source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if echo '${{ needs.changepacks.outputs.changepacks }}' | grep -q 'crates/vespertide-lsp/Cargo.toml'; then
+            # LSP just released — pull from changepacks's new release using the asset name
+            URL='${{ fromJson(needs.changepacks.outputs.release_assets_urls)['crates/vespertide-lsp/Cargo.toml'] }}'
+            # extract release tag from upload_url: .../releases/<id>/assets{?name,label}
+            # use gh CLI to download by name from the release the URL points to
+            RELEASE_ID=$(echo "$URL" | sed -n 's@.*/releases/\([0-9]*\)/.*@\1@p')
+            TAG=$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" --jq '.tag_name')
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          else
+            # Reuse latest existing LSP release
+            TAG=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 50 \
+              | awk '$1 ~ /vespertide-lsp/ { print $1; exit }')
+            if [ -z "$TAG" ]; then
+              echo "::error::No prior vespertide-lsp release found and LSP not in this wave"
+              exit 1
+            fi
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          fi
+        shell: bash
+
+      - name: Download LSP binary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p apps/vscode-extension/bin/${{ matrix.binary_dir_name }}
+          gh release download "${{ steps.lsp_source.outputs.tag }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "${{ matrix.asset_name }}" \
+            --dir /tmp/lsp-asset
+        shell: bash
+
+      - name: Extract LSP binary (tar.gz)
+        if: matrix.archive_format == 'tar.gz'
+        run: |
+          tar -xzf "/tmp/lsp-asset/${{ matrix.asset_name }}" -C apps/vscode-extension/bin/${{ matrix.binary_dir_name }}
+          chmod +x "apps/vscode-extension/bin/${{ matrix.binary_dir_name }}/vespertide-lsp"
+        shell: bash
+
+      - name: Extract LSP binary (zip)
+        if: matrix.archive_format == 'zip'
+        run: unzip "/tmp/lsp-asset/${{ matrix.asset_name }}" -d apps/vscode-extension/bin/${{ matrix.binary_dir_name }}
+
+      - name: Install + build extension
+        working-directory: apps/vscode-extension
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+
+      - name: Package VSIX
+        working-directory: apps/vscode-extension
+        run: bunx vsce package --target ${{ matrix.vsce_target }} --no-dependencies -o vespertide-${{ matrix.vsce_target }}.vsix
+
+      - name: Upload VSIX to changepacks release
+        uses: owjs3901/upload-github-release-asset@main
+        with:
+          upload_url: ${{ fromJson(needs.changepacks.outputs.release_assets_urls)['apps/vscode-extension/package.json'] }}
+          asset_path: apps/vscode-extension/vespertide-${{ matrix.vsce_target }}.vsix
+
+      - name: Publish to VS Code Marketplace
+        working-directory: apps/vscode-extension
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::warning::VSCE_PAT not set — skipping Marketplace publish"
+          else
+            bunx vsce publish --packagePath vespertide-${{ matrix.vsce_target }}.vsix -p "$VSCE_PAT"
+          fi
+        shell: bash
+
+      - name: Publish to Open VSX (VSCodium / Cursor)
+        continue-on-error: true
+        working-directory: apps/vscode-extension
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [ -z "$OVSX_PAT" ]; then
+            echo "::warning::OVSX_PAT not set — skipping Open VSX publish"
+          else
+            bunx ovsx publish vespertide-${{ matrix.vsce_target }}.vsix -p "$OVSX_PAT"
+          fi
+        shell: bash
+
+  # ──────────────────────────────────────────────────────────────────────
+  # Zed extension release — opens a PR to `zed-industries/extensions` via the
+  # community `huacnlee/zed-extension-action`. The Zed extension is a thin
+  # WASM shim that downloads `vespertide-lsp` from GitHub Releases at runtime
+  # (apps/zed-extension/src/lib.rs), so it only needs republishing when the
+  # LSP binary version moves — exactly the same trigger as `lsp-release`.
+  #
+  # Flow: bump apps/zed-extension/{extension.toml,Cargo.toml} to the released
+  # version → push a lightweight `zed-extension-v<ver>` tag carrying that bump
+  # (main is left untouched; the submodule in zed-industries/extensions points
+  # at the tag) → the action opens/updates the upstream PR.
+  #
+  # ONE-TIME SETUP (see release docs): the extension must first be registered
+  # manually in zed-industries/extensions with a `path = "apps/zed-extension"`
+  # entry (monorepo subdir). Subsequent bumps only touch `version` + submodule
+  # SHA, so the `path` persists. Requires the `ZED_EXTENSIONS_TOKEN` secret
+  # (PAT with repo+workflow scopes) and a `dev-five-git/extensions` fork.
+  # ──────────────────────────────────────────────────────────────────────
+  zed-release:
+    name: Zed Extension Release
+    needs:
+      - changepacks
+      - lsp-release
+    if: |
+      always()
+      && (needs.lsp-release.result == 'success' || needs.lsp-release.result == 'skipped')
+      && (
+        contains(needs.changepacks.outputs.changepacks, 'crates/vespertide-lsp/Cargo.toml')
+        || (github.event_name == 'workflow_dispatch' && inputs.zed_version != '')
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve Zed extension version
+        id: ver
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "${{ inputs.zed_version }}" ]; then
+            VERSION="${{ inputs.zed_version }}"
+          else
+            # Extract the released LSP version from the changepacks release tag
+            # (format: vespertide-lsp(crates/vespertide-lsp/Cargo.toml)@<ver>).
+            URL='${{ fromJson(needs.changepacks.outputs.release_assets_urls)['crates/vespertide-lsp/Cargo.toml'] }}'
+            RELEASE_ID=$(echo "$URL" | sed -n 's@.*/releases/\([0-9]*\)/.*@\1@p')
+            TAG=$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" --jq '.tag_name')
+            VERSION=$(echo "$TAG" | sed -n 's/.*@\(.*\)/\1/p')
+          fi
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not resolve a Zed extension version"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved Zed extension version: $VERSION"
+        shell: bash
+
+      - name: Bump extension.toml + Cargo.toml
+        working-directory: apps/zed-extension
+        run: |
+          sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" extension.toml
+          sed -i "0,/^version = \".*\"/s//version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
+          echo "--- bumped versions ---"
+          grep -n '^version' extension.toml Cargo.toml
+        shell: bash
+
+      - name: Push release tag (main untouched)
+        env:
+          TAG: zed-extension-v${{ steps.ver.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/zed-extension/extension.toml apps/zed-extension/Cargo.toml
+          git commit -m "chore(zed): release extension v${{ steps.ver.outputs.version }} [skip ci]"
+          git tag "$TAG"
+          # Push only the tag — the bump commit travels with it as the tag target.
+          git push origin "$TAG"
+        shell: bash
+
+      - name: Open PR to zed-industries/extensions
+        uses: huacnlee/zed-extension-action@v2
+        with:
+          extension-name: vespertide
+          extension-path: extensions/vespertide
+          push-to: dev-five-git/extensions
+          tag-name: zed-extension-v${{ steps.ver.outputs.version }}
+        env:
+          COMMITTER_TOKEN: ${{ secrets.ZED_EXTENSIONS_TOKEN }}
+
+  doc:
+    name: doc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Check docs
+        run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace
+
+  schema-drift:
+    name: schema-drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Regenerate schemas
+        run: cargo run -p vespertide-schema-gen -- --out _tmp_schemas
+      - name: Check schema drift
+        run: git diff --no-index --exit-code -- schemas _tmp_schemas
+
+  insta-pending:
+    name: insta-pending
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Run exporter snapshots
+        run: cargo test -p vespertide-exporter
+      - name: Fail on pending snapshots
+        run: |
+          pending=$(find . -name '*.snap.new' -type f -print)
+          if [ -n "$pending" ]; then
+            printf '%s\n' "Pending insta snapshots:" "$pending"
+            exit 1
+          fi
+
+  line-budget:
+    name: line-budget
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check Rust line budget
+        run: sh scripts/check-line-budget.sh
+
+  coverage:
+    name: coverage
     runs-on: ubuntu-latest
     container:
       image: xd009642/tarpaulin:develop-nightly
       options: --security-opt seccomp=unconfined
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: Install
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-      - name: Build
-        run: cargo check
-      - name: Lint
-        run: cargo clippy --all-targets --all-features -- -D warnings && cargo fmt --check
-      - name: Test
+      # pg_query (dev-dep of vespertide-query, used by the sql_pg_query test)
+      # builds via bindgen, which needs libclang; the tarpaulin container does
+      # not ship it (ubuntu-latest runners do, which is why the `test` job is
+      # fine). Install libclang + the libpg_query C build toolchain here so
+      # `cargo tarpaulin --workspace` can compile the pg_query dev-dependency.
+      - name: Install pg_query build deps (libclang + PG C toolchain)
+        run: apt-get update && apt-get install -y clang libclang-dev build-essential libreadline-dev zlib1g-dev flex bison
+      - name: Coverage
+        # Determinism for the `--fail-under 100` gate: serialise test threads so
+        # the covered-line set is stable across runs/machines (parallel test
+        # execution + LLVM coverage instrumentation otherwise produce slightly
+        # different line attribution). A higher proptest case count makes
+        # property-test-only branches far more likely to be hit on every run.
+        # NOTE: proptest 1.x has NO RNG-seed env var (its seed is random per
+        # run), so true reproducibility of proptest branch coverage must be
+        # enforced at the source level (deterministic unit tests for any branch
+        # that must always be covered), not via env here.
+        env:
+          PROPTEST_CASES: "1024"
+          RUST_TEST_THREADS: "1"
         run: |
           # rust coverage issue
           echo 'max_width = 100000' > .rustfmt.toml
@@ -49,32 +630,11 @@ jobs:
           echo 'merge_derives = true' >> .rustfmt.toml
           echo 'use_small_heuristics = "Default"' >> .rustfmt.toml
           cargo fmt
-          cargo tarpaulin --engine llvm --out Lcov Stdout --workspace --exclude app
+          cargo tarpaulin --engine llvm --out Lcov Stdout --workspace --exclude app --fail-under 100
       - name: Upload to codecov.io
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: true
           files: lcov.info
         if: github.ref == 'refs/heads/main'
-
-  # publish
-  changepacks:
-    name: changepacks
-    runs-on: ubuntu-latest
-    needs: test
-    permissions:
-      # create pull request comments
-      pull-requests: write
-
-      # Actions > General > Workflow permissions for creating pull request
-      # Create brench to create pull request
-      contents: write
-    steps:
-      - uses: actions/checkout@v5
-      - uses: changepacks/action@main
-        id: changepacks
-        with:
-          publish: true
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

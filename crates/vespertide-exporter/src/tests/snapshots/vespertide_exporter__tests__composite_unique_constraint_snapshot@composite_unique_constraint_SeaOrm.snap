@@ -1,0 +1,23 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "account_aliases")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub tenant_id: i32,
+    pub slug: String,
+}
+
+
+/// Composite unique constraints — declare in migrations or use Statement builder.
+pub const COMPOSITE_UNIQUES: &[&[&str]] = &[
+    &["tenant_id", "slug"], // uq_account_aliases__tenant_slug
+];
+vespera::schema_type!(Schema from Model, name = "AccountAliasesSchema");
+impl ActiveModelBehavior for ActiveModel {}

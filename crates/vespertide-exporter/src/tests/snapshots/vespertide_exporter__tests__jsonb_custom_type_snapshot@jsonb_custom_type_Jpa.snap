@@ -1,0 +1,25 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "json_struct")
+public class JsonStruct {
+
+    @Column(name = "id", nullable = false)
+    private Integer id;
+
+    @Column(name = "json_data", nullable = false, columnDefinition = "JSON")
+    private String jsonData;
+
+    @Column(name = "jsonb_data", nullable = false, columnDefinition = "JSONB")
+    private String jsonbData;
+
+    @Column(name = "jsonb_nullable", columnDefinition = "jsonb")
+    private String jsonbNullable;
+
+    protected JsonStruct() {
+    }
+}

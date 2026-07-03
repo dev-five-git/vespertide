@@ -1,0 +1,27 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+enum EventSeverity {
+    info-level,
+    warning_level,
+    ERROR_LEVEL,
+    1critical;
+}
+
+@Entity
+@Table(name = "events")
+public class Events {
+
+    @Column(name = "id", nullable = false)
+    private Integer id;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "severity", nullable = false)
+    private EventSeverity severity;
+
+    protected Events() {
+    }
+}

@@ -49,8 +49,7 @@ pub async fn cmd_status() -> Result<()> {
         "Applied migrations:".bright_cyan().bold(),
         applied_plans.len().to_string().bright_yellow()
     );
-    if !applied_plans.is_empty() {
-        let latest = applied_plans.last().unwrap();
+    if let Some(latest) = applied_plans.last() {
         println!(
             "  {} {}",
             "Latest version:".cyan(),
@@ -112,7 +111,7 @@ pub async fn cmd_status() -> Result<()> {
 
     if !applied_plans.is_empty() {
         let baseline = schema_from_plans(&applied_plans)
-            .map_err(|e| anyhow::anyhow!("schema reconstruction error: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("schema reconstruction error: {e}"))?;
 
         let baseline_tables: HashSet<_> = baseline.iter().map(|t| &t.name).collect();
         let current_tables: HashSet<_> = current_models.iter().map(|t| &t.name).collect();
@@ -162,6 +161,7 @@ pub async fn cmd_status() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::CwdGuard;
     use serial_test::serial;
     use std::{fs, path::PathBuf};
     use tempfile::tempdir;
@@ -170,24 +170,6 @@ mod tests {
         ColumnDef, ColumnType, MigrationAction, MigrationPlan, SimpleColumnType, TableConstraint,
         TableDef,
     };
-
-    struct CwdGuard {
-        original: PathBuf,
-    }
-
-    impl CwdGuard {
-        fn new(dir: &PathBuf) -> Self {
-            let original = std::env::current_dir().unwrap();
-            std::env::set_current_dir(dir).unwrap();
-            Self { original }
-        }
-    }
-
-    impl Drop for CwdGuard {
-        fn drop(&mut self) {
-            let _ = std::env::set_current_dir(&self.original);
-        }
-    }
 
     fn write_config() -> VespertideConfig {
         let cfg = VespertideConfig::default();
@@ -200,7 +182,7 @@ mod tests {
         let models_dir = PathBuf::from("models");
         fs::create_dir_all(&models_dir).unwrap();
         let table = TableDef {
-            name: name.to_string(),
+            name: name.into(),
             description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
@@ -216,6 +198,7 @@ mod tests {
             constraints: vec![TableConstraint::PrimaryKey {
                 auto_increment: false,
                 columns: vec!["id".into()],
+                strategy: vespertide_core::PrimaryKeyAdditionStrategy::default(),
             }],
         };
         let path = models_dir.join(format!("{name}.json"));
@@ -276,6 +259,26 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn cmd_status_empty_migration_list_returns_ok() {
+        let tmp = tempdir().unwrap();
+        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        let cfg = write_config();
+        fs::create_dir_all(cfg.models_dir()).unwrap();
+        fs::create_dir_all(cfg.migrations_dir()).unwrap();
+
+        cmd_status().await.unwrap();
+    }
+
+    #[test]
+    fn cmd_status_does_not_unwrap_latest_migration() {
+        let source = include_str!("status.rs");
+        let needle = ["applied_plans.last()", ".unwrap()"].join("");
+
+        assert!(!source.contains(&needle));
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn cmd_status_models_no_migrations_prints_hint() {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
@@ -313,7 +316,7 @@ mod tests {
 
         // Create a model with a description to cover lines 102-105
         let table = TableDef {
-            name: "users".to_string(),
+            name: "users".into(),
             description: Some("User accounts table".to_string()),
             columns: vec![ColumnDef {
                 name: "id".into(),
@@ -329,6 +332,7 @@ mod tests {
             constraints: vec![TableConstraint::PrimaryKey {
                 auto_increment: false,
                 columns: vec!["id".into()],
+                strategy: vespertide_core::PrimaryKeyAdditionStrategy::default(),
             }],
         };
         let path = cfg.models_dir().join("users.json");

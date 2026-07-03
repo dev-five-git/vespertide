@@ -1,0 +1,22 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+import enum
+
+from sqlmodel import Field, SQLModel
+
+
+class EdgeState(enum.IntEnum):
+    unknown = -1
+    not_started = 0
+    InProgress = 10
+    HTTP_500 = 500
+
+class WorkflowRuns(SQLModel, table=True):
+    __tablename__ = "workflow_runs"
+
+    id: int = Field(primary_key=True)
+    state: EdgeState = Field(...)

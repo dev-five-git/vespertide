@@ -1,0 +1,22 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+import enum
+from typing import Optional
+
+from sqlalchemy import Enum, Integer
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class StatusType(str, enum.Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+class NullableEnum(DeclarativeBase):
+    __tablename__ = "nullable_enum"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    status: Mapped[Optional[StatusType]] = mapped_column(Enum(StatusType), nullable=True)

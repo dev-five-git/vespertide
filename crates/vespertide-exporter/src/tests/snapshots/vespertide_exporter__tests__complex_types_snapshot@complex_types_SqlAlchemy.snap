@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from decimal import Decimal
+
+from sqlalchemy import Integer, Numeric, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class ComplexTypes(DeclarativeBase):
+    __tablename__ = "complex_types"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    varchar_col: Mapped[str] = mapped_column(String(100), nullable=False)
+    char_col: Mapped[str] = mapped_column(String(10), nullable=False)
+    numeric_col: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    custom_col: Mapped[str] = mapped_column("CUSTOM_TYPE", nullable=False)

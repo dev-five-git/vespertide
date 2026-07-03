@@ -1,0 +1,22 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "with_defaults")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    #[sea_orm(default_value = "now()")]
+    pub created_at: DateTimeWithTimeZone,
+    #[sea_orm(default_value = "active")]
+    pub status: String,
+    #[sea_orm(default_value = 0)]
+    pub count: i32,
+}
+
+vespera::schema_type!(Schema from Model, name = "WithDefaultsSchema");
+impl ActiveModelBehavior for ActiveModel {}

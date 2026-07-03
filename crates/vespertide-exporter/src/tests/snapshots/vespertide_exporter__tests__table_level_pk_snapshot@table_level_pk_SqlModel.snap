@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from uuid import UUID
+
+from sqlmodel import Field, SQLModel
+
+
+class Orders(SQLModel, table=True):
+    __tablename__ = "orders"
+
+    id: UUID = Field(primary_key=True)
+    customer_id: UUID = Field(...)
+    total: float = Field(...)

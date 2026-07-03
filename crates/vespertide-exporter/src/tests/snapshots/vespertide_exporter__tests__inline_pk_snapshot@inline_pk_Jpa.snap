@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+import java.util.UUID;
+
+@Entity
+@Table(name = "users")
+public class Users {
+
+    @Column(name = "id", nullable = false)
+    private UUID id;
+
+    @Column(name = "email", nullable = false, columnDefinition = "TEXT")
+    private String email;
+
+    protected Users() {
+    }
+}

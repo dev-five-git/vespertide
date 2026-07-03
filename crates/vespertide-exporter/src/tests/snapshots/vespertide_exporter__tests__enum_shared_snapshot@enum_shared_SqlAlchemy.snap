@@ -1,0 +1,29 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+import enum
+from typing import Optional
+
+from sqlalchemy import Enum, Integer
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class DocStatus(str, enum.Enum):
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
+
+class DocStatus(str, enum.Enum):
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
+
+class Documents(DeclarativeBase):
+    __tablename__ = "documents"
+
+    id: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[DocStatus] = mapped_column(Enum(DocStatus), nullable=False)
+    review_status: Mapped[Optional[DocStatus]] = mapped_column(Enum(DocStatus), nullable=True)

@@ -1,0 +1,27 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+import enum
+
+from sqlmodel import Field, SQLModel
+
+
+class ProductCategory(str, enum.Enum):
+    ELECTRONICS = "electronics"
+    CLOTHING = "clothing"
+    FOOD = "food"
+
+class AvailabilityStatus(str, enum.Enum):
+    IN_STOCK = "in_stock"
+    OUT_OF_STOCK = "out_of_stock"
+    PRE_ORDER = "pre_order"
+
+class Products(SQLModel, table=True):
+    __tablename__ = "products"
+
+    id: int = Field(...)
+    category: ProductCategory = Field(...)
+    availability: AvailabilityStatus = Field(...)

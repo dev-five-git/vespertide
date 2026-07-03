@@ -1,0 +1,7 @@
+{
+  "name": "도서",
+  "columns": [
+    { "name": "id", "type": "integer", "nullable": false, "primary_key": true,
+      "comment": "도서 식별자 — 한국어/中文/🚀 emoji" }
+  ]
+}

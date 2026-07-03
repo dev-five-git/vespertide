@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlmodel import Field, SQLModel
+from sqlalchemy import text
+
+
+class Logs(SQLModel, table=True):
+    __tablename__ = "logs"
+
+    id: int = Field(primary_key=True)
+    active: bool = Field(default=True)
+    created_at: datetime = Field(sa_column_kwargs={"server_default": text("NOW()")})
+    score: float = Field(default=1.5)
+    tag: str = Field(sa_column_kwargs={"server_default": text("UNKNOWN_EXPR")})

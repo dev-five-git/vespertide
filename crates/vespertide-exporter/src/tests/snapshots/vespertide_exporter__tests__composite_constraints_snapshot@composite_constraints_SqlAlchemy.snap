@@ -1,0 +1,22 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlalchemy import ForeignKey, Index, Integer, UniqueConstraint
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class OrderItems(DeclarativeBase):
+    __tablename__ = "order_items"
+
+    order_id: Mapped[int] = mapped_column(Integer, ForeignKey("orders.id"), primary_key=True)
+    product_id: Mapped[int] = mapped_column(Integer, ForeignKey("products.id"), primary_key=True)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (
+        Index("ix_order_items__order_id", "order_id"),
+        UniqueConstraint("order_id", "product_id", name="uq_order_items__order_product"),
+    )

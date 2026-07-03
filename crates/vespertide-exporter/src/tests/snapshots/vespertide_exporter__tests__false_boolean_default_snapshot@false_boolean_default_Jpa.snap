@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "bool_defaults")
+public class BoolDefaults {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @Column(name = "is_deleted", nullable = false)
+    private Boolean isDeleted = false;
+
+    protected BoolDefaults() {
+    }
+}

@@ -3,4 +3,5 @@ source: crates/vespertide-query/src/sql/replace_constraint.rs
 description: replace unique constraint for Postgres
 ---
 DROP INDEX "uq_users__uq_email";
+DELETE FROM "users" WHERE "id" NOT IN (SELECT MIN("id") FROM "users" GROUP BY "email");
 CREATE UNIQUE INDEX "uq_users__uq_email_new" ON "users" ("email")

@@ -19,6 +19,7 @@ pub fn load_config() -> Result<VespertideConfig> {
 
 /// Load config from a specific path.
 pub fn load_config_from_path(path: PathBuf) -> Result<VespertideConfig> {
+    let path = path.into_boxed_path();
     if !path.exists() {
         anyhow::bail!("vespertide.json not found at: {}", path.display());
     }

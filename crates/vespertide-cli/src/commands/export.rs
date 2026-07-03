@@ -4,11 +4,13 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use clap::ValueEnum;
 use futures::future::try_join_all;
+use rayon::prelude::*;
 use tokio::fs;
 use vespertide_config::VespertideConfig;
 use vespertide_core::TableDef;
 use vespertide_exporter::{Orm, render_entity_with_schema, seaorm::SeaOrmExporterWithConfig};
 
+use crate::parallel_config::{EXPORT_RENDER_PAR_MIN_LEN, EXPORT_RENDER_PAR_THRESHOLD};
 use crate::utils::load_config;
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
@@ -68,7 +70,7 @@ pub async fn cmd_export(orm: OrmArg, export_dir: Option<PathBuf>) -> Result<()> 
         .iter()
         .map(|(table, rel_path)| {
             let segments = rel_path_to_module_segments(rel_path);
-            (table.name.clone(), segments)
+            (table.name.to_string(), segments)
         })
         .collect();
 
@@ -77,27 +79,29 @@ pub async fn cmd_export(orm: OrmArg, export_dir: Option<PathBuf>) -> Result<()> 
 
     // Create SeaORM exporter with config if needed
     let seaorm_exporter = SeaOrmExporterWithConfig::new(config.seaorm(), config.prefix());
+    let render_context = ExportRenderContext {
+        target_root: &target_root,
+        all_tables: &all_tables,
+        module_paths: &module_paths,
+        crate_prefix: &crate_prefix,
+        seaorm_exporter: &seaorm_exporter,
+        orm_kind,
+    };
 
     // Generate all entity code (CPU-bound, done synchronously)
-    let entities: Vec<(String, PathBuf, String)> = normalized_models
-        .iter()
-        .map(|(table, rel_path)| {
-            let code = match orm_kind {
-                Orm::SeaOrm => seaorm_exporter
-                    .render_entity_with_schema_and_paths(
-                        table,
-                        &all_tables,
-                        &module_paths,
-                        &crate_prefix,
-                    )
-                    .map_err(|e| anyhow::anyhow!(e)),
-                _ => render_entity_with_schema(orm_kind, table, &all_tables)
-                    .map_err(|e| anyhow::anyhow!(e)),
-            }?;
-            let out_path = build_output_path(&target_root, rel_path, orm_kind);
-            Ok((table.name.clone(), out_path, code))
-        })
-        .collect::<Result<Vec<_>>>()?;
+    let entities: Vec<(String, PathBuf, String)> =
+        if normalized_models.len() < EXPORT_RENDER_PAR_THRESHOLD {
+            normalized_models
+                .iter()
+                .map(|model| render_export_entity(model, &render_context))
+                .collect::<Result<Vec<_>>>()?
+        } else {
+            normalized_models
+                .par_iter()
+                .with_min_len(EXPORT_RENDER_PAR_MIN_LEN)
+                .map(|model| render_export_entity(model, &render_context))
+                .collect::<Result<Vec<_>>>()?
+        };
 
     // Write all files in parallel
     let write_futures: Vec<_> = entities
@@ -136,6 +140,37 @@ pub async fn cmd_export(orm: OrmArg, export_dir: Option<PathBuf>) -> Result<()> 
     Ok(())
 }
 
+struct ExportRenderContext<'a> {
+    target_root: &'a Path,
+    all_tables: &'a [TableDef],
+    module_paths: &'a HashMap<String, Vec<String>>,
+    crate_prefix: &'a str,
+    seaorm_exporter: &'a SeaOrmExporterWithConfig<'a>,
+    orm_kind: Orm,
+}
+
+fn render_export_entity(
+    (table, rel_path): &(TableDef, PathBuf),
+    context: &ExportRenderContext<'_>,
+) -> Result<(String, PathBuf, String)> {
+    let code = match context.orm_kind {
+        Orm::SeaOrm => context
+            .seaorm_exporter
+            .render_entity_with_schema_and_paths(
+                table,
+                context.all_tables,
+                context.module_paths,
+                context.crate_prefix,
+            )
+            .map_err(|e| anyhow::anyhow!(e)),
+        _ => render_entity_with_schema(context.orm_kind, table, context.all_tables)
+            .map_err(|e| anyhow::anyhow!(e)),
+    }?;
+    let out_path = build_output_path(context.target_root, rel_path, context.orm_kind);
+
+    Ok((table.name.to_string(), out_path, code))
+}
+
 /// Derive `crate::` prefix from the export directory path.
 ///
 /// For example: `src/models` → `crate::models`, `src/db/entities` → `crate::db::entities`.
@@ -165,7 +200,7 @@ fn rel_path_to_module_segments(rel_path: &Path) -> Vec<String> {
             if let std::path::Component::Normal(name) = component
                 && let Some(s) = name.to_str()
             {
-                segments.push(sanitize_filename(s).to_string());
+                segments.push(sanitize_filename(s).clone());
             }
         }
     }
@@ -178,7 +213,7 @@ fn rel_path_to_module_segments(rel_path: &Path) -> Vec<String> {
             (file_name, "")
         };
         let stem = stem.strip_suffix(".vespertide").unwrap_or(stem);
-        segments.push(sanitize_filename(stem).to_string());
+        segments.push(sanitize_filename(stem).clone());
     }
 
     segments
@@ -302,7 +337,7 @@ fn build_output_path(root: &Path, rel_path: &Path, orm: Orm) -> PathBuf {
         } else {
             sanitized
         };
-        out.set_file_name(format!("{}.{}", file_stem, ext));
+        out.set_file_name(format!("{file_stem}.{ext}"));
     }
 
     out
@@ -356,11 +391,7 @@ async fn ensure_mod_chain(root: &Path, rel_path: &Path) -> Result<()> {
     };
     let mut comps: Vec<String> = path_stripped
         .components()
-        .filter_map(|c| {
-            c.as_os_str()
-                .to_str()
-                .map(|s| sanitize_filename(s).to_string())
-        })
+        .filter_map(|c| c.as_os_str().to_str().map(|s| sanitize_filename(s).clone()))
         .collect();
     if comps.is_empty() {
         return Ok(());
@@ -412,7 +443,7 @@ async fn walk_models(
             continue;
         }
         let ext = path.extension().and_then(|s| s.to_str());
-        if !matches!(ext, Some("json") | Some("yaml") | Some("yml")) {
+        if !matches!(ext, Some("json" | "yaml" | "yml")) {
             continue;
         }
         let content = fs::read_to_string(&path)
@@ -434,29 +465,12 @@ async fn walk_models(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::CwdGuard;
     use rstest::rstest;
     use serial_test::serial;
     use std::fs as std_fs;
     use tempfile::tempdir;
     use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType, TableConstraint};
-
-    struct CwdGuard {
-        original: PathBuf,
-    }
-
-    impl CwdGuard {
-        fn new(dir: &PathBuf) -> Self {
-            let original = std::env::current_dir().unwrap();
-            std::env::set_current_dir(dir).unwrap();
-            Self { original }
-        }
-    }
-
-    impl Drop for CwdGuard {
-        fn drop(&mut self) {
-            let _ = std::env::set_current_dir(&self.original);
-        }
-    }
 
     fn write_config() {
         let cfg = VespertideConfig::default();
@@ -473,7 +487,7 @@ mod tests {
 
     fn sample_table(name: &str) -> TableDef {
         TableDef {
-            name: name.to_string(),
+            name: name.into(),
             description: None,
             columns: vec![ColumnDef {
                 name: "id".into(),
@@ -489,6 +503,7 @@ mod tests {
             constraints: vec![TableConstraint::PrimaryKey {
                 auto_increment: false,
                 columns: vec!["id".into()],
+                strategy: vespertide_core::PrimaryKeyAdditionStrategy::default(),
             }],
         }
     }

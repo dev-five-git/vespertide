@@ -1,0 +1,5 @@
+error: unsupported option for vespertide_migration!
+ --> tests/ui/unsupported_option_fail.rs:5:39
+  |
+5 |     let _ = vespertide_migration!(db, bad_option = "x");
+  |                                       ^^^^^^^^^^

@@ -1,0 +1,24 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+import enum
+
+from sqlalchemy import Boolean, Enum, Integer
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class TaskStatus(str, enum.Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+
+class Tasks(DeclarativeBase):
+    __tablename__ = "tasks"
+
+    id: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[TaskStatus] = mapped_column(Enum(TaskStatus), nullable=False, server_default='pending')
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")

@@ -1,0 +1,19 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from decimal import Decimal
+
+from sqlmodel import Field, SQLModel
+
+
+class ComplexTypes(SQLModel, table=True):
+    __tablename__ = "complex_types"
+
+    id: int = Field(primary_key=True)
+    varchar_col: str = Field(...)
+    char_col: str = Field(...)
+    numeric_col: Decimal = Field(...)
+    custom_col: str = Field(...)

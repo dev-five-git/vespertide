@@ -12,12 +12,12 @@ use crate::error::QueryError;
 /// Build SQL queries to replace a constraint in-place.
 ///
 /// For PostgreSQL/MySQL: DROP old FK + ADD new FK (two ALTER TABLE statements).
-/// For SQLite: single temp table recreation with the new constraint swapped in.
+/// For `SQLite`: single temp table recreation with the new constraint swapped in.
 ///
 /// This avoids the double table recreation that would occur with separate
-/// RemoveConstraint + AddConstraint on SQLite.
+/// `RemoveConstraint` + `AddConstraint` on `SQLite`.
 pub fn build_replace_constraint(
-    backend: &DatabaseBackend,
+    backend: DatabaseBackend,
     table: &str,
     from: &TableConstraint,
     to: &TableConstraint,
@@ -38,9 +38,10 @@ pub fn build_replace_constraint(
                 ref_columns,
                 on_delete,
                 on_update,
+                ..
             },
         ) => {
-            if *backend == DatabaseBackend::Sqlite {
+            if backend == DatabaseBackend::Sqlite {
                 build_sqlite_constraint_replace(
                     backend,
                     table,
@@ -50,48 +51,22 @@ pub fn build_replace_constraint(
                     pending_constraints,
                 )
             } else {
-                // PostgreSQL/MySQL: DROP old FK + ADD new FK
-                let old_fk_name = vespertide_naming::build_foreign_key_name(
+                Ok(build_direct_foreign_key_replace(
                     table,
-                    old_columns,
                     old_name.as_deref(),
-                );
-                let fk_drop = ForeignKey::drop()
-                    .name(&old_fk_name)
-                    .table(Alias::new(table))
-                    .to_owned();
-
-                let new_fk_name = vespertide_naming::build_foreign_key_name(
-                    table,
-                    new_columns,
+                    old_columns,
                     new_name.as_deref(),
-                );
-                let mut fk_create = ForeignKey::create();
-                fk_create = fk_create.name(&new_fk_name).to_owned();
-                fk_create = fk_create.from_tbl(Alias::new(table)).to_owned();
-                for col in new_columns {
-                    fk_create = fk_create.from_col(Alias::new(col)).to_owned();
-                }
-                fk_create = fk_create.to_tbl(Alias::new(ref_table)).to_owned();
-                for col in ref_columns {
-                    fk_create = fk_create.to_col(Alias::new(col)).to_owned();
-                }
-                if let Some(action) = on_delete {
-                    fk_create = fk_create.on_delete(to_sea_fk_action(action)).to_owned();
-                }
-                if let Some(action) = on_update {
-                    fk_create = fk_create.on_update(to_sea_fk_action(action)).to_owned();
-                }
-
-                Ok(vec![
-                    BuiltQuery::DropForeignKey(Box::new(fk_drop)),
-                    BuiltQuery::CreateForeignKey(Box::new(fk_create)),
-                ])
+                    new_columns,
+                    ref_table,
+                    ref_columns,
+                    on_delete.as_ref(),
+                    on_update.as_ref(),
+                ))
             }
         }
         // For non-FK constraints: SQLite uses single temp table, PG/MySQL uses remove + add
         _ => {
-            if *backend == DatabaseBackend::Sqlite {
+            if backend == DatabaseBackend::Sqlite {
                 build_sqlite_constraint_replace(
                     backend,
                     table,
@@ -137,10 +112,75 @@ pub fn build_replace_constraint(
     }
 }
 
-/// SQLite: single temp table recreation with the constraint replaced.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "mirrors foreign key action fields"
+)]
+fn build_direct_foreign_key_replace<T: AsRef<str>, U: AsRef<str>, V: AsRef<str>>(
+    table: &str,
+    old_name: Option<&str>,
+    old_columns: &[T],
+    new_name: Option<&str>,
+    new_columns: &[U],
+    ref_table: &str,
+    ref_columns: &[V],
+    on_delete: Option<&vespertide_core::ReferenceAction>,
+    on_update: Option<&vespertide_core::ReferenceAction>,
+) -> Vec<BuiltQuery> {
+    let old_fk_name = vespertide_naming::build_foreign_key_name(table, old_columns, old_name);
+    let fk_drop = ForeignKey::drop()
+        .name(&old_fk_name)
+        .table(Alias::new(table))
+        .to_owned();
+    let fk_create = build_replacement_foreign_key(
+        table,
+        new_name,
+        new_columns,
+        ref_table,
+        ref_columns,
+        on_delete,
+        on_update,
+    );
+
+    vec![
+        BuiltQuery::DropForeignKey(Box::new(fk_drop)),
+        BuiltQuery::CreateForeignKey(Box::new(fk_create)),
+    ]
+}
+
+fn build_replacement_foreign_key<T: AsRef<str>, U: AsRef<str>>(
+    table: &str,
+    new_name: Option<&str>,
+    new_columns: &[T],
+    ref_table: &str,
+    ref_columns: &[U],
+    on_delete: Option<&vespertide_core::ReferenceAction>,
+    on_update: Option<&vespertide_core::ReferenceAction>,
+) -> sea_query::ForeignKeyCreateStatement {
+    let new_fk_name = vespertide_naming::build_foreign_key_name(table, new_columns, new_name);
+    let mut fk_create = ForeignKey::create();
+    fk_create.name(&new_fk_name);
+    fk_create.from_tbl(Alias::new(table));
+    for col in new_columns {
+        fk_create.from_col(Alias::new(col.as_ref()));
+    }
+    fk_create.to_tbl(Alias::new(ref_table));
+    for col in ref_columns {
+        fk_create.to_col(Alias::new(col.as_ref()));
+    }
+    if let Some(action) = on_delete {
+        fk_create.on_delete(to_sea_fk_action(action));
+    }
+    if let Some(action) = on_update {
+        fk_create.on_update(to_sea_fk_action(action));
+    }
+    fk_create
+}
+
+/// `SQLite`: single temp table recreation with the constraint replaced.
 /// Works for all constraint types (FK, Check, Unique, Index, PK).
 fn build_sqlite_constraint_replace(
-    backend: &DatabaseBackend,
+    backend: DatabaseBackend,
     table: &str,
     from: &TableConstraint,
     to: &TableConstraint,
@@ -151,10 +191,9 @@ fn build_sqlite_constraint_replace(
         .iter()
         .find(|t| t.name == table)
         .ok_or_else(|| {
-            QueryError::Other(format!(
-                "Table '{}' not found in current schema. SQLite requires current schema \
-                 information to replace constraints.",
-                table
+            QueryError::SchemaError(format!(
+                "Table '{table}' not found in current schema. SQLite requires current schema \
+                 information to replace constraints."
             ))
         })?;
 
@@ -165,7 +204,7 @@ fn build_sqlite_constraint_replace(
         .map(|c| if c == from { to.clone() } else { c.clone() })
         .collect();
 
-    let temp_table = format!("{}_temp", table);
+    let temp_table = format!("{table}_temp");
 
     // 1. Create temporary table with replaced constraint
     let create_query = build_sqlite_temp_table_create(
@@ -184,9 +223,9 @@ fn build_sqlite_constraint_replace(
         .collect();
     let mut select_query = Query::select();
     for col_alias in &column_aliases {
-        select_query = select_query.column(col_alias.clone()).to_owned();
+        select_query.column(col_alias.clone());
     }
-    select_query = select_query.from(Alias::new(table)).to_owned();
+    select_query.from(Alias::new(table));
 
     let insert_stmt = Query::insert()
         .into_table(Alias::new(&temp_table))
@@ -239,6 +278,7 @@ mod tests {
                 constraints: vec![TableConstraint::PrimaryKey {
                     auto_increment: false,
                     columns: vec!["id".into()],
+                    strategy: vespertide_core::PrimaryKeyAdditionStrategy::default(),
                 }],
                 description: None,
             },
@@ -272,6 +312,7 @@ mod tests {
                     TableConstraint::PrimaryKey {
                         auto_increment: false,
                         columns: vec!["id".into()],
+                        strategy: vespertide_core::PrimaryKeyAdditionStrategy::default(),
                     },
                     TableConstraint::ForeignKey {
                         name: Some("fk_user".into()),
@@ -280,6 +321,7 @@ mod tests {
                         ref_columns: vec!["id".into()],
                         on_delete: None,
                         on_update: None,
+                        orphan_strategy: vespertide_core::ForeignKeyOrphanStrategy::default(),
                     },
                 ],
                 description: None,
@@ -300,6 +342,7 @@ mod tests {
             ref_columns: vec!["id".into()],
             on_delete: None,
             on_update: None,
+            orphan_strategy: vespertide_core::ForeignKeyOrphanStrategy::default(),
         };
         let to = TableConstraint::ForeignKey {
             name: Some("fk_user".into()),
@@ -308,9 +351,10 @@ mod tests {
             ref_columns: vec!["id".into()],
             on_delete: Some(ReferenceAction::Cascade),
             on_update: None,
+            orphan_strategy: vespertide_core::ForeignKeyOrphanStrategy::default(),
         };
 
-        let queries = build_replace_constraint(&backend, "posts", &from, &to, &schema, &[])
+        let queries = build_replace_constraint(backend, "posts", &from, &to, &schema, &[])
             .expect("should succeed");
 
         let sql: Vec<String> = queries.iter().map(|q| q.build(backend)).collect();
@@ -338,6 +382,7 @@ mod tests {
             ref_columns: vec!["id".into()],
             on_delete: None,
             on_update: None,
+            orphan_strategy: vespertide_core::ForeignKeyOrphanStrategy::default(),
         };
         let to = TableConstraint::ForeignKey {
             name: Some("fk_user".into()),
@@ -346,9 +391,10 @@ mod tests {
             ref_columns: vec!["id".into()],
             on_delete: None,
             on_update: Some(ReferenceAction::Cascade),
+            orphan_strategy: vespertide_core::ForeignKeyOrphanStrategy::default(),
         };
 
-        let queries = build_replace_constraint(&backend, "posts", &from, &to, &schema, &[])
+        let queries = build_replace_constraint(backend, "posts", &from, &to, &schema, &[])
             .expect("should succeed");
         let sql: Vec<String> = queries.iter().map(|q| q.build(backend)).collect();
         let combined = sql.join(";\n");
@@ -417,10 +463,14 @@ mod tests {
                     TableConstraint::PrimaryKey {
                         auto_increment: false,
                         columns: vec!["id".into()],
+                        strategy: vespertide_core::PrimaryKeyAdditionStrategy::default(),
                     },
                     TableConstraint::Unique {
                         name: Some("uq_email".into()),
                         columns: vec!["email".into()],
+                        strategy: vespertide_core::UniqueConstraintStrategy::DeleteDuplicates {
+                            keep: vespertide_core::KeepPolicy::First,
+                        },
                     },
                 ],
             },
@@ -428,13 +478,19 @@ mod tests {
         let from = TableConstraint::Unique {
             name: Some("uq_email".into()),
             columns: vec!["email".into()],
+            strategy: vespertide_core::UniqueConstraintStrategy::DeleteDuplicates {
+                keep: vespertide_core::KeepPolicy::First,
+            },
         };
         let to = TableConstraint::Unique {
             name: Some("uq_email_new".into()),
             columns: vec!["email".into()],
+            strategy: vespertide_core::UniqueConstraintStrategy::DeleteDuplicates {
+                keep: vespertide_core::KeepPolicy::First,
+            },
         };
 
-        let queries = build_replace_constraint(&backend, "users", &from, &to, &schema, &[])
+        let queries = build_replace_constraint(backend, "users", &from, &to, &schema, &[])
             .expect("should succeed");
         let sql: Vec<String> = queries.iter().map(|q| q.build(backend)).collect();
         let combined = sql.join(";\n");
@@ -453,14 +509,20 @@ mod tests {
         let from = TableConstraint::Unique {
             name: Some("uq_old".into()),
             columns: vec!["col".into()],
+            strategy: vespertide_core::UniqueConstraintStrategy::DeleteDuplicates {
+                keep: vespertide_core::KeepPolicy::First,
+            },
         };
         let to = TableConstraint::Unique {
             name: Some("uq_new".into()),
             columns: vec!["col".into()],
+            strategy: vespertide_core::UniqueConstraintStrategy::DeleteDuplicates {
+                keep: vespertide_core::KeepPolicy::First,
+            },
         };
         let err =
-            build_replace_constraint(&DatabaseBackend::Sqlite, "missing", &from, &to, &[], &[])
+            build_replace_constraint(DatabaseBackend::Sqlite, "missing", &from, &to, &[], &[])
                 .unwrap_err();
-        assert!(format!("{}", err).contains("missing"));
+        assert!(format!("{err}").contains("missing"));
     }
 }

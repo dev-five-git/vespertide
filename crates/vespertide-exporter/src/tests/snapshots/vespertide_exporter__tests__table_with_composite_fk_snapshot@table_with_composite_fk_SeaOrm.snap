@@ -1,0 +1,21 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "line_items")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub order_id: i32,
+    pub order_version: i32,
+    pub sku: String,
+    #[sea_orm(belongs_to, from = "(order_id, order_version)", to = "(id, version)")]
+    pub orders: HasOne<super::orders::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "LineItemsSchema");
+impl ActiveModelBehavior for ActiveModel {}

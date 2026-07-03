@@ -1,0 +1,23 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "order")
+public class Order {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @Column(name = "user", nullable = false, columnDefinition = "TEXT")
+    private String user;
+
+    @Column(name = "select", nullable = false)
+    private Integer select;
+
+    protected Order() {
+    }
+}

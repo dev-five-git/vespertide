@@ -1,0 +1,1 @@
+{"name":"order","columns":[{"name":"id","type":"integer","nullable":false,"primary_key":true},{"name":"status","type":{"kind":"enum","name":"order_status","values":["pending","shipped","delivered"]},"nullable":false,"default":"'pending'"}]}

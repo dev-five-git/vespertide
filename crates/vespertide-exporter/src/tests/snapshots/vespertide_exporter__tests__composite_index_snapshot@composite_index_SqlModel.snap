@@ -1,0 +1,21 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlmodel import Field, SQLModel
+from sqlalchemy import Index
+
+
+class CompositeIndex(SQLModel, table=True):
+    __tablename__ = "composite_index"
+
+    id: int = Field(primary_key=True)
+    tenant_id: int = Field(...)
+    name: str = Field(...)
+
+    __table_args__ = (
+        Index("idx_tenant_name", "tenant_id", "name"),
+    )

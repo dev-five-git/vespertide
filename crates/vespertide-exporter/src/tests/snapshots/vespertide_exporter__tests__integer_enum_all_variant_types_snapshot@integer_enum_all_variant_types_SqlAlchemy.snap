@@ -1,0 +1,23 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+import enum
+
+from sqlalchemy import Integer
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class EdgeState(enum.IntEnum):
+    unknown = -1
+    not_started = 0
+    InProgress = 10
+    HTTP_500 = 500
+
+class WorkflowRuns(DeclarativeBase):
+    __tablename__ = "workflow_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    state: Mapped[EdgeState] = mapped_column(Integer, nullable=False)

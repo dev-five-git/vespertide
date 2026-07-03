@@ -1,0 +1,28 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, vespera::Schema)]
+#[serde(rename_all = "camelCase")]
+#[sea_orm(rs_type = "i32", db_type = "Integer")]
+pub enum EdgeState {
+    Unknown = -1,
+    NotStarted = 0,
+    InProgress = 10,
+    HTTP500 = 500,
+}
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "workflow_runs")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub state: EdgeState,
+}
+
+vespera::schema_type!(Schema from Model, name = "WorkflowRunsSchema");
+impl ActiveModelBehavior for ActiveModel {}

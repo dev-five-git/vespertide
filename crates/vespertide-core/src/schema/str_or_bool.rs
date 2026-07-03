@@ -1,29 +1,82 @@
 use serde::{Deserialize, Serialize};
 
+/// A JSON value that can be a string, an array of strings, or a boolean.
+///
+/// Used for inline `"unique"` and `"index"` declarations on a [`ColumnDef`]:
+/// - `true` / `false` — enable or disable the constraint with an auto-generated name.
+/// - A single string — the constraint name (used to group columns into a composite constraint).
+/// - An array of strings — a list of constraint names for multi-group membership.
+///
+/// This enum is `#[non_exhaustive]`: new variants may be added in future releases.
+/// Downstream `match` expressions should include a wildcard arm.
+///
+/// [`ColumnDef`]: crate::schema::ColumnDef
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case", untagged)]
+#[non_exhaustive]
 pub enum StrOrBoolOrArray {
+    /// A named constraint or group identifier.
     Str(String),
+    /// Multiple constraint group names for multi-group membership.
     Array(Vec<String>),
+    /// `true` to enable with an auto-generated name; `false` to disable.
     Bool(bool),
 }
 
-/// A value that can be a string, boolean, or number.
-/// This is used for default values where columns can use literal values directly.
+impl StrOrBoolOrArray {
+    /// Returns the string value when this is `Str`.
+    #[must_use]
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            StrOrBoolOrArray::Str(s) => Some(s.as_str()),
+            StrOrBoolOrArray::Array(_) | StrOrBoolOrArray::Bool(_) => None,
+        }
+    }
+}
+
+/// A column default value that can be a boolean, integer, float, or SQL expression string.
+///
+/// In JSON model files the `"default"` field accepts any of these forms:
+/// - `true` / `false` — boolean literal.
+/// - `0`, `42` — integer literal.
+/// - `0.0`, `1.5` — floating-point literal.
+/// - `"'pending'"` — SQL string literal (note the inner single quotes).
+/// - `"NOW()"` — SQL function call (no surrounding quotes).
+///
+/// Use [`DefaultValue::to_sql`] to convert to the SQL representation for DDL generation.
+///
+/// `StringOrBool` is a backwards-compatibility alias for this type.
+///
+/// This enum is `#[non_exhaustive]`: new variants may be added in future releases.
+/// Downstream `match` expressions should include a wildcard arm.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(untagged)]
+#[non_exhaustive]
 pub enum DefaultValue {
+    /// A boolean default (`true` or `false`).
     Bool(bool),
+    /// An integer default value.
     Integer(i64),
+    /// A floating-point default value.
     Float(f64),
+    /// A SQL expression or string literal default (e.g. `"'pending'"` or `"NOW()"`).
     String(String),
 }
 
 impl Eq for DefaultValue {}
 
 impl DefaultValue {
+    /// Returns the boolean value when this is `Bool`.
+    #[must_use]
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            DefaultValue::Bool(b) => Some(*b),
+            DefaultValue::Integer(_) | DefaultValue::Float(_) | DefaultValue::String(_) => None,
+        }
+    }
+
     /// Convert to SQL string representation
     /// Empty strings are converted to '' (SQL empty string literal)
     pub fn to_sql(&self) -> String {
@@ -66,7 +119,7 @@ impl From<i64> for DefaultValue {
 
 impl From<i32> for DefaultValue {
     fn from(n: i32) -> Self {
-        DefaultValue::Integer(n as i64)
+        DefaultValue::Integer(i64::from(n))
     }
 }
 
@@ -127,13 +180,13 @@ mod tests {
 
     #[test]
     fn test_default_value_to_sql_empty_string() {
-        let val = DefaultValue::String("".into());
+        let val = DefaultValue::String(String::new());
         assert_eq!(val.to_sql(), "''");
     }
 
     #[test]
     fn test_default_value_is_empty_string() {
-        assert!(DefaultValue::String("".into()).is_empty_string());
+        assert!(DefaultValue::String(String::new()).is_empty_string());
         assert!(!DefaultValue::String("hello".into()).is_empty_string());
         assert!(!DefaultValue::Bool(true).is_empty_string());
         assert!(!DefaultValue::Integer(0).is_empty_string());
@@ -181,5 +234,19 @@ mod tests {
         assert!(!DefaultValue::Bool(true).is_string());
         assert!(!DefaultValue::Integer(42).is_string());
         assert!(!DefaultValue::Float(1.5).is_string());
+    }
+
+    #[test]
+    fn test_string_or_bool_as_bool() {
+        assert_eq!(StringOrBool::Bool(true).as_bool(), Some(true));
+        assert_eq!(StringOrBool::Bool(false).as_bool(), Some(false));
+        assert_eq!(StringOrBool::String("value".into()).as_bool(), None);
+    }
+
+    #[test]
+    fn test_str_or_bool_or_array_as_str() {
+        assert_eq!(StrOrBoolOrArray::Str("name".into()).as_str(), Some("name"));
+        assert_eq!(StrOrBoolOrArray::Bool(true).as_str(), None);
+        assert_eq!(StrOrBoolOrArray::Array(vec!["name".into()]).as_str(), None);
     }
 }

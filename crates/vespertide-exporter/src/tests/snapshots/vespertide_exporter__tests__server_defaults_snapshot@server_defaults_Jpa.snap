@@ -1,0 +1,27 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+import java.time.OffsetDateTime;
+
+@Entity
+@Table(name = "with_defaults")
+public class WithDefaults {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @Column(name = "created_at", nullable = false)
+    private OffsetDateTime createdAt;
+
+    @Column(name = "status", nullable = false, columnDefinition = "TEXT")
+    private String status = "active";
+
+    @Column(name = "count", nullable = false)
+    private Integer count = 0;
+
+    protected WithDefaults() {
+    }
+}

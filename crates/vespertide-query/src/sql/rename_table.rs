@@ -42,9 +42,7 @@ mod tests {
         for exp in expected {
             assert!(
                 sql.contains(exp),
-                "Expected SQL to contain '{}', got: {}",
-                exp,
-                sql
+                "Expected SQL to contain '{exp}', got: {sql}"
             );
         }
 

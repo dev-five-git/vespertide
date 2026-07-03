@@ -1,0 +1,30 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+import java.math.BigDecimal;
+
+@Entity
+@Table(name = "complex_types")
+public class ComplexTypes {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @Column(name = "varchar_col", nullable = false, length = 100)
+    private String varcharCol;
+
+    @Column(name = "char_col", nullable = false, length = 10)
+    private String charCol;
+
+    @Column(name = "numeric_col", nullable = false, precision = 10, scale = 2)
+    private BigDecimal numericCol;
+
+    @Column(name = "custom_col", nullable = false, columnDefinition = "CUSTOM_TYPE")
+    private String customCol;
+
+    protected ComplexTypes() {
+    }
+}

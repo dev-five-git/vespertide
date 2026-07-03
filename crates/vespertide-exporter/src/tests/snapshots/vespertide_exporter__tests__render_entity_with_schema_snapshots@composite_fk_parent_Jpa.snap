@@ -1,0 +1,21 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "parent")
+public class Parent {
+
+    @Id
+    @Column(name = "id1")
+    private Integer id1;
+
+    @Id
+    @Column(name = "id2")
+    private Integer id2;
+
+    protected Parent() {
+    }
+}

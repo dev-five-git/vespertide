@@ -1,0 +1,22 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "articles")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    #[sea_orm(default_value = false)]
+    pub published: bool,
+    #[sea_orm(default_value = 0)]
+    pub view_count: i32,
+    #[sea_orm(default_value = "draft")]
+    pub status: String,
+}
+
+vespera::schema_type!(Schema from Model, name = "ArticlesSchema");
+impl ActiveModelBehavior for ActiveModel {}

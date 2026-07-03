@@ -1,13 +1,7 @@
-use super::types::{BuiltQuery, RawSql};
-
-pub fn build_raw_sql(sql: String) -> BuiltQuery {
-    BuiltQuery::Raw(RawSql::uniform(sql))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::sql::types::DatabaseBackend;
+    use crate::sql::{BuiltQuery, RawSql};
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
 
@@ -32,14 +26,12 @@ mod tests {
         #[case] backend: DatabaseBackend,
         #[case] expected: &[&str],
     ) {
-        let result = build_raw_sql("SELECT 1".into());
+        let result = BuiltQuery::Raw(RawSql::uniform("SELECT 1".into()));
         let sql = result.build(backend);
         for exp in expected {
             assert!(
                 sql.contains(exp),
-                "Expected SQL to contain '{}', got: {}",
-                exp,
-                sql
+                "Expected SQL to contain '{exp}', got: {sql}"
             );
         }
 

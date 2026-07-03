@@ -1,0 +1,8 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Vespertide Model YAML",
+  "scopeName": "source.vespertide.yaml",
+  "patterns": [
+    { "include": "source.yaml" }
+  ]
+}

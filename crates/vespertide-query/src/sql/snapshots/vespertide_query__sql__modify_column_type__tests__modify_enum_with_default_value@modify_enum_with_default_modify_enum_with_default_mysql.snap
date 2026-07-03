@@ -1,5 +1,6 @@
 ---
-source: crates/vespertide-query/src/sql/modify_column_type.rs
+source: crates/vespertide-query/src/sql/modify_column_type/mod.rs
+assertion_line: 808
 expression: sql
 ---
-ALTER TABLE `reservation_session` MODIFY COLUMN `status` ENUM('pending', 'confirmed', 'cancelled') NOT NULL DEFAULT 'pending'
+ALTER TABLE `reservation_session` MODIFY COLUMN `status` ENUM('pending', 'confirmed', 'cancelled') NOT NULL DEFAULT ('pending')

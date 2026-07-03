@@ -1,0 +1,25 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "unnamed_unique", uniqueConstraints = {
+    @UniqueConstraint(columnNames = {"col_a", "col_b"})
+})
+public class UnnamedUnique {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @Column(name = "col_a", nullable = false)
+    private Integer colA;
+
+    @Column(name = "col_b", nullable = false)
+    private Integer colB;
+
+    protected UnnamedUnique() {
+    }
+}

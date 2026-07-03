@@ -1,0 +1,7 @@
+name = "Vespertide Model"
+grammar = "json"
+path_suffixes = ["vespertide", "vespertide.json"]
+line_comments = ["// "]
+tab_size = 2
+hard_tabs = false
+auto_indent_using_last_non_empty_line = true

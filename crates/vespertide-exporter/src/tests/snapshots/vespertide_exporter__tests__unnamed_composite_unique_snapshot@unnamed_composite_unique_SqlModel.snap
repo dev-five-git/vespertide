@@ -1,0 +1,21 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlmodel import Field, SQLModel
+from sqlalchemy import UniqueConstraint
+
+
+class UnnamedUnique(SQLModel, table=True):
+    __tablename__ = "unnamed_unique"
+
+    id: int = Field(primary_key=True)
+    col_a: int = Field(...)
+    col_b: int = Field(...)
+
+    __table_args__ = (
+        UniqueConstraint("col_a", "col_b"),
+    )

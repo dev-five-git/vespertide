@@ -1,5 +1,6 @@
 ---
 source: crates/vespertide-query/src/sql/modify_column_comment.rs
+assertion_line: 347
 expression: sql
 ---
-ALTER TABLE `users` MODIFY COLUMN `email` text DEFAULT 'default@example.com' COMMENT 'User email address'
+ALTER TABLE `users` MODIFY COLUMN `email` text DEFAULT ('default@example.com') COMMENT 'User email address'

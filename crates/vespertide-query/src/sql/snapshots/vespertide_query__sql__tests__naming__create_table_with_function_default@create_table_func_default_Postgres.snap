@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/tests/naming.rs
+assertion_line: 493
+expression: sql
+---
+CREATE TABLE "users" ( "id" uuid NOT NULL DEFAULT (gen_random_uuid()), "created_at" timestamp with time zone NOT NULL DEFAULT (CURRENT_TIMESTAMP) )

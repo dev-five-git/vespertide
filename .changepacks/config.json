@@ -1,6 +1,13 @@
 {
-  "ignore": ["**", "!crates/**", "crates/vespertide-schema-gen/Cargo.toml"],
+  "ignore": [
+    "**",
+    "!crates/**",
+    "crates/vespertide-schema-gen/Cargo.toml",
+    "!apps/vscode-extension/package.json"
+  ],
   "baseBranch": "main",
-  "latestPackage": "crates/vespera/Cargo.toml",
-  "publish": {}
+  "latestPackage": "crates/vespertide/Cargo.toml",
+  "publish": {
+    "apps/vscode-extension/package.json": "echo skip npm publish for vscode-extension - shipped via vsce in the vscode-release job"
+  }
 }

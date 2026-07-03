@@ -1,18 +1,28 @@
 [package]
 name = "vespertide"
-version = "0.1.61"
+version = "0.2.1"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 documentation.workspace = true
 description = "Rust workspace for defining database schemas in JSON and generating migration plans and SQL from model diffs"
+keywords = ["database", "migration", "schema", "orm", "sql"]
+categories = ["database"]
+readme = "../../README.md"
 
 [dependencies]
 vespertide-macro = { workspace = true }
 vespertide-core = { workspace = true }
-sea-orm = { version = "2.0.0-rc.37", default-features = false }
+sea-orm = { version = "2.0.0-rc.40", default-features = false }
 
+# Note: the sea-orm `sqlx-sqlite` test (runtime_database_error.rs) was moved to
+# the workspace-excluded crate `tests/runtime-sqlite/` because sqlx's libsqlite3-sys 0.30
+# conflicts on `links = "sqlite3"` with vespertide-query's rusqlite 0.39 (libsqlite3-sys 0.37).
+# Keeping both on latest required isolating the sqlx-sqlite test crate.
 [dev-dependencies]
+sea-orm = { version = "2.0.0-rc.40", default-features = false, features = ["proxy"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-sea-orm = { version = "2.0.0-rc.37", default-features = false, features = ["runtime-tokio-native-tls", "sqlx-sqlite"] }
+
+[lints]
+workspace = true

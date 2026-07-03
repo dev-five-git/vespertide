@@ -1,0 +1,23 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+import enum
+
+from sqlmodel import Field, SQLModel
+
+
+class TaskStatus(str, enum.Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+
+class Tasks(SQLModel, table=True):
+    __tablename__ = "tasks"
+
+    id: int = Field(...)
+    status: TaskStatus = Field(default="pending")
+    priority: int = Field(default=0)
+    is_archived: bool = Field(default=False)

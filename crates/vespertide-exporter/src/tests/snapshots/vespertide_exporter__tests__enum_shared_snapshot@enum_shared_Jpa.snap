@@ -1,0 +1,36 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+enum DocStatus {
+    draft,
+    published,
+    archived;
+}
+
+enum DocStatus {
+    draft,
+    published,
+    archived;
+}
+
+@Entity
+@Table(name = "documents")
+public class Documents {
+
+    @Column(name = "id", nullable = false)
+    private Integer id;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private DocStatus status;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "review_status")
+    private DocStatus reviewStatus;
+
+    protected Documents() {
+    }
+}

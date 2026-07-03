@@ -1,0 +1,15 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlalchemy import BigInteger
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Article(DeclarativeBase):
+    __tablename__ = "article"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)

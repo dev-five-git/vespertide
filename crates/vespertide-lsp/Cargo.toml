@@ -1,0 +1,64 @@
+[package]
+name = "vespertide-lsp"
+version = "0.2.1"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+description = "Language Server Protocol implementation for Vespertide schema files"
+keywords = ["lsp", "vespertide", "schema", "database"]
+categories = ["development-tools"]
+readme = "../../README.md"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "vespertide-lsp"
+path = "src/main.rs"
+
+[dependencies]
+# LSP framework - tower-lsp-server (community fork; tower-lsp 0.20 is abandoned)
+tower-lsp-server = "=0.23.0"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Tree-sitter parsers (used from Wave 2+)
+tree-sitter = "0.26"
+tree-sitter-json = "0.24"
+tree-sitter-yaml = "0.7"
+
+# UTF-16 <-> byte offset position mapping
+lsp-textdocument = "0.5"
+# lsp-textdocument's public API takes lsp_types (0.97) directly, not
+# tower-lsp-server's re-exported ls_types. We need the concrete type when
+# constructing TextDocumentContentChangeEvent for full-sync updates.
+lsp-types = "0.97"
+
+# Concurrent document store (justified: hot per-key path; all other maps use BTreeMap).
+dashmap = "6"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+rustc-hash = "2"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Vespertide workspace members
+vespertide-core = { workspace = true }
+vespertide-config = { workspace = true }
+vespertide-planner = { workspace = true }
+vespertide-loader = { workspace = true }
+
+[dev-dependencies]
+insta = { version = "1.47", features = ["json", "yaml"] }
+proptest = "1"
+rstest = "0.26"
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }

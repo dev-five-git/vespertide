@@ -1,0 +1,35 @@
+# Tarpaulin coverage configuration for vespertide
+#
+# DESIGN DECISION: CI passes inline flags (--engine llvm --out Lcov Stdout --workspace --exclude app).
+# Tarpaulin auto-reads .tarpaulin.toml and merges config with CLI flags.
+# To avoid duplication/conflict, we keep ONLY exclude-files here (additive).
+# The [run] section omits engine/workspace/exclude (those come from CI inline flags).
+# The [report] section specifies output formats.
+
+[report]
+out = ["Lcov", "Stdout"]
+
+[run]
+# Coverage measures PRODUCTION code only. Test code (inline `#[cfg(test)]`
+# modules AND integration `tests/` files) is excluded from the denominator so
+# that `--fail-under 100` means "100% of production code is exercised", not
+# "100% of test scaffolding". This is read by both CI and local runs, keeping
+# the methodology identical everywhere.
+ignore-tests = true
+
+# Exclude files by glob pattern (additive to CLI flags). Covers:
+# - Benchmark files (benches/**) - not unit-testable
+# - Integration test files (**/tests/**) - test code, not production
+# - Build scripts, fuzz targets, tools, examples, target dir
+# - Global logging init (lsp/logging.rs) - process-global tracing setup
+# (main.rs entrypoints are excluded via #[cfg(not(tarpaulin_include))] attrs.)
+exclude-files = [
+    "**/build.rs",
+    "**/benches/**",
+    "**/tests/**",
+    "fuzz/**",
+    "tools/**",
+    "examples/**",
+    "target/**",
+    "crates/vespertide-lsp/src/logging.rs"
+]

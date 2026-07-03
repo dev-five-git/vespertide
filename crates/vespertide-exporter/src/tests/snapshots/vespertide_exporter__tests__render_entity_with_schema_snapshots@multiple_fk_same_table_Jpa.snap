@@ -1,0 +1,26 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+import java.util.UUID;
+
+@Entity
+@Table(name = "post")
+public class Post {
+
+    @Id
+    @Column(name = "id")
+    private UUID id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "creator_user_id", nullable = false)
+    private User creatorUser;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "used_by_user_id", nullable = false)
+    private User usedByUser;
+
+    protected Post() {
+    }
+}

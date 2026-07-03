@@ -45,8 +45,12 @@ src/
 
 ## NOTES
 
-- **revision.rs** (1100 lines): Most complex - handles interactive `--fill-with` prompts for NOT NULL columns without defaults
+- **revision.rs** (3064 lines, scheduled for split per 1000-line rule): Most complex - handles interactive `--fill-with` prompts for NOT NULL columns without defaults
 - **export.rs**: Generates `mod.rs` chain for SeaORM exports; Python ORMs skip this
 - All commands use `load_config()`, `load_models()`, `load_migrations()` from `vespertide_loader`
+- YAML and JSON are both fully supported for models and migrations; `new <name> -f yaml` creates YAML templates.
+- Prefer typed `MigrationAction` enums; `RawSql` exists as a documented emergency escape hatch, but is not recommended for normal use.
 - Tests use `serial_test::serial` with `CwdGuard` for directory isolation
 - Schema URLs default to GitHub raw; override via `VESP_SCHEMA_BASE_URL` env var
+- Every `.rs` file must stay ≤ 1000 lines (CI enforced).
+- Workspace lints warn on unsafe code and Clippy all: `unsafe_code = "warn"`, `clippy::all = { level = "warn", priority = -1 }`.

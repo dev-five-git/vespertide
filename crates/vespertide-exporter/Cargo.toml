@@ -1,22 +1,32 @@
 [package]
 name = "vespertide-exporter"
-version = "0.1.61"
+version = "0.2.1"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 documentation.workspace = true
 description = "Export vespertide table definitions into ORM-specific models"
+keywords = ["database", "migration", "schema", "orm", "sql"]
+categories = ["database"]
+readme = "../../README.md"
 
 [dependencies]
+rayon = { workspace = true }
 vespertide-core = { workspace = true }
 vespertide-config = { workspace = true }
 vespertide-naming = { workspace = true }
 thiserror = "2"
 
 [dev-dependencies]
+criterion = { version = "0.8", features = ["html_reports"] }
 rstest = "0.26"
 insta = { version = "1.47", features = ["yaml"] }
+proptest = "1"
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
+[[bench]]
+name = "codegen_benchmarks"
+harness = false
+
+[lints]
+workspace = true

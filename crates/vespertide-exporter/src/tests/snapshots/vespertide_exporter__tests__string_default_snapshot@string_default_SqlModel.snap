@@ -1,0 +1,15 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlmodel import Field, SQLModel
+
+
+class StringDefaults(SQLModel, table=True):
+    __tablename__ = "string_defaults"
+
+    id: int = Field(primary_key=True)
+    status: str = Field(default="active")

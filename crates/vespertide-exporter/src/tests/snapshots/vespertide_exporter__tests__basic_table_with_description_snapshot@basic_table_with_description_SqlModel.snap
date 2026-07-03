@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from typing import Optional
+
+from sqlmodel import Field, SQLModel
+
+
+class Users(SQLModel, table=True):
+    """User accounts table"""
+    __tablename__ = "users"
+
+    # Primary key
+    id: int = Field(primary_key=True)
+    # User email address
+    email: str = Field(unique=True)
+    name: Optional[str] = Field(default=None)

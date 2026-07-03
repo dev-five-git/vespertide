@@ -1,0 +1,27 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, vespera::Schema)]
+#[serde(rename_all = "camelCase")]
+#[sea_orm(rs_type = "i32", db_type = "Integer")]
+pub enum TaskRunStatus {
+    Pending = 0,
+    Completed = 100,
+}
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "task_runs")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    #[sea_orm(default_value = 100)]
+    pub status: TaskRunStatus,
+}
+
+vespera::schema_type!(Schema from Model, name = "TaskRunsSchema");
+impl ActiveModelBehavior for ActiveModel {}

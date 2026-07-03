@@ -1,0 +1,19 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "employees")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub manager_id: Option<i32>,
+    #[sea_orm(belongs_to, from = "manager_id", to = "id")]
+    pub manager: HasOne<super::employees::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "EmployeesSchema");
+impl ActiveModelBehavior for ActiveModel {}

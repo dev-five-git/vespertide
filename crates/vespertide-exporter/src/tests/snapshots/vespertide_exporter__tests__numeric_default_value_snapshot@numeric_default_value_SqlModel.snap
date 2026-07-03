@@ -1,0 +1,16 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from decimal import Decimal
+
+from sqlmodel import Field, SQLModel
+
+
+class Products(SQLModel, table=True):
+    __tablename__ = "products"
+
+    id: int = Field(...)
+    price: Decimal = Field(default=0.00)

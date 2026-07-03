@@ -2,10 +2,15 @@ use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 
 mod commands;
+mod parallel_config;
+#[cfg(test)]
+mod test_support;
 mod utils;
+use crate::commands::erd::ErdFormat;
 use crate::commands::export::OrmArg;
 use commands::{
-    cmd_diff, cmd_export, cmd_init, cmd_log, cmd_new, cmd_revision, cmd_sql, cmd_status,
+    cmd_diff, cmd_erd_with_filters, cmd_export, cmd_init, cmd_log, cmd_new, cmd_revision, cmd_sql,
+    cmd_status,
 };
 use vespertide_config::FileFormat;
 use vespertide_query::DatabaseBackend;
@@ -44,12 +49,23 @@ enum Commands {
         /// Database backend for SQL generation.
         #[arg(short = 'b', long = "backend", value_enum, default_value = "postgres")]
         backend: BackendArg,
+        /// Wrap the emitted statements in a plan-level `BEGIN;` / `COMMIT;`
+        /// transaction (opt-in; for pasting into a manual SQL runner).
+        /// Note: `MySQL` DDL implicitly commits, so this is advisory there.
+        #[arg(long = "transaction")]
+        transaction: bool,
     },
     /// Show SQL per applied migration (chronological log).
     Log {
         /// Database backend for SQL generation.
         #[arg(short = 'b', long = "backend", value_enum, default_value = "postgres")]
         backend: BackendArg,
+        /// Wrap each migration's statements in a plan-level `BEGIN;` /
+        /// `COMMIT;` transaction (opt-in; mirrors how each migration is
+        /// applied at runtime). Note: `MySQL` DDL implicitly commits, so this
+        /// is advisory there.
+        #[arg(long = "transaction")]
+        transaction: bool,
     },
     /// Create a new model file from template.
     New {
@@ -85,6 +101,24 @@ enum Commands {
         #[arg(short = 'd', long = "export-dir")]
         export_dir: Option<std::path::PathBuf>,
     },
+    /// Export schema as ERD diagrams (SVG, Mermaid, Graphviz DOT).
+    Erd {
+        /// Output format: svg|mermaid|dot.
+        #[arg(short = 'f', long = "format", value_enum, default_value = "svg")]
+        format: ErdFormat,
+        /// Output file path (defaults to stdout if not specified).
+        #[arg(short = 'o', long = "output")]
+        output: Option<std::path::PathBuf>,
+        /// Include only these tables, plus FK-graph neighbors from --depth.
+        #[arg(long, value_delimiter = ',')]
+        include: Vec<String>,
+        /// Exclude these tables after applying --include and --depth.
+        #[arg(long, value_delimiter = ',')]
+        exclude: Vec<String>,
+        /// FK-graph hop distance from --include tables. 0 = include set only.
+        #[arg(long, default_value = "0")]
+        depth: usize,
+    },
 }
 
 #[cfg(not(tarpaulin_include))]
@@ -93,8 +127,14 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Some(Commands::Diff) => cmd_diff().await,
-        Some(Commands::Sql { backend }) => cmd_sql(backend.into()).await,
-        Some(Commands::Log { backend }) => cmd_log(backend.into()).await,
+        Some(Commands::Sql {
+            backend,
+            transaction,
+        }) => cmd_sql(backend.into(), transaction).await,
+        Some(Commands::Log {
+            backend,
+            transaction,
+        }) => cmd_log(backend.into(), transaction).await,
         Some(Commands::New { name, format }) => cmd_new(name, format).await,
         Some(Commands::Status) => cmd_status().await,
         Some(Commands::Revision {
@@ -104,6 +144,13 @@ async fn main() -> Result<()> {
         }) => cmd_revision(message, fill_with, delete_null_rows).await,
         Some(Commands::Init) => cmd_init().await,
         Some(Commands::Export { orm, export_dir }) => cmd_export(orm, export_dir).await,
+        Some(Commands::Erd {
+            format,
+            output,
+            include,
+            exclude,
+            depth,
+        }) => cmd_erd_with_filters(format, output, include, exclude, depth).await,
         None => {
             // No subcommand: show help and exit successfully.
             Cli::command().print_help()?;

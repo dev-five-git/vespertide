@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "unnamed_index")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub col_a: i32,
+    pub col_b: i32,
+}
+
+// Index definitions (SeaORM uses Statement builders externally)
+// (unnamed) on [col_a, col_b]
+vespera::schema_type!(Schema from Model, name = "UnnamedIndexSchema");
+impl ActiveModelBehavior for ActiveModel {}

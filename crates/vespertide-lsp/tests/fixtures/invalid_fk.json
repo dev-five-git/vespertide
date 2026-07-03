@@ -1,0 +1,8 @@
+{
+  "name": "post",
+  "columns": [
+    { "name": "id", "type": "integer", "nullable": false, "primary_key": true },
+    { "name": "author_id", "type": "integer", "nullable": false,
+      "foreign_key": { "ref_table": "nonexistent_user", "ref_columns": ["id"] } }
+  ]
+}

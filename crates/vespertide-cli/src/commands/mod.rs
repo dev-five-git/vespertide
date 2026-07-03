@@ -1,4 +1,5 @@
 pub mod diff;
+pub mod erd;
 pub mod export;
 pub mod init;
 pub mod log;
@@ -8,6 +9,7 @@ pub mod sql;
 pub mod status;
 
 pub use diff::cmd_diff;
+pub use erd::cmd_erd_with_filters;
 pub use export::cmd_export;
 pub use init::cmd_init;
 pub use log::cmd_log;

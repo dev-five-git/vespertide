@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+import java.math.BigDecimal;
+
+@Entity
+@Table(name = "products")
+public class Products {
+
+    @Column(name = "id", nullable = false)
+    private Integer id;
+
+    @Column(name = "price", nullable = false, precision = 10, scale = 2)
+    private BigDecimal price = 0.00;
+
+    protected Products() {
+    }
+}

@@ -1,0 +1,208 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/migration.schema.json",
+  "actions": [
+    {
+      "columns": [
+        {
+          "name": "username",
+          "nullable": false,
+          "primary_key": true,
+          "type": {
+            "kind": "varchar",
+            "length": 32
+          }
+        }
+      ],
+      "constraints": [],
+      "table": "dual",
+      "type": "create_table"
+    },
+    {
+      "columns": [
+        {
+          "name": "username",
+          "nullable": false,
+          "primary_key": true,
+          "type": {
+            "kind": "varchar",
+            "length": 32
+          }
+        }
+      ],
+      "constraints": [],
+      "table": "single",
+      "type": "create_table"
+    },
+    {
+      "columns": [
+        {
+          "name": "username",
+          "nullable": false,
+          "primary_key": true,
+          "type": {
+            "kind": "varchar",
+            "length": 32
+          }
+        }
+      ],
+      "constraints": [],
+      "table": "triple",
+      "type": "create_table"
+    },
+    {
+      "columns": [
+        {
+          "foreign_key": {
+            "on_delete": "cascade",
+            "on_update": null,
+            "ref_columns": [
+              "username"
+            ],
+            "ref_table": "dual"
+          },
+          "name": "username",
+          "nullable": false,
+          "primary_key": true,
+          "type": {
+            "kind": "varchar",
+            "length": 32
+          }
+        },
+        {
+          "foreign_key": {
+            "on_delete": "cascade",
+            "on_update": null,
+            "ref_columns": [
+              "username"
+            ],
+            "ref_table": "dual"
+          },
+          "name": "checker_username",
+          "nullable": false,
+          "primary_key": true,
+          "type": {
+            "kind": "varchar",
+            "length": 32
+          }
+        }
+      ],
+      "constraints": [],
+      "table": "dual_rel",
+      "type": "create_table"
+    },
+    {
+      "columns": [
+        {
+          "foreign_key": {
+            "on_delete": "cascade",
+            "on_update": null,
+            "ref_columns": [
+              "username"
+            ],
+            "ref_table": "single"
+          },
+          "name": "username",
+          "nullable": false,
+          "primary_key": true,
+          "type": {
+            "kind": "varchar",
+            "length": 32
+          }
+        }
+      ],
+      "constraints": [],
+      "table": "single_rel",
+      "type": "create_table"
+    },
+    {
+      "columns": [
+        {
+          "foreign_key": {
+            "on_delete": "cascade",
+            "on_update": null,
+            "ref_columns": [
+              "username"
+            ],
+            "ref_table": "triple"
+          },
+          "name": "username",
+          "nullable": false,
+          "primary_key": true,
+          "type": {
+            "kind": "varchar",
+            "length": 32
+          }
+        },
+        {
+          "foreign_key": {
+            "on_delete": "cascade",
+            "on_update": null,
+            "ref_columns": [
+              "username"
+            ],
+            "ref_table": "triple"
+          },
+          "name": "checker_username",
+          "nullable": false,
+          "primary_key": true,
+          "type": {
+            "kind": "varchar",
+            "length": 32
+          }
+        },
+        {
+          "foreign_key": {
+            "on_delete": "cascade",
+            "on_update": null,
+            "ref_columns": [
+              "username"
+            ],
+            "ref_table": "triple"
+          },
+          "name": "other_username",
+          "nullable": false,
+          "primary_key": true,
+          "type": {
+            "kind": "varchar",
+            "length": 32
+          }
+        }
+      ],
+      "constraints": [],
+      "table": "triple_rel",
+      "type": "create_table"
+    },
+    {
+      "column": {
+        "default": 0,
+        "name": "priority",
+        "nullable": false,
+        "type": {
+          "kind": "enum",
+          "name": "user_priority",
+          "values": [
+            {
+              "name": "low",
+              "value": 0
+            },
+            {
+              "name": "medium",
+              "value": 100
+            },
+            {
+              "name": "high",
+              "value": 200
+            }
+          ]
+        }
+      },
+      "fill_with": null,
+      "table": "user",
+      "type": "add_column"
+    }
+  ],
+  "comment": "add",
+  "created_at": "2026-05-27T07:35:28Z",
+  "id": "b5738bbe-1425-4b5c-890c-deeb3eaa6a02",
+  "version": 2
+}

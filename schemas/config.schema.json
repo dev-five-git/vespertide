@@ -7,6 +7,15 @@
     "columnNamingCase": {
       "$ref": "#/$defs/NameCase"
     },
+    "lockTimeoutMs": {
+      "description": "Maximum time (milliseconds) to wait acquiring a lock during a runtime\nmigration before failing. When set, the `vespertide_migration!` macro\nemits a backend-appropriate session/connection timeout at the start of\nthe migration (`PostgreSQL` `lock_timeout`, `MySQL`\n`innodb_lock_wait_timeout`, `SQLite` `PRAGMA busy_timeout`). `None`\n(default) leaves backend defaults untouched. Absent from serialized\nJSON when `None` (wire-compatible).",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint64",
+      "minimum": 0
+    },
     "migrationFilenamePattern": {
       "type": "string",
       "default": "%04v_%m"
@@ -47,6 +56,15 @@
         "vesperaSchemaType": true
       }
     },
+    "statementTimeoutMs": {
+      "description": "Maximum time (milliseconds) a single migration statement may run before\nthe backend aborts it. When set, the macro emits `PostgreSQL`\n`statement_timeout` / `MySQL` `max_execution_time`. `SQLite` has no\nstatement timeout, so this is skipped there. `None` (default) leaves\nbackend defaults untouched. Absent from serialized JSON when `None`.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint64",
+      "minimum": 0
+    },
     "tableNamingCase": {
       "$ref": "#/$defs/NameCase"
     }
@@ -81,7 +99,7 @@
       "type": "object",
       "properties": {
         "enumNamingCase": {
-          "description": "Naming case for serde rename_all attribute on generated enums.\nDefault: `Camel` (generates `#[serde(rename_all = \"camelCase\")]`)",
+          "description": "Naming case for serde `rename_all` attribute on generated enums.\nDefault: `Camel` (generates `#[serde(rename_all = \"camelCase\")]`)",
           "$ref": "#/$defs/NameCase",
           "default": "camel"
         },

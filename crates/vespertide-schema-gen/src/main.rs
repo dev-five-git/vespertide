@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -21,12 +21,12 @@ struct Args {
 #[cfg(not(tarpaulin_include))]
 fn main() -> Result<()> {
     let args = Args::parse();
-    run(args.out)
+    run(&args.out)
 }
 
-fn run(out: PathBuf) -> Result<()> {
+fn run(out: &Path) -> Result<()> {
     if !out.exists() {
-        fs::create_dir_all(&out).with_context(|| format!("create dir {}", out.display()))?;
+        fs::create_dir_all(out).with_context(|| format!("create dir {}", out.display()))?;
     }
 
     let model_schema = schema_for!(TableDef);
@@ -37,9 +37,22 @@ fn run(out: PathBuf) -> Result<()> {
     let migration_path = out.join("migration.schema.json");
     let config_path = out.join("config.schema.json");
 
+    // **Model-only strip**: migration-time concern fields (`strategy`,
+    // `orphan_strategy`) are valid in `migration.schema.json` (vespertide
+    // stamps them via the revision CLI) but must never appear in
+    // `model.schema.json` — user-facing model files should never carry
+    // them and IDE autocompletion would otherwise wrongly suggest them.
+    //
+    // Done as a post-process JSON walk because the same Rust
+    // `TableConstraint` type backs both schemas and a single
+    // `#[schemars(skip)]` attribute would hide the fields in both.
+    let mut model_value: serde_json::Value =
+        serde_json::to_value(&model_schema).context("serialize model schema to value")?;
+    strip_migration_fields(&mut model_value);
+
     fs::write(
         &model_path,
-        serde_json::to_string_pretty(&model_schema).context("serialize model schema")?,
+        serde_json::to_string_pretty(&model_value).context("serialize stripped model schema")?,
     )
     .with_context(|| format!("write {}", model_path.display()))?;
 
@@ -62,6 +75,46 @@ fn run(out: PathBuf) -> Result<()> {
     Ok(())
 }
 
+/// Field names that vespertide treats as **migration-time concerns**
+/// stamped by the revision CLI. They are valid in migration JSON
+/// (vespertide writes them) but must never appear in user-facing
+/// model JSON.
+const MIGRATION_ONLY_FIELDS: &[&str] = &["strategy", "orphan_strategy"];
+
+/// Recursively walk a JSON Schema document and remove every occurrence
+/// of `MIGRATION_ONLY_FIELDS` from `properties`, `required`, and
+/// `default` blocks. Operates on the schemars output as plain
+/// `serde_json::Value` so it survives schemars major-version changes.
+fn strip_migration_fields(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(map) => {
+            // 1) Remove from any `"properties": { "<field>": ... }` map.
+            if let Some(serde_json::Value::Object(props)) = map.get_mut("properties") {
+                for field in MIGRATION_ONLY_FIELDS {
+                    props.remove(*field);
+                }
+            }
+            // 2) Remove from any `"required": ["<field>", ...]` array.
+            if let Some(serde_json::Value::Array(req)) = map.get_mut("required") {
+                req.retain(|v| {
+                    let s = v.as_str().unwrap_or("");
+                    !MIGRATION_ONLY_FIELDS.contains(&s)
+                });
+            }
+            // 3) Recurse into every child value.
+            for (_, v) in map.iter_mut() {
+                strip_migration_fields(v);
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for v in arr.iter_mut() {
+                strip_migration_fields(v);
+            }
+        }
+        _ => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -74,7 +127,7 @@ mod tests {
         let out = temp_dir.path().join("test_schemas");
 
         assert!(!out.exists());
-        run(out.clone()).unwrap();
+        run(&out).unwrap();
         assert!(out.exists());
     }
 
@@ -83,7 +136,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let out = temp_dir.path();
 
-        run(out.to_path_buf()).unwrap();
+        run(out).unwrap();
 
         let model_path = out.join("model.schema.json");
         assert!(model_path.exists());
@@ -98,7 +151,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let out = temp_dir.path();
 
-        run(out.to_path_buf()).unwrap();
+        run(out).unwrap();
 
         let migration_path = out.join("migration.schema.json");
         assert!(migration_path.exists());
@@ -113,7 +166,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let out = temp_dir.path();
 
-        run(out.to_path_buf()).unwrap();
+        run(out).unwrap();
 
         let model_path = out.join("model.schema.json");
         let migration_path = out.join("migration.schema.json");
@@ -143,7 +196,7 @@ mod tests {
         assert!(out.exists());
 
         // Should still work
-        run(out.to_path_buf()).unwrap();
+        run(out).unwrap();
 
         let model_path = out.join("model.schema.json");
         let migration_path = out.join("migration.schema.json");
@@ -158,7 +211,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let out = temp_dir.path();
 
-        run(out.to_path_buf()).unwrap();
+        run(out).unwrap();
 
         let config_path = out.join("config.schema.json");
         assert!(config_path.exists());

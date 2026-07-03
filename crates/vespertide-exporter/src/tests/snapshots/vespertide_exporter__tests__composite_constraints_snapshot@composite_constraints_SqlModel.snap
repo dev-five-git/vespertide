@@ -1,0 +1,21 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlmodel import Field, SQLModel
+from sqlalchemy import UniqueConstraint
+
+
+class OrderItems(SQLModel, table=True):
+    __tablename__ = "order_items"
+
+    order_id: int = Field(primary_key=True, foreign_key="orders.id")
+    product_id: int = Field(primary_key=True, foreign_key="products.id")
+    quantity: int = Field(...)
+
+    __table_args__ = (
+        UniqueConstraint("order_id", "product_id", name="uq_order_items__order_product"),
+    )

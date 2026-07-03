@@ -1,0 +1,37 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+enum EdgeState {
+    UNKNOWN(-1),
+    NOT_STARTED(0),
+    INPROGRESS(10),
+    HTTP_500(500);
+
+    private final int value;
+
+    EdgeState(int value) {
+        this.value = value;
+    }
+
+    public int getValue() {
+        return value;
+    }
+}
+
+@Entity
+@Table(name = "workflow_runs")
+public class WorkflowRuns {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @Column(name = "state", nullable = false)
+    private Integer state;
+
+    protected WorkflowRuns() {
+    }
+}

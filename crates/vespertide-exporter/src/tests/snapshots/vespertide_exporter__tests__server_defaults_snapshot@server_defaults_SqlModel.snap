@@ -1,0 +1,19 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlmodel import Field, SQLModel
+from sqlalchemy import text
+
+
+class WithDefaults(SQLModel, table=True):
+    __tablename__ = "with_defaults"
+
+    id: int = Field(primary_key=True)
+    created_at: datetime = Field(sa_column_kwargs={"server_default": text("now()")})
+    status: str = Field(default="active")
+    count: int = Field(default=0)

@@ -27,32 +27,14 @@ pub async fn cmd_init() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
+    use crate::test_support::CwdGuard;
     use tempfile::tempdir;
-
-    struct CwdGuard {
-        original: PathBuf,
-    }
-
-    impl CwdGuard {
-        fn new(dir: &PathBuf) -> Self {
-            let original = env::current_dir().unwrap();
-            env::set_current_dir(dir).unwrap();
-            Self { original }
-        }
-    }
-
-    impl Drop for CwdGuard {
-        fn drop(&mut self) {
-            let _ = env::set_current_dir(&self.original);
-        }
-    }
 
     #[tokio::test]
     #[serial_test::serial]
     async fn cmd_init_creates_config() {
         let tmp = tempdir().unwrap();
-        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        let _guard = CwdGuard::new(tmp.path());
 
         cmd_init().await.unwrap();
         assert!(PathBuf::from("vespertide.json").exists());
@@ -62,7 +44,7 @@ mod tests {
     #[serial_test::serial]
     async fn cmd_init_fails_when_exists() {
         let tmp = tempdir().unwrap();
-        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        let _guard = CwdGuard::new(tmp.path());
 
         cmd_init().await.unwrap();
         let err = cmd_init().await.unwrap_err();

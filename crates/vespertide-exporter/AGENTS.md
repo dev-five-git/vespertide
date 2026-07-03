@@ -8,9 +8,9 @@ ORM code generation from `TableDef` schemas → SeaORM (Rust), SQLAlchemy (Pytho
 src/
 ├── lib.rs              # Re-exports all backends
 ├── orm.rs              # OrmExporter trait, Orm enum, dispatch functions
-├── seaorm/mod.rs       # 2961 lines - Entity/Model/Relation generation
-├── sqlalchemy/mod.rs   # 1363 lines - declarative_base models
-└── sqlmodel/mod.rs     # 1348 lines - SQLModel + Pydantic models
+├── seaorm/mod.rs       # 4122 lines, scheduled for split - Entity/Model/Relation generation
+├── sqlalchemy/mod.rs   # 1383 lines, scheduled for split - declarative_base models
+└── sqlmodel/mod.rs     # 1274 lines, scheduled for split - SQLModel + Pydantic models
 snapshots/              # insta snapshot files for testing
 ```
 
@@ -58,4 +58,11 @@ cargo insta accept
 
 - Snapshot testing with `insta` crate (YAML format)
 - `rstest` for parameterized tests across all ORM backends
-- Snapshots in `src/snapshots/` directory
+- 66 snapshot files across exporter snapshot directories
+
+## NOTES
+
+- YAML and JSON are both fully supported input formats; exporter tests also use YAML-formatted insta snapshots.
+- Generated ORM files are outputs only; edit Vespertide models, then regenerate.
+- Every `.rs` file must stay ≤ 1000 lines (CI enforced); current hotspots include SeaORM, SQLAlchemy, SQLModel, and JPA backends.
+- Workspace lints warn on unsafe code and Clippy all: `unsafe_code = "warn"`, `clippy::all = { level = "warn", priority = -1 }`.

@@ -1,0 +1,21 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+import enum
+
+from sqlalchemy import Integer
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class TaskRunStatus(enum.IntEnum):
+    Pending = 0
+    Completed = 100
+
+class TaskRuns(DeclarativeBase):
+    __tablename__ = "task_runs"
+
+    id: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[TaskRunStatus] = mapped_column(Integer, nullable=False, server_default="Completed")

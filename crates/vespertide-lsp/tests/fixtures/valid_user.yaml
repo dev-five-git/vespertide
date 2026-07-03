@@ -1,0 +1,6 @@
+name: user
+columns:
+  - name: id
+    type: integer
+    nullable: false
+    primary_key: true

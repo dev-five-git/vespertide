@@ -1,14 +1,18 @@
 [package]
 name = "vespertide-loader"
-version = "0.1.61"
+version = "0.2.1"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 documentation.workspace = true
 description = "Loads migrations and models from filesystem"
+keywords = ["database", "migration", "schema", "orm", "sql"]
+categories = ["database"]
+readme = "../../README.md"
 
 [dependencies]
+rayon = { workspace = true }
 vespertide-core = { workspace = true }
 vespertide-config = { workspace = true }
 vespertide-planner = { workspace = true }
@@ -19,4 +23,7 @@ serde_yaml = "0.9"
 [dev-dependencies]
 tempfile = "3"
 rstest = "0.26"
-serial_test = "3.4"
+serial_test = "3.5"
+
+[lints]
+workspace = true

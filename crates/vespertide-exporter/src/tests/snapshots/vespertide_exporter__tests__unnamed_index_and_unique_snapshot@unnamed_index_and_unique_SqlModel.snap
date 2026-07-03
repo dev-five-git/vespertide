@@ -1,0 +1,23 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from datetime import date
+
+from sqlmodel import Field, SQLModel
+from sqlalchemy import Index, UniqueConstraint
+
+
+class Events(SQLModel, table=True):
+    __tablename__ = "events"
+
+    id: int = Field(primary_key=True)
+    venue_id: int = Field(...)
+    date: date = Field(...)
+
+    __table_args__ = (
+        Index(None, "venue_id", "date"),
+        UniqueConstraint("venue_id", "date"),
+    )

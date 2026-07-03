@@ -1,0 +1,16 @@
+.vscode/
+.github/
+src/
+out/
+node_modules/
+tsconfig.json
+esbuild.config.mjs
+.eslintrc*
+*.vsix
+.gitkeep
+.vscode-test.mjs
+
+!dist/extension.js
+!bin/**
+!media/**
+!language-configuration.json

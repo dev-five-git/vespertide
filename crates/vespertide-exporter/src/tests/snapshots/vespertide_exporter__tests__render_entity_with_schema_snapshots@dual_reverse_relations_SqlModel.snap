@@ -1,0 +1,14 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlmodel import Field, SQLModel
+
+
+class Dual(SQLModel, table=True):
+    __tablename__ = "dual"
+
+    username: str = Field(primary_key=True)

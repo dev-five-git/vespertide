@@ -1,0 +1,59 @@
+[package]
+name = "vespertide-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+# Internal (publish = false) cargo-fuzz harness. License declared so cargo-deny
+# (which scans every workspace member) does not flag it as `unlicensed`.
+license = "Apache-2.0"
+
+# Required for libfuzzer-sys
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+# Inherit the workspace version pins (kept in lockstep by changepacks) instead
+# of bare `{ path = ... }`, which would be a versionless wildcard dep and trip
+# cargo-deny's `wildcards = "deny"`. Fuzz only deserializes core types via serde,
+# so core's non-default `schema` feature is not needed (matches the rest of the
+# workspace, which already uses core with default-features = false).
+vespertide-core = { workspace = true, features = ["arbitrary"] }
+vespertide-lsp = { workspace = true }
+vespertide-planner = { workspace = true }
+vespertide-query = { workspace = true }
+# Used by fuzz_lsp_request to construct LSP Uris for cross-file targets.
+tower-lsp-server = "=0.23.0"
+arbitrary = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[[bin]]
+name = "fuzz_model_deser"
+path = "fuzz_targets/fuzz_model_deser.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_sql_identifier"
+path = "fuzz_targets/fuzz_sql_identifier.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_migration_apply"
+path = "fuzz_targets/fuzz_migration_apply.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_lsp_request"
+path = "fuzz_targets/fuzz_lsp_request.rs"
+test = false
+doc = false
+bench = false
+
+[lints]
+workspace = true

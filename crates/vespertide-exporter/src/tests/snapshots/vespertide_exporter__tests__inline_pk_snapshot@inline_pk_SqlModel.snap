@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from uuid import UUID
+
+from sqlmodel import Field, SQLModel
+from sqlalchemy import text
+
+
+class Users(SQLModel, table=True):
+    __tablename__ = "users"
+
+    id: UUID = Field(sa_column_kwargs={"server_default": text("gen_random_uuid()")})
+    email: str = Field(...)

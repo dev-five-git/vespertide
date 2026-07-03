@@ -10,160 +10,190 @@ use super::types::{BuiltQuery, DatabaseBackend, RawSql};
 use crate::error::QueryError;
 
 pub(crate) fn build_create_table_for_backend(
-    backend: &DatabaseBackend,
+    backend: DatabaseBackend,
     table: &str,
     columns: &[ColumnDef],
     constraints: &[TableConstraint],
 ) -> TableCreateStatement {
     let mut stmt = Table::create().table(Alias::new(table)).to_owned();
+    add_create_table_columns(&mut stmt, backend, table, columns, constraints);
+    add_create_table_constraints(&mut stmt, backend, table, columns, constraints);
+    stmt
+}
 
+fn add_create_table_columns(
+    stmt: &mut TableCreateStatement,
+    backend: DatabaseBackend,
+    table: &str,
+    columns: &[ColumnDef],
+    constraints: &[TableConstraint],
+) {
     let has_table_primary_key = constraints
         .iter()
         .any(|c| matches!(c, TableConstraint::PrimaryKey { .. }));
+    let auto_increment_columns = collect_auto_increment_columns(constraints);
 
-    // Extract auto_increment columns from constraints
-    let auto_increment_columns: std::collections::HashSet<&str> = constraints
-        .iter()
-        .filter_map(|c| {
-            if let TableConstraint::PrimaryKey {
-                columns: pk_cols,
-                auto_increment: true,
-            } = c
-            {
-                Some(pk_cols.iter().map(|s| s.as_str()).collect::<Vec<_>>())
-            } else {
-                None
-            }
-        })
-        .flatten()
-        .collect();
-
-    // Add columns
     for column in columns {
         let mut col = build_sea_column_def_with_table(backend, table, column);
-
-        // Check for inline primary key
         if column.primary_key.is_some() && !has_table_primary_key {
             col.primary_key();
         }
-
-        // Apply auto_increment if this column is in the auto_increment primary key
-        // and the column type supports it (integer types only).
-        // After ModifyColumnType, the PK may still have auto_increment: true but the
-        // column type may have changed to a non-integer type (e.g. varchar).
         if auto_increment_columns.contains(column.name.as_str())
             && column.r#type.supports_auto_increment()
         {
-            // For SQLite, AUTOINCREMENT requires inline PRIMARY KEY (INTEGER PRIMARY KEY AUTOINCREMENT)
-            // So we must call primary_key() on the column even if there's a table-level PRIMARY KEY
             if matches!(backend, DatabaseBackend::Sqlite) {
                 col.primary_key();
             }
             col.auto_increment();
         }
-
-        // NOTE: We do NOT add inline unique constraints here.
-        // All unique constraints are handled as separate CREATE UNIQUE INDEX statements
-        // so they have proper names and can be dropped later.
-
-        stmt = stmt.col(col).to_owned();
+        *stmt = stmt.col(col).to_owned();
     }
+}
 
-    // Add table-level constraints
+fn collect_auto_increment_columns(
+    constraints: &[TableConstraint],
+) -> std::collections::HashSet<&str> {
+    constraints
+        .iter()
+        .filter_map(|c| {
+            if let TableConstraint::PrimaryKey {
+                columns: pk_cols,
+                auto_increment: true,
+                ..
+            } = c
+            {
+                Some(pk_cols.iter().map(AsRef::as_ref).collect::<Vec<_>>())
+            } else {
+                None
+            }
+        })
+        .flatten()
+        .collect()
+}
+
+fn add_create_table_constraints(
+    stmt: &mut TableCreateStatement,
+    backend: DatabaseBackend,
+    table: &str,
+    columns: &[ColumnDef],
+    constraints: &[TableConstraint],
+) {
     for constraint in constraints {
         match constraint {
             TableConstraint::PrimaryKey {
                 columns: pk_cols,
                 auto_increment,
-            } => {
-                // For SQLite with auto_increment, skip table-level PRIMARY KEY
-                // because AUTOINCREMENT requires inline PRIMARY KEY on the column.
-                // But only if the PK column actually supports auto_increment (integer types).
-                if matches!(backend, DatabaseBackend::Sqlite)
-                    && *auto_increment
-                    && pk_cols.iter().all(|col_name| {
-                        columns
-                            .iter()
-                            .find(|c| c.name == *col_name)
-                            .is_some_and(|c| c.r#type.supports_auto_increment())
-                    })
-                {
-                    continue;
-                }
-                // Build primary key index
-                let mut pk_idx = Index::create();
-                for c in pk_cols {
-                    pk_idx = pk_idx.col(Alias::new(c)).to_owned();
-                }
-                stmt = stmt.primary_key(&mut pk_idx).to_owned();
-            }
+                ..
+            } => add_primary_key_constraint(stmt, backend, columns, pk_cols, *auto_increment),
             TableConstraint::Unique {
                 name,
                 columns: unique_cols,
-            } => {
-                // For MySQL, we can add unique index directly in CREATE TABLE
-                // For Postgres and SQLite, we'll handle it separately in build_create_table
-                if matches!(backend, DatabaseBackend::MySql) {
-                    // Always generate a proper name: uq_{table}_{key} or uq_{table}_{columns}
-                    let index_name = super::helpers::build_unique_constraint_name(
-                        table,
-                        unique_cols,
-                        name.as_deref(),
-                    );
-                    let mut idx = Index::create().name(&index_name).unique().to_owned();
-                    for col in unique_cols {
-                        idx = idx.col(Alias::new(col)).to_owned();
-                    }
-                    stmt = stmt.index(&mut idx).to_owned();
-                }
-                // For Postgres and SQLite, unique constraints will be handled in build_create_table
-                // as separate CREATE UNIQUE INDEX statements
+                ..
+            } => add_mysql_unique_constraint(stmt, backend, table, unique_cols, name.as_deref()),
+            TableConstraint::ForeignKey { .. } => {
+                add_foreign_key_constraint(stmt, table, constraint);
             }
-            TableConstraint::ForeignKey {
-                name,
-                columns: fk_cols,
-                ref_table,
-                ref_columns,
-                on_delete,
-                on_update,
-            } => {
-                // Always generate a proper name: fk_{table}_{key} or fk_{table}_{columns}
-                let fk_name =
-                    super::helpers::build_foreign_key_name(table, fk_cols, name.as_deref());
-                let mut fk = ForeignKey::create().name(&fk_name).to_owned();
-                fk = fk.from_tbl(Alias::new(table)).to_owned();
-                for col in fk_cols {
-                    fk = fk.from_col(Alias::new(col)).to_owned();
-                }
-                fk = fk.to_tbl(Alias::new(ref_table)).to_owned();
-                for col in ref_columns {
-                    fk = fk.to_col(Alias::new(col)).to_owned();
-                }
-                if let Some(action) = on_delete {
-                    fk = fk.on_delete(to_sea_fk_action(action)).to_owned();
-                }
-                if let Some(action) = on_update {
-                    fk = fk.on_update(to_sea_fk_action(action)).to_owned();
-                }
-                stmt = stmt.foreign_key(&mut fk).to_owned();
-            }
-            TableConstraint::Check { name, expr } => {
-                // sea-query doesn't have direct CHECK constraint support in TableCreateStatement
-                // This would need to be handled as raw SQL or post-creation ALTER
+            TableConstraint::Check { name, expr, .. } => {
                 let _ = (name, expr);
             }
-            TableConstraint::Index { .. } => {
-                // Indexes are added separately after CREATE TABLE as CREATE INDEX statements
-                // They will be handled in build_create_table
+            TableConstraint::Index { .. } => {}
+            _ => {
+                unreachable!("TableConstraint is #[non_exhaustive]; all variants are matched above")
             }
         }
     }
+}
 
-    stmt
+fn add_primary_key_constraint(
+    stmt: &mut TableCreateStatement,
+    backend: DatabaseBackend,
+    columns: &[ColumnDef],
+    pk_cols: &[impl AsRef<str>],
+    auto_increment: bool,
+) {
+    if should_skip_sqlite_auto_increment_pk(backend, columns, pk_cols, auto_increment) {
+        return;
+    }
+
+    let mut pk_idx = Index::create();
+    for c in pk_cols {
+        pk_idx.col(Alias::new(c.as_ref()));
+    }
+    *stmt = stmt.primary_key(&mut pk_idx).to_owned();
+}
+
+fn should_skip_sqlite_auto_increment_pk(
+    backend: DatabaseBackend,
+    columns: &[ColumnDef],
+    pk_cols: &[impl AsRef<str>],
+    auto_increment: bool,
+) -> bool {
+    matches!(backend, DatabaseBackend::Sqlite)
+        && auto_increment
+        && pk_cols.iter().all(|col_name| {
+            columns
+                .iter()
+                .find(|c| c.name == col_name.as_ref())
+                .is_some_and(|c| c.r#type.supports_auto_increment())
+        })
+}
+
+fn add_mysql_unique_constraint(
+    stmt: &mut TableCreateStatement,
+    backend: DatabaseBackend,
+    table: &str,
+    unique_cols: &[impl AsRef<str>],
+    name: Option<&str>,
+) {
+    if !matches!(backend, DatabaseBackend::MySql) {
+        return;
+    }
+
+    let index_name = super::helpers::build_unique_constraint_name(table, unique_cols, name);
+    let mut idx = Index::create().name(&index_name).unique().to_owned();
+    for col in unique_cols {
+        idx.col(Alias::new(col.as_ref()));
+    }
+    *stmt = stmt.index(&mut idx).to_owned();
+}
+
+fn add_foreign_key_constraint(
+    stmt: &mut TableCreateStatement,
+    table: &str,
+    constraint: &TableConstraint,
+) {
+    if let TableConstraint::ForeignKey {
+        name,
+        columns: fk_cols,
+        ref_table,
+        ref_columns,
+        on_delete,
+        on_update,
+        ..
+    } = constraint
+    {
+        let fk_name = super::helpers::build_foreign_key_name(table, fk_cols, name.as_deref());
+        let mut fk = ForeignKey::create().name(&fk_name).to_owned();
+        fk.from_tbl(Alias::new(table));
+        for col in fk_cols {
+            fk.from_col(Alias::new(col));
+        }
+        fk.to_tbl(Alias::new(ref_table));
+        for col in ref_columns {
+            fk.to_col(Alias::new(col));
+        }
+        if let Some(action) = on_delete {
+            fk.on_delete(to_sea_fk_action(action));
+        }
+        if let Some(action) = on_update {
+            fk.on_update(to_sea_fk_action(action));
+        }
+        *stmt = stmt.foreign_key(&mut fk).to_owned();
+    }
 }
 
 pub fn build_create_table(
-    backend: &DatabaseBackend,
+    backend: DatabaseBackend,
     table: &str,
     columns: &[ColumnDef],
     constraints: &[TableConstraint],
@@ -172,13 +202,13 @@ pub fn build_create_table(
     // This ensures we don't have duplicate constraints if both inline and table-level are defined
     let table_def = vespertide_core::TableDef {
         description: None,
-        name: table.to_string(),
+        name: table.into(),
         columns: columns.to_vec(),
         constraints: constraints.to_vec(),
     };
-    let normalized = table_def
-        .normalize()
-        .map_err(|e| QueryError::Other(format!("Failed to normalize table '{}': {}", table, e)))?;
+    let normalized = table_def.normalize().map_err(|e| {
+        QueryError::SchemaError(format!("Failed to normalize table '{table}': {e}"))
+    })?;
 
     // Use normalized columns and constraints for SQL generation
     let columns = &normalized.columns;
@@ -213,28 +243,28 @@ pub fn build_create_table(
     } else {
         // Convert references to owned values for build_create_table_for_backend
         let table_constraints_owned: Vec<TableConstraint> =
-            table_constraints.iter().cloned().cloned().collect();
+            table_constraints.iter().copied().cloned().collect();
         build_create_table_for_backend(backend, table, columns, &table_constraints_owned)
     };
 
     // For SQLite, add CHECK constraints for enum columns
     if matches!(backend, DatabaseBackend::Sqlite) {
         let enum_check_clauses = collect_sqlite_enum_check_clauses(table, columns);
-        if !enum_check_clauses.is_empty() {
+        if enum_check_clauses.is_empty() {
+            queries.push(BuiltQuery::CreateTable(Box::new(create_table_stmt)));
+        } else {
             // Embed CHECK constraints into CREATE TABLE statement
-            let base_sql = build_schema_statement(&create_table_stmt, *backend);
+            let base_sql = build_schema_statement(&create_table_stmt, backend);
             let mut modified_sql = base_sql;
             if let Some(pos) = modified_sql.rfind(')') {
                 let check_sql = enum_check_clauses.join(", ");
-                modified_sql.insert_str(pos, &format!(", {}", check_sql));
+                modified_sql.insert_str(pos, &format!(", {check_sql}"));
             }
             queries.push(BuiltQuery::Raw(RawSql::per_backend(
                 modified_sql.clone(),
                 modified_sql.clone(),
                 modified_sql,
             )));
-        } else {
-            queries.push(BuiltQuery::CreateTable(Box::new(create_table_stmt)));
         }
     } else {
         queries.push(BuiltQuery::CreateTable(Box::new(create_table_stmt)));
@@ -246,6 +276,7 @@ pub fn build_create_table(
             if let TableConstraint::Unique {
                 name,
                 columns: unique_cols,
+                ..
             } = constraint
             {
                 // Always generate a proper name: uq_{table}_{key} or uq_{table}_{columns}
@@ -260,7 +291,7 @@ pub fn build_create_table(
                     .unique()
                     .to_owned();
                 for col in unique_cols {
-                    idx = idx.col(Alias::new(col)).to_owned();
+                    idx.col(Alias::new(col));
                 }
                 queries.push(BuiltQuery::CreateIndex(Box::new(idx)));
             }
@@ -281,7 +312,7 @@ pub fn build_create_table(
                 .name(&index_name)
                 .to_owned();
             for col in index_cols {
-                idx = idx.col(Alias::new(col)).to_owned();
+                idx.col(Alias::new(col));
             }
             queries.push(BuiltQuery::CreateIndex(Box::new(idx)));
         }
@@ -293,22 +324,20 @@ pub fn build_create_table(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::col;
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
     use vespertide_core::{ColumnType, EnumValues, SimpleColumnType};
 
-    fn col(name: &str, ty: ColumnType) -> ColumnDef {
-        ColumnDef {
-            name: name.to_string(),
-            r#type: ty,
-            nullable: true,
-            default: None,
-            comment: None,
-            primary_key: None,
-            unique: None,
-            index: None,
-            foreign_key: None,
+    fn join_queries(queries: &[BuiltQuery], backend: DatabaseBackend, separator: &str) -> String {
+        let mut sql = String::new();
+        for (index, query) in queries.iter().enumerate() {
+            if index > 0 {
+                sql.push_str(separator);
+            }
+            sql.push_str(&query.build(backend));
         }
+        sql
     }
 
     #[rstest]
@@ -333,23 +362,17 @@ mod tests {
         #[case] expected: &[&str],
     ) {
         let result = build_create_table(
-            &backend,
+            backend,
             "users",
             &[col("id", ColumnType::Simple(SimpleColumnType::Integer))],
             &[],
         )
         .unwrap();
-        let sql = result
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = join_queries(&result, backend, "\n");
         for exp in expected {
             assert!(
                 sql.contains(exp),
-                "Expected SQL to contain '{}', got: {}",
-                exp,
-                sql
+                "Expected SQL to contain '{exp}', got: {sql}"
             );
         }
 
@@ -371,7 +394,7 @@ mod tests {
         email_col.unique = Some(StrOrBoolOrArray::Bool(true));
 
         let result = build_create_table(
-            &backend,
+            backend,
             "users",
             &[
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
@@ -381,17 +404,12 @@ mod tests {
             &[],
         )
         .unwrap();
-        let sql = result
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = join_queries(&result, backend, "\n");
 
         // After normalization, inline unique should produce UNIQUE constraint in SQL
         assert!(
             sql.contains("UNIQUE") || sql.to_uppercase().contains("UNIQUE"),
-            "Normalized unique constraint should be in SQL, but not found: {}",
-            sql
+            "Normalized unique constraint should be in SQL, but not found: {sql}"
         );
         with_settings!({ snapshot_suffix => format!("create_table_with_inline_unique_{:?}", backend) }, {
             assert_snapshot!(sql);
@@ -405,7 +423,7 @@ mod tests {
     fn test_create_table_with_table_level_unique(#[case] backend: DatabaseBackend) {
         // Test table-level unique constraint (lines 53-54, 56-58, 60-61)
         let result = build_create_table(
-            &backend,
+            backend,
             "users",
             &[
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
@@ -414,30 +432,27 @@ mod tests {
             &[TableConstraint::Unique {
                 name: Some("uq_email".into()),
                 columns: vec!["email".into()],
+                strategy: vespertide_core::UniqueConstraintStrategy::DeleteDuplicates {
+                    keep: vespertide_core::KeepPolicy::First,
+                },
             }],
         )
         .unwrap();
-        let sql = result
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = join_queries(&result, backend, "\n");
         assert!(sql.contains("CREATE TABLE"));
         // Verify unique constraint is present
         match backend {
             DatabaseBackend::MySql => {
                 assert!(
                     sql.contains("UNIQUE"),
-                    "MySQL should have UNIQUE in CREATE TABLE: {}",
-                    sql
+                    "MySQL should have UNIQUE in CREATE TABLE: {sql}"
                 );
             }
             _ => {
                 // For Postgres and SQLite, unique constraint should be in a separate CREATE UNIQUE INDEX statement
                 assert!(
                     sql.contains("CREATE UNIQUE INDEX"),
-                    "Postgres/SQLite should have CREATE UNIQUE INDEX: {}",
-                    sql
+                    "Postgres/SQLite should have CREATE UNIQUE INDEX: {sql}"
                 );
             }
         }
@@ -453,7 +468,7 @@ mod tests {
     fn test_create_table_with_table_level_unique_no_name(#[case] backend: DatabaseBackend) {
         // Test table-level unique constraint without name (lines 53-54, 56-58, 60-61)
         let result = build_create_table(
-            &backend,
+            backend,
             "users",
             &[
                 col("id", ColumnType::Simple(SimpleColumnType::Integer)),
@@ -462,30 +477,27 @@ mod tests {
             &[TableConstraint::Unique {
                 name: None,
                 columns: vec!["email".into()],
+                strategy: vespertide_core::UniqueConstraintStrategy::DeleteDuplicates {
+                    keep: vespertide_core::KeepPolicy::First,
+                },
             }],
         )
         .unwrap();
-        let sql = result
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = join_queries(&result, backend, "\n");
         assert!(sql.contains("CREATE TABLE"));
         // Verify unique constraint is present
         match backend {
             DatabaseBackend::MySql => {
                 assert!(
                     sql.contains("UNIQUE"),
-                    "MySQL should have UNIQUE in CREATE TABLE: {}",
-                    sql
+                    "MySQL should have UNIQUE in CREATE TABLE: {sql}"
                 );
             }
             _ => {
                 // For Postgres and SQLite, unique constraint should be in a separate CREATE UNIQUE INDEX statement
                 assert!(
                     sql.contains("CREATE UNIQUE INDEX"),
-                    "Postgres/SQLite should have CREATE UNIQUE INDEX: {}",
-                    sql
+                    "Postgres/SQLite should have CREATE UNIQUE INDEX: {sql}"
                 );
             }
         }
@@ -534,16 +546,13 @@ mod tests {
         let constraints = vec![TableConstraint::PrimaryKey {
             auto_increment: false,
             columns: vec!["id".into()],
+            strategy: vespertide_core::PrimaryKeyAdditionStrategy::default(),
         }];
 
-        let result = build_create_table(&backend, "users", &columns, &constraints);
+        let result = build_create_table(backend, "users", &columns, &constraints);
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<String>>()
-            .join(";\n");
+        let sql = join_queries(&queries, backend, ";\n");
 
         with_settings!({ snapshot_suffix => format!("create_table_with_enum_column_{:?}", backend) }, {
             assert_snapshot!(sql);
@@ -570,38 +579,39 @@ mod tests {
         let constraints = vec![TableConstraint::PrimaryKey {
             auto_increment: true,
             columns: vec!["id".into()],
+            strategy: vespertide_core::PrimaryKeyAdditionStrategy::default(),
         }];
 
-        let result = build_create_table(&backend, "users", &columns, &constraints);
+        let result = build_create_table(backend, "users", &columns, &constraints);
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<String>>()
-            .join(";\n");
+        let sql = join_queries(&queries, backend, ";\n");
 
         // Verify auto_increment is applied correctly for each backend
         match backend {
             DatabaseBackend::Postgres => {
+                // sea-query 1.0.0-rc.33 renders PG auto-increment as the
+                // SQL-standard `GENERATED BY DEFAULT AS IDENTITY` (PG 10+),
+                // whereas the 1.0.0 final line used `SERIAL`. Both express an
+                // auto-incrementing PK; accept either form.
                 assert!(
-                    sql.contains("SERIAL") || sql.contains("serial"),
-                    "PostgreSQL should use SERIAL for auto_increment, got: {}",
-                    sql
+                    sql.contains("SERIAL")
+                        || sql.contains("serial")
+                        || sql.contains("IDENTITY")
+                        || sql.contains("identity"),
+                    "PostgreSQL should use SERIAL or IDENTITY for auto_increment, got: {sql}"
                 );
             }
             DatabaseBackend::MySql => {
                 assert!(
                     sql.contains("AUTO_INCREMENT") || sql.contains("auto_increment"),
-                    "MySQL should use AUTO_INCREMENT for auto_increment, got: {}",
-                    sql
+                    "MySQL should use AUTO_INCREMENT for auto_increment, got: {sql}"
                 );
             }
             DatabaseBackend::Sqlite => {
                 assert!(
                     sql.contains("AUTOINCREMENT") || sql.contains("autoincrement"),
-                    "SQLite should use AUTOINCREMENT for auto_increment, got: {}",
-                    sql
+                    "SQLite should use AUTOINCREMENT for auto_increment, got: {sql}"
                 );
             }
         }
@@ -633,36 +643,36 @@ mod tests {
             foreign_key: None,
         }];
 
-        let result = build_create_table(&backend, "users", &columns, &[]);
+        let result = build_create_table(backend, "users", &columns, &[]);
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<String>>()
-            .join(";\n");
+        let sql = join_queries(&queries, backend, ";\n");
 
         // Verify auto_increment is applied correctly for each backend
         match backend {
             DatabaseBackend::Postgres => {
+                // sea-query 1.0.0-rc.33 renders PG auto-increment as the
+                // SQL-standard `GENERATED BY DEFAULT AS IDENTITY` (PG 10+),
+                // whereas the 1.0.0 final line used `SERIAL`. Both express an
+                // auto-incrementing PK; accept either form.
                 assert!(
-                    sql.contains("SERIAL") || sql.contains("serial"),
-                    "PostgreSQL should use SERIAL for auto_increment, got: {}",
-                    sql
+                    sql.contains("SERIAL")
+                        || sql.contains("serial")
+                        || sql.contains("IDENTITY")
+                        || sql.contains("identity"),
+                    "PostgreSQL should use SERIAL or IDENTITY for auto_increment, got: {sql}"
                 );
             }
             DatabaseBackend::MySql => {
                 assert!(
                     sql.contains("AUTO_INCREMENT") || sql.contains("auto_increment"),
-                    "MySQL should use AUTO_INCREMENT for auto_increment, got: {}",
-                    sql
+                    "MySQL should use AUTO_INCREMENT for auto_increment, got: {sql}"
                 );
             }
             DatabaseBackend::Sqlite => {
                 assert!(
                     sql.contains("AUTOINCREMENT") || sql.contains("autoincrement"),
-                    "SQLite should use AUTOINCREMENT for auto_increment, got: {}",
-                    sql
+                    "SQLite should use AUTOINCREMENT for auto_increment, got: {sql}"
                 );
             }
         }
@@ -672,12 +682,85 @@ mod tests {
         });
     }
 
-    /// Test creating a table with timestamp column and NOW() default
-    /// SQLite should convert NOW() to CURRENT_TIMESTAMP
+    /// Test creating a table with timestamp column and `NOW()` default
+    /// `SQLite` should convert `NOW()` to `CURRENT_TIMESTAMP`
     #[rstest]
     #[case::timestamp_now_default_postgres(DatabaseBackend::Postgres)]
     #[case::timestamp_now_default_mysql(DatabaseBackend::MySql)]
     #[case::timestamp_now_default_sqlite(DatabaseBackend::Sqlite)]
+    /// CREATE TABLE with `Check` + `Index` constraints exercises the
+    /// `TableConstraint::Check` and `TableConstraint::Index` arms of
+    /// `add_create_table_constraints` (both silently skip - the
+    /// constraints are emitted in separate ALTER statements outside
+    /// this builder, but the match arms still execute on every call).
+    #[rstest]
+    #[case::postgres(DatabaseBackend::Postgres)]
+    #[case::mysql(DatabaseBackend::MySql)]
+    #[case::sqlite(DatabaseBackend::Sqlite)]
+    fn test_create_table_check_and_index_constraints_are_skipped(#[case] backend: DatabaseBackend) {
+        // Mix CHECK + INDEX + PrimaryKey so the match dispatcher walks the
+        // Check and Index arms (currently no-op) alongside a real PK arm.
+        let constraints = vec![
+            TableConstraint::PrimaryKey {
+                columns: vec!["id".into()],
+                auto_increment: false,
+                strategy: vespertide_core::PrimaryKeyAdditionStrategy::default(),
+            },
+            TableConstraint::Check {
+                name: "chk_age".into(),
+                expr: "age > 0".into(),
+                strategy: vespertide_core::CheckViolationStrategy::default(),
+            },
+            TableConstraint::Index {
+                name: Some("idx_age".into()),
+                columns: vec!["age".into()],
+            },
+        ];
+        let columns = vec![
+            ColumnDef {
+                name: "id".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            },
+            ColumnDef {
+                name: "age".into(),
+                r#type: ColumnType::Simple(SimpleColumnType::Integer),
+                nullable: false,
+                default: None,
+                comment: None,
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            },
+        ];
+        let queries = build_create_table(backend, "users", &columns, &constraints).unwrap();
+        let sql = queries
+            .iter()
+            .map(|q| q.build(backend))
+            .collect::<Vec<_>>()
+            .join("\n");
+        // The CHECK arm in `add_create_table_constraints` is a documented
+        // no-op (CHECK appears in a separate ALTER ADD CONSTRAINT statement,
+        // not in CREATE TABLE itself). We assert the dispatch ran (PK lands)
+        // and the CHECK predicate is NOT inlined in the CREATE TABLE.
+        assert!(sql.contains("PRIMARY KEY"));
+        assert!(!sql.contains("CHECK (age > 0)"));
+        // Index constraints fan out as separate CREATE INDEX statements,
+        // which is the documented behaviour of build_create_table.
+        assert!(sql.contains("CREATE INDEX") || sql.contains("idx_age"));
+    }
+
+    #[rstest]
+    #[case::postgres(DatabaseBackend::Postgres)]
+    #[case::mysql(DatabaseBackend::MySql)]
+    #[case::sqlite(DatabaseBackend::Sqlite)]
     fn test_create_table_with_timestamp_now_default(#[case] backend: DatabaseBackend) {
         let columns = vec![
             ColumnDef {
@@ -704,26 +787,20 @@ mod tests {
             },
         ];
 
-        let result = build_create_table(&backend, "events", &columns, &[]);
-        assert!(result.is_ok(), "build_create_table failed: {:?}", result);
+        let result = build_create_table(backend, "events", &columns, &[]);
+        assert!(result.is_ok(), "build_create_table failed: {result:?}");
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = join_queries(&queries, backend, "\n");
 
         // SQLite should NOT have NOW() - it should be converted to CURRENT_TIMESTAMP
         if matches!(backend, DatabaseBackend::Sqlite) {
             assert!(
                 !sql.contains("NOW()"),
-                "SQLite should not contain NOW(), got: {}",
-                sql
+                "SQLite should not contain NOW(), got: {sql}"
             );
             assert!(
                 sql.contains("CURRENT_TIMESTAMP"),
-                "SQLite should use CURRENT_TIMESTAMP, got: {}",
-                sql
+                "SQLite should use CURRENT_TIMESTAMP, got: {sql}"
             );
         }
 

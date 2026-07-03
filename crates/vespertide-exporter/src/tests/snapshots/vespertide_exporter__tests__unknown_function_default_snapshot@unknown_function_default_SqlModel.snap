@@ -1,0 +1,16 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlmodel import Field, SQLModel
+from sqlalchemy import text
+
+
+class UnknownDefaults(SQLModel, table=True):
+    __tablename__ = "unknown_defaults"
+
+    id: int = Field(primary_key=True)
+    code: str = Field(sa_column_kwargs={"server_default": text("gen_code()")})

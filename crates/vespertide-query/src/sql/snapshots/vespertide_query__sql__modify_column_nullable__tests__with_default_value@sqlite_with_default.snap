@@ -1,8 +1,9 @@
 ---
 source: crates/vespertide-query/src/sql/modify_column_nullable.rs
+assertion_line: 459
 expression: sql
 ---
-CREATE TABLE "users_temp" ( "id" integer NOT NULL, "email" text NOT NULL DEFAULT 'default@example.com' )
+CREATE TABLE "users_temp" ( "id" integer NOT NULL, "email" text NOT NULL DEFAULT ('default@example.com') )
 INSERT INTO "users_temp" ("id", "email") SELECT "id", "email" FROM "users"
 DROP TABLE "users"
 ALTER TABLE "users_temp" RENAME TO "users"

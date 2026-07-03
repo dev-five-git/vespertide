@@ -6,9 +6,9 @@ Schema diffing engine - compares baseline vs target schema to emit typed migrati
 
 ```
 src/
-├── diff.rs      # 3200+ lines - Schema comparison, topological sort
-├── validate.rs  # 1800+ lines - Schema/plan validation  
-├── apply.rs     # 1400+ lines - Apply actions to in-memory schema
+├── diff.rs      # 4739 lines, scheduled for split - Schema comparison, topological sort
+├── validate.rs  # 2299 lines, scheduled for split - Schema/plan validation
+├── apply.rs     # 1617 lines, scheduled for split - Apply actions to in-memory schema
 ├── schema.rs    # Replay migrations → baseline schema
 ├── plan.rs      # High-level planning API
 └── error.rs     # PlannerError enum
@@ -50,3 +50,42 @@ src/
 | Using HashMap in diff | Non-deterministic action ordering |
 | Ignoring topological sort | FK constraint violations on CREATE/DELETE |
 | Forgetting `fill_with` validation | NOT NULL columns without defaults fail |
+
+## DATA-DEPENDENT FAULT COVERAGE
+
+`validate/` is a **pure static analyzer**: no DB connection, no row inspection.
+The following fault classes from the migration fault taxonomy are intentionally
+**out of scope** because they require runtime data access against a populated
+database:
+
+| ID | Name | Why out of scope |
+|---|---|---|
+| F1 | NOT NULL on existing NULLs | Requires counting actual NULL rows in production data |
+| F2 | UNIQUE with duplicates | Requires scanning existing rows for duplicate keys |
+| F3 | FK with orphan rows | Requires cross-table check of existing rows against parent table |
+| F4 | CHECK with violating rows | Requires evaluating the CHECK expression against every row |
+
+These faults are **partially mitigated** by the `fill_with` requirement:
+`find_missing_fill_with` and `find_missing_enum_fill_with` force the user to
+declare *how* to backfill / map removed enum values before the migration is
+allowed. Full runtime verification is delegated to the database engine at
+`ADD CONSTRAINT` time, which will reject the migration if existing rows violate
+the new invariant.
+
+Statically analysable faults that **are** detected here:
+
+| Helper | Fault | Category |
+|---|---|---|
+| `validate_schema` | Structural integrity (duplicate names, FK targets, etc.) | A |
+| `validate_migration_plan` | Enum default / NOT NULL gating | A·B |
+| `find_missing_fill_with` | Backfill strategy required (partial F1/F2/F3) | A |
+| `find_missing_enum_fill_with` | Removed enum value remapping (partial F7) | B |
+| `find_missing_fk_supporting_indexes` | F51 — FK without leading-prefix index | G |
+| `find_constraint_drops_without_replacement` | F50 — Integrity-preserving constraint dropped | A |
+
+## NOTES
+
+- YAML and JSON are both fully supported for models and migrations.
+- Prefer typed `MigrationAction` enums; `RawSql` exists as a documented emergency escape hatch, but is opaque to baseline replay and not recommended for normal use.
+- Every `.rs` file must stay ≤ 1000 lines (CI enforced); current planner hotspots are `diff.rs` (4739), `validate.rs` (2299), and `apply.rs` (1617).
+- Workspace lints warn on unsafe code and Clippy all: `unsafe_code = "warn"`, `clippy::all = { level = "warn", priority = -1 }`.

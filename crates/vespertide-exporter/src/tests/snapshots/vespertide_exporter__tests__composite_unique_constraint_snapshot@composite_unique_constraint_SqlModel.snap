@@ -1,0 +1,21 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlmodel import Field, SQLModel
+from sqlalchemy import UniqueConstraint
+
+
+class AccountAliases(SQLModel, table=True):
+    __tablename__ = "account_aliases"
+
+    id: int = Field(primary_key=True)
+    tenant_id: int = Field(...)
+    slug: str = Field(...)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "slug", name="uq_account_aliases__tenant_slug"),
+    )

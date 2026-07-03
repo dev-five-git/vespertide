@@ -7,6 +7,18 @@ use crate::schema::{
     str_or_bool::{StrOrBoolOrArray, StringOrBool},
 };
 
+/// Definition of a single table column, including its type, nullability, and inline constraints.
+///
+/// Inline constraints (`primary_key`, `unique`, `index`, `foreign_key`) are the preferred way to
+/// declare constraints in model JSON files. Call [`TableDef::normalize`] to convert them into
+/// table-level [`TableConstraint`] entries before diffing or SQL generation.
+///
+/// Use [`ColumnDef::new`] to construct a column programmatically, then chain the setter methods
+/// (`.primary_key()`, `.unique()`, `.index()`, `.foreign_key()`, `.default()`, `.comment()`) to
+/// attach optional fields.
+///
+/// [`TableDef::normalize`]: crate::schema::TableDef::normalize
+/// [`TableConstraint`]: crate::schema::TableConstraint
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
@@ -28,16 +40,30 @@ pub struct ColumnDef {
     pub foreign_key: Option<ForeignKeySyntax>,
 }
 
+/// The SQL type of a column, either a parameter-free simple type or a parameterised complex type.
+///
+/// In JSON model files a simple type is written as a plain string (`"integer"`, `"text"`, etc.)
+/// while a complex type is written as an object with a `"kind"` discriminant
+/// (`{"kind": "varchar", "length": 255}`).
+///
+/// Always construct via the wrapped variants:
+/// ```
+/// use vespertide_core::{ColumnType, SimpleColumnType, ComplexColumnType};
+/// let t1 = ColumnType::Simple(SimpleColumnType::Integer);
+/// let t2 = ColumnType::Complex(ComplexColumnType::Varchar { length: 255 });
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case", untagged)]
 pub enum ColumnType {
+    /// A parameter-free SQL type such as `INTEGER`, `TEXT`, or `UUID`.
     Simple(SimpleColumnType),
+    /// A parameterised SQL type such as `VARCHAR(n)`, `NUMERIC(p,s)`, or a named enum.
     Complex(ComplexColumnType),
 }
 
 impl ColumnType {
-    /// Returns true if this type supports auto_increment (integer types only)
+    /// Returns true if this type supports `auto_increment` (integer types only)
     pub fn supports_auto_increment(&self) -> bool {
         match self {
             ColumnType::Simple(ty) => ty.supports_auto_increment(),
@@ -47,7 +73,7 @@ impl ColumnType {
 
     /// Check if two column types require a migration.
     /// For integer enums, no migration is ever needed because the underlying DB type is always INTEGER.
-    /// The enum name and values only affect code generation (SeaORM entities), not the database schema.
+    /// The enum name and values only affect code generation (`SeaORM` entities), not the database schema.
     pub fn requires_migration(&self, other: &ColumnType) -> bool {
         match (self, other) {
             (
@@ -73,7 +99,7 @@ impl ColumnType {
         }
     }
 
-    /// Convert column type to Rust type string (for SeaORM entity generation)
+    /// Convert column type to Rust type string (for `SeaORM` entity generation)
     pub fn to_rust_type(&self, nullable: bool) -> String {
         let base = match self {
             ColumnType::Simple(ty) => match ty {
@@ -82,32 +108,32 @@ impl ColumnType {
                 SimpleColumnType::BigInt => "i64".to_string(),
                 SimpleColumnType::Real => "f32".to_string(),
                 SimpleColumnType::DoublePrecision => "f64".to_string(),
-                SimpleColumnType::Text => "String".to_string(),
+                SimpleColumnType::Text
+                | SimpleColumnType::Interval
+                | SimpleColumnType::Inet
+                | SimpleColumnType::Cidr
+                | SimpleColumnType::Macaddr
+                | SimpleColumnType::Xml => "String".to_string(),
                 SimpleColumnType::Boolean => "bool".to_string(),
                 SimpleColumnType::Date => "Date".to_string(),
                 SimpleColumnType::Time => "Time".to_string(),
                 SimpleColumnType::Timestamp => "DateTime".to_string(),
                 SimpleColumnType::Timestamptz => "DateTimeWithTimeZone".to_string(),
-                SimpleColumnType::Interval => "String".to_string(),
                 SimpleColumnType::Bytea => "Vec<u8>".to_string(),
                 SimpleColumnType::Uuid => "Uuid".to_string(),
                 SimpleColumnType::Json => "Json".to_string(),
-                // SimpleColumnType::Jsonb => "Json".to_string(),
-                SimpleColumnType::Inet | SimpleColumnType::Cidr => "String".to_string(),
-                SimpleColumnType::Macaddr => "String".to_string(),
-                SimpleColumnType::Xml => "String".to_string(),
             },
             ColumnType::Complex(ty) => match ty {
-                ComplexColumnType::Varchar { .. } => "String".to_string(),
                 ComplexColumnType::Numeric { .. } => "Decimal".to_string(),
-                ComplexColumnType::Char { .. } => "String".to_string(),
-                ComplexColumnType::Custom { .. } => "String".to_string(), // Default for custom types
-                ComplexColumnType::Enum { .. } => "String".to_string(),
+                ComplexColumnType::Varchar { .. }
+                | ComplexColumnType::Char { .. }
+                | ComplexColumnType::Custom { .. }
+                | ComplexColumnType::Enum { .. } => "String".to_string(),
             },
         };
 
         if nullable {
-            format!("Option<{}>", base)
+            format!("Option<{base}>")
         } else {
             base
         }
@@ -147,50 +173,170 @@ impl ColumnType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+impl ColumnDef {
+    /// Construct a new column with required fields only.
+    /// Use the `.primary_key()`, `.unique()`, `.index()`, `.foreign_key()`,
+    /// `.default()`, `.comment()` setters to add optional fields.
+    ///
+    /// # Examples
+    /// ```
+    /// use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
+    /// let id = ColumnDef::new("id", ColumnType::Simple(SimpleColumnType::Integer), false);
+    /// ```
+    #[must_use]
+    pub fn new(name: impl Into<ColumnName>, r#type: ColumnType, nullable: bool) -> Self {
+        Self {
+            name: name.into(),
+            r#type,
+            nullable,
+            default: None,
+            comment: None,
+            primary_key: None,
+            unique: None,
+            index: None,
+            foreign_key: None,
+        }
+    }
+
+    /// Mark this column as part of the primary key.
+    #[must_use]
+    pub fn primary_key(mut self, pk: PrimaryKeySyntax) -> Self {
+        self.primary_key = Some(pk);
+        self
+    }
+
+    /// Add a unique constraint to this column.
+    #[must_use]
+    pub fn unique(mut self, unique: StrOrBoolOrArray) -> Self {
+        self.unique = Some(unique);
+        self
+    }
+
+    /// Add an index on this column.
+    #[must_use]
+    pub fn index(mut self, index: StrOrBoolOrArray) -> Self {
+        self.index = Some(index);
+        self
+    }
+
+    /// Add a foreign key reference from this column.
+    #[must_use]
+    pub fn foreign_key(mut self, fk: ForeignKeySyntax) -> Self {
+        self.foreign_key = Some(fk);
+        self
+    }
+
+    /// Set the column default value.
+    #[must_use]
+    pub fn default(mut self, default: StringOrBool) -> Self {
+        self.default = Some(default);
+        self
+    }
+
+    /// Add a column comment.
+    #[must_use]
+    pub fn comment(mut self, comment: impl Into<String>) -> Self {
+        self.comment = Some(comment.into());
+        self
+    }
+}
+
+/// Parameter-free SQL column types supported across all backends.
+///
+/// Each variant maps directly to a standard SQL type. Use these via
+/// [`ColumnType::Simple`] when no length, precision, or scale is needed.
+///
+/// This enum is `#[non_exhaustive]`: new variants may be added in future releases.
+/// Downstream `match` expressions should include a wildcard arm.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum SimpleColumnType {
+    /// 16-bit signed integer (`SMALLINT`).
     SmallInt,
+    /// 32-bit signed integer (`INTEGER`). Supports `auto_increment`.
     Integer,
+    /// 64-bit signed integer (`BIGINT`). Supports `auto_increment`.
     BigInt,
+    /// 32-bit floating-point number (`REAL`).
     Real,
+    /// 64-bit floating-point number (`DOUBLE PRECISION`).
     DoublePrecision,
 
     // Text types
+    /// Unbounded Unicode text (`TEXT`).
     Text,
 
     // Boolean type
+    /// Boolean true/false value (`BOOLEAN`).
     Boolean,
 
     // Date/Time types
+    /// Calendar date without time (`DATE`).
     Date,
+    /// Time of day without date (`TIME`).
     Time,
+    /// Date and time without timezone (`TIMESTAMP`).
     Timestamp,
+    /// Date and time with timezone (`TIMESTAMPTZ`). Prefer this over `Timestamp`.
     Timestamptz,
+    /// Time span / duration (`INTERVAL`).
     Interval,
 
     // Binary type
+    /// Variable-length binary data (`BYTEA`).
     Bytea,
 
     // UUID type
+    /// Universally unique identifier (`UUID`).
     Uuid,
 
     // JSON types
+    /// JSON value stored as text (`JSON`). Cross-backend compatible; prefer over `jsonb`.
     Json,
-    // Jsonb,
 
     // Network types
+    /// IPv4 or IPv6 host address (`INET`). PostgreSQL-specific.
     Inet,
+    /// IPv4 or IPv6 network address (`CIDR`). PostgreSQL-specific.
     Cidr,
+    /// MAC address (`MACADDR`). PostgreSQL-specific.
     Macaddr,
 
     // XML type
+    /// XML document (`XML`). PostgreSQL-specific.
     Xml,
 }
 
 impl SimpleColumnType {
-    /// Returns true if this type supports auto_increment (integer types only)
+    /// Returns the SQL type name for this simple column type.
+    #[must_use]
+    pub fn sql_type(&self) -> &'static str {
+        match self {
+            SimpleColumnType::SmallInt => "SMALLINT",
+            SimpleColumnType::Integer => "INTEGER",
+            SimpleColumnType::BigInt => "BIGINT",
+            SimpleColumnType::Real => "REAL",
+            SimpleColumnType::DoublePrecision => "DOUBLE PRECISION",
+            SimpleColumnType::Text => "TEXT",
+            SimpleColumnType::Boolean => "BOOLEAN",
+            SimpleColumnType::Date => "DATE",
+            SimpleColumnType::Time => "TIME",
+            SimpleColumnType::Timestamp => "TIMESTAMP",
+            SimpleColumnType::Timestamptz => "TIMESTAMPTZ",
+            SimpleColumnType::Interval => "INTERVAL",
+            SimpleColumnType::Bytea => "BYTEA",
+            SimpleColumnType::Uuid => "UUID",
+            SimpleColumnType::Json => "JSON",
+            SimpleColumnType::Inet => "INET",
+            SimpleColumnType::Cidr => "CIDR",
+            SimpleColumnType::Macaddr => "MACADDR",
+            SimpleColumnType::Xml => "XML",
+        }
+    }
+
+    /// Returns true if this type supports `auto_increment` (integer types only)
     pub fn supports_auto_increment(&self) -> bool {
         matches!(
             self,
@@ -232,14 +378,13 @@ impl SimpleColumnType {
             }
             SimpleColumnType::Real | SimpleColumnType::DoublePrecision => "0.0",
             SimpleColumnType::Boolean => "false",
-            SimpleColumnType::Text => "''",
+            SimpleColumnType::Text | SimpleColumnType::Bytea => "''",
             SimpleColumnType::Date => "'1970-01-01'",
             SimpleColumnType::Time => "'00:00:00'",
             SimpleColumnType::Timestamp | SimpleColumnType::Timestamptz => "CURRENT_TIMESTAMP",
             SimpleColumnType::Interval => "'0'",
             SimpleColumnType::Uuid => "'00000000-0000-0000-0000-000000000000'",
             SimpleColumnType::Json => "'{}'",
-            SimpleColumnType::Bytea => "''",
             SimpleColumnType::Inet | SimpleColumnType::Cidr => "'0.0.0.0'",
             SimpleColumnType::Macaddr => "'00:00:00:00:00:00'",
             SimpleColumnType::Xml => "'<xml/>'",
@@ -247,20 +392,37 @@ impl SimpleColumnType {
     }
 }
 
-/// Integer enum variant with name and numeric value
+/// A single variant of an integer-backed enum, pairing a Rust-friendly name with its stored value.
+///
+/// Used inside [`EnumValues::Integer`] to define enums that are stored as `INTEGER` in the
+/// database. Leave gaps between values (e.g. 0, 10, 20) so new variants can be inserted later
+/// without renumbering.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct NumValue {
+    /// The variant name used in generated code (e.g. `"active"`).
     pub name: String,
-    pub value: i32,
+    /// The integer value stored in the database column.
+    pub value: i64,
 }
 
-/// Enum values definition - either all string or all integer
+/// The set of allowed values for an enum column, either string-based or integer-based.
+///
+/// **String enums** map to a native `PostgreSQL` `ENUM` type. Adding or removing values requires a
+/// database migration (`ALTER TYPE`).
+///
+/// **Integer enums** are stored as `INTEGER`. New variants can be added to the model without any
+/// database migration because the underlying column type never changes.
+///
+/// Choose integer enums for expandable value sets (roles, priorities) and string enums for
+/// stable, human-readable status fields.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub enum EnumValues {
+    /// String enum: each variant is a plain string stored in a native DB enum type.
     String(Vec<String>),
+    /// Integer enum: each variant has an explicit numeric value stored as `INTEGER`.
     Integer(Vec<NumValue>),
 }
 
@@ -278,7 +440,7 @@ impl EnumValues {
     /// Get all variant names
     pub fn variant_names(&self) -> Vec<&str> {
         match self {
-            EnumValues::String(values) => values.iter().map(|s| s.as_str()).collect(),
+            EnumValues::String(values) => values.iter().map(std::string::String::as_str).collect(),
             EnumValues::Integer(values) => values.iter().map(|v| v.name.as_str()).collect(),
         }
     }
@@ -293,7 +455,10 @@ impl EnumValues {
 
     /// Check if there are no variants
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        match self {
+            EnumValues::String(values) => values.is_empty(),
+            EnumValues::Integer(values) => values.is_empty(),
+        }
     }
 
     /// Get SQL values for CREATE TYPE ENUM (only for string enums)
@@ -317,36 +482,70 @@ impl From<Vec<String>> for EnumValues {
 
 impl From<Vec<&str>> for EnumValues {
     fn from(values: Vec<&str>) -> Self {
-        EnumValues::String(values.into_iter().map(|s| s.to_string()).collect())
+        EnumValues::String(
+            values
+                .into_iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
+        )
     }
 }
 
+/// Parameterised SQL column types that require additional configuration beyond a simple keyword.
+///
+/// In JSON model files these are written as objects with a `"kind"` discriminant, for example
+/// `{"kind": "varchar", "length": 255}` or `{"kind": "enum", "name": "status", "values": [...]}`.
+///
+/// Use these via [`ColumnType::Complex`].
+///
+/// This enum is `#[non_exhaustive]`: new variants may be added in future releases.
+/// Downstream `match` expressions should include a wildcard arm.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case", tag = "kind")]
+#[non_exhaustive]
 pub enum ComplexColumnType {
+    /// Variable-length character string with a maximum byte length (`VARCHAR(n)`).
     Varchar { length: u32 },
+    /// Exact fixed-point number with configurable precision and scale (`NUMERIC(p, s)`).
     Numeric { precision: u32, scale: u32 },
+    /// Fixed-length character string padded with spaces (`CHAR(n)`).
     Char { length: u32 },
+    /// Escape hatch for database-specific types not covered by other variants.
+    /// Breaks cross-database portability; avoid unless absolutely necessary.
     Custom { custom_type: String },
+    /// Named enum type. String enums map to a native DB enum; integer enums store as `INTEGER`.
+    /// See [`EnumValues`] for the distinction.
     Enum { name: String, values: EnumValues },
 }
 
 impl ComplexColumnType {
+    /// Returns the base SQL type name for this complex column type, without parameters.
+    #[must_use]
+    pub fn sql_type(&self) -> &'static str {
+        match self {
+            ComplexColumnType::Varchar { .. } => "VARCHAR",
+            ComplexColumnType::Numeric { .. } => "NUMERIC",
+            ComplexColumnType::Char { .. } => "CHAR",
+            ComplexColumnType::Custom { .. } => "CUSTOM",
+            ComplexColumnType::Enum { .. } => "ENUM",
+        }
+    }
+
     /// Convert to human-readable display string
     pub fn to_display_string(&self) -> String {
         match self {
-            ComplexColumnType::Varchar { length } => format!("varchar({})", length),
+            ComplexColumnType::Varchar { length } => format!("varchar({length})"),
             ComplexColumnType::Numeric { precision, scale } => {
-                format!("numeric({},{})", precision, scale)
+                format!("numeric({precision},{scale})")
             }
-            ComplexColumnType::Char { length } => format!("char({})", length),
+            ComplexColumnType::Char { length } => format!("char({length})"),
             ComplexColumnType::Custom { custom_type } => custom_type.to_lowercase(),
             ComplexColumnType::Enum { name, values } => {
                 if values.is_integer() {
-                    format!("enum<{}> (integer)", name)
+                    format!("enum<{name}> (integer)")
                 } else {
-                    format!("enum<{}>", name)
+                    format!("enum<{name}>")
                 }
             }
         }
@@ -355,624 +554,11 @@ impl ComplexColumnType {
     /// Get the default fill value for this type.
     pub fn default_fill_value(&self) -> &'static str {
         match self {
-            ComplexColumnType::Varchar { .. } | ComplexColumnType::Char { .. } => "''",
             ComplexColumnType::Numeric { .. } => "0",
-            ComplexColumnType::Custom { .. } => "''",
-            ComplexColumnType::Enum { .. } => "''",
+            ComplexColumnType::Varchar { .. }
+            | ComplexColumnType::Char { .. }
+            | ComplexColumnType::Custom { .. }
+            | ComplexColumnType::Enum { .. } => "''",
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rstest::rstest;
-
-    #[rstest]
-    #[case(SimpleColumnType::SmallInt, "i16")]
-    #[case(SimpleColumnType::Integer, "i32")]
-    #[case(SimpleColumnType::BigInt, "i64")]
-    #[case(SimpleColumnType::Real, "f32")]
-    #[case(SimpleColumnType::DoublePrecision, "f64")]
-    #[case(SimpleColumnType::Text, "String")]
-    #[case(SimpleColumnType::Boolean, "bool")]
-    #[case(SimpleColumnType::Date, "Date")]
-    #[case(SimpleColumnType::Time, "Time")]
-    #[case(SimpleColumnType::Timestamp, "DateTime")]
-    #[case(SimpleColumnType::Timestamptz, "DateTimeWithTimeZone")]
-    #[case(SimpleColumnType::Interval, "String")]
-    #[case(SimpleColumnType::Bytea, "Vec<u8>")]
-    #[case(SimpleColumnType::Uuid, "Uuid")]
-    #[case(SimpleColumnType::Json, "Json")]
-    // #[case(SimpleColumnType::Jsonb, "Json")]
-    #[case(SimpleColumnType::Inet, "String")]
-    #[case(SimpleColumnType::Cidr, "String")]
-    #[case(SimpleColumnType::Macaddr, "String")]
-    #[case(SimpleColumnType::Xml, "String")]
-    fn test_simple_column_type_to_rust_type_not_nullable(
-        #[case] column_type: SimpleColumnType,
-        #[case] expected: &str,
-    ) {
-        assert_eq!(
-            ColumnType::Simple(column_type).to_rust_type(false),
-            expected
-        );
-    }
-
-    #[rstest]
-    #[case(SimpleColumnType::SmallInt, "Option<i16>")]
-    #[case(SimpleColumnType::Integer, "Option<i32>")]
-    #[case(SimpleColumnType::BigInt, "Option<i64>")]
-    #[case(SimpleColumnType::Real, "Option<f32>")]
-    #[case(SimpleColumnType::DoublePrecision, "Option<f64>")]
-    #[case(SimpleColumnType::Text, "Option<String>")]
-    #[case(SimpleColumnType::Boolean, "Option<bool>")]
-    #[case(SimpleColumnType::Date, "Option<Date>")]
-    #[case(SimpleColumnType::Time, "Option<Time>")]
-    #[case(SimpleColumnType::Timestamp, "Option<DateTime>")]
-    #[case(SimpleColumnType::Timestamptz, "Option<DateTimeWithTimeZone>")]
-    #[case(SimpleColumnType::Interval, "Option<String>")]
-    #[case(SimpleColumnType::Bytea, "Option<Vec<u8>>")]
-    #[case(SimpleColumnType::Uuid, "Option<Uuid>")]
-    #[case(SimpleColumnType::Json, "Option<Json>")]
-    // #[case(SimpleColumnType::Jsonb, "Option<Json>")]
-    #[case(SimpleColumnType::Inet, "Option<String>")]
-    #[case(SimpleColumnType::Cidr, "Option<String>")]
-    #[case(SimpleColumnType::Macaddr, "Option<String>")]
-    #[case(SimpleColumnType::Xml, "Option<String>")]
-    fn test_simple_column_type_to_rust_type_nullable(
-        #[case] column_type: SimpleColumnType,
-        #[case] expected: &str,
-    ) {
-        assert_eq!(ColumnType::Simple(column_type).to_rust_type(true), expected);
-    }
-
-    #[rstest]
-    #[case(ComplexColumnType::Varchar { length: 255 }, false, "String")]
-    #[case(ComplexColumnType::Varchar { length: 50 }, false, "String")]
-    #[case(ComplexColumnType::Numeric { precision: 10, scale: 2 }, false, "Decimal")]
-    #[case(ComplexColumnType::Numeric { precision: 5, scale: 0 }, false, "Decimal")]
-    #[case(ComplexColumnType::Char { length: 10 }, false, "String")]
-    #[case(ComplexColumnType::Char { length: 1 }, false, "String")]
-    #[case(ComplexColumnType::Custom { custom_type: "MONEY".into() }, false, "String")]
-    #[case(ComplexColumnType::Custom { custom_type: "JSONB".into() }, false, "String")]
-    #[case(ComplexColumnType::Enum { name: "status".into(), values: EnumValues::String(vec!["active".into(), "inactive".into()]) }, false, "String")]
-    fn test_complex_column_type_to_rust_type_not_nullable(
-        #[case] column_type: ComplexColumnType,
-        #[case] nullable: bool,
-        #[case] expected: &str,
-    ) {
-        assert_eq!(
-            ColumnType::Complex(column_type).to_rust_type(nullable),
-            expected
-        );
-    }
-
-    #[rstest]
-    #[case(ComplexColumnType::Varchar { length: 255 }, "Option<String>")]
-    #[case(ComplexColumnType::Varchar { length: 50 }, "Option<String>")]
-    #[case(ComplexColumnType::Numeric { precision: 10, scale: 2 }, "Option<Decimal>")]
-    #[case(ComplexColumnType::Numeric { precision: 5, scale: 0 }, "Option<Decimal>")]
-    #[case(ComplexColumnType::Char { length: 10 }, "Option<String>")]
-    #[case(ComplexColumnType::Char { length: 1 }, "Option<String>")]
-    #[case(ComplexColumnType::Custom { custom_type: "MONEY".into() }, "Option<String>")]
-    #[case(ComplexColumnType::Custom { custom_type: "JSONB".into() }, "Option<String>")]
-    #[case(ComplexColumnType::Enum { name: "status".into(), values: EnumValues::String(vec!["active".into(), "inactive".into()]) }, "Option<String>")]
-    fn test_complex_column_type_to_rust_type_nullable(
-        #[case] column_type: ComplexColumnType,
-        #[case] expected: &str,
-    ) {
-        assert_eq!(
-            ColumnType::Complex(column_type).to_rust_type(true),
-            expected
-        );
-    }
-
-    #[rstest]
-    #[case(ComplexColumnType::Varchar { length: 255 })]
-    #[case(ComplexColumnType::Numeric { precision: 10, scale: 2 })]
-    #[case(ComplexColumnType::Char { length: 1 })]
-    #[case(ComplexColumnType::Custom { custom_type: "SERIAL".into() })]
-    #[case(ComplexColumnType::Enum { name: "status".into(), values: EnumValues::String(vec![]) })]
-    fn test_complex_column_type_does_not_support_auto_increment(
-        #[case] column_type: ComplexColumnType,
-    ) {
-        // Complex types never support auto_increment
-        assert!(!ColumnType::Complex(column_type).supports_auto_increment());
-    }
-
-    #[test]
-    fn test_enum_values_is_string() {
-        let string_vals = EnumValues::String(vec!["active".into()]);
-        let int_vals = EnumValues::Integer(vec![NumValue {
-            name: "Active".into(),
-            value: 1,
-        }]);
-        assert!(string_vals.is_string());
-        assert!(!int_vals.is_string());
-    }
-
-    #[test]
-    fn test_enum_values_is_integer() {
-        let string_vals = EnumValues::String(vec!["active".into()]);
-        let int_vals = EnumValues::Integer(vec![NumValue {
-            name: "Active".into(),
-            value: 1,
-        }]);
-        assert!(!string_vals.is_integer());
-        assert!(int_vals.is_integer());
-    }
-
-    #[test]
-    fn test_enum_values_variant_names_string() {
-        let vals = EnumValues::String(vec!["pending".into(), "active".into()]);
-        assert_eq!(vals.variant_names(), vec!["pending", "active"]);
-    }
-
-    #[test]
-    fn test_enum_values_variant_names_integer() {
-        let vals = EnumValues::Integer(vec![
-            NumValue {
-                name: "Low".into(),
-                value: 0,
-            },
-            NumValue {
-                name: "High".into(),
-                value: 10,
-            },
-        ]);
-        assert_eq!(vals.variant_names(), vec!["Low", "High"]);
-    }
-
-    #[test]
-    fn test_enum_values_len_and_is_empty() {
-        // String variant
-        let empty = EnumValues::String(vec![]);
-        let non_empty = EnumValues::String(vec!["a".into()]);
-        assert!(empty.is_empty());
-        assert_eq!(empty.len(), 0);
-        assert!(!non_empty.is_empty());
-        assert_eq!(non_empty.len(), 1);
-
-        // Integer variant
-        let empty_int = EnumValues::Integer(vec![]);
-        let non_empty_int = EnumValues::Integer(vec![
-            NumValue {
-                name: "A".into(),
-                value: 0,
-            },
-            NumValue {
-                name: "B".into(),
-                value: 1,
-            },
-        ]);
-        assert!(empty_int.is_empty());
-        assert_eq!(empty_int.len(), 0);
-        assert!(!non_empty_int.is_empty());
-        assert_eq!(non_empty_int.len(), 2);
-    }
-
-    #[test]
-    fn test_enum_values_to_sql_values_string() {
-        let vals = EnumValues::String(vec!["active".into(), "pending".into()]);
-        assert_eq!(vals.to_sql_values(), vec!["'active'", "'pending'"]);
-    }
-
-    #[test]
-    fn test_enum_values_to_sql_values_integer() {
-        let vals = EnumValues::Integer(vec![
-            NumValue {
-                name: "Low".into(),
-                value: 0,
-            },
-            NumValue {
-                name: "High".into(),
-                value: 10,
-            },
-        ]);
-        assert_eq!(vals.to_sql_values(), vec!["0", "10"]);
-    }
-
-    #[test]
-    fn test_enum_values_from_vec_string() {
-        let vals: EnumValues = vec!["a".to_string(), "b".to_string()].into();
-        assert!(matches!(vals, EnumValues::String(_)));
-    }
-
-    #[test]
-    fn test_enum_values_from_vec_str() {
-        let vals: EnumValues = vec!["a", "b"].into();
-        assert!(matches!(vals, EnumValues::String(_)));
-    }
-
-    #[rstest]
-    #[case(SimpleColumnType::SmallInt, true)]
-    #[case(SimpleColumnType::Integer, true)]
-    #[case(SimpleColumnType::BigInt, true)]
-    #[case(SimpleColumnType::Text, false)]
-    #[case(SimpleColumnType::Boolean, false)]
-    fn test_simple_column_type_supports_auto_increment(
-        #[case] ty: SimpleColumnType,
-        #[case] expected: bool,
-    ) {
-        assert_eq!(ty.supports_auto_increment(), expected);
-    }
-
-    #[rstest]
-    #[case(SimpleColumnType::Integer, true)]
-    #[case(SimpleColumnType::Text, false)]
-    fn test_column_type_simple_supports_auto_increment(
-        #[case] ty: SimpleColumnType,
-        #[case] expected: bool,
-    ) {
-        assert_eq!(ColumnType::Simple(ty).supports_auto_increment(), expected);
-    }
-
-    #[test]
-    fn test_requires_migration_integer_enum_values_changed() {
-        // Integer enum values changed - should NOT require migration
-        let from = ColumnType::Complex(ComplexColumnType::Enum {
-            name: "status".into(),
-            values: EnumValues::Integer(vec![
-                NumValue {
-                    name: "Pending".into(),
-                    value: 0,
-                },
-                NumValue {
-                    name: "Active".into(),
-                    value: 1,
-                },
-            ]),
-        });
-        let to = ColumnType::Complex(ComplexColumnType::Enum {
-            name: "status".into(),
-            values: EnumValues::Integer(vec![
-                NumValue {
-                    name: "Pending".into(),
-                    value: 0,
-                },
-                NumValue {
-                    name: "Active".into(),
-                    value: 1,
-                },
-                NumValue {
-                    name: "Completed".into(),
-                    value: 100,
-                },
-            ]),
-        });
-        assert!(!from.requires_migration(&to));
-    }
-
-    #[test]
-    fn test_requires_migration_integer_enum_name_changed() {
-        // Integer enum name changed - should NOT require migration (DB type is always INTEGER)
-        let from = ColumnType::Complex(ComplexColumnType::Enum {
-            name: "old_status".into(),
-            values: EnumValues::Integer(vec![NumValue {
-                name: "Pending".into(),
-                value: 0,
-            }]),
-        });
-        let to = ColumnType::Complex(ComplexColumnType::Enum {
-            name: "new_status".into(),
-            values: EnumValues::Integer(vec![NumValue {
-                name: "Pending".into(),
-                value: 0,
-            }]),
-        });
-        assert!(!from.requires_migration(&to));
-    }
-
-    #[test]
-    fn test_requires_migration_string_enum_values_changed() {
-        // String enum values changed - SHOULD require migration
-        let from = ColumnType::Complex(ComplexColumnType::Enum {
-            name: "status".into(),
-            values: EnumValues::String(vec!["pending".into(), "active".into()]),
-        });
-        let to = ColumnType::Complex(ComplexColumnType::Enum {
-            name: "status".into(),
-            values: EnumValues::String(vec!["pending".into(), "active".into(), "completed".into()]),
-        });
-        assert!(from.requires_migration(&to));
-    }
-
-    #[test]
-    fn test_requires_migration_simple_types() {
-        let int = ColumnType::Simple(SimpleColumnType::Integer);
-        let text = ColumnType::Simple(SimpleColumnType::Text);
-        assert!(int.requires_migration(&text));
-        assert!(!int.requires_migration(&int));
-    }
-
-    #[test]
-    fn test_requires_migration_mixed_enum_types() {
-        // String enum to integer enum - SHOULD require migration
-        let string_enum = ColumnType::Complex(ComplexColumnType::Enum {
-            name: "status".into(),
-            values: EnumValues::String(vec!["pending".into()]),
-        });
-        let int_enum = ColumnType::Complex(ComplexColumnType::Enum {
-            name: "status".into(),
-            values: EnumValues::Integer(vec![NumValue {
-                name: "Pending".into(),
-                value: 0,
-            }]),
-        });
-        assert!(string_enum.requires_migration(&int_enum));
-    }
-
-    // Tests for to_display_string
-    #[rstest]
-    #[case(SimpleColumnType::SmallInt, "smallint")]
-    #[case(SimpleColumnType::Integer, "integer")]
-    #[case(SimpleColumnType::BigInt, "bigint")]
-    #[case(SimpleColumnType::Real, "real")]
-    #[case(SimpleColumnType::DoublePrecision, "double precision")]
-    #[case(SimpleColumnType::Text, "text")]
-    #[case(SimpleColumnType::Boolean, "boolean")]
-    #[case(SimpleColumnType::Date, "date")]
-    #[case(SimpleColumnType::Time, "time")]
-    #[case(SimpleColumnType::Timestamp, "timestamp")]
-    #[case(SimpleColumnType::Timestamptz, "timestamptz")]
-    #[case(SimpleColumnType::Interval, "interval")]
-    #[case(SimpleColumnType::Bytea, "bytea")]
-    #[case(SimpleColumnType::Uuid, "uuid")]
-    #[case(SimpleColumnType::Json, "json")]
-    #[case(SimpleColumnType::Inet, "inet")]
-    #[case(SimpleColumnType::Cidr, "cidr")]
-    #[case(SimpleColumnType::Macaddr, "macaddr")]
-    #[case(SimpleColumnType::Xml, "xml")]
-    fn test_simple_column_type_to_display_string(
-        #[case] column_type: SimpleColumnType,
-        #[case] expected: &str,
-    ) {
-        assert_eq!(column_type.to_display_string(), expected);
-    }
-
-    #[test]
-    fn test_complex_column_type_to_display_string_varchar() {
-        let ty = ComplexColumnType::Varchar { length: 255 };
-        assert_eq!(ty.to_display_string(), "varchar(255)");
-    }
-
-    #[test]
-    fn test_complex_column_type_to_display_string_numeric() {
-        let ty = ComplexColumnType::Numeric {
-            precision: 10,
-            scale: 2,
-        };
-        assert_eq!(ty.to_display_string(), "numeric(10,2)");
-    }
-
-    #[test]
-    fn test_complex_column_type_to_display_string_char() {
-        let ty = ComplexColumnType::Char { length: 5 };
-        assert_eq!(ty.to_display_string(), "char(5)");
-    }
-
-    #[test]
-    fn test_complex_column_type_to_display_string_custom() {
-        let ty = ComplexColumnType::Custom {
-            custom_type: "TSVECTOR".into(),
-        };
-        assert_eq!(ty.to_display_string(), "tsvector");
-    }
-
-    #[test]
-    fn test_complex_column_type_to_display_string_string_enum() {
-        let ty = ComplexColumnType::Enum {
-            name: "user_status".into(),
-            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
-        };
-        assert_eq!(ty.to_display_string(), "enum<user_status>");
-    }
-
-    #[test]
-    fn test_complex_column_type_to_display_string_integer_enum() {
-        let ty = ComplexColumnType::Enum {
-            name: "priority".into(),
-            values: EnumValues::Integer(vec![
-                NumValue {
-                    name: "Low".into(),
-                    value: 0,
-                },
-                NumValue {
-                    name: "High".into(),
-                    value: 10,
-                },
-            ]),
-        };
-        assert_eq!(ty.to_display_string(), "enum<priority> (integer)");
-    }
-
-    #[test]
-    fn test_column_type_to_display_string_simple() {
-        let ty = ColumnType::Simple(SimpleColumnType::Integer);
-        assert_eq!(ty.to_display_string(), "integer");
-    }
-
-    #[test]
-    fn test_column_type_to_display_string_complex() {
-        let ty = ColumnType::Complex(ComplexColumnType::Varchar { length: 100 });
-        assert_eq!(ty.to_display_string(), "varchar(100)");
-    }
-
-    // Tests for default_fill_value
-    #[rstest]
-    #[case(SimpleColumnType::SmallInt, "0")]
-    #[case(SimpleColumnType::Integer, "0")]
-    #[case(SimpleColumnType::BigInt, "0")]
-    #[case(SimpleColumnType::Real, "0.0")]
-    #[case(SimpleColumnType::DoublePrecision, "0.0")]
-    #[case(SimpleColumnType::Boolean, "false")]
-    #[case(SimpleColumnType::Text, "''")]
-    #[case(SimpleColumnType::Date, "'1970-01-01'")]
-    #[case(SimpleColumnType::Time, "'00:00:00'")]
-    #[case(SimpleColumnType::Timestamp, "CURRENT_TIMESTAMP")]
-    #[case(SimpleColumnType::Timestamptz, "CURRENT_TIMESTAMP")]
-    #[case(SimpleColumnType::Interval, "'0'")]
-    #[case(SimpleColumnType::Bytea, "''")]
-    #[case(SimpleColumnType::Uuid, "'00000000-0000-0000-0000-000000000000'")]
-    #[case(SimpleColumnType::Json, "'{}'")]
-    #[case(SimpleColumnType::Inet, "'0.0.0.0'")]
-    #[case(SimpleColumnType::Cidr, "'0.0.0.0'")]
-    #[case(SimpleColumnType::Macaddr, "'00:00:00:00:00:00'")]
-    #[case(SimpleColumnType::Xml, "'<xml/>'")]
-    fn test_simple_column_type_default_fill_value(
-        #[case] column_type: SimpleColumnType,
-        #[case] expected: &str,
-    ) {
-        assert_eq!(column_type.default_fill_value(), expected);
-    }
-
-    #[test]
-    fn test_complex_column_type_default_fill_value_varchar() {
-        let ty = ComplexColumnType::Varchar { length: 255 };
-        assert_eq!(ty.default_fill_value(), "''");
-    }
-
-    #[test]
-    fn test_complex_column_type_default_fill_value_char() {
-        let ty = ComplexColumnType::Char { length: 1 };
-        assert_eq!(ty.default_fill_value(), "''");
-    }
-
-    #[test]
-    fn test_complex_column_type_default_fill_value_numeric() {
-        let ty = ComplexColumnType::Numeric {
-            precision: 10,
-            scale: 2,
-        };
-        assert_eq!(ty.default_fill_value(), "0");
-    }
-
-    #[test]
-    fn test_complex_column_type_default_fill_value_custom() {
-        let ty = ComplexColumnType::Custom {
-            custom_type: "MONEY".into(),
-        };
-        assert_eq!(ty.default_fill_value(), "''");
-    }
-
-    #[test]
-    fn test_complex_column_type_default_fill_value_enum() {
-        let ty = ComplexColumnType::Enum {
-            name: "status".into(),
-            values: EnumValues::String(vec!["active".into()]),
-        };
-        assert_eq!(ty.default_fill_value(), "''");
-    }
-
-    #[test]
-    fn test_column_type_default_fill_value_simple() {
-        let ty = ColumnType::Simple(SimpleColumnType::Integer);
-        assert_eq!(ty.default_fill_value(), "0");
-    }
-
-    #[test]
-    fn test_column_type_default_fill_value_complex() {
-        let ty = ColumnType::Complex(ComplexColumnType::Varchar { length: 100 });
-        assert_eq!(ty.default_fill_value(), "''");
-    }
-
-    // Tests for enum_variant_names
-    #[test]
-    fn test_enum_variant_names_simple_type_returns_none() {
-        let ty = ColumnType::Simple(SimpleColumnType::Integer);
-        assert_eq!(ty.enum_variant_names(), None);
-    }
-
-    #[test]
-    fn test_enum_variant_names_complex_non_enum_returns_none() {
-        let ty = ColumnType::Complex(ComplexColumnType::Varchar { length: 255 });
-        assert_eq!(ty.enum_variant_names(), None);
-    }
-
-    #[test]
-    fn test_enum_variant_names_complex_numeric_returns_none() {
-        let ty = ColumnType::Complex(ComplexColumnType::Numeric {
-            precision: 10,
-            scale: 2,
-        });
-        assert_eq!(ty.enum_variant_names(), None);
-    }
-
-    #[test]
-    fn test_enum_variant_names_complex_char_returns_none() {
-        let ty = ColumnType::Complex(ComplexColumnType::Char { length: 1 });
-        assert_eq!(ty.enum_variant_names(), None);
-    }
-
-    #[test]
-    fn test_enum_variant_names_complex_custom_returns_none() {
-        let ty = ColumnType::Complex(ComplexColumnType::Custom {
-            custom_type: "TSVECTOR".into(),
-        });
-        assert_eq!(ty.enum_variant_names(), None);
-    }
-
-    #[test]
-    fn test_enum_variant_names_string_enum() {
-        let ty = ColumnType::Complex(ComplexColumnType::Enum {
-            name: "status".into(),
-            values: EnumValues::String(vec!["active".into(), "inactive".into(), "pending".into()]),
-        });
-        assert_eq!(
-            ty.enum_variant_names(),
-            Some(vec![
-                "active".to_string(),
-                "inactive".to_string(),
-                "pending".to_string()
-            ])
-        );
-    }
-
-    #[test]
-    fn test_enum_variant_names_integer_enum() {
-        let ty = ColumnType::Complex(ComplexColumnType::Enum {
-            name: "priority".into(),
-            values: EnumValues::Integer(vec![
-                NumValue {
-                    name: "Low".into(),
-                    value: 0,
-                },
-                NumValue {
-                    name: "Medium".into(),
-                    value: 5,
-                },
-                NumValue {
-                    name: "High".into(),
-                    value: 10,
-                },
-            ]),
-        });
-        assert_eq!(
-            ty.enum_variant_names(),
-            Some(vec![
-                "Low".to_string(),
-                "Medium".to_string(),
-                "High".to_string()
-            ])
-        );
-    }
-
-    #[test]
-    fn test_enum_variant_names_empty_string_enum() {
-        let ty = ColumnType::Complex(ComplexColumnType::Enum {
-            name: "empty".into(),
-            values: EnumValues::String(vec![]),
-        });
-        assert_eq!(ty.enum_variant_names(), Some(vec![]));
-    }
-
-    #[test]
-    fn test_enum_variant_names_empty_integer_enum() {
-        let ty = ColumnType::Complex(ComplexColumnType::Enum {
-            name: "empty".into(),
-            values: EnumValues::Integer(vec![]),
-        });
-        assert_eq!(ty.enum_variant_names(), Some(vec![]));
     }
 }

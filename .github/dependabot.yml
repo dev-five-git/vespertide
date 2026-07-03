@@ -1,0 +1,60 @@
+# Dependabot configuration for vespertide.
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# Keeps GitHub Actions and Cargo dependencies up to date.
+# `changepacks/action@main` is grouped under `ignore` per project policy
+# (org-internal action intentionally tracks main).
+
+version: 2
+updates:
+  # GitHub Actions: actions are pinned to major version tags (e.g. `@v6`),
+  # so minor/patch updates within a major are picked up automatically by the
+  # runner. Dependabot only proposes MAJOR-version bumps for review.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Asia/Seoul"
+    open-pull-requests-limit: 5
+    groups:
+      github-actions-major:
+        applies-to: version-updates
+        update-types:
+          - "major"
+        patterns:
+          - "*"
+    ignore:
+      # Internal action intentionally pinned to main branch.
+      - dependency-name: "changepacks/action"
+      # Skip non-major updates: major tags auto-pick patches/minors.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-minor", "version-update:semver-patch"]
+
+  # Cargo dependencies: weekly minor/patch updates, group by ecosystem.
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Asia/Seoul"
+    open-pull-requests-limit: 10
+    groups:
+      cargo-patches:
+        applies-to: version-updates
+        update-types:
+          - "patch"
+        patterns:
+          - "*"
+      cargo-minor:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+        patterns:
+          - "*"
+    ignore:
+      # sea-orm is pinned to RC; manual updates only.
+      - dependency-name: "sea-orm"
+        update-types: ["version-update:semver-major"]

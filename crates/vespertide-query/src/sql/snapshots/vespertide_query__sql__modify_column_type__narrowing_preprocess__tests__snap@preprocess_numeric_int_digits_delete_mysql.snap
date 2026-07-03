@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/modify_column_type/narrowing_preprocess.rs
+assertion_line: 334
+expression: sql
+---
+DELETE FROM `tbl` WHERE ABS(`col`) >= 10000

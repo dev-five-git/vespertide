@@ -1,0 +1,15 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from uuid import UUID
+
+from sqlmodel import Field, SQLModel
+
+
+class User(SQLModel, table=True):
+    __tablename__ = "user"
+
+    id: UUID = Field(primary_key=True)

@@ -1,5 +1,6 @@
 ---
 source: crates/vespertide-query/src/sql/add_column.rs
+assertion_line: 610
 expression: sql
 ---
-ALTER TABLE "users" ADD COLUMN "nickname" text NOT NULL DEFAULT ''
+ALTER TABLE "users" ADD COLUMN "nickname" text NOT NULL DEFAULT ('')

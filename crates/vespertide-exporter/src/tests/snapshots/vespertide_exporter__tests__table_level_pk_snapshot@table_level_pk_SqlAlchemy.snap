@@ -1,0 +1,18 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from uuid import UUID
+
+from sqlalchemy import Float, Uuid
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Orders(DeclarativeBase):
+    __tablename__ = "orders"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    customer_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    total: Mapped[float] = mapped_column(Float, nullable=False)

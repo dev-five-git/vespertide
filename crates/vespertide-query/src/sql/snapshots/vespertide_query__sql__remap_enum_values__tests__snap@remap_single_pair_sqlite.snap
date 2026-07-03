@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/remap_enum_values.rs
+assertion_line: 67
+expression: sql
+---
+UPDATE "tickets" SET "priority" = CASE WHEN "priority" = 5 THEN 100 END WHERE "priority" IN (5)

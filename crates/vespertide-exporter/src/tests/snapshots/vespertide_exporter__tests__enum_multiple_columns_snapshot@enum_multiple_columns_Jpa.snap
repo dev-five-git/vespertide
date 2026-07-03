@@ -1,0 +1,36 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+enum ProductCategory {
+    electronics,
+    clothing,
+    food;
+}
+
+enum AvailabilityStatus {
+    in_stock,
+    out_of_stock,
+    pre_order;
+}
+
+@Entity
+@Table(name = "products")
+public class Products {
+
+    @Column(name = "id", nullable = false)
+    private Integer id;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "category", nullable = false)
+    private ProductCategory category;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "availability", nullable = false)
+    private AvailabilityStatus availability;
+
+    protected Products() {
+    }
+}

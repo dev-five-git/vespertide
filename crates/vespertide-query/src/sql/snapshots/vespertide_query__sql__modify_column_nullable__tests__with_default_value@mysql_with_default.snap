@@ -1,5 +1,6 @@
 ---
 source: crates/vespertide-query/src/sql/modify_column_nullable.rs
+assertion_line: 459
 expression: sql
 ---
-ALTER TABLE `users` MODIFY COLUMN `email` text NOT NULL DEFAULT 'default@example.com'
+ALTER TABLE `users` MODIFY COLUMN `email` text NOT NULL DEFAULT ('default@example.com')

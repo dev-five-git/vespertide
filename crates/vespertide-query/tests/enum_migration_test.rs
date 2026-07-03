@@ -25,6 +25,8 @@ fn test_enum_value_change_generates_correct_sql() {
                 ]),
             }),
             fill_with: None,
+            narrowing_strategy: None,
+            timezone: None,
         }],
     };
 
@@ -88,8 +90,7 @@ fn test_enum_value_change_generates_correct_sql() {
     // 1. CREATE TYPE user_status_new (table-prefixed)
     assert!(
         sql0.contains("CREATE TYPE \"user_status_new\""),
-        "Step 1 should create temp type with table prefix. Got: {}",
-        sql0
+        "Step 1 should create temp type with table prefix. Got: {sql0}"
     );
     assert!(
         sql0.contains("'active', 'inactive', 'pending'"),
@@ -103,26 +104,22 @@ fn test_enum_value_change_generates_correct_sql() {
     );
     assert!(
         sql1.contains("ALTER COLUMN \"status\" TYPE \"user_status_new\""),
-        "Should change column type to temp with table prefix. Got: {}",
-        sql1
+        "Should change column type to temp with table prefix. Got: {sql1}"
     );
     assert!(
         sql1.contains("USING \"status\"::text::\"user_status_new\""),
-        "Should use USING clause with table prefix. Got: {}",
-        sql1
+        "Should use USING clause with table prefix. Got: {sql1}"
     );
 
     // 3. DROP TYPE user_status (table-prefixed)
     assert!(
         sql2.contains("DROP TYPE \"user_status\""),
-        "Step 3 should drop old type with table prefix. Got: {}",
-        sql2
+        "Step 3 should drop old type with table prefix. Got: {sql2}"
     );
 
     // 4. RENAME TYPE user_status_new to user_status (table-prefixed)
     assert!(
         sql3.contains("ALTER TYPE \"user_status_new\" RENAME TO \"user_status\""),
-        "Step 4 should rename temp type back with table prefix. Got: {}",
-        sql3
+        "Step 4 should rename temp type back with table prefix. Got: {sql3}"
     );
 }

@@ -1,37 +1,43 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "TableDef",
-  "type": "object",
-  "properties": {
-    "columns": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/ColumnDef"
-      }
-    },
-    "constraints": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/TableConstraint"
-      }
-    },
-    "description": {
-      "type": [
-        "string",
-        "null"
+  "$defs": {
+    "CheckViolationStrategy": {
+      "description": "How `AddConstraint(Check)` should handle pre-existing rows that\nviolate the CHECK predicate.\n\n\"Violation\" is computed statically by the narrow-shape parser in\n`vespertide-planner::validate::check_default` and the cleanup SQL is\nemitted by `vespertide-query::sql::add_constraint::check`. CHECK\nexpressions that exceed the narrow shape (function calls, AND/OR\ncomposition, subqueries) are *not* covered by either side ? the\ndetector skips them and no pre-cleanup is emitted.",
+      "oneOf": [
+        {
+          "description": "Set the named column of every violating row to `NULL` ahead of\nthe `ADD CONSTRAINT`. The row is preserved; only the failing\nvalue is cleared.\n\nOnly applicable when `column` is nullable in the baseline; the\nSQL generator emits a runtime SQL error otherwise (UPDATE ...\nSET col = NULL violates the existing NOT NULL). The revision\nCLI's narrow-shape parser identifies the target column\nautomatically; the user rarely sets this directly in the model\nJSON.",
+          "properties": {
+            "column": {
+              "$ref": "#/$defs/ColumnName",
+              "description": "Which column receives `SET = NULL`. Narrow-shape CHECKs\nalways reduce to a single column, so this is the only\ncolumn the cleanup affects."
+            },
+            "kind": {
+              "const": "nullify_violating_column",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "column"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Delete the violating rows outright ahead of the\n`ADD CONSTRAINT`. Use when the violating rows are themselves\ninvalid (logically dangling records).\n\nThis is also the canonical default for the wire format: v0.1.x\nmodels carry no `strategy` field and so deserialize to\n`DeleteViolatingRows`. The revision CLI re-prompts for an\nexplicit choice, and the prompt offers\n`NullifyViolatingColumn { column }` when the narrow-shape\nparser can identify a nullable target column.",
+          "properties": {
+            "kind": {
+              "const": "delete_violating_rows",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
       ]
     },
-    "name": {
-      "type": "string"
-    }
-  },
-  "required": [
-    "name",
-    "columns"
-  ],
-  "$defs": {
     "ColumnDef": {
-      "type": "object",
+      "description": "Definition of a single table column, including its type, nullability, and inline constraints.\n\nInline constraints (`primary_key`, `unique`, `index`, `foreign_key`) are the preferred way to\ndeclare constraints in model JSON files. Call [`TableDef::normalize`] to convert them into\ntable-level [`TableConstraint`] entries before diffing or SQL generation.\n\nUse [`ColumnDef::new`] to construct a column programmatically, then chain the setter methods\n(`.primary_key()`, `.unique()`, `.index()`, `.foreign_key()`, `.default()`, `.comment()`) to\nattach optional fields.\n\n[`TableDef::normalize`]: crate::schema::TableDef::normalize\n[`TableConstraint`]: crate::schema::TableConstraint",
       "properties": {
         "comment": {
           "type": [
@@ -70,7 +76,7 @@
           ]
         },
         "name": {
-          "type": "string"
+          "$ref": "#/$defs/ColumnName"
         },
         "nullable": {
           "type": "boolean"
@@ -103,102 +109,115 @@
         "name",
         "type",
         "nullable"
-      ]
+      ],
+      "type": "object"
+    },
+    "ColumnName": {
+      "description": "The name of a table column, always in `snake_case` by convention.\n\nConstruction and serde round-trip:\n\n```rust\nuse vespertide_core::schema::names::ColumnName;\n\nlet col: ColumnName = ColumnName::new(\"email\");\nlet via_from: ColumnName = \"email\".into();\n\nassert_eq!(col.as_str(), \"email\");\nassert!(col == \"email\");\nassert_eq!(col, via_from);\n\n// Wire format is byte-identical to a plain JSON string.\nlet json = serde_json::to_string(&col).unwrap();\nassert_eq!(json, r#\"\"email\"\"#);\nlet back: ColumnName = serde_json::from_str(&json).unwrap();\nassert_eq!(back, col);\n```",
+      "type": "string"
     },
     "ColumnType": {
       "anyOf": [
         {
-          "$ref": "#/$defs/SimpleColumnType"
+          "$ref": "#/$defs/SimpleColumnType",
+          "description": "A parameter-free SQL type such as `INTEGER`, `TEXT`, or `UUID`."
         },
         {
-          "$ref": "#/$defs/ComplexColumnType"
+          "$ref": "#/$defs/ComplexColumnType",
+          "description": "A parameterised SQL type such as `VARCHAR(n)`, `NUMERIC(p,s)`, or a named enum."
         }
-      ]
+      ],
+      "description": "The SQL type of a column, either a parameter-free simple type or a parameterised complex type.\n\nIn JSON model files a simple type is written as a plain string (`\"integer\"`, `\"text\"`, etc.)\nwhile a complex type is written as an object with a `\"kind\"` discriminant\n(`{\"kind\": \"varchar\", \"length\": 255}`).\n\nAlways construct via the wrapped variants:\n```\nuse vespertide_core::{ColumnType, SimpleColumnType, ComplexColumnType};\nlet t1 = ColumnType::Simple(SimpleColumnType::Integer);\nlet t2 = ColumnType::Complex(ComplexColumnType::Varchar { length: 255 });\n```"
     },
     "ComplexColumnType": {
+      "description": "Parameterised SQL column types that require additional configuration beyond a simple keyword.\n\nIn JSON model files these are written as objects with a `\"kind\"` discriminant, for example\n`{\"kind\": \"varchar\", \"length\": 255}` or `{\"kind\": \"enum\", \"name\": \"status\", \"values\": [...]}`.\n\nUse these via [`ColumnType::Complex`].\n\nThis enum is `#[non_exhaustive]`: new variants may be added in future releases.\nDownstream `match` expressions should include a wildcard arm.",
       "oneOf": [
         {
-          "type": "object",
+          "description": "Variable-length character string with a maximum byte length (`VARCHAR(n)`).",
           "properties": {
             "kind": {
-              "type": "string",
-              "const": "varchar"
+              "const": "varchar",
+              "type": "string"
             },
             "length": {
-              "type": "integer",
               "format": "uint32",
-              "minimum": 0
+              "minimum": 0,
+              "type": "integer"
             }
           },
           "required": [
             "kind",
             "length"
-          ]
+          ],
+          "type": "object"
         },
         {
-          "type": "object",
+          "description": "Exact fixed-point number with configurable precision and scale (`NUMERIC(p, s)`).",
           "properties": {
             "kind": {
-              "type": "string",
-              "const": "numeric"
+              "const": "numeric",
+              "type": "string"
             },
             "precision": {
-              "type": "integer",
               "format": "uint32",
-              "minimum": 0
+              "minimum": 0,
+              "type": "integer"
             },
             "scale": {
-              "type": "integer",
               "format": "uint32",
-              "minimum": 0
+              "minimum": 0,
+              "type": "integer"
             }
           },
           "required": [
             "kind",
             "precision",
             "scale"
-          ]
+          ],
+          "type": "object"
         },
         {
-          "type": "object",
+          "description": "Fixed-length character string padded with spaces (`CHAR(n)`).",
           "properties": {
             "kind": {
-              "type": "string",
-              "const": "char"
+              "const": "char",
+              "type": "string"
             },
             "length": {
-              "type": "integer",
               "format": "uint32",
-              "minimum": 0
+              "minimum": 0,
+              "type": "integer"
             }
           },
           "required": [
             "kind",
             "length"
-          ]
+          ],
+          "type": "object"
         },
         {
-          "type": "object",
+          "description": "Escape hatch for database-specific types not covered by other variants.\nBreaks cross-database portability; avoid unless absolutely necessary.",
           "properties": {
             "custom_type": {
               "type": "string"
             },
             "kind": {
-              "type": "string",
-              "const": "custom"
+              "const": "custom",
+              "type": "string"
             }
           },
           "required": [
             "kind",
             "custom_type"
-          ]
+          ],
+          "type": "object"
         },
         {
-          "type": "object",
+          "description": "Named enum type. String enums map to a native DB enum; integer enums store as `INTEGER`.\nSee [`EnumValues`] for the distinction.",
           "properties": {
             "kind": {
-              "type": "string",
-              "const": "enum"
+              "const": "enum",
+              "type": "string"
             },
             "name": {
               "type": "string"
@@ -211,48 +230,55 @@
             "kind",
             "name",
             "values"
-          ]
+          ],
+          "type": "object"
         }
       ]
     },
     "DefaultValue": {
-      "description": "A value that can be a string, boolean, or number.\nThis is used for default values where columns can use literal values directly.",
       "anyOf": [
         {
+          "description": "A boolean default (`true` or `false`).",
           "type": "boolean"
         },
         {
-          "type": "integer",
-          "format": "int64"
+          "description": "An integer default value.",
+          "format": "int64",
+          "type": "integer"
         },
         {
-          "type": "number",
-          "format": "double"
+          "description": "A floating-point default value.",
+          "format": "double",
+          "type": "number"
         },
         {
+          "description": "A SQL expression or string literal default (e.g. `\"'pending'\"` or `\"NOW()\"`).",
           "type": "string"
         }
-      ]
+      ],
+      "description": "A column default value that can be a boolean, integer, float, or SQL expression string.\n\nIn JSON model files the `\"default\"` field accepts any of these forms:\n- `true` / `false` — boolean literal.\n- `0`, `42` — integer literal.\n- `0.0`, `1.5` — floating-point literal.\n- `\"'pending'\"` — SQL string literal (note the inner single quotes).\n- `\"NOW()\"` — SQL function call (no surrounding quotes).\n\nUse [`DefaultValue::to_sql`] to convert to the SQL representation for DDL generation.\n\n`StringOrBool` is a backwards-compatibility alias for this type.\n\nThis enum is `#[non_exhaustive]`: new variants may be added in future releases.\nDownstream `match` expressions should include a wildcard arm."
     },
     "EnumValues": {
-      "description": "Enum values definition - either all string or all integer",
       "anyOf": [
         {
-          "type": "array",
+          "description": "String enum: each variant is a plain string stored in a native DB enum type.",
           "items": {
             "type": "string"
-          }
+          },
+          "type": "array"
         },
         {
-          "type": "array",
+          "description": "Integer enum: each variant has an explicit numeric value stored as `INTEGER`.",
           "items": {
             "$ref": "#/$defs/NumValue"
-          }
+          },
+          "type": "array"
         }
-      ]
+      ],
+      "description": "The set of allowed values for an enum column, either string-based or integer-based.\n\n**String enums** map to a native `PostgreSQL` `ENUM` type. Adding or removing values requires a\ndatabase migration (`ALTER TYPE`).\n\n**Integer enums** are stored as `INTEGER`. New variants can be added to the model without any\ndatabase migration because the underlying column type never changes.\n\nChoose integer enums for expandable value sets (roles, priorities) and string enums for\nstable, human-readable status fields."
     },
     "ForeignKeyDef": {
-      "type": "object",
+      "description": "Full foreign key definition used in the normalized table representation.\n\nSpecifies the referenced table and columns along with optional referential actions for\n`ON DELETE` and `ON UPDATE`. This is the canonical form produced after parsing any of the\nthree [`ForeignKeySyntax`] variants.\n\nAlways add `\"index\": true` on the column carrying the foreign key for query performance.",
       "properties": {
         "on_delete": {
           "anyOf": [
@@ -262,7 +288,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "description": "Action to take on child rows when the parent row is deleted."
         },
         "on_update": {
           "anyOf": [
@@ -272,88 +299,188 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "description": "Action to take on child rows when the referenced column(s) in the parent row are updated."
         },
         "ref_columns": {
-          "type": "array",
+          "description": "The column(s) in the referenced table that this foreign key points to.",
           "items": {
-            "type": "string"
-          }
+            "$ref": "#/$defs/ColumnName"
+          },
+          "type": "array"
         },
         "ref_table": {
-          "type": "string"
+          "$ref": "#/$defs/TableName",
+          "description": "The table being referenced (the \"parent\" side of the relationship)."
         }
       },
       "required": [
         "ref_table",
         "ref_columns"
+      ],
+      "type": "object"
+    },
+    "ForeignKeyOrphanStrategy": {
+      "description": "How `AddConstraint(ForeignKey)` should handle pre-existing orphan\nrows ? child rows whose FK column(s) reference a value that does\nnot exist in the parent table.\n\n\"Orphan\" is computed via the standard SQL `NOT EXISTS` correlated\nsubquery against the parent table; see\n`vespertide-query::sql::add_constraint::foreign_key` for the emitted\nSQL pattern.",
+      "oneOf": [
+        {
+          "description": "Set the FK column(s) of orphan child rows to `NULL` ahead of the\n`ADD CONSTRAINT`. The row is preserved; only the dangling\nreference is cleared.\n\nOnly applicable when **every** column of the FK is nullable; the\nSQL generator falls back to a runtime error if the user picks\nthis strategy on a NOT NULL column set.",
+          "properties": {
+            "kind": {
+              "const": "nullify_orphans",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Delete the orphan child rows outright ahead of the\n`ADD CONSTRAINT`. Use when the orphan rows are themselves\ninvalid (logically dangling records).",
+          "properties": {
+            "kind": {
+              "const": "delete_orphans",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
       ]
     },
     "ForeignKeySyntax": {
       "anyOf": [
         {
-          "description": "table.column",
+          "description": "Shorthand string in `\"table.column\"` format, e.g. `\"user.id\"`.",
           "type": "string"
         },
         {
-          "description": "{ \"references\": \"table.column\", \"on_delete\": \"cascade\" }",
-          "$ref": "#/$defs/ReferenceSyntaxDef"
+          "$ref": "#/$defs/ReferenceSyntaxDef",
+          "description": "Object with a `\"references\"` key in `\"table.column\"` format plus optional actions."
         },
         {
-          "description": "{ \"ref_table\": \"table\", \"ref_columns\": [\"column\"], ... }",
-          "$ref": "#/$defs/ForeignKeyDef"
+          "$ref": "#/$defs/ForeignKeyDef",
+          "description": "Full object with explicit `ref_table`, `ref_columns`, and optional actions."
+        }
+      ],
+      "description": "Inline foreign key declaration on a [`ColumnDef`], supporting three levels of verbosity.\n\nIn JSON model files you can write:\n- `\"foreign_key\": \"user.id\"` (string shorthand)\n- `\"foreign_key\": {\"references\": \"user.id\", \"on_delete\": \"cascade\"}` (reference object)\n- `\"foreign_key\": {\"ref_table\": \"user\", \"ref_columns\": [\"id\"], \"on_delete\": \"cascade\"}` (full object)\n\nAll three forms are normalized into a [`ForeignKeyDef`] by the planner.\n\n[`ColumnDef`]: crate::schema::ColumnDef"
+    },
+    "KeepPolicy": {
+      "description": "Which row of a duplicate group is kept when `DeleteDuplicates` runs.\n\n\"First\" / \"Last\" are defined by the table's PRIMARY KEY ordering:\n`First = MIN(pk)`, `Last = MAX(pk)`. Requires a single-column PK.",
+      "oneOf": [
+        {
+          "const": "first",
+          "description": "Keep the row with the smallest primary-key value.",
+          "type": "string"
+        },
+        {
+          "const": "last",
+          "description": "Keep the row with the largest primary-key value.",
+          "type": "string"
         }
       ]
     },
     "NumValue": {
-      "description": "Integer enum variant with name and numeric value",
-      "type": "object",
+      "description": "A single variant of an integer-backed enum, pairing a Rust-friendly name with its stored value.\n\nUsed inside [`EnumValues::Integer`] to define enums that are stored as `INTEGER` in the\ndatabase. Leave gaps between values (e.g. 0, 10, 20) so new variants can be inserted later\nwithout renumbering.",
       "properties": {
         "name": {
+          "description": "The variant name used in generated code (e.g. `\"active\"`).",
           "type": "string"
         },
         "value": {
-          "type": "integer",
-          "format": "int32"
+          "description": "The integer value stored in the database column.",
+          "format": "int64",
+          "type": "integer"
         }
       },
       "required": [
         "name",
         "value"
+      ],
+      "type": "object"
+    },
+    "PrimaryKeyAdditionStrategy": {
+      "description": "How `AddConstraint(PrimaryKey)` should handle pre-existing\nduplicate rows in the chosen column set.\n\n`KeepPolicy` is reused from `UniqueConstraintStrategy` (F2) -\n\"First\" / \"Last\" are defined by the table's surviving primary-key\nor row identity ordering. The cleanup SQL is emitted by\n`vespertide-query::sql::add_constraint::primary_key`.",
+      "oneOf": [
+        {
+          "description": "Emit a `DELETE` statement ahead of `ADD CONSTRAINT PRIMARY KEY`\nso only one row per group of new-PK duplicates survives.",
+          "properties": {
+            "keep": {
+              "$ref": "#/$defs/KeepPolicy",
+              "description": "Which row of each duplicate group is preserved."
+            },
+            "kind": {
+              "const": "delete_duplicates",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "keep"
+          ],
+          "type": "object"
+        }
       ]
     },
     "PrimaryKeyDef": {
-      "type": "object",
+      "description": "Configuration for a primary key declared with the object syntax.\n\nWhen `auto_increment` is `true` the column is generated as a serial / identity column\n(`PostgreSQL` `SERIAL`, `MySQL` `AUTO_INCREMENT`, `SQLite` `AUTOINCREMENT`).\nUse [`PrimaryKeySyntax::Object`] to pass this to a [`ColumnDef`].\n\n[`ColumnDef`]: crate::schema::ColumnDef",
       "properties": {
         "auto_increment": {
-          "type": "boolean",
-          "default": false
+          "default": false,
+          "description": "When `true`, the column value is generated automatically by the database on insert.",
+          "type": "boolean"
         }
-      }
+      },
+      "type": "object"
     },
     "PrimaryKeySyntax": {
       "anyOf": [
         {
+          "description": "Shorthand: `true` marks the column as a primary key without auto-increment.",
           "type": "boolean"
         },
         {
-          "$ref": "#/$defs/PrimaryKeyDef"
+          "$ref": "#/$defs/PrimaryKeyDef",
+          "description": "Full object syntax allowing `auto_increment` to be configured."
+        }
+      ],
+      "description": "Inline primary key declaration on a [`ColumnDef`], supporting both shorthand and full syntax.\n\nIn JSON model files you can write either:\n- `\"primary_key\": true` (shorthand, no auto-increment)\n- `\"primary_key\": {\"auto_increment\": true}` (full object syntax)\n\n[`ColumnDef`]: crate::schema::ColumnDef"
+    },
+    "ReferenceAction": {
+      "description": "The referential action taken on child rows when the referenced parent row changes.\n\nUsed in `ForeignKeyDef::on_delete` and `ForeignKeyDef::on_update` to control cascading\nbehaviour. In JSON model files these are written in `snake_case`\n(e.g. `\"on_delete\": \"cascade\"`).\n\nThis enum is `#[non_exhaustive]`: new variants may be added in future releases.\nDownstream `match` expressions should include a wildcard arm.",
+      "oneOf": [
+        {
+          "const": "cascade",
+          "description": "Automatically delete or update child rows when the parent row is deleted or updated (`CASCADE`).",
+          "type": "string"
+        },
+        {
+          "const": "restrict",
+          "description": "Prevent the parent row from being deleted or updated if child rows exist (`RESTRICT`).",
+          "type": "string"
+        },
+        {
+          "const": "set_null",
+          "description": "Set the foreign key column(s) in child rows to `NULL` when the parent changes (`SET NULL`).\nThe column must be nullable.",
+          "type": "string"
+        },
+        {
+          "const": "set_default",
+          "description": "Set the foreign key column(s) in child rows to their column default when the parent changes (`SET DEFAULT`).",
+          "type": "string"
+        },
+        {
+          "const": "no_action",
+          "description": "Do nothing to child rows; the database defers enforcement or raises an error (`NO ACTION`).",
+          "type": "string"
         }
       ]
     },
-    "ReferenceAction": {
-      "type": "string",
-      "enum": [
-        "cascade",
-        "restrict",
-        "set_null",
-        "set_default",
-        "no_action"
-      ]
-    },
     "ReferenceSyntaxDef": {
-      "description": "Shorthand syntax for foreign key: { \"references\": \"table.column\", \"on_delete\": \"cascade\" }",
-      "type": "object",
+      "description": "Compact foreign key syntax using a `\"references\"` string in `\"table.column\"` format.\n\nUseful when you only need to specify the target and optionally an `on_delete` action without\nlisting columns explicitly. The planner resolves the column from the `\"table.column\"` string.",
       "properties": {
         "on_delete": {
           "anyOf": [
@@ -376,87 +503,170 @@
           ]
         },
         "references": {
-          "description": "Reference in \"table.column\" format",
+          "description": "Reference target in `\"table.column\"` format, e.g. `\"user.id\"`.",
           "type": "string"
         }
       },
       "required": [
         "references"
-      ]
+      ],
+      "type": "object"
     },
     "SimpleColumnType": {
-      "type": "string",
-      "enum": [
-        "small_int",
-        "integer",
-        "big_int",
-        "real",
-        "double_precision",
-        "text",
-        "boolean",
-        "date",
-        "time",
-        "timestamp",
-        "timestamptz",
-        "interval",
-        "bytea",
-        "uuid",
-        "json",
-        "inet",
-        "cidr",
-        "macaddr",
-        "xml"
+      "description": "Parameter-free SQL column types supported across all backends.\n\nEach variant maps directly to a standard SQL type. Use these via\n[`ColumnType::Simple`] when no length, precision, or scale is needed.\n\nThis enum is `#[non_exhaustive]`: new variants may be added in future releases.\nDownstream `match` expressions should include a wildcard arm.",
+      "oneOf": [
+        {
+          "const": "small_int",
+          "description": "16-bit signed integer (`SMALLINT`).",
+          "type": "string"
+        },
+        {
+          "const": "integer",
+          "description": "32-bit signed integer (`INTEGER`). Supports `auto_increment`.",
+          "type": "string"
+        },
+        {
+          "const": "big_int",
+          "description": "64-bit signed integer (`BIGINT`). Supports `auto_increment`.",
+          "type": "string"
+        },
+        {
+          "const": "real",
+          "description": "32-bit floating-point number (`REAL`).",
+          "type": "string"
+        },
+        {
+          "const": "double_precision",
+          "description": "64-bit floating-point number (`DOUBLE PRECISION`).",
+          "type": "string"
+        },
+        {
+          "const": "text",
+          "description": "Unbounded Unicode text (`TEXT`).",
+          "type": "string"
+        },
+        {
+          "const": "boolean",
+          "description": "Boolean true/false value (`BOOLEAN`).",
+          "type": "string"
+        },
+        {
+          "const": "date",
+          "description": "Calendar date without time (`DATE`).",
+          "type": "string"
+        },
+        {
+          "const": "time",
+          "description": "Time of day without date (`TIME`).",
+          "type": "string"
+        },
+        {
+          "const": "timestamp",
+          "description": "Date and time without timezone (`TIMESTAMP`).",
+          "type": "string"
+        },
+        {
+          "const": "timestamptz",
+          "description": "Date and time with timezone (`TIMESTAMPTZ`). Prefer this over `Timestamp`.",
+          "type": "string"
+        },
+        {
+          "const": "interval",
+          "description": "Time span / duration (`INTERVAL`).",
+          "type": "string"
+        },
+        {
+          "const": "bytea",
+          "description": "Variable-length binary data (`BYTEA`).",
+          "type": "string"
+        },
+        {
+          "const": "uuid",
+          "description": "Universally unique identifier (`UUID`).",
+          "type": "string"
+        },
+        {
+          "const": "json",
+          "description": "JSON value stored as text (`JSON`). Cross-backend compatible; prefer over `jsonb`.",
+          "type": "string"
+        },
+        {
+          "const": "inet",
+          "description": "IPv4 or IPv6 host address (`INET`). PostgreSQL-specific.",
+          "type": "string"
+        },
+        {
+          "const": "cidr",
+          "description": "IPv4 or IPv6 network address (`CIDR`). PostgreSQL-specific.",
+          "type": "string"
+        },
+        {
+          "const": "macaddr",
+          "description": "MAC address (`MACADDR`). PostgreSQL-specific.",
+          "type": "string"
+        },
+        {
+          "const": "xml",
+          "description": "XML document (`XML`). PostgreSQL-specific.",
+          "type": "string"
+        }
       ]
     },
     "StrOrBoolOrArray": {
       "anyOf": [
         {
+          "description": "A named constraint or group identifier.",
           "type": "string"
         },
         {
-          "type": "array",
+          "description": "Multiple constraint group names for multi-group membership.",
           "items": {
             "type": "string"
-          }
+          },
+          "type": "array"
         },
         {
+          "description": "`true` to enable with an auto-generated name; `false` to disable.",
           "type": "boolean"
         }
-      ]
+      ],
+      "description": "A JSON value that can be a string, an array of strings, or a boolean.\n\nUsed for inline `\"unique\"` and `\"index\"` declarations on a [`ColumnDef`]:\n- `true` / `false` — enable or disable the constraint with an auto-generated name.\n- A single string — the constraint name (used to group columns into a composite constraint).\n- An array of strings — a list of constraint names for multi-group membership.\n\nThis enum is `#[non_exhaustive]`: new variants may be added in future releases.\nDownstream `match` expressions should include a wildcard arm.\n\n[`ColumnDef`]: crate::schema::ColumnDef"
     },
     "TableConstraint": {
+      "description": "A table-level constraint produced by [`TableDef::normalize`].\n\nInline column constraints (`primary_key`, `unique`, `index`, `foreign_key`) declared in model\nJSON files are converted into `TableConstraint` variants during normalization. You rarely\nconstruct these directly; the planner and SQL generator consume them.\n\nThis enum is `#[non_exhaustive]`: new variants may be added in future releases.\nDownstream `match` expressions should include a wildcard arm.\n\n[`TableDef::normalize`]: crate::schema::TableDef::normalize",
       "oneOf": [
         {
-          "type": "object",
+          "description": "Primary key constraint, optionally with auto-increment (serial / identity) semantics.\n\n`strategy` controls how pre-existing duplicate rows in the\nchosen column set are handled when this constraint is added to\nan already-populated table. The canonical default is\n[`PrimaryKeyAdditionStrategy::DeleteDuplicates { keep: KeepPolicy::First }`]\n(omitted from the JSON wire format). NULL violations on PK\ncolumns are handled separately by the F1 `fill_with` mechanism;\nthe revision CLI prompts for fill values on every nullable PK\ncolumn.\n\n`strategy` is **stripped from `model.schema.json`** but\n**preserved in `migration.schema.json`**.",
           "properties": {
             "auto_increment": {
-              "type": "boolean",
-              "default": false
+              "default": false,
+              "type": "boolean"
             },
             "columns": {
-              "type": "array",
               "items": {
-                "type": "string"
-              }
+                "$ref": "#/$defs/ColumnName"
+              },
+              "type": "array"
             },
             "type": {
-              "type": "string",
-              "const": "primary_key"
+              "const": "primary_key",
+              "type": "string"
             }
           },
           "required": [
             "type",
             "columns"
-          ]
+          ],
+          "type": "object"
         },
         {
-          "type": "object",
+          "description": "Unique constraint ensuring no two rows share the same value(s) in the listed columns.\n\n`strategy` controls how pre-existing duplicate rows are handled when\nthis constraint is added to an already-populated table. The\ncanonical default is [`UniqueConstraintStrategy::DeleteDuplicates { keep: KeepPolicy::First }`],\nwhich matches v0.1.x behaviour and is omitted from the JSON wire\nformat. Other strategies (e.g. `DeleteDuplicates`) emit a pre-cleanup\nstep ahead of `ADD CONSTRAINT` so the migration succeeds even when\nproduction data has duplicates.\n\n`strategy` is **stripped from `model.schema.json`** by the\nschema generator (`vespertide-schema-gen`), but **preserved in\n`migration.schema.json`** since migration files carry the\nrevision CLI's stamped choice.",
           "properties": {
             "columns": {
-              "type": "array",
               "items": {
-                "type": "string"
-              }
+                "$ref": "#/$defs/ColumnName"
+              },
+              "type": "array"
             },
             "name": {
               "type": [
@@ -465,23 +675,24 @@
               ]
             },
             "type": {
-              "type": "string",
-              "const": "unique"
+              "const": "unique",
+              "type": "string"
             }
           },
           "required": [
             "type",
             "columns"
-          ]
+          ],
+          "type": "object"
         },
         {
-          "type": "object",
+          "description": "Foreign key constraint linking columns in this table to columns in another table.\n\n`orphan_strategy` controls how pre-existing orphan rows are\nhandled when this constraint is added to an already-populated\ntable. The canonical default is\n[`ForeignKeyOrphanStrategy::NullifyOrphans`] (omitted from the\nJSON wire format). The revision CLI re-prompts the user for an\nexplicit choice; the default exists only so v0.1.x model files\ncontinue to deserialize.\n\n`orphan_strategy` is **stripped from `model.schema.json`** by\nthe schema generator but **preserved in `migration.schema.json`**.",
           "properties": {
             "columns": {
-              "type": "array",
               "items": {
-                "type": "string"
-              }
+                "$ref": "#/$defs/ColumnName"
+              },
+              "type": "array"
             },
             "name": {
               "type": [
@@ -510,17 +721,17 @@
               ]
             },
             "ref_columns": {
-              "type": "array",
               "items": {
-                "type": "string"
-              }
+                "$ref": "#/$defs/ColumnName"
+              },
+              "type": "array"
             },
             "ref_table": {
-              "type": "string"
+              "$ref": "#/$defs/TableName"
             },
             "type": {
-              "type": "string",
-              "const": "foreign_key"
+              "const": "foreign_key",
+              "type": "string"
             }
           },
           "required": [
@@ -528,10 +739,11 @@
             "columns",
             "ref_table",
             "ref_columns"
-          ]
+          ],
+          "type": "object"
         },
         {
-          "type": "object",
+          "description": "Arbitrary SQL CHECK expression enforced by the database on every write.\n\n`strategy` controls how pre-existing violating rows are handled when\nthis constraint is added to an already-populated table. The\ncanonical default is [`CheckViolationStrategy::NullifyViolatingColumn`]\n(omitted from the JSON wire format). The revision CLI re-prompts\nthe user for an explicit choice; the default exists only so v0.1.x\nmodel files continue to deserialize.\n\nCleanup SQL is emitted only when the expression matches a narrow\nrecognisable shape (`<col> <op> <literal>` or `<col> IN (...)`);\nmore complex expressions skip pre-cleanup and rely on the database\nto validate at apply time.\n\n`strategy` is **stripped from `model.schema.json`** but\n**preserved in `migration.schema.json`**.",
           "properties": {
             "expr": {
               "type": "string"
@@ -540,24 +752,25 @@
               "type": "string"
             },
             "type": {
-              "type": "string",
-              "const": "check"
+              "const": "check",
+              "type": "string"
             }
           },
           "required": [
             "type",
             "name",
             "expr"
-          ]
+          ],
+          "type": "object"
         },
         {
-          "type": "object",
+          "description": "Non-unique index to speed up queries on the listed columns.",
           "properties": {
             "columns": {
-              "type": "array",
               "items": {
-                "type": "string"
-              }
+                "$ref": "#/$defs/ColumnName"
+              },
+              "type": "array"
             },
             "name": {
               "type": [
@@ -566,16 +779,74 @@
               ]
             },
             "type": {
-              "type": "string",
-              "const": "index"
+              "const": "index",
+              "type": "string"
             }
           },
           "required": [
             "type",
             "columns"
-          ]
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "TableName": {
+      "description": "The name of a database table, always in `snake_case` by convention.\n\nConstruction:\n\n```rust\nuse vespertide_core::schema::names::TableName;\n\nlet via_new: TableName = TableName::new(\"user\");\nlet via_from: TableName = \"user\".into();\n\nassert_eq!(via_new.as_str(), \"user\");\nassert!(via_new == \"user\");\nassert_eq!(via_new.to_string(), \"user\");\nassert_eq!(via_new, via_from);\n```\n\nJSON wire format is byte-identical to a plain `String` thanks to\n`#[serde(transparent)]`. See [`ColumnName`] for a serde round-trip example.",
+      "type": "string"
+    },
+    "UniqueConstraintStrategy": {
+      "description": "How `AddConstraint(Unique)` should handle pre-existing duplicate rows.",
+      "oneOf": [
+        {
+          "description": "Emit a `DELETE` statement just before the `ADD CONSTRAINT` so only\none row per group of duplicates survives. `keep` picks which one.\nThis is the only strategy in v0.2 — see module docs.",
+          "properties": {
+            "keep": {
+              "$ref": "#/$defs/KeepPolicy",
+              "description": "Which row of each duplicate group is preserved. See\n[`KeepPolicy`]."
+            },
+            "kind": {
+              "const": "delete_duplicates",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "keep"
+          ],
+          "type": "object"
         }
       ]
     }
-  }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "columns": {
+      "items": {
+        "$ref": "#/$defs/ColumnDef"
+      },
+      "type": "array"
+    },
+    "constraints": {
+      "items": {
+        "$ref": "#/$defs/TableConstraint"
+      },
+      "type": "array"
+    },
+    "description": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "name": {
+      "$ref": "#/$defs/TableName"
+    }
+  },
+  "required": [
+    "name",
+    "columns"
+  ],
+  "title": "TableDef",
+  "type": "object"
 }

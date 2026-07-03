@@ -1,0 +1,22 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+/// User accounts table
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "users")]
+pub struct Model {
+    /// Primary key
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    /// User email address
+    #[sea_orm(unique)]
+    pub email: String,
+    pub name: Option<String>,
+}
+
+vespera::schema_type!(Schema from Model, name = "UsersSchema");
+impl ActiveModelBehavior for ActiveModel {}

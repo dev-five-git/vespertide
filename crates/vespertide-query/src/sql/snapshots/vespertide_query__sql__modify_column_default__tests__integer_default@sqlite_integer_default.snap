@@ -1,8 +1,9 @@
 ---
 source: crates/vespertide-query/src/sql/modify_column_default.rs
+assertion_line: 497
 expression: sql
 ---
-CREATE TABLE "products_temp" ( "id" integer NOT NULL, "quantity" integer NOT NULL DEFAULT 0 )
+CREATE TABLE "products_temp" ( "id" integer NOT NULL, "quantity" integer NOT NULL DEFAULT (0) )
 INSERT INTO "products_temp" ("id", "quantity") SELECT "id", "quantity" FROM "products"
 DROP TABLE "products"
 ALTER TABLE "products_temp" RENAME TO "products"

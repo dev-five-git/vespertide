@@ -1,0 +1,8 @@
+# Centralized Rust toolchain definition.
+# `actions-rust-lang/setup-rust-toolchain@v1` reads this automatically.
+#
+# Policy: vespertide always tracks the latest stable Rust. No MSRV is
+# pinned in `Cargo.toml`; users on older toolchains must upgrade.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

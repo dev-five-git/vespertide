@@ -26,7 +26,7 @@ impl NameCase {
         matches!(self, NameCase::Pascal)
     }
 
-    /// Returns the serde rename_all attribute value for this case.
+    /// Returns the serde `rename_all` attribute value for this case.
     pub fn serde_rename_all(self) -> &'static str {
         match self {
             NameCase::Snake => "snake_case",

@@ -1,0 +1,27 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+import java.time.OffsetDateTime;
+
+@Entity
+@Table(name = "articles", indexes = {
+    @Index(name = "idx_articles_created_at", columnList = "created_at"),
+    @Index(columnList = "title")
+})
+public class Articles {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @Column(name = "title", nullable = false, columnDefinition = "TEXT")
+    private String title;
+
+    @Column(name = "created_at", nullable = false)
+    private OffsetDateTime createdAt;
+
+    protected Articles() {
+    }
+}

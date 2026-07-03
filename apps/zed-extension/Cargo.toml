@@ -1,0 +1,14 @@
+[package]
+name = "zed-vespertide"
+version = "0.1.0"
+edition = "2021"
+authors = ["DevFive <hello@devfive.kr>"]
+description = "Zed extension for Vespertide schema language support"
+license = "Apache-2.0"
+repository = "https://github.com/dev-five-git/vespertide"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+zed_extension_api = "0.7"

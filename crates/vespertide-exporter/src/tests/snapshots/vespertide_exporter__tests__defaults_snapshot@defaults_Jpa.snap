@@ -1,0 +1,27 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "articles")
+public class Articles {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
+    private Integer id;
+
+    @Column(name = "published", nullable = false)
+    private Boolean published = false;
+
+    @Column(name = "view_count", nullable = false)
+    private Integer viewCount = 0;
+
+    @Column(name = "status", nullable = false, columnDefinition = "TEXT")
+    private String status = "draft";
+
+    protected Articles() {
+    }
+}

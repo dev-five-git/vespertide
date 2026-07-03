@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from uuid import UUID
+
+from sqlalchemy import Text, Uuid, text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Users(DeclarativeBase):
+    __tablename__ = "users"
+
+    id: Mapped[UUID] = mapped_column(Uuid, nullable=False, server_default=text("gen_random_uuid()"))
+    email: Mapped[str] = mapped_column(Text, nullable=False)

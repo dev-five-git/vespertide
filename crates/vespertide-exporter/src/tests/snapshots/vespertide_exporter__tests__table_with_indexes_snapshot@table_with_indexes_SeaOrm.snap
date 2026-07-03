@@ -1,0 +1,23 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "articles")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    #[sea_orm(indexed)]
+    pub title: String,
+    #[sea_orm(indexed)]
+    pub created_at: DateTimeWithTimeZone,
+}
+
+// Index definitions (SeaORM uses Statement builders externally)
+// idx_articles_created_at on [created_at]
+// (unnamed) on [title]
+vespera::schema_type!(Schema from Model, name = "ArticlesSchema");
+impl ActiveModelBehavior for ActiveModel {}

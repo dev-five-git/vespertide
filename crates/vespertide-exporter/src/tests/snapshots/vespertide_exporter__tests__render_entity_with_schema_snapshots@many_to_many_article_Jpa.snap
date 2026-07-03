@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "article")
+public class Article {
+
+    @Id
+    @Column(name = "id")
+    private Long id;
+
+    protected Article() {
+    }
+}

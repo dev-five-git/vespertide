@@ -1,0 +1,87 @@
+name: fuzz
+
+on:
+  # push: main — the ONLY auto-trigger. Each commit gets a fresh `github.sha`
+  # cache key, so libfuzzer's discovered corpus actually persists across runs
+  # (via the `restore-keys` prefix fallback). Path-filtered to skip docs-only
+  # or workflow-unrelated commits.
+  #
+  # No schedule cron: actions/cache is immutable per key, so scheduled runs
+  # on an unchanged SHA cannot save the corpus they discover — pure runtime
+  # cost with zero persistent benefit. For deep-fuzz sessions, use
+  # workflow_dispatch with a larger `duration_seconds` value.
+  push:
+    branches: [main]
+    paths:
+      - 'crates/**/*.rs'
+      - 'crates/**/Cargo.toml'
+      - 'fuzz/**'
+      - '.github/workflows/fuzz.yml'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Single fuzz target name (default: all)'
+        default: 'all'
+      duration_seconds:
+        description: 'Per-target fuzz duration in seconds'
+        default: '300'
+
+jobs:
+  fuzz:
+    name: cargo-fuzz
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - fuzz_model_deser
+          - fuzz_sql_identifier
+          - fuzz_migration_apply
+          - fuzz_lsp_request
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: nightly
+          # Pin the gnu host target. cargo-fuzz otherwise defaults to the
+          # statically-linked `x86_64-unknown-linux-musl` triple, whose std is
+          # not installed (E0463 "can't find crate for core") AND whose
+          # crt-static libc is incompatible with `-Zsanitizer=address`.
+          target: x86_64-unknown-linux-gnu
+
+      - uses: taiki-e/install-action@v2.81.6
+        with:
+          tool: cargo-fuzz
+
+      - name: Cache corpus
+        uses: actions/cache@v5
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.sha }}
+          restore-keys: |
+            fuzz-corpus-${{ matrix.target }}-
+
+      - name: Run cargo-fuzz (${{ matrix.target }}, 300s)
+        run: |
+          cd fuzz
+          cargo +nightly fuzz run ${{ matrix.target }} \
+            --target x86_64-unknown-linux-gnu \
+            -- -max_total_time=300 -max_len=4096
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}/
+          retention-days: 1
+
+      - name: Upload corpus
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-corpus-${{ matrix.target }}
+          path: fuzz/corpus/${{ matrix.target }}/
+          retention-days: 1

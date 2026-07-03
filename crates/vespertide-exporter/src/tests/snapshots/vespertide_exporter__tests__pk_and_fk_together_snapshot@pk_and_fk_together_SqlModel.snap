@@ -1,0 +1,22 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from datetime import datetime
+from uuid import UUID
+
+from sqlmodel import Field, SQLModel
+from sqlalchemy import text
+
+
+class ArticleUser(SQLModel, table=True):
+    __tablename__ = "article_user"
+
+    article_id: UUID = Field(primary_key=True, foreign_key="article.id")
+    user_id: UUID = Field(primary_key=True, foreign_key="user.id")
+    author_order: int = Field(default=1)
+    role: str = Field(default="contributor")
+    is_lead: bool = Field(default=False)
+    created_at: datetime = Field(sa_column_kwargs={"server_default": text("now()")})

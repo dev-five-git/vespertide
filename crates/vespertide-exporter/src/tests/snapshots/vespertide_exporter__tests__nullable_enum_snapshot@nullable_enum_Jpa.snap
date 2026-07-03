@@ -1,0 +1,26 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+enum StatusType {
+    active,
+    inactive;
+}
+
+@Entity
+@Table(name = "nullable_enum")
+public class NullableEnum {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status")
+    private StatusType status;
+
+    protected NullableEnum() {
+    }
+}

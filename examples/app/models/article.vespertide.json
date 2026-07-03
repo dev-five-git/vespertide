@@ -1,0 +1,82 @@
+{
+  "columns": [
+    {
+      "foreign_key": {
+        "on_delete": "cascade",
+        "ref_columns": [
+          "id"
+        ],
+        "ref_table": "media"
+      },
+      "name": "media_id",
+      "nullable": false,
+      "primary_key": true,
+      "type": "uuid"
+    },
+    {
+      "name": "id",
+      "nullable": false,
+      "primary_key": true,
+      "type": "big_int"
+    },
+    {
+      "name": "title",
+      "nullable": false,
+      "type": {
+        "kind": "varchar",
+        "length": 500
+      }
+    },
+    {
+      "name": "content",
+      "nullable": false,
+      "type": "text"
+    },
+    {
+      "name": "summary",
+      "nullable": true,
+      "type": "text"
+    },
+    {
+      "name": "thumbnail",
+      "nullable": true,
+      "type": "text"
+    },
+    {
+      "default": "'draft'",
+      "index": true,
+      "name": "status",
+      "nullable": false,
+      "type": {
+        "kind": "enum",
+        "name": "status",
+        "values": [
+          "draft",
+          "review",
+          "published",
+          "archived"
+        ]
+      }
+    },
+    {
+      "index": true,
+      "name": "published_at",
+      "nullable": true,
+      "type": "timestamptz"
+    },
+    {
+      "default": "now()",
+      "name": "created_at",
+      "nullable": false,
+      "type": "timestamptz"
+    },
+    {
+      "name": "updated_at",
+      "nullable": true,
+      "type": "timestamptz"
+    }
+  ],
+  "constraints": [],
+  "indexes": [],
+  "name": "article"
+}

@@ -1,0 +1,12 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc bed314d13522ad6180367c1e8094d27b57a527b546cc26ffc641623569a2d472 # shrinks to table = TableDef { name: "a", description: None, columns: [ColumnDef { name: "a", type: Complex(Numeric { precision: 17, scale: 0 }), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None }], constraints: [] }
+cc 6f022980f695e327ae25d1d15bcde0e1eb6259123ce57c1f1e836ef7b25b792e # shrinks to table = TableDef { name: "a", description: None, columns: [ColumnDef { name: "a", type: Simple(Interval), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None }], constraints: [] }
+cc 007e55880a85b05827de5d72220ecf18c6a5b84cf152a75d50351968d61b49c8 # shrinks to table = TableDef { name: "a", description: None, columns: [ColumnDef { name: "a", type: Complex(Enum { name: "a", values: String(["a"]) }), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None }], constraints: [] }
+cc 660d519206a046d5c5b0add0f2d12c88fa9fd8dac7f5f46090db14b5b47e7764 # shrinks to table = TableDef { name: "a", description: None, columns: [ColumnDef { name: "a", type: Complex(Enum { name: "a", values: String(["a"]) }), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None }], constraints: [] }
+cc 0453d27831c99307b5d8d2de7058d70032855a40e444f80e48562377fe53b846 # shrinks to column_type = Complex(Numeric { precision: 1, scale: 2 })
+cc 65524cddc07baed31a825a20ce5c29f2360bc2b5fb4e50bab3b8e14475ef8e66 # shrinks to table = TableDef { name: "a", description: None, columns: [ColumnDef { name: "a", type: Complex(Custom { custom_type: "as" }), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None }], constraints: [] }

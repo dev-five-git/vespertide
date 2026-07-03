@@ -7,7 +7,22 @@ publish = false
 [dependencies]
 vespertide = { path = "../../crates/vespertide" }
 tokio = { version = "1", features = ["full"] }
-sea-orm = { version = "2.0.0-rc.37", features = ["sqlx-sqlite", "sqlx-postgres", "runtime-tokio-native-tls", "macros"] }
+sea-orm = { version = "2.0.0-rc.40", features = ["sqlx-sqlite", "sqlx-postgres", "runtime-tokio-native-tls", "macros"] }
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
-vespera = "0.1.50"
+vespera = "0.2.0"
+
+# Mirror the workspace lint policy explicitly — `[lints] workspace = true`
+# cannot be used because this crate is intentionally outside the workspace
+# (sea-orm sqlx-sqlite conflicts on links = "sqlite3" with vespertide-query's
+# rusqlite dev-dep under unified resolution).
+[lints.rust]
+unsafe_code = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+similar_names = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"

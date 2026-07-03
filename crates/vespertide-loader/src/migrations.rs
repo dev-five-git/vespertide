@@ -1,11 +1,14 @@
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use rayon::prelude::*;
 use vespertide_config::VespertideConfig;
 use vespertide_core::MigrationPlan;
 use vespertide_planner::validate_migration_plan;
+
+use crate::parallel_config::{LOAD_FILES_PAR_MIN_LEN, LOAD_FILES_PAR_THRESHOLD};
 
 /// Load all migration plans from the migrations directory, sorted by version.
 pub fn load_migrations(config: &VespertideConfig) -> Result<Vec<MigrationPlan>> {
@@ -14,33 +17,20 @@ pub fn load_migrations(config: &VespertideConfig) -> Result<Vec<MigrationPlan>> 
         return Ok(Vec::new());
     }
 
-    let mut plans = Vec::new();
-    let entries = fs::read_dir(migrations_dir).context("read migrations directory")?;
+    let paths = collect_migration_paths(migrations_dir)?;
+    let results: Vec<Result<MigrationPlan>> = if paths.len() < LOAD_FILES_PAR_THRESHOLD {
+        paths.iter().map(|path| load_migration_file(path)).collect()
+    } else {
+        paths
+            .par_iter()
+            .with_min_len(LOAD_FILES_PAR_MIN_LEN)
+            .map(|path| load_migration_file(path))
+            .collect()
+    };
 
-    for entry in entries {
-        let entry = entry.context("read directory entry")?;
-        let path = entry.path();
-        if path.is_file() {
-            let ext = path.extension().and_then(|s| s.to_str());
-            if ext == Some("json") || ext == Some("yaml") || ext == Some("yml") {
-                let content = fs::read_to_string(&path)
-                    .with_context(|| format!("read migration file: {}", path.display()))?;
-
-                let plan: MigrationPlan = if ext == Some("json") {
-                    serde_json::from_str(&content)
-                        .with_context(|| format!("parse migration: {}", path.display()))?
-                } else {
-                    serde_yaml::from_str(&content)
-                        .with_context(|| format!("parse migration: {}", path.display()))?
-                };
-
-                // Validate the migration plan
-                validate_migration_plan(&plan)
-                    .with_context(|| format!("validate migration: {}", path.display()))?;
-
-                plans.push(plan);
-            }
-        }
+    let mut plans = Vec::with_capacity(results.len());
+    for result in results {
+        plans.push(result?);
     }
 
     // Sort by version number
@@ -63,7 +53,7 @@ pub fn load_migrations_from_dir(
 
     // Read vespertide.json or use defaults
     let config = crate::config::load_config_or_default(Some(project_root.clone()))
-        .map_err(|e| format!("Failed to load config: {}", e))?;
+        .map_err(|e| format!("Failed to load config: {e}"))?;
 
     // Read migrations directory
     let migrations_dir = project_root.join(config.migrations_dir());
@@ -71,37 +61,104 @@ pub fn load_migrations_from_dir(
         return Ok(Vec::new());
     }
 
-    let mut plans = Vec::new();
-    let entries = fs::read_dir(&migrations_dir)
-        .map_err(|e| format!("Failed to read migrations directory: {}", e))?;
+    let paths = collect_migration_paths_internal(&migrations_dir)?;
+    let results: Vec<Result<MigrationPlan, String>> = if paths.len() < LOAD_FILES_PAR_THRESHOLD {
+        paths
+            .iter()
+            .map(|path| load_migration_file_internal(path))
+            .collect()
+    } else {
+        paths
+            .par_iter()
+            .with_min_len(LOAD_FILES_PAR_MIN_LEN)
+            .map(|path| load_migration_file_internal(path))
+            .collect()
+    };
 
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
-        let path = entry.path();
-        if path.is_file() {
-            let ext = path.extension().and_then(|s| s.to_str());
-            if ext == Some("json") || ext == Some("yaml") || ext == Some("yml") {
-                let content = fs::read_to_string(&path)
-                    .context(format!("Failed to read migration file {}", path.display()))?;
-
-                let plan: MigrationPlan = if ext == Some("json") {
-                    serde_json::from_str(&content).map_err(|e| {
-                        format!("Failed to parse JSON migration {}: {}", path.display(), e)
-                    })?
-                } else {
-                    serde_yaml::from_str(&content).map_err(|e| {
-                        format!("Failed to parse YAML migration {}: {}", path.display(), e)
-                    })?
-                };
-
-                plans.push(plan);
-            }
-        }
+    let mut plans = Vec::with_capacity(results.len());
+    for result in results {
+        plans.push(result.map_err(|e| -> Box<dyn std::error::Error> { e.into() })?);
     }
 
     // Sort by version
     plans.sort_by_key(|p| p.version);
     Ok(plans)
+}
+
+fn collect_migration_paths(dir: &Path) -> Result<Vec<PathBuf>> {
+    let entries = fs::read_dir(dir).context("read migrations directory")?;
+    let mut paths = Vec::new();
+
+    for entry in entries {
+        let entry = entry.context("read directory entry")?;
+        let path = entry.path();
+        if path.is_file() && has_migration_extension(&path) {
+            paths.push(path);
+        }
+    }
+
+    Ok(paths)
+}
+
+fn collect_migration_paths_internal(dir: &Path) -> Result<Vec<PathBuf>, String> {
+    let entries =
+        fs::read_dir(dir).map_err(|e| format!("Failed to read migrations directory: {e}"))?;
+    let mut paths = Vec::new();
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read directory entry: {e}"))?;
+        let path = entry.path();
+        if path.is_file() && has_migration_extension(&path) {
+            paths.push(path);
+        }
+    }
+
+    Ok(paths)
+}
+
+fn has_migration_extension(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|s| s.to_str()),
+        Some("json" | "yaml" | "yml")
+    )
+}
+
+fn load_migration_file(path: &Path) -> Result<MigrationPlan> {
+    let ext = path.extension().and_then(|s| s.to_str());
+    let content = fs::read_to_string(path)
+        .with_context(|| format!("read migration file: {}", path.display()))?;
+
+    let plan: MigrationPlan = if ext == Some("json") {
+        serde_json::from_str(&content)
+            .with_context(|| format!("parse migration: {}", path.display()))?
+    } else {
+        serde_yaml::from_str(&content)
+            .with_context(|| format!("parse migration: {}", path.display()))?
+    };
+
+    validate_migration_plan(&plan)
+        .with_context(|| format!("validate migration: {}", path.display()))?;
+
+    Ok(plan)
+}
+
+fn load_migration_file_internal(path: &Path) -> Result<MigrationPlan, String> {
+    let ext = path.extension().and_then(|s| s.to_str());
+    let content = fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read migration file {}: {}", path.display(), e))?;
+
+    let plan: MigrationPlan = if ext == Some("json") {
+        serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse JSON migration {}: {}", path.display(), e))?
+    } else {
+        serde_yaml::from_str(&content)
+            .map_err(|e| format!("Failed to parse YAML migration {}: {}", path.display(), e))?
+    };
+
+    validate_migration_plan(&plan)
+        .map_err(|e| format!("Failed to validate migration {}: {}", path.display(), e))?;
+
+    Ok(plan)
 }
 
 /// Load migrations at compile time (for macro use).
@@ -175,6 +232,42 @@ mod tests {
             plans.iter().map(|plan| plan.version).collect::<Vec<_>>(),
             vec![1, 2]
         );
+    }
+
+    // A non-migration-extension file (e.g. `.txt`) must be ignored by the
+    // collector. Pins `path.is_file() && has_migration_extension(&path)`: a
+    // `&& -> ||` mutant would pick the `.txt` up, then fail to parse it as a
+    // migration plan and surface an error instead of an empty load.
+    #[test]
+    #[serial]
+    fn load_migrations_ignores_non_migration_extension_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let _guard = CwdGuard::new(&temp_dir.path().to_path_buf());
+        write_config(temp_dir.path());
+        fs::create_dir_all("migrations").unwrap();
+        fs::write("migrations/notes.txt", "not a migration: {{{ invalid").unwrap();
+
+        let plans = load_migrations(&VespertideConfig::default()).unwrap();
+        assert_eq!(plans.len(), 0, "the .txt file must be skipped");
+    }
+
+    #[test]
+    fn load_migrations_from_dir_ignores_non_migration_extension_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let migrations_dir = temp_dir.path().join("migrations");
+        fs::create_dir_all(&migrations_dir).unwrap();
+        fs::write(
+            migrations_dir.join("notes.txt"),
+            "not a migration: {{{ invalid",
+        )
+        .unwrap();
+
+        let result = load_migrations_from_dir(Some(temp_dir.path().to_path_buf()));
+        assert!(
+            result.is_ok(),
+            "the .txt file must be skipped, not parsed: {result:?}"
+        );
+        assert_eq!(result.unwrap().len(), 0);
     }
 
     #[test]
@@ -258,7 +351,7 @@ mod tests {
         let migrations_dir = temp_dir.path().join("migrations");
         fs::create_dir_all(&migrations_dir).unwrap();
 
-        let migration_content = r#"---
+        let migration_content = r"---
 version: 1
 actions:
   - type: create_table
@@ -268,7 +361,7 @@ actions:
         type: integer
         nullable: false
     constraints: []
-"#;
+";
 
         fs::write(migrations_dir.join("0001_test.yaml"), migration_content).unwrap();
 
@@ -285,7 +378,7 @@ actions:
         let migrations_dir = temp_dir.path().join("migrations");
         fs::create_dir_all(&migrations_dir).unwrap();
 
-        let migration_content = r#"---
+        let migration_content = r"---
 version: 1
 actions:
   - type: create_table
@@ -295,7 +388,7 @@ actions:
         type: integer
         nullable: false
     constraints: []
-"#;
+";
 
         fs::write(migrations_dir.join("0001_test.yml"), migration_content).unwrap();
 
@@ -314,7 +407,7 @@ actions:
         write_config(temp_dir.path());
         fs::create_dir_all("migrations").unwrap();
 
-        let migration_content = r#"---
+        let migration_content = r"---
 version: 1
 actions:
   - type: create_table
@@ -324,7 +417,7 @@ actions:
         type: integer
         nullable: false
     constraints: []
-"#;
+";
         fs::write("migrations/0001_test.yaml", migration_content).unwrap();
 
         let plans = load_migrations(&VespertideConfig::default()).unwrap();
@@ -353,17 +446,49 @@ actions:
         let migrations_dir = temp_dir.path().join("migrations");
         fs::create_dir_all(&migrations_dir).unwrap();
 
-        let invalid_yaml = r#"---
+        let invalid_yaml = r"---
 version: 1
 actions:
   - invalid: [syntax
-"#;
+";
         fs::write(migrations_dir.join("0001_invalid.yaml"), invalid_yaml).unwrap();
 
         let result = load_migrations_from_dir(Some(temp_dir.path().to_path_buf()));
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Failed to parse YAML migration"));
+    }
+
+    #[test]
+    fn test_load_migrations_from_dir_rejects_invalid_plan_with_file_path() {
+        let temp_dir = TempDir::new().unwrap();
+        let migrations_dir = temp_dir.path().join("migrations");
+        fs::create_dir_all(&migrations_dir).unwrap();
+
+        let migration_path = migrations_dir.join("0001_invalid_plan.json");
+        let invalid_plan = r#"{
+            "version": 1,
+            "actions": [
+                {
+                    "type": "add_column",
+                    "table": "nonexistent",
+                    "column": {
+                        "name": "required_value",
+                        "type": "integer",
+                        "nullable": false
+                    }
+                }
+            ]
+        }"#;
+        fs::write(&migration_path, invalid_plan).unwrap();
+
+        let result = load_migrations_from_dir(Some(temp_dir.path().to_path_buf()));
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains(&migration_path.display().to_string()),
+            "error did not include file path {migration_path:?}: {err_msg}"
+        );
     }
 
     #[test]

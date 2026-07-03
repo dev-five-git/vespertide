@@ -1,5 +1,6 @@
 ---
 source: crates/vespertide-query/src/sql/modify_column_default.rs
+assertion_line: 245
 expression: sql
 ---
-ALTER TABLE `users` MODIFY COLUMN `email` text DEFAULT 'unknown'
+ALTER TABLE `users` MODIFY COLUMN `email` text DEFAULT ('unknown')

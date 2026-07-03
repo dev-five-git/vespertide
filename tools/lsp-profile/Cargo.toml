@@ -1,0 +1,42 @@
+[package]
+name = "vespertide-lsp-profile"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Intentionally OUTSIDE the main workspace (see root Cargo.toml exclude list)
+# because cargo-flamegraph requires a binary target with custom release
+# profile (`profile.release.debug = "line-tables-only"`) and we don't want
+# this dev-only tool's deps polluting the workspace lockfile.
+#
+# Run via:
+#   cargo build --release --manifest-path tools/lsp-profile/Cargo.toml
+#   cargo flamegraph --manifest-path tools/lsp-profile/Cargo.toml --bin lsp-profile -o docs/profiling-baseline.svg
+
+[[bin]]
+name = "lsp-profile"
+path = "src/main.rs"
+
+[dependencies]
+vespertide-lsp = { path = "../../crates/vespertide-lsp" }
+tempfile = "3"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tower-lsp-server = "=0.23.0"
+
+[profile.release]
+debug = "line-tables-only"  # required by cargo-flamegraph for stack symbolization
+
+# Mirror the workspace lint policy explicitly — `[lints] workspace = true`
+# cannot be used because this crate is outside the workspace.
+[lints.rust]
+unsafe_code = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+similar_names = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"

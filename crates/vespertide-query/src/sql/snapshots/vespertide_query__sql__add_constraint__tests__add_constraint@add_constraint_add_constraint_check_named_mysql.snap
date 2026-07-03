@@ -1,5 +1,6 @@
 ---
-source: crates/vespertide-query/src/sql/add_constraint.rs
+source: crates/vespertide-query/src/sql/add_constraint/tests/mod.rs
 expression: "result.iter().map(|q| q.build(backend)).collect::<Vec<String>>().join(\"\\n\")"
 ---
+DELETE FROM `users` WHERE NOT (age > 0)
 ALTER TABLE `users` ADD CONSTRAINT `chk_age` CHECK (age > 0)

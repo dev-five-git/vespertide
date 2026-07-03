@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+import enum
+
+from sqlmodel import Field, SQLModel
+
+
+class TaskRunStatus(enum.IntEnum):
+    Pending = 0
+    Completed = 100
+
+class TaskRuns(SQLModel, table=True):
+    __tablename__ = "task_runs"
+
+    id: int = Field(...)
+    status: TaskRunStatus = Field(sa_column_kwargs={"server_default": text("Completed")})

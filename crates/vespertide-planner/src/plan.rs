@@ -38,34 +38,9 @@ pub fn plan_next_migration_with_baseline(
 mod tests {
     use super::*;
     use rstest::rstest;
-    use vespertide_core::{ColumnDef, ColumnType, MigrationAction, SimpleColumnType};
+    use vespertide_core::{ColumnType, MigrationAction, SimpleColumnType};
 
-    fn col(name: &str, ty: ColumnType) -> ColumnDef {
-        ColumnDef {
-            name: name.to_string(),
-            r#type: ty,
-            nullable: true,
-            default: None,
-            comment: None,
-            primary_key: None,
-            unique: None,
-            index: None,
-            foreign_key: None,
-        }
-    }
-
-    fn table(
-        name: &str,
-        columns: Vec<ColumnDef>,
-        constraints: Vec<vespertide_core::TableConstraint>,
-    ) -> TableDef {
-        TableDef {
-            name: name.to_string(),
-            description: None,
-            columns,
-            constraints,
-        }
-    }
+    use crate::test_support::{col_nullable as col, table};
 
     #[rstest]
     fn plan_next_migration_sets_next_version() {

@@ -1,0 +1,21 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "complex_types")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub varchar_col: String,
+    pub char_col: String,
+    pub numeric_col: Decimal,
+    #[sea_orm(column_type = "CUSTOM_TYPE")]
+    pub custom_col: String,
+}
+
+vespera::schema_type!(Schema from Model, name = "ComplexTypesSchema");
+impl ActiveModelBehavior for ActiveModel {}

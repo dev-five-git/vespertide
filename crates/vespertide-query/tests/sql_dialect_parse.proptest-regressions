@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 14032239fb3fe84906e56379a8f272d4b0a50eb03fbc7b734cd14c0ee6df4cb8 # shrinks to table = TableDef { name: "a", description: None, columns: [ColumnDef { name: "a", type: Complex(Numeric { precision: 10, scale: 0 }), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None }], constraints: [] }
+cc 9a7388fd7d7bca68ce261eea64bd34ab46ec4c3091fec885d7e0f59c47ab82ac # shrinks to table = TableDef { name: "a", description: None, columns: [ColumnDef { name: "a", type: Complex(Numeric { precision: 1, scale: 0 }), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None }], constraints: [] }
+cc 4c6cafe2baa41c72322a473bdb441f35ae6726be3adc5217c702474ed09b22b8 # shrinks to table = TableDef { name: "a", description: None, columns: [ColumnDef { name: "a", type: Simple(Interval), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None }], constraints: [] }
+cc 9ce1d550cf972f2495e3c6b56f0e14f025cd1a9fa1948211b2b8f0b186e961ca # shrinks to table = TableDef { name: "a", description: None, columns: [ColumnDef { name: "a", type: Simple(Interval), nullable: false, default: None, comment: None, primary_key: None, unique: None, index: None, foreign_key: None }], constraints: [] }

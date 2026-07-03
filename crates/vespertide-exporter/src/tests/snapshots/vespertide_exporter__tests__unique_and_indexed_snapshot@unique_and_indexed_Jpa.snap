@@ -1,0 +1,30 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "users", indexes = {
+    @Index(name = "idx_department", columnList = "department")
+})
+public class Users {
+
+    @Column(name = "id", nullable = false)
+    private Integer id;
+
+    @Column(name = "email", nullable = false, unique = true, columnDefinition = "TEXT")
+    private String email;
+
+    @Column(name = "username", nullable = false, unique = true, columnDefinition = "TEXT")
+    private String username;
+
+    @Column(name = "department", columnDefinition = "TEXT")
+    private String department;
+
+    @Column(name = "status", nullable = false, columnDefinition = "TEXT")
+    private String status = "active";
+
+    protected Users() {
+    }
+}

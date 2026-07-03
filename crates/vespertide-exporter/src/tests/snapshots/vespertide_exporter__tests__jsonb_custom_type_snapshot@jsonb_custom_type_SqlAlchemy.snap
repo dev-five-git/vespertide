@@ -1,0 +1,19 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from typing import Optional
+
+from sqlalchemy import Integer, JSON
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class JsonStruct(DeclarativeBase):
+    __tablename__ = "json_struct"
+
+    id: Mapped[int] = mapped_column(Integer, nullable=False)
+    json_data: Mapped[dict] = mapped_column(JSON, nullable=False)
+    jsonb_data: Mapped[str] = mapped_column("JSONB", nullable=False)
+    jsonb_nullable: Mapped[Optional[str]] = mapped_column("jsonb", nullable=True)

@@ -1,0 +1,18 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from typing import Optional
+
+from sqlmodel import Field, SQLModel
+
+
+class JsonStruct(SQLModel, table=True):
+    __tablename__ = "json_struct"
+
+    id: int = Field(...)
+    json_data: dict = Field(...)
+    jsonb_data: str = Field(...)
+    jsonb_nullable: Optional[str] = Field(default=None)

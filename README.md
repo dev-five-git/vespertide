@@ -17,6 +17,39 @@ Declarative database schema management. Define your schemas in JSON, and Vespert
 - **Zero-Runtime Migrations**: Compile-time macro generates database-specific SQL
 - **JSON Schema Validation**: Ships with JSON Schemas for IDE autocompletion and validation
 - **ORM Export**: Export schemas to SeaORM, SQLAlchemy, SQLModel
+- **Language Server**: First-class editor support via the bundled `vespertide-lsp` — see [LSP Features](#lsp-features) below
+
+## What's new in 0.2.0
+
+API stability pass with a byte-identical JSON wire format — existing models and migration files load unchanged.
+
+- **Newtype identifiers**: `TableName`, `ColumnName`, `IndexName` in `vespertide-core` (`crates/vespertide-core/src/schema/names.rs`). `#[serde(transparent)]` keeps JSON identical; `Deref<Target = str>` means most call sites need no edit.
+- **`#[non_exhaustive]` configs**: `VespertideConfig`, `SeaOrmConfig`, and `MigrationOptions` must be built with `..Default::default()` (or `MigrationOptions::new()`), so future fields don't break semver.
+- **Decomposed `QueryError`**: new `InvalidColumnType`, `SchemaError`, `BackendError`, and `UnsupportedAction` variants. `QueryError::Other(String)` is `#[deprecated]` but still compiles.
+- **Cloneable `MigrationError`**: backed by `Arc<dyn Error>`, so retry loops can re-emit errors without re-running the planner.
+- **Faster LSP**: every editor hot path (diagnostics, symbols, drift) is now `RingCache`-backed in `vespertide-lsp`. No API change; -99% latency on the synthetic `tools/lsp-profile/` workload.
+- **Quality policy**: every `#[allow(...)]` migrated to `#[expect(LINT, reason = "...")]`; workspace lints reject reason-less allows going forward.
+
+## LSP Features
+
+The `vespertide-lsp` binary ships with VSCode and Zed extensions (`apps/vscode-extension/`, `apps/zed-extension/`). It implements 13 LSP capabilities tuned for Vespertide schema files:
+
+| Capability | What it does |
+|---|---|
+| **Diagnostics** | Real-time validation: unknown type, duplicate column, FK target missing, enum default invalid, filename ↔ table name mismatch, complex-type field shape (`enum` requires `values`, `varchar` requires `length`, …), **CHECK-expression faults** (literal type-mismatch, reversed `BETWEEN` bounds, self-contradiction) |
+| **Completion** | Context-aware: column type, `kind`, ref_table, ref_columns (cross-file), on_delete actions, type-aware default (`now()` for timestamp, `gen_random_uuid()` for uuid, enum values for enum), all 4 key positions (table, column, foreign_key, type object), **inside CHECK expressions** (column names, operators, keywords — position-aware with partial-token replace) |
+| **Hover** | Column / FK target preview with on-disk fallback (closed-file targets still resolve); **CHECK-expression structure** popup (parsed AND/OR/comparison/BETWEEN/IN breakdown) |
+| **Go to Definition** | F12 on `ref_table` → target table; F12 on `ref_columns` entry → target column |
+| **Find References** | Shift+F12 — workspace-wide. Column references are scoped to the owning table (`user.email` does not collide with `other.email`); **column identifiers inside CHECK `expr` strings** are also reported as references |
+| **Rename** | F2 with prepare-rename. Renames propagate to every `ref_columns` / `ref_table` mention **and into CHECK `expr` predicates** (renaming a column rewrites `age > 0` → `years > 0`, so the CHECK never goes stale) |
+| **Code Actions** | 9 refactors: toggle PK/UQ/IX, toggle nullable, convert simple type to `varchar(N)`/`numeric(P,S)`, extract default to enum, add FK skeleton, **swap reversed CHECK `BETWEEN` bounds** |
+| **Inlay Hints** | Column flags (`PK · UQ · IX`) and FK target (`⟶ user.id`) shown inline at the column's `{`; **column-type echoes** (`: integer`) after column references inside CHECK expressions |
+| **Semantic Tokens** | Table/column/type/enum colored by meaning (not just syntax). VSCode extension ships default DevFive palette. **CHECK-expression internals** (column refs, operators, keywords, literals) tokenized inside JSON strings and YAML quoted/plain/block scalars |
+| **Document Symbol** | Ctrl+Shift+O — table → columns outline |
+| **Workspace Symbol** | Ctrl+T — fuzzy search every table and column |
+| **Folding / Selection / Highlight** | Standard LSP file-local features (column objects fold, Ctrl+Shift+→ expands, same-symbol auto-highlight) |
+| **Watched Files** | External edits (git pull, sed) refresh diagnostics automatically via `workspace/didChangeWatchedFiles` |
+| **Drift Detection** _(unique)_ | Flags models that have diverged from the applied migration history |
 
 ## Installation
 
@@ -207,7 +240,7 @@ Use the `vespertide_migration!` macro to run migrations at application startup:
 
 ```toml
 [dependencies]
-vespertide = "0.1"
+vespertide = "0.2"
 sea-orm = { version = "2.0.0-rc", features = ["sqlx-postgres", "runtime-tokio-native-tls", "macros"] }
 ```
 
@@ -245,6 +278,30 @@ vespertide/
 4. **Generate Plan**: Changes are converted into typed `MigrationAction` enums
 5. **Emit SQL**: Migration actions are translated to database-specific SQL
 
+### Error Handling
+
+`vespertide-query` returns a typed, `#[non_exhaustive]` `QueryError` so callers
+can react to each failure category without string-matching:
+
+```rust
+use vespertide_query::QueryError;
+
+fn report(err: QueryError) {
+    match err {
+        QueryError::SchemaError(msg) => {
+            eprintln!("schema is inconsistent: {msg}");
+        }
+        QueryError::InvalidColumnType { backend, message } => {
+            eprintln!("cannot map column type for {backend:?}: {message}");
+        }
+        // Other variants (UnsupportedConstraint, BackendError, UnsupportedAction,
+        // deprecated Other) handled elsewhere; `#[non_exhaustive]` requires a
+        // wildcard arm.
+        _ => {}
+    }
+}
+```
+
 ## Configuration
 
 `vespertide.json`:
@@ -259,6 +316,27 @@ vespertide/
 }
 ```
 
+### Migration timeouts (optional)
+
+Protect runtime migrations (the `vespertide_migration!` macro) from hanging on
+a lock or a runaway statement. Both are optional, in **milliseconds**, and
+omitted by default (no timeout applied):
+
+```json
+{
+  "lockTimeoutMs": 5000,
+  "statementTimeoutMs": 30000
+}
+```
+
+When set, the macro emits a backend-appropriate timeout at the start of the
+migration session:
+
+| Config | PostgreSQL | MySQL | SQLite |
+|---|---|---|---|
+| `lockTimeoutMs` | `SET LOCAL lock_timeout` | `SET SESSION innodb_lock_wait_timeout` (rounded up to seconds) | `PRAGMA busy_timeout` |
+| `statementTimeoutMs` | `SET LOCAL statement_timeout` | `SET SESSION max_execution_time` | — (no statement timeout) |
+
 ## Development
 
 ```bash
@@ -268,6 +346,10 @@ cargo clippy --all-targets --all-features # Lint
 cargo fmt                                # Format
 cargo run -p vespertide-schema-gen -- --out schemas  # Regenerate JSON Schemas
 ```
+
+## Quality & Maintenance
+
+Workspace lints are enforced in CI; the migration from `#[allow]` to `#[expect]` (and the rationale) is tracked in [docs/clippy-allow-audit.md](docs/clippy-allow-audit.md).
 
 ## License
 

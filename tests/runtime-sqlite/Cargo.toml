@@ -1,0 +1,37 @@
+[package]
+name = "vespertide-runtime-sqlite-tests"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Excluded from the main workspace. The `sea-orm` dev-dep with `sqlx-sqlite`
+# below pulls in libsqlite3-sys 0.30 via sqlx, which conflicts with
+# vespertide-query's rusqlite 0.39 dev-dep (libsqlite3-sys 0.37) on the
+# `links = "sqlite3"` constraint. Keeping this crate outside the workspace
+# isolates its dependency graph so both can stay on latest pinned versions.
+#
+# Run via:
+#   cargo test --manifest-path tests/runtime-sqlite/Cargo.toml
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+sea-orm = { version = "2.0.0-rc.40", default-features = false, features = ["runtime-tokio-native-tls", "sqlx-sqlite"] }
+vespertide = { path = "../../crates/vespertide" }
+
+# Mirror the workspace lint policy explicitly — `[lints] workspace = true`
+# cannot be used because this crate is intentionally outside the workspace.
+[lints.rust]
+unsafe_code = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+similar_names = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"

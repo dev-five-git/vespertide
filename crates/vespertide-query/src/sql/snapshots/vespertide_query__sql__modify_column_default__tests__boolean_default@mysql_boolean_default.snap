@@ -1,5 +1,6 @@
 ---
 source: crates/vespertide-query/src/sql/modify_column_default.rs
+assertion_line: 547
 expression: sql
 ---
-ALTER TABLE `users` MODIFY COLUMN `is_active` bool NOT NULL DEFAULT true
+ALTER TABLE `users` MODIFY COLUMN `is_active` bool NOT NULL DEFAULT (true)

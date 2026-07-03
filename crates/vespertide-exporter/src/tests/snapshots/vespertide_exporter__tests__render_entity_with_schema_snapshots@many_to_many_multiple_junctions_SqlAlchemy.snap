@@ -1,0 +1,16 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from uuid import UUID
+
+from sqlalchemy import Uuid
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class User(DeclarativeBase):
+    __tablename__ = "user"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)

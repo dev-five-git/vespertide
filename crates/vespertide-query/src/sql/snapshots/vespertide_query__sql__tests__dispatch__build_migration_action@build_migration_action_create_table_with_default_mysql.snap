@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/tests/dispatch.rs
+assertion_line: 226
+expression: "result.iter().map(|q| q.build(backend)).collect::<Vec<String>>().join(\"\\n\")"
+---
+CREATE TABLE "users" ( "status" text DEFAULT ('active') )

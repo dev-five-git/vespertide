@@ -1,0 +1,16 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from uuid import UUID
+
+from sqlmodel import Field, SQLModel
+
+
+class Session(SQLModel, table=True):
+    __tablename__ = "session"
+
+    id: UUID = Field(primary_key=True)
+    username: str = Field(foreign_key="user.username")

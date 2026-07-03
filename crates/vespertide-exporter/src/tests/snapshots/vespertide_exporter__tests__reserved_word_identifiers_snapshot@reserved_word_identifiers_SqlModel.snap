@@ -1,0 +1,16 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlmodel import Field, SQLModel
+
+
+class Order(SQLModel, table=True):
+    __tablename__ = "order"
+
+    id: int = Field(primary_key=True)
+    user: str = Field(...)
+    select: int = Field(...)

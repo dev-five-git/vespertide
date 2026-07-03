@@ -9,7 +9,186 @@ exports[`HomePage should render 1`] = `
 `;
 
 exports[`HomePage should render 2`] = `
-"<div class="background-0-red--255 color-0-white--255">
-  HomePage
+"<div class="background-0-$containerBackground--255 color-0-#FFF--255 min-height-0-100vh--255">
+  <div class="display-0-flex--0 justify-content-0-center--0 align-items-0-center--0 background-0-linear-gradient(-180deg,#9AE99D 0,#FFF6DF 100%)--255 flex-direction-0-column--255 height-4-1080px--255 overflow-0-hidden--255 padding-bottom-0-60px--255 position-0-relative--255 padding-top-0-120px--255 padding-top-3-148px--255 padding-right-0-20px--255 padding-right-3-40px--255 padding-left-0-20px--255 padding-left-3-40px--255">
+    <div class="display-0-flex--0 flex-direction-0-column--0 align-items-0-center--255 align-items-4-flex-start--255 gap-0-50px--255 max-width-0-1280px--255 position-0-relative--255 width-0-100%--255">
+      <div class="display-0-flex--0 flex-direction-0-column--0 align-items-0-flex-start--255 gap-0-$spacingSpacing32--255 position-0-relative--255 width-0-100%--255 z-index-0-1--255">
+        <span class="color-0-#10131F--255 typo-displaySm">
+          Lorem ipsum dolor sit amet,
+          <br>
+          consectetur adipiscing elit.
+        </span>
+        <span class="color-0-#10131F--255 typo-title">
+          Etiam sit amet feugiat turpis. Proin nec ante a sem vestibulum sodales non ut ex.
+          <br>
+          Morbi diam turpis, fringilla vitae enim et, egestas consequat nibh.
+          <br>
+          Etiam auctor cursus urna sit amet elementum.
+        </span>
+      </div>
+      <div class="background-0-url(/images/hero-figure.webp) center/cover no-repeat--255 background-position-0-center--255 background-size-0-contain--255 height-0-350px--255 height-4-750px--255 width-0-350px--255 width-4-750px--255 position-4-absolute--255 right-0--150px--255 top-0-50%--255 transform-4-translateY(-50%)--255 z-index-0-0--255">
+      </div>
+      <button class="display-0-flex--0 justify-content-0-center--0 align-items-0-center--0 background-0-#172B20-_a__c_active-1 color-0-$vesperaPrimary-_a__c_active-1 background-0-#172B20-_a__c_hover-1 background-0-#10131F--1 border-0-none--1 border-radius-0-100px--1 color-0-$vesperaBg--1 cursor-0-pointer--1 padding-right-0-28px--1 padding-right-4-$spacingSpacing32--1 padding-left-0-28px--1 padding-left-4-$spacingSpacing32--1 padding-bottom-0-10px--1 padding-bottom-4-$spacingSpacing12--1 padding-top-0-10px--1 padding-top-4-$spacingSpacing12--1 transition-0-all .1s--1 ">
+        <div class="background-0-$secondary--255 border-radius-0-50%--255 height-0-10px--255 width-0-10px--255 display-0-none--255">
+        </div>
+        <div class="display-0-flex--0 align-items-0-center--255">
+          <span class="color-0-#FDF6DE--255 typo-bodyLgEb">
+            Get started
+          </span>
+        </div>
+      </button>
+    </div>
+  </div>
+  <div class="display-0-flex--0 justify-content-0-center--0 align-items-0-center--0 background-0-$vespertideBg--255 flex-direction-0-column--255 overflow-0-hidden--255 padding-right-0-20px--255 padding-left-0-20px--255 padding-bottom-0-$spacingSpacing80--255 padding-top-0-$spacingSpacing80--255">
+    <div class="display-0-flex--0 flex-direction-0-column--0 gap-0-40px--255 max-width-0-1280px--255 width-0-100%--255">
+      <div class="display-0-flex--0 flex-direction-0-column--0 gap-0-16px--255">
+        <span class="color-0-$title--255 typo-h3">
+          Title
+        </span>
+        <span class="color-0-$text--255 typo-body">
+          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nullam venenatis, elit in hendrerit porta, augue ante scelerisque diam,
+          <br>
+          ac egestas lacus est nec urna. Cras commodo risus hendrerit, suscipit nibh at, porttitor dui.
+        </span>
+      </div>
+      <div class="display-0-flex--0 flex-direction-0-column--0 flex-direction-3-row--255 gap-0-20px--255">
+        <div class="display-0-flex--0 background-0-$containerBackground--255 border-radius-0-$spacingSpacing08--255 min-height-0-200px--255 min-height-3-320px--255 overflow-0-hidden--255 padding-right-0-$spacingSpacing20--255 padding-right-3-$spacingSpacing24--255 padding-left-0-$spacingSpacing20--255 padding-left-3-$spacingSpacing24--255 padding-bottom-0-$spacingSpacing16--255 padding-bottom-3-$spacingSpacing24--255 padding-top-0-$spacingSpacing16--255 padding-top-3-$spacingSpacing24--255">
+          <div class="display-0-flex--0 flex-direction-0-column--0 flex-0-1--255 gap-0-10px--255 gap-3-$spacingSpacing12--255">
+            <span class="color-0-$title--255 typo-title">
+              Feature title
+            </span>
+            <span class="color-0-$textSub--255 typo-body">
+              Lorem ipsum dolor sit amet. Etiam sit amet feugiat turpis. Proin nec ante a sem vestibulum sodales non ut ex.
+            </span>
+          </div>
+        </div>
+        <div class="display-0-flex--0 background-0-$containerBackground--255 border-radius-0-$spacingSpacing08--255 min-height-0-200px--255 min-height-3-320px--255 overflow-0-hidden--255 padding-right-0-$spacingSpacing20--255 padding-right-3-$spacingSpacing24--255 padding-left-0-$spacingSpacing20--255 padding-left-3-$spacingSpacing24--255 padding-bottom-0-$spacingSpacing16--255 padding-bottom-3-$spacingSpacing24--255 padding-top-0-$spacingSpacing16--255 padding-top-3-$spacingSpacing24--255">
+          <div class="display-0-flex--0 flex-direction-0-column--0 flex-0-1--255 gap-0-10px--255 gap-3-$spacingSpacing12--255">
+            <span class="color-0-$title--255 typo-title">
+              Feature title
+            </span>
+            <span class="color-0-$textSub--255 typo-body">
+              Lorem ipsum dolor sit amet. Etiam sit amet feugiat turpis. Proin nec ante a sem vestibulum sodales non ut ex.
+            </span>
+          </div>
+        </div>
+        <div class="display-0-flex--0 background-0-$containerBackground--255 border-radius-0-$spacingSpacing08--255 min-height-0-200px--255 min-height-3-320px--255 overflow-0-hidden--255 padding-right-0-$spacingSpacing20--255 padding-right-3-$spacingSpacing24--255 padding-left-0-$spacingSpacing20--255 padding-left-3-$spacingSpacing24--255 padding-bottom-0-$spacingSpacing16--255 padding-bottom-3-$spacingSpacing24--255 padding-top-0-$spacingSpacing16--255 padding-top-3-$spacingSpacing24--255">
+          <div class="display-0-flex--0 flex-direction-0-column--0 flex-0-1--255 gap-0-10px--255 gap-3-$spacingSpacing12--255">
+            <span class="color-0-$title--255 typo-title">
+              Feature title
+            </span>
+            <span class="color-0-$textSub--255 typo-body">
+              Lorem ipsum dolor sit amet. Etiam sit amet feugiat turpis. Proin nec ante a sem vestibulum sodales non ut ex.
+            </span>
+          </div>
+        </div>
+        <div class="display-0-flex--0 background-0-$containerBackground--255 border-radius-0-$spacingSpacing08--255 min-height-0-200px--255 min-height-3-320px--255 overflow-0-hidden--255 padding-right-0-$spacingSpacing20--255 padding-right-3-$spacingSpacing24--255 padding-left-0-$spacingSpacing20--255 padding-left-3-$spacingSpacing24--255 padding-bottom-0-$spacingSpacing16--255 padding-bottom-3-$spacingSpacing24--255 padding-top-0-$spacingSpacing16--255 padding-top-3-$spacingSpacing24--255">
+          <div class="display-0-flex--0 flex-direction-0-column--0 flex-0-1--255 gap-0-10px--255 gap-3-$spacingSpacing12--255">
+            <span class="color-0-$title--255 typo-title">
+              Feature title
+            </span>
+            <span class="color-0-$textSub--255 typo-body">
+              Lorem ipsum dolor sit amet. Etiam sit amet feugiat turpis. Proin nec ante a sem vestibulum sodales non ut ex.
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="display-0-flex--0 justify-content-0-center--0 align-items-0-center--0 background-0-$containerBackground--255 flex-direction-0-column--255 overflow-0-hidden--255 padding-right-0-20px--255 padding-left-0-20px--255 padding-bottom-0-80px--255 padding-bottom-3-120px--255 padding-top-0-80px--255 padding-top-3-120px--255">
+    <div class="display-0-flex--0 flex-direction-0-column--0 gap-0-40px--255 max-width-3-1280px--255 width-0-100%--255">
+      <div class="display-0-flex--0 flex-direction-0-column--0 gap-0-16px--255">
+        <span class="color-0-$title--255 typo-h3">
+          Title
+        </span>
+        <span class="color-0-$title--255 typo-body">
+          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nullam venenatis ac egestas lacus est nec urna.
+        </span>
+      </div>
+      <div class="display-0-flex--0 flex-direction-0-column--0 align-items-0-center--255 flex-direction-3-row-reverse--255 gap-0-$spacingSpacing32--255 position-0-relative--255">
+        <div class="display-0-flex--0 background-0-$vespertideBg--255 border-radius-0-$spacingSpacing08--255 flex-shrink-0-0--255 height-0-320px--255 height-3-424px--255 justify-content-0-center--255 overflow-0-hidden--255 position-0-relative--255 padding-right-0-$spacingSpacing20--255 padding-left-0-$spacingSpacing20--255 padding-bottom-0-20px--255 padding-top-0-20px--255 width-0-100%--255 width-3-624px--255">
+          <img alt="How to Use" class="bottom-0-0--1 height-0-100%--1 left-0-39px--1 left-3-76px--1 position-0-absolute--1 right-0-0--1 top-0-47px--1 top-3-91px--1 width-0-100%--1 " src="/images/hero-figure.webp">
+          <div class="bottom-0-27px--255 left-0-50%--255 position-0-absolute--255 transform-0-translateX(-50%)--255">
+            <button class="display-0-flex--0 justify-content-0-center--0 align-items-0-center--0 background-0-#172B20-_a__c_active-1 color-0-$vesperaPrimary-_a__c_active-1 background-0-#172B20-_a__c_hover-1 background-0-#10131F--1 border-0-none--1 border-radius-0-100px--1 color-0-$vesperaBg--1 cursor-0-pointer--1 padding-right-0-28px--1 padding-right-4-$spacingSpacing32--1 padding-left-0-28px--1 padding-left-4-$spacingSpacing32--1 padding-bottom-0-10px--1 padding-bottom-4-$spacingSpacing12--1 padding-top-0-10px--1 padding-top-4-$spacingSpacing12--1 transition-0-all .1s--1 ">
+              <div class="background-0-$secondary--255 border-radius-0-50%--255 height-0-10px--255 width-0-10px--255 display-0-none--255">
+              </div>
+              <div class="display-0-flex--0 align-items-0-center--255">
+                <span class="color-0-#FDF6DE--255 typo-bodyLgEb">
+                  Learn more
+                </span>
+              </div>
+            </button>
+          </div>
+        </div>
+        <div class="display-0-flex--0 flex-direction-0-column--0 gap-0-$spacingSpacing12--255 width-0-100%--255">
+          <div class="display-0-flex--0 background-0-$cardBase-_a__c_hover-1 background-0-$vespertideBg--1 border-radius-0-$spacingSpacing08--1 border-style-0-solid--1 border-width-0-2px--1 overflow-0-hidden--1 padding-right-0-$spacingSpacing24--1 padding-left-0-$spacingSpacing24--1 padding-bottom-0-$spacingSpacing20--1 padding-top-0-$spacingSpacing20--1 transition-0-all .1s--1 border-color-0-$caption--1 ">
+            <div class="display-0-flex--0 flex-direction-0-column--0 flex-0-1--255 gap-0-10px--255 gap-3-$spacingSpacing12--255">
+              <span class="color-0-$title--255 typo-title">
+                How to Use
+              </span>
+              <span class="color-0-$textSub--255 typo-body">
+                Lorem ipsum dolor sit amet. Etiam sit amet feugiat turpis. Proin nec ante a sem vestibulum sodales non ut ex.
+              </span>
+            </div>
+          </div>
+          <div class="display-0-flex--0 background-0-$cardBase-_a__c_hover-1 background-0-$vespertideBg--1 border-radius-0-$spacingSpacing08--1 border-style-0-solid--1 border-width-0-2px--1 overflow-0-hidden--1 padding-right-0-$spacingSpacing24--1 padding-left-0-$spacingSpacing24--1 padding-bottom-0-$spacingSpacing20--1 padding-top-0-$spacingSpacing20--1 transition-0-all .1s--1 border-color-0-transparent--1 ">
+            <div class="display-0-flex--0 flex-direction-0-column--0 flex-0-1--255 gap-0-10px--255 gap-3-$spacingSpacing12--255">
+              <span class="color-0-$title--255 typo-title">
+                How to Use
+              </span>
+              <span class="color-0-$textSub--255 typo-body">
+                Lorem ipsum dolor sit amet. Etiam sit amet feugiat turpis. Proin nec ante a sem vestibulum sodales non ut ex.
+              </span>
+            </div>
+          </div>
+          <div class="display-0-flex--0 background-0-$cardBase-_a__c_hover-1 background-0-$vespertideBg--1 border-radius-0-$spacingSpacing08--1 border-style-0-solid--1 border-width-0-2px--1 overflow-0-hidden--1 padding-right-0-$spacingSpacing24--1 padding-left-0-$spacingSpacing24--1 padding-bottom-0-$spacingSpacing20--1 padding-top-0-$spacingSpacing20--1 transition-0-all .1s--1 border-color-0-transparent--1 ">
+            <div class="display-0-flex--0 flex-direction-0-column--0 flex-0-1--255 gap-0-10px--255 gap-3-$spacingSpacing12--255">
+              <span class="color-0-$title--255 typo-title">
+                How to Use
+              </span>
+              <span class="color-0-$textSub--255 typo-body">
+                Lorem ipsum dolor sit amet. Etiam sit amet feugiat turpis. Proin nec ante a sem vestibulum sodales non ut ex.
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="align-items-0-center--255 display-0-flex--255 flex-direction-0-column--255 background-0-#000--255 gap-0-40px--255 overflow-0-hidden--255 position-0-relative--255 padding-right-0-20px--255 padding-right-3-40px--255 padding-left-0-20px--255 padding-left-3-40px--255 padding-bottom-0-80px--255 padding-bottom-3-120px--255 padding-top-0-80px--255 padding-top-3-120px--255 height-0-600px--255 height-3-unset--255">
+    <div class="display-0-flex--0 flex-direction-0-column--0 flex-direction-3-row--255 height-0-100%--255 height-3-unset--255 justify-content-3-flex-end--255 max-width-0-1280px--255 position-0-relative--255 width-0-100%--255">
+      <div class="display-0-flex--0 flex-direction-0-column--0 gap-0-40px--255 justify-content-0-center--255 max-width-0-480px--255 width-0-100%--255 z-index-0-10--255">
+        <div class="display-0-flex--0 flex-direction-0-column--0 gap-0-16px--255">
+          <span class="color-0-#FFF--255 typo-h3">
+            Join our community
+          </span>
+          <span class="color-0-#FFF--255 typo-body">
+            Join our Discord and help build the future of frontend with CSS-in-JS!
+          </span>
+        </div>
+        <div class="display-0-flex--0 align-items-0-center--255 gap-0-16px--255">
+          <a rel="noopener noreferrer" target="_blank" href="https://discord.com/invite/8zjcGc7cWh">
+            <div class="display-0-flex--0 background-0-#0A6F3699-_a__c_active-1 background-0-#0A6F3666-_a__c_hover-1 align-items-0-center--1 background-0-#0A6F3640--1 border-radius-0-100px--1 padding-0-16px--1 ">
+              <div class="background-0-$title--1 height-0-24px--1 width-0-24px--1 mask-position-0-center--1 mask-repeat-0-no-repeat--1 mask-size-0-contain--1 transition-0-all .2s ease-in-out--1 mask-image-0-url('/icons/discord.svg')--1 background-0-$vespertidePrimary--255">
+              </div>
+            </div>
+          </a>
+          <a rel="noopener noreferrer" target="_blank" href="https://open.kakao.com/o/giONwVAh">
+            <div class="display-0-flex--0 background-0-#0A6F3699-_a__c_active-1 background-0-#0A6F3666-_a__c_hover-1 align-items-0-center--1 background-0-#0A6F3640--1 border-radius-0-100px--1 padding-0-16px--1 ">
+              <div class="background-0-$title--1 height-0-24px--1 width-0-24px--1 mask-position-0-center--1 mask-repeat-0-no-repeat--1 mask-size-0-contain--1 transition-0-all .2s ease-in-out--1 mask-image-0-url('/icons/kakao.svg')--1 background-0-$vespertidePrimary--255">
+              </div>
+            </div>
+          </a>
+          <a rel="noopener noreferrer" target="_blank" href="https://devfive.kr">
+            <div class="display-0-flex--0 background-0-#0A6F3699-_a__c_active-1 background-0-#0A6F3666-_a__c_hover-1 align-items-0-center--1 background-0-#0A6F3640--1 border-radius-0-100px--1 padding-0-16px--1 ">
+              <div class="background-0-$title--1 height-0-24px--1 width-0-24px--1 mask-position-0-center--1 mask-repeat-0-no-repeat--1 mask-size-0-contain--1 transition-0-all .2s ease-in-out--1 mask-image-0-url('/icons/devfive.svg')--1 background-0-$vespertidePrimary--255">
+              </div>
+            </div>
+          </a>
+        </div>
+      </div>
+      <img alt="join us background image" class="bottom-0--305px--255 height-0-500px--255 width-0-500px--255 left-0--142px--255 position-0-absolute--255" src="/images/join-us-bg.webp">
+    </div>
+  </div>
 </div>"
 `;

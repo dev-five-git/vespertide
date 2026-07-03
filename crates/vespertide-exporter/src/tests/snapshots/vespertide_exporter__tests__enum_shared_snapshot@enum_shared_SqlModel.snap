@@ -1,0 +1,28 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+import enum
+from typing import Optional
+
+from sqlmodel import Field, SQLModel
+
+
+class DocStatus(str, enum.Enum):
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
+
+class DocStatus(str, enum.Enum):
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
+
+class Documents(SQLModel, table=True):
+    __tablename__ = "documents"
+
+    id: int = Field(...)
+    status: DocStatus = Field(...)
+    review_status: Optional[DocStatus] = Field(default=None)

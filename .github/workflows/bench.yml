@@ -1,0 +1,126 @@
+name: benchmarks
+
+on:
+  # No nightly schedule: main only changes via PR, which already runs this
+  # workflow. A scheduled run on an unchanged SHA produces noise (runner CPU
+  # variance) without new signal. Run manually via workflow_dispatch if a
+  # fresh baseline measurement is needed.
+  pull_request:
+    paths:
+      - 'crates/**/*.rs'
+      - 'crates/**/benches/**'
+      - 'crates/**/Cargo.toml'
+      - 'crates/vespertide-lsp/**'
+      - 'crates/vespertide-core/**'
+      - 'crates/vespertide-planner/**'
+      - 'crates/vespertide-query/**'
+      - 'tools/lsp-profile/**'
+      - '.github/workflows/bench.yml'
+  workflow_dispatch:
+    inputs:
+      duration_seconds:
+        description: 'Optional override for iteration budget'
+        default: ''
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    name: criterion (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Compile benchmarks
+        run: cargo bench --workspace --no-run
+
+      - name: Run benchmarks (informational)
+        run: cargo bench --workspace -- --output-format bencher | tee bench-results.txt
+
+      - name: Upload results
+        uses: actions/upload-artifact@v7
+        with:
+          name: bench-results
+          path: bench-results.txt
+          retention-days: 1
+
+  lsp-profile:
+    name: lsp-profile workload
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Build workload binary
+        run: cargo build --release --manifest-path tools/lsp-profile/Cargo.toml
+
+      - name: Run synthetic workload
+        run: |
+          cargo run --release --manifest-path tools/lsp-profile/Cargo.toml -- \
+            --workload synthetic \
+            --json profiling-synthetic-current.json | tee synthetic-stdout.txt
+
+      - name: Run realistic workload
+        run: |
+          cargo run --release --manifest-path tools/lsp-profile/Cargo.toml -- \
+            --workload realistic \
+            --json profiling-realistic-current.json | tee realistic-stdout.txt
+
+      - name: Compare against baseline (informational)
+        run: |
+          echo "=== Synthetic vs baseline ==="
+          cargo run --release --manifest-path tools/lsp-profile/Cargo.toml -- \
+            --workload synthetic \
+            --baseline docs/profiling-baseline.json | tee synthetic-delta.txt
+          echo ""
+          echo "=== Realistic vs baseline ==="
+          cargo run --release --manifest-path tools/lsp-profile/Cargo.toml -- \
+            --workload realistic \
+            --baseline docs/profiling-realistic.json | tee realistic-delta.txt
+
+      - name: Regression check (PR only — informational, non-blocking)
+        if: github.event_name == 'pull_request'
+        run: |
+          python3 <<'EOF'
+          import json, sys
+          baseline = json.load(open('docs/profiling-baseline.json'))
+          current  = json.load(open('profiling-synthetic-current.json'))
+          baseline_by_name = { p['name']: p for p in baseline }
+          regressions = []
+          for p in current:
+              b = baseline_by_name.get(p['name'])
+              if b is None:
+                  continue
+              if b['wall_secs'] < 0.001:
+                  continue  # noise floor
+              delta = (p['wall_secs'] - b['wall_secs']) / b['wall_secs']
+              if delta > 0.20:
+                  regressions.append((p['name'], b['wall_secs'], p['wall_secs'], delta))
+          if regressions:
+              print('::warning::Potential perf regression detected (>20% increase):')
+              for n, b, c, d in regressions:
+                  print(f'  {n}: {b:.4f}s -> {c:.4f}s (+{d*100:.1f}%)')
+          else:
+              print('No regressions >20% detected.')
+          EOF
+
+      - name: Upload bench artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bench-results-${{ github.run_id }}
+          path: |
+            profiling-synthetic-current.json
+            profiling-realistic-current.json
+            synthetic-delta.txt
+            realistic-delta.txt
+            synthetic-stdout.txt
+            realistic-stdout.txt
+          retention-days: 1

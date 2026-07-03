@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/modify_column_type/narrowing_preprocess.rs
+assertion_line: 334
+expression: sql
+---
+UPDATE `tbl` SET `col` = LEFT(`col`, 30) WHERE CHAR_LENGTH(`col`) > 30

@@ -1,5 +1,7 @@
 ---
-source: crates/vespertide-query/src/sql/add_constraint.rs
+source: crates/vespertide-query/src/sql/add_constraint/tests/mod.rs
 expression: "result.iter().map(|q| q.build(backend)).collect::<Vec<String>>().join(\"\\n\")"
 ---
-ALTER TABLE "users" ADD CONSTRAINT "fk_users__fk_user" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE RESTRICT
+UPDATE "users" SET "user_id" = NULL WHERE ("user_id" IS NOT NULL) AND NOT EXISTS (SELECT 1 FROM "users" WHERE "users"."id" = "users"."user_id")
+ALTER TABLE "users" ADD CONSTRAINT "fk_users__fk_user" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE RESTRICT NOT VALID
+ALTER TABLE "users" VALIDATE CONSTRAINT "fk_users__fk_user"

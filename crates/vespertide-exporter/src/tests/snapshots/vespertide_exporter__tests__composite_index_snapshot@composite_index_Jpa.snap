@@ -1,0 +1,25 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "composite_index", indexes = {
+    @Index(name = "idx_tenant_name", columnList = "tenant_id, name")
+})
+public class CompositeIndex {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @Column(name = "tenant_id", nullable = false)
+    private Integer tenantId;
+
+    @Column(name = "name", nullable = false, columnDefinition = "TEXT")
+    private String name;
+
+    protected CompositeIndex() {
+    }
+}

@@ -12,7 +12,7 @@ use super::types::{BuiltQuery, DatabaseBackend};
 use crate::error::QueryError;
 
 fn build_add_column_alter_for_backend(
-    backend: &DatabaseBackend,
+    backend: DatabaseBackend,
     table: &str,
     column: &ColumnDef,
 ) -> TableAlterStatement {
@@ -32,7 +32,7 @@ fn is_enum_column(column: &ColumnDef) -> bool {
 }
 
 pub fn build_add_column(
-    backend: &DatabaseBackend,
+    backend: DatabaseBackend,
     table: &str,
     column: &ColumnDef,
     fill_with: Option<&str>,
@@ -42,15 +42,15 @@ pub fn build_add_column(
     // SQLite: NOT NULL additions or enum columns require table recreation
     // (enum columns need CHECK constraint which requires table recreation in SQLite)
     let sqlite_needs_recreation =
-        *backend == DatabaseBackend::Sqlite && (!column.nullable || is_enum_column(column));
+        backend == DatabaseBackend::Sqlite && (!column.nullable || is_enum_column(column));
 
     if sqlite_needs_recreation {
-        let table_def = current_schema.iter().find(|t| t.name == table).ok_or_else(|| QueryError::Other(format!("Table '{}' not found in current schema. SQLite requires current schema information to add columns.", table)))?;
+        let table_def = current_schema.iter().find(|t| t.name == table).ok_or_else(|| QueryError::SchemaError(format!("Table '{table}' not found in current schema. SQLite requires current schema information to add columns.")))?;
 
         let mut new_columns = table_def.columns.clone();
         new_columns.push(column.clone());
 
-        let temp_table = format!("{}_temp", table);
+        let temp_table = format!("{table}_temp");
 
         // 1. Create temporary table with all CHECK constraints (enum + explicit)
         let create_query = build_sqlite_temp_table_create(
@@ -64,7 +64,7 @@ pub fn build_add_column(
         // Copy existing data, filling new column
         let mut select_query = Query::select();
         for col in &table_def.columns {
-            select_query = select_query.column(Alias::new(&col.name)).to_owned();
+            select_query.column(Alias::new(&col.name));
         }
         let normalized_fill = normalize_fill_with(fill_with);
         let fill_expr = if let Some(fill) = normalized_fill.as_deref() {
@@ -76,10 +76,9 @@ pub fn build_add_column(
         } else {
             Expr::cust("NULL")
         };
-        select_query = select_query
+        select_query
             .expr_as(fill_expr, Alias::new(&column.name))
-            .from(Alias::new(table))
-            .to_owned();
+            .from(Alias::new(table));
 
         let mut columns_alias: Vec<Alias> = table_def
             .columns
@@ -256,14 +255,12 @@ mod tests {
             constraints: vec![],
         }];
         let result =
-            build_add_column(&backend, "users", &column, fill_with, &current_schema, &[]).unwrap();
+            build_add_column(backend, "users", &column, fill_with, &current_schema, &[]).unwrap();
         let sql = result[0].build(backend);
         for exp in expected {
             assert!(
                 sql.contains(exp),
-                "Expected SQL to contain '{}', got: {}",
-                exp,
-                sql
+                "Expected SQL to contain '{exp}', got: {sql}"
             );
         }
 
@@ -287,7 +284,7 @@ mod tests {
         };
         let current_schema = vec![]; // Empty schema - table not found
         let result = build_add_column(
-            &DatabaseBackend::Sqlite,
+            DatabaseBackend::Sqlite,
             "users",
             &column,
             None,
@@ -329,7 +326,7 @@ mod tests {
             constraints: vec![],
         }];
         let result = build_add_column(
-            &DatabaseBackend::Sqlite,
+            DatabaseBackend::Sqlite,
             "users",
             &column,
             None,
@@ -377,7 +374,7 @@ mod tests {
             constraints: vec![],
         }];
         let result = build_add_column(
-            &DatabaseBackend::Sqlite,
+            DatabaseBackend::Sqlite,
             "users",
             &column,
             None,
@@ -430,7 +427,7 @@ mod tests {
             }],
         }];
         let result = build_add_column(
-            &DatabaseBackend::Sqlite,
+            DatabaseBackend::Sqlite,
             "users",
             &column,
             None,
@@ -488,7 +485,7 @@ mod tests {
             }],
             constraints: vec![],
         }];
-        let result = build_add_column(&backend, "users", &column, None, &current_schema, &[]);
+        let result = build_add_column(backend, "users", &column, None, &current_schema, &[]);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -545,7 +542,7 @@ mod tests {
             }],
             constraints: vec![],
         }];
-        let result = build_add_column(&backend, "users", &column, None, &current_schema, &[]);
+        let result = build_add_column(backend, "users", &column, None, &current_schema, &[]);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -594,7 +591,7 @@ mod tests {
             }],
             constraints: vec![],
         }];
-        let result = build_add_column(&backend, "users", &column, None, &current_schema, &[]);
+        let result = build_add_column(backend, "users", &column, None, &current_schema, &[]);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -606,8 +603,7 @@ mod tests {
         // Verify empty string becomes ''
         assert!(
             sql.contains("''"),
-            "Expected SQL to contain empty string literal '', got: {}",
-            sql
+            "Expected SQL to contain empty string literal '', got: {sql}"
         );
 
         with_settings!({ snapshot_suffix => format!("empty_string_default_{:?}", backend) }, {
@@ -615,8 +611,8 @@ mod tests {
         });
     }
 
-    /// Test adding NOT NULL column with '[]'::json default on SQLite
-    /// SQLite should strip the ::json cast, MySQL should use CAST(... AS JSON)
+    /// Test adding NOT NULL column with '[]'`::json` default on `SQLite`
+    /// `SQLite` should strip the `::json` cast, `MySQL` should use CAST(... AS JSON)
     #[rstest]
     #[case::postgres(DatabaseBackend::Postgres)]
     #[case::mysql(DatabaseBackend::MySql)]
@@ -650,7 +646,7 @@ mod tests {
             constraints: vec![],
         }];
         let result =
-            build_add_column(&backend, "project", &column, None, &current_schema, &[]).unwrap();
+            build_add_column(backend, "project", &column, None, &current_schema, &[]).unwrap();
         let sql = result
             .iter()
             .map(|q| q.build(backend))
@@ -661,8 +657,7 @@ mod tests {
         if backend == DatabaseBackend::Sqlite {
             assert!(
                 !sql.contains("::json"),
-                "SQLite SQL should not contain ::json cast, got: {}",
-                sql
+                "SQLite SQL should not contain ::json cast, got: {sql}"
             );
         }
 
@@ -670,8 +665,7 @@ mod tests {
         if backend == DatabaseBackend::MySql {
             assert!(
                 !sql.contains("::json"),
-                "MySQL SQL should not contain ::json cast, got: {}",
-                sql
+                "MySQL SQL should not contain ::json cast, got: {sql}"
             );
         }
 
@@ -716,7 +710,7 @@ mod tests {
             constraints: vec![],
         }];
         // fill_with empty string should become ''
-        let result = build_add_column(&backend, "users", &column, Some(""), &current_schema, &[]);
+        let result = build_add_column(backend, "users", &column, Some(""), &current_schema, &[]);
         assert!(result.is_ok());
         let queries = result.unwrap();
         let sql = queries
@@ -728,8 +722,7 @@ mod tests {
         // Verify empty string becomes ''
         assert!(
             sql.contains("''"),
-            "Expected SQL to contain empty string literal '', got: {}",
-            sql
+            "Expected SQL to contain empty string literal '', got: {sql}"
         );
 
         with_settings!({ snapshot_suffix => format!("fill_with_empty_string_{:?}", backend) }, {

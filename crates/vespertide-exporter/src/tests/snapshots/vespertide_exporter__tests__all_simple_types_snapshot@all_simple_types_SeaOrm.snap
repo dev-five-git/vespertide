@@ -1,0 +1,34 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+#[sea_orm(table_name = "all_types")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub small: i16,
+    pub big: i64,
+    pub real_num: f32,
+    pub double_num: f64,
+    pub text_col: String,
+    pub bool_col: bool,
+    pub date_col: Date,
+    pub time_col: Time,
+    pub ts_col: DateTime,
+    pub tstz_col: DateTimeWithTimeZone,
+    pub interval_col: String,
+    pub bytea_col: Vec<u8>,
+    pub uuid_col: Uuid,
+    pub json_col: Json,
+    pub inet_col: String,
+    pub cidr_col: String,
+    pub macaddr_col: String,
+    pub xml_col: String,
+}
+
+vespera::schema_type!(Schema from Model, name = "AllTypesSchema");
+impl ActiveModelBehavior for ActiveModel {}

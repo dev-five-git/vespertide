@@ -1,0 +1,1 @@
+{"name":"product","columns":[{"name":"id","type":"integer","nullable":false,"primary_key":true},{"name":"name","type":{"kind":"varchar","length":255},"nullable":false,"unique":true},{"name":"price","type":{"kind":"numeric","precision":10,"scale":2},"nullable":false}]}

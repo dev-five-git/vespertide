@@ -1,5 +1,6 @@
 ---
 source: crates/vespertide-query/src/sql/add_column.rs
+assertion_line: 673
 expression: sql
 ---
-ALTER TABLE `project` ADD COLUMN `story_index` json NOT NULL DEFAULT CAST('[]' AS JSON)
+ALTER TABLE `project` ADD COLUMN `story_index` json NOT NULL DEFAULT (CAST('[]' AS JSON))

@@ -1,0 +1,22 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+import enum
+
+from sqlalchemy import Integer
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class PriorityLevel(enum.IntEnum):
+    low = 0
+    medium = 10
+    high = 20
+
+class Tasks(DeclarativeBase):
+    __tablename__ = "tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    priority: Mapped[PriorityLevel] = mapped_column(Integer, nullable=False)

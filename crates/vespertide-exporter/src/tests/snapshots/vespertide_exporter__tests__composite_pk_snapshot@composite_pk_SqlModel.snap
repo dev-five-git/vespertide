@@ -1,0 +1,15 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlmodel import Field, SQLModel
+
+
+class Accounts(SQLModel, table=True):
+    __tablename__ = "accounts"
+
+    id: int = Field(primary_key=True)
+    tenant_id: int = Field(primary_key=True)

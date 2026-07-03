@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlmodel import Field, SQLModel
+
+
+class Articles(SQLModel, table=True):
+    __tablename__ = "articles"
+
+    id: int = Field(primary_key=True)
+    published: bool = Field(default=False)
+    view_count: int = Field(default=0)
+    status: str = Field(default="draft")

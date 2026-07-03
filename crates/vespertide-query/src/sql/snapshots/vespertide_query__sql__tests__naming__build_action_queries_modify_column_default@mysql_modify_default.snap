@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/tests/naming.rs
+assertion_line: 393
+expression: sql
+---
+ALTER TABLE `users` MODIFY COLUMN `status` text DEFAULT ('active')

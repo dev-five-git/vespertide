@@ -1,12 +1,15 @@
 [package]
 name = "vespertide-macro"
-version = "0.1.61"
+version = "0.2.1"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 documentation.workspace = true
 description = "Macro entry for runtime migration execution"
+keywords = ["database", "migration", "schema", "orm", "sql"]
+categories = ["database"]
+readme = "../../README.md"
 
 [lib]
 proc-macro = true
@@ -17,12 +20,21 @@ vespertide-config = { workspace = true }
 vespertide-loader = { workspace = true }
 vespertide-query = { workspace = true }
 vespertide-planner = { workspace = true }
-syn = { version = "2.0", features = ["parsing", "proc-macro"] }
+syn = { version = "2.0", features = ["parsing", "proc-macro", "full"] }
 proc-macro2 = "1.0"
+quote = "1"
+proc-macro-crate = "3.5.0"
 
 [dev-dependencies]
 tempfile = "3"
 runtime-macros = "1.1"
+trybuild = { version = "1.0.116", features = ["diff"] }
+# `serial_test::serial` for tests that mutate the process-global
+# `CARGO_MANIFEST_DIR` env var (4 tests in src/tests/mod.rs). Without this,
+# cargo's parallel test threads race on the env var and tests intermittently
+# observe a missing/wrong path — surfaced by the `Parallelism (RAYON_NUM_THREADS=1)`
+# CI job because rayon=1 changes the timing window enough to expose the race.
+serial_test = "3.5"
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
+[lints]
+workspace = true

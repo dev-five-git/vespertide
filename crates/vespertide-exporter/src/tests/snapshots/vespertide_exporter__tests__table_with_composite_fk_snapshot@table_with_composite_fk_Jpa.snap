@@ -1,0 +1,26 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "line_items")
+public class LineItems {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @Column(name = "order_id", nullable = false)
+    private Integer orderId;
+
+    @Column(name = "order_version", nullable = false)
+    private Integer orderVersion;
+
+    @Column(name = "sku", nullable = false, columnDefinition = "TEXT")
+    private String sku;
+
+    protected LineItems() {
+    }
+}

@@ -1,5 +1,32 @@
 [workspace]
-members = ["crates/*", "examples/app"]
+# Excluded packages share a single root cause: each pulls in libsqlite3-sys
+# (via either sqlx-sqlite or rusqlite) and the `links = "sqlite3"` constraint
+# permits only one in any unified resolution. Excluding lets every crate keep
+# its latest pinned version while still being buildable/testable individually.
+#   * apps/zed-extension      — third-party extension scaffold (unrelated)
+#   * examples/app            — sea-orm with sqlx-sqlite (libsqlite3-sys 0.30)
+#   * tests/runtime-sqlite    — vespertide runtime tests that need sqlx-sqlite
+#   * tools/lsp-profile       — out-of-workspace profiler with its own Cargo.lock
+#                               (cargo-flamegraph profile churns the workspace indexer)
+# Build / test the excluded crates standalone:
+#   cargo test --manifest-path tests/runtime-sqlite/Cargo.toml
+#   cargo build --manifest-path examples/app/Cargo.toml
+#   cargo run --release --manifest-path tools/lsp-profile/Cargo.toml -- --workload synthetic
+members = ["crates/*", "fuzz"]
+exclude = ["apps/zed-extension", "examples/app", "tests/runtime-sqlite", "tools/lsp-profile"]
+default-members = [
+    "crates/vespertide",
+    "crates/vespertide-cli",
+    "crates/vespertide-config",
+    "crates/vespertide-core",
+    "crates/vespertide-exporter",
+    "crates/vespertide-loader",
+    "crates/vespertide-macro",
+    "crates/vespertide-naming",
+    "crates/vespertide-planner",
+    "crates/vespertide-query",
+    "crates/vespertide-schema-gen",
+]
 resolver = "2"
 
 [workspace.package]
@@ -10,17 +37,63 @@ homepage = "https://github.com/dev-five-git/vespertide"
 documentation = "https://docs.rs/vespertide"
 
 [workspace.lints.rust]
+unsafe_code = "warn"
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
 
+[workspace.lints.clippy]
+# AGENTS policy: clippy::all + pedantic enforced workspace-wide.
+# Pre-1.0 quality bar: every warning must be fixed or have a justified allow.
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# Force every `#[allow(...)]` to carry a `reason = "..."` string, and prefer
+# `#[expect(...)]` over `#[allow(...)]` so the suppression self-reports if the
+# underlying lint goes silent. See docs/clippy-allow-audit.md for the rationale.
+allow_attributes_without_reason = "warn"
+allow_attributes = "warn"
+# Production hygiene restriction lints: cheap to satisfy today, high signal for
+# a pre-1.0 library release.
+dbg_macro = "warn"           # no checked-in `dbg!` probes
+todo = "warn"                # no executable TODO placeholders
+unimplemented = "warn"       # no stubbed code paths in published crates
+panic_in_result_fn = "warn"  # Result-returning APIs should report errors, not panic
+print_stderr = "warn"        # stderr output must be an explicit CLI/runtime diagnostic
+# Deferred restriction lints from the 2026-05 audit:
+# - print_stdout: 92 current hits; CLI/schema-gen stdout is the product surface.
+# - unwrap_used: 1316 hits across tests, benches, and invariants; needs phased migration.
+# - expect_used: 207 hits, many lock-poisoning/parser invariants; needs per-site audit.
+# - indexing_slicing: 468 hits, especially tests and parser offsets; migrate gradually.
+# - unreachable: 31 hits; audit true impossibility versus recoverable parse errors first.
+# - string_slice: 57 hits in parser/source-position code; requires UTF-8 boundary review.
+# - missing_const_for_fn: 57 hits; informational API churn, not production hygiene.
+# - large_stack_arrays/redundant_clone: already covered by the pedantic lint group.
+# Pedantic lints that are too noisy for this codebase and accepted as project style:
+module_name_repetitions = { level = "allow", priority = 1 }  # crate-prefixed type names are intentional (vespertide-* convention)
+similar_names = { level = "allow", priority = 1 }            # `from`/`to`, `table`/`tables` etc. are domain-natural
+must_use_candidate = { level = "allow", priority = 1 }       # blanket-applying #[must_use] obscures real intent; case-by-case via audit
+missing_errors_doc = { level = "allow", priority = 1 }       # adding `# Errors` to every Result fn is performative; deferred
+missing_panics_doc = { level = "allow", priority = 1 }       # same as above; we don't panic in production code paths
+return_self_not_must_use = { level = "allow", priority = 1 } # builder patterns are obvious from context
+doc_markdown = { level = "allow", priority = 1 }             # test-coverage comments use line labels and file paths extensively
+doc_lazy_continuation = { level = "allow", priority = 1 }     # coverage notes in test docs intentionally read as prose
+unnecessary_to_owned = { level = "allow", priority = 1 }      # tempdir path guards keep explicit owned path ergonomics in tests
+inconsistent_struct_constructor = { level = "allow", priority = 1 } # long prompt fixtures group fields by scenario intent
+used_underscore_binding = { level = "allow", priority = 1 }   # test fixtures use `_tmp` to signal lifetime retention
+too_many_lines = { level = "allow", priority = 1 }            # large scenario tests are preferable to fragile fixture indirection
+useless_vec = { level = "allow", priority = 1 }               # tests sometimes use Vec shape to mirror production APIs
+float_cmp = { level = "allow", priority = 1 }                 # SVG geometry tests assert exact constants where produced deterministically
+default_trait_access = { level = "allow", priority = 1 }      # test fixtures often rely on contextual Default for brevity
+
 [workspace.dependencies]
-vespertide-core = { path = "crates/vespertide-core", version = "=0.1.61", default-features = false }
-vespertide-config = { path = "crates/vespertide-config", version = "=0.1.61", default-features = false }
-vespertide-loader = { path = "crates/vespertide-loader", version = "=0.1.61", default-features = false }
-vespertide-macro = { path = "crates/vespertide-macro", version = "=0.1.61" }
-vespertide-naming = { path = "crates/vespertide-naming", version = "=0.1.61" }
-vespertide-planner = { path = "crates/vespertide-planner", version = "=0.1.61" }
-vespertide-query = { path = "crates/vespertide-query", version = "=0.1.61" }
-vespertide-exporter = { path = "crates/vespertide-exporter", version = "=0.1.61" }
+rayon = "1.12"
+vespertide-core = { path = "crates/vespertide-core", version = "=0.2.1", default-features = false }
+vespertide-config = { path = "crates/vespertide-config", version = "=0.2.1", default-features = false }
+vespertide-loader = { path = "crates/vespertide-loader", version = "=0.2.1", default-features = false }
+vespertide-macro = { path = "crates/vespertide-macro", version = "=0.2.1" }
+vespertide-naming = { path = "crates/vespertide-naming", version = "=0.2.1" }
+vespertide-planner = { path = "crates/vespertide-planner", version = "=0.2.1" }
+vespertide-query = { path = "crates/vespertide-query", version = "=0.2.1" }
+vespertide-exporter = { path = "crates/vespertide-exporter", version = "=0.2.1" }
+vespertide-lsp = { path = "crates/vespertide-lsp", version = "=0.2.1" }
 
 [profile.dev]
 debug = 1  # Line tables only — faster DWARF generation for large codegen output

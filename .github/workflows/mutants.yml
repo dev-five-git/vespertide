@@ -1,0 +1,64 @@
+# Action versions pinned per `.github/dependabot.yml` policy.
+name: mutation-tests
+
+on:
+  pull_request:
+    paths:
+      - "crates/**/*.rs"
+      - ".cargo/mutants.toml"
+
+jobs:
+  incremental-mutants:
+    name: cargo-mutants (shard ${{ matrix.shard }}/16)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      # Run every shard even if one finds a surviving mutant, so the full
+      # picture is reported in a single CI cycle.
+      fail-fast: false
+      matrix:
+        # cargo-mutants --shard is 0-indexed (k/n, k in 0..n). A full refactor
+        # diff produces ~3120 changed-line mutants. At 8 shards the slowest
+        # shard hit the 30-min job timeout (measured: shard 4/8 = 30m18s,
+        # 5/8 = 29m55s) because slow proptest-backed mutants in
+        # vespertide-query / vespertide-planner cluster unevenly. 16 shards
+        # gives ~195 mutants/shard (~15 min) with comfortable headroom for
+        # that variance. Empty shards on small PRs exit immediately.
+        shard:
+          [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - uses: taiki-e/install-action@v2.81.6
+        with:
+          tool: cargo-mutants
+
+      - name: Generate diff against PR base
+        run: git diff origin/${{ github.base_ref }}.. > git.diff
+
+      - name: Skip if no Rust changes
+        run: |
+          if ! grep -q '\.rs$' git.diff; then
+            echo "No Rust file changes; skipping mutation tests."
+            exit 0
+          fi
+
+      - name: Run cargo-mutants on changed lines (shard ${{ matrix.shard }}/16)
+        run: |
+          cargo mutants \
+            --in-diff git.diff \
+            --in-place \
+            --timeout-multiplier 3.0 \
+            --shard ${{ matrix.shard }}/16 \
+            -vV
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: mutants-output-shard-${{ matrix.shard }}
+          path: mutants.out/
+          retention-days: 1

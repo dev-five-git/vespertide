@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/tests/naming.rs
+assertion_line: 493
+expression: sql
+---
+CREATE TABLE `users` ( `id` binary(16) NOT NULL DEFAULT ((UUID())), `created_at` timestamp NOT NULL DEFAULT (CURRENT_TIMESTAMP) )

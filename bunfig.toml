@@ -1,0 +1,17 @@
+# Skip optional dependencies (keytar native build fails on hosts without
+# Windows SDK 10.0.22621.0; we don't use OS keychain anywhere). This is the
+# canonical Bun-native equivalent of `npm install --omit=optional`.
+[install]
+optional = false
+
+# `bun test` preload — register published packages directly by module name.
+# Bun resolves and awaits each entry before loading test sources, which side-
+# steps the missing-await pitfall a hand-written wrapper script would hit.
+#
+# Mirrors `dev-five-git/service-template` bunfig.toml.
+[test]
+preload = ["bun-test-env-dom", "@devup-ui/bun-plugin"]
+coverage = true
+coverageSkipTestFiles = true
+coverageThreshold = 1
+coverageReporter = ["text", "lcov"]

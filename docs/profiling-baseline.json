@@ -1,0 +1,32 @@
+[
+  {
+    "name": "diagnostics",
+    "calls": 100000,
+    "wall_secs": 0.0157702,
+    "items": 99000
+  },
+  {
+    "name": "completion",
+    "calls": 50000,
+    "wall_secs": 0.112114,
+    "items": 366000
+  },
+  {
+    "name": "semantic_tokens",
+    "calls": 50000,
+    "wall_secs": 0.0062484,
+    "items": 1245000
+  },
+  {
+    "name": "workspace_symbols",
+    "calls": 20000,
+    "wall_secs": 0.0767501,
+    "items": 3196000
+  },
+  {
+    "name": "drift",
+    "calls": 100,
+    "wall_secs": 0.0350867,
+    "items": 2100
+  }
+]

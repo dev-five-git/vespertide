@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "configs")
+public class Configs {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @Column(name = "data", nullable = false, columnDefinition = "JSON")
+    private String data;
+
+    protected Configs() {
+    }
+}

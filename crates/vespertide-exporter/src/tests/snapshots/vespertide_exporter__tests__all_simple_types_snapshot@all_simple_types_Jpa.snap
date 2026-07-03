@@ -1,0 +1,76 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+@Entity
+@Table(name = "all_types")
+public class AllTypes {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @Column(name = "small", nullable = false)
+    private Short small;
+
+    @Column(name = "big", nullable = false)
+    private Long big;
+
+    @Column(name = "real_num", nullable = false)
+    private Float realNum;
+
+    @Column(name = "double_num", nullable = false)
+    private Double doubleNum;
+
+    @Column(name = "text_col", nullable = false, columnDefinition = "TEXT")
+    private String textCol;
+
+    @Column(name = "bool_col", nullable = false)
+    private Boolean boolCol;
+
+    @Column(name = "date_col", nullable = false)
+    private LocalDate dateCol;
+
+    @Column(name = "time_col", nullable = false)
+    private LocalTime timeCol;
+
+    @Column(name = "ts_col", nullable = false)
+    private LocalDateTime tsCol;
+
+    @Column(name = "tstz_col", nullable = false)
+    private OffsetDateTime tstzCol;
+
+    @Column(name = "interval_col", nullable = false, columnDefinition = "INTERVAL")
+    private String intervalCol;
+
+    @Column(name = "bytea_col", nullable = false, columnDefinition = "BYTEA")
+    private byte[] byteaCol;
+
+    @Column(name = "uuid_col", nullable = false)
+    private UUID uuidCol;
+
+    @Column(name = "json_col", nullable = false, columnDefinition = "JSON")
+    private String jsonCol;
+
+    @Column(name = "inet_col", nullable = false)
+    private String inetCol;
+
+    @Column(name = "cidr_col", nullable = false)
+    private String cidrCol;
+
+    @Column(name = "macaddr_col", nullable = false)
+    private String macaddrCol;
+
+    @Column(name = "xml_col", nullable = false, columnDefinition = "TEXT")
+    private String xmlCol;
+
+    protected AllTypes() {
+    }
+}

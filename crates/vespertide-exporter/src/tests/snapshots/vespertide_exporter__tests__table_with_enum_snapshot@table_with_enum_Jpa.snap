@@ -1,0 +1,26 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+enum OrderStatus {
+    pending,
+    shipped,
+    delivered;
+}
+
+@Entity
+@Table(name = "orders")
+public class Orders {
+
+    @Column(name = "id", nullable = false)
+    private Integer id;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private OrderStatus status;
+
+    protected Orders() {
+    }
+}

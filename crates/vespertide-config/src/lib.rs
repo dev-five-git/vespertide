@@ -1,3 +1,8 @@
+//! Configuration parsing for vespertide projects.
+//!
+//! Reads `vespertide.json` (or `.yaml`) with paths, naming conventions,
+//! and file format preferences.
+
 pub mod config;
 pub mod file_format;
 pub mod name_case;
@@ -67,7 +72,7 @@ mod tests {
 
     #[test]
     fn seaorm_config_deserialize_with_defaults() {
-        let json = r#"{}"#;
+        let json = r"{}";
         let cfg: SeaOrmConfig = serde_json::from_str(json).unwrap();
         assert_eq!(cfg.extra_enum_derives(), &["vespera::Schema".to_string()]);
         assert!(cfg.extra_model_derives().is_empty());

@@ -1,5 +1,6 @@
 ---
 source: crates/vespertide-query/src/sql/modify_column_default.rs
+assertion_line: 497
 expression: sql
 ---
-ALTER TABLE `products` MODIFY COLUMN `quantity` int NOT NULL DEFAULT 0
+ALTER TABLE `products` MODIFY COLUMN `quantity` int NOT NULL DEFAULT (0)

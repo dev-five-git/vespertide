@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "child")]
+pub struct Model {
+    /// References parent table
+    #[sea_orm(primary_key)]
+    pub parent_id: i32,
+    pub value: String,
+    #[sea_orm(belongs_to, from = "parent_id", to = "id")]
+    pub parent: HasOne<super::parent::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "ChildSchema");
+impl ActiveModelBehavior for ActiveModel {}

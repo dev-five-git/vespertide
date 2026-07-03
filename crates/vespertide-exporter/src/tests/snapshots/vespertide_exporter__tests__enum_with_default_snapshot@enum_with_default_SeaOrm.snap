@@ -1,0 +1,35 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, vespera::Schema)]
+#[serde(rename_all = "camelCase")]
+#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "tasks_task_status")]
+pub enum TaskStatus {
+    #[sea_orm(string_value = "pending")]
+    Pending,
+    #[sea_orm(string_value = "in_progress")]
+    InProgress,
+    #[sea_orm(string_value = "completed")]
+    Completed,
+}
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "tasks")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    #[sea_orm(default_value = "pending")]
+    pub status: TaskStatus,
+    #[sea_orm(default_value = 0)]
+    pub priority: i32,
+    #[sea_orm(default_value = false)]
+    pub is_archived: bool,
+}
+
+vespera::schema_type!(Schema from Model, name = "TasksSchema");
+impl ActiveModelBehavior for ActiveModel {}

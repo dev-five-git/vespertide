@@ -1,0 +1,192 @@
+{
+  "name": "vespertide",
+  "displayName": "Vespertide",
+  "description": "Language support for Vespertide schema files — diagnostics, hover, go-to-definition, completion, and drift detection.",
+  "version": "0.1.1",
+  "publisher": "dev-five-git",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dev-five-git/vespertide"
+  },
+  "engines": {
+    "vscode": "^1.105.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
+  "keywords": [
+    "vespertide",
+    "database",
+    "schema",
+    "migration",
+    "lsp"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/models/*.json",
+    "workspaceContains:**/models/*.yaml",
+    "workspaceContains:**/models/*.yml",
+    "workspaceContains:**/*.vespertide.json",
+    "workspaceContains:**/*.vespertide.yaml",
+    "workspaceContains:**/*.vespertide.yml",
+    "workspaceContains:vespertide.json"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "vespertide-json",
+        "aliases": [
+          "Vespertide Model",
+          "Vespertide JSON"
+        ],
+        "filenamePatterns": [
+          "**/models/*.json",
+          "**/*.vespertide.json",
+          "vespertide.json"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "vespertide-yaml",
+        "aliases": [
+          "Vespertide Model",
+          "Vespertide YAML"
+        ],
+        "filenamePatterns": [
+          "**/models/*.yaml",
+          "**/models/*.yml",
+          "**/*.vespertide.yaml",
+          "**/*.vespertide.yml"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "vespertide-json",
+        "scopeName": "source.vespertide.json",
+        "path": "./syntaxes/vespertide-json.tmLanguage.json"
+      },
+      {
+        "language": "vespertide-yaml",
+        "scopeName": "source.vespertide.yaml",
+        "path": "./syntaxes/vespertide-yaml.tmLanguage.json"
+      }
+    ],
+    "configurationDefaults": {
+      "editor.semanticHighlighting.enabled": true,
+      "editor.semanticTokenColorCustomizations": {
+        "[*]": {
+          "rules": {
+            "class:vespertide-json": {
+              "foreground": "#5b34f7",
+              "bold": true
+            },
+            "class:vespertide-yaml": {
+              "foreground": "#5b34f7",
+              "bold": true
+            },
+            "property.declaration:vespertide-json": {
+              "foreground": "#2dd4bf"
+            },
+            "property.declaration:vespertide-yaml": {
+              "foreground": "#2dd4bf"
+            },
+            "property.definition:vespertide-json": {
+              "foreground": "#2dd4bf",
+              "italic": true
+            },
+            "property.definition:vespertide-yaml": {
+              "foreground": "#2dd4bf",
+              "italic": true
+            },
+            "type:vespertide-json": {
+              "foreground": "#f59e0b"
+            },
+            "type:vespertide-yaml": {
+              "foreground": "#f59e0b"
+            },
+            "enumMember:vespertide-json": {
+              "foreground": "#ec4899"
+            },
+            "enumMember:vespertide-yaml": {
+              "foreground": "#ec4899"
+            }
+          }
+        }
+      }
+    },
+    "jsonValidation": [
+      {
+        "fileMatch": "vespertide.json",
+        "url": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/config.schema.json"
+      }
+    ],
+    "configuration": {
+      "title": "Vespertide",
+      "properties": {
+        "vespertide.serverPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Override path to the `vespertide-lsp` binary. Leave empty to use the bundled binary."
+        },
+        "vespertide.logLevel": {
+          "type": "string",
+          "enum": [
+            "off",
+            "error",
+            "warn",
+            "info",
+            "debug",
+            "trace"
+          ],
+          "default": "info"
+        },
+        "vespertide.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Trace LSP messages between editor and server (debug)."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "vespertide.restartServer",
+        "title": "Vespertide: Restart Language Server",
+        "category": "Vespertide"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "node esbuild.config.mjs --production",
+    "build": "node esbuild.config.mjs",
+    "watch": "node esbuild.config.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "package": "vsce package --no-dependencies",
+    "publish:vsce": "vsce publish --no-dependencies",
+    "publish:ovsx": "ovsx publish",
+    "test": "vscode-test"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "@types/vscode": "^1.120.0",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.28.0",
+    "ovsx": "^1.0.0",
+    "typescript": "^6.0.3"
+  },
+  "vsce": {
+    "dependencies": false
+  }
+}

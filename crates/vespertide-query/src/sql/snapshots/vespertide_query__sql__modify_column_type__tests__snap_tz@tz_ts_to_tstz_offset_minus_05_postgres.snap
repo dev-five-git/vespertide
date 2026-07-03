@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/modify_column_type/mod.rs
+assertion_line: 894
+expression: sql
+---
+ALTER TABLE "events" ALTER COLUMN "at" TYPE timestamptz USING "at" AT TIME ZONE '-05:00'

@@ -31,7 +31,7 @@ pub struct RawSql {
 }
 
 impl RawSql {
-    /// Create a RawSql with the same SQL for all backends
+    /// Create a `RawSql` with the same SQL for all backends
     pub fn uniform(sql: String) -> Self {
         Self {
             postgres: sql.clone(),
@@ -40,7 +40,7 @@ impl RawSql {
         }
     }
 
-    /// Create a RawSql with different SQL for each backend
+    /// Create a `RawSql` with different SQL for each backend
     pub fn per_backend(postgres: String, mysql: String, sqlite: String) -> Self {
         Self {
             postgres,

@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from typing import Optional
+
+from sqlmodel import Field, SQLModel
+
+
+class Profiles(SQLModel, table=True):
+    __tablename__ = "profiles"
+
+    id: int = Field(primary_key=True)
+    bio: Optional[str] = Field(default=None)
+    avatar_url: Optional[str] = Field(default=None)

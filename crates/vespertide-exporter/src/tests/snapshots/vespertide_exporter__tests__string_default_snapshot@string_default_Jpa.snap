@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "string_defaults")
+public class StringDefaults {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @Column(name = "status", nullable = false, columnDefinition = "TEXT")
+    private String status = "active";
+
+    protected StringDefaults() {
+    }
+}

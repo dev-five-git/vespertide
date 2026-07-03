@@ -1,0 +1,14 @@
+artifacts/
+target/
+
+# Corpus policy: keep curated seed files committed for repro stability,
+# ignore everything libfuzzer mutates into existence. Seeds use a numeric
+# prefix (NN_name.json / NN_name.yaml / NN_name.yml); libfuzzer-generated
+# entries are 40-char SHA1 hex.
+corpus/*
+!corpus/*/
+corpus/*/*
+!corpus/*/.gitkeep
+!corpus/*/[0-9][0-9]_*.json
+!corpus/*/[0-9][0-9]_*.yaml
+!corpus/*/[0-9][0-9]_*.yml

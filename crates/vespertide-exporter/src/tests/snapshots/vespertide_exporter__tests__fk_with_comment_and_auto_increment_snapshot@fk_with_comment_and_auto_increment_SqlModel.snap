@@ -1,0 +1,16 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlmodel import Field, SQLModel
+
+
+class Child(SQLModel, table=True):
+    __tablename__ = "child"
+
+    # References parent table
+    parent_id: int = Field(primary_key=True, foreign_key="parent.id")
+    value: str = Field(...)

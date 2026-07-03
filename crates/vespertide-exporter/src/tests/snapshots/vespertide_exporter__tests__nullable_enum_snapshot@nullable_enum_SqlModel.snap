@@ -1,0 +1,21 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+import enum
+from typing import Optional
+
+from sqlmodel import Field, SQLModel
+
+
+class StatusType(str, enum.Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+class NullableEnum(SQLModel, table=True):
+    __tablename__ = "nullable_enum"
+
+    id: int = Field(primary_key=True)
+    status: Optional[StatusType] = Field(default=None)

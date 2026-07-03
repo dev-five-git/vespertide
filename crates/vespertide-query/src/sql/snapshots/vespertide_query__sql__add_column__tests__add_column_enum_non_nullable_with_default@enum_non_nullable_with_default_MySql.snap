@@ -1,6 +1,7 @@
 ---
 source: crates/vespertide-query/src/sql/add_column.rs
+assertion_line: 555
 expression: sql
 ---
 ;
-ALTER TABLE `users` ADD COLUMN `status` ENUM('active', 'inactive', 'pending') NOT NULL DEFAULT 'active'
+ALTER TABLE `users` ADD COLUMN `status` ENUM('active', 'inactive', 'pending') NOT NULL DEFAULT ('active')

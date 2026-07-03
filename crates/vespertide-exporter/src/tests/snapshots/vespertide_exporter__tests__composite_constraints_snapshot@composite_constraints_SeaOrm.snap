@@ -1,0 +1,30 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "order_items")]
+pub struct Model {
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub order_id: i32,
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub product_id: i32,
+    pub quantity: i32,
+    #[sea_orm(belongs_to, from = "order_id", to = "id")]
+    pub order: HasOne<super::orders::Entity>,
+    #[sea_orm(belongs_to, from = "product_id", to = "id")]
+    pub product: HasOne<super::products::Entity>,
+}
+
+// Index definitions (SeaORM uses Statement builders externally)
+// ix_order_items__order_id on [order_id]
+
+/// Composite unique constraints — declare in migrations or use Statement builder.
+pub const COMPOSITE_UNIQUES: &[&[&str]] = &[
+    &["order_id", "product_id"], // uq_order_items__order_product
+];
+vespera::schema_type!(Schema from Model, name = "OrderItemsSchema");
+impl ActiveModelBehavior for ActiveModel {}

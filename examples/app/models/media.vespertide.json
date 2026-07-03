@@ -1,0 +1,57 @@
+{
+  "columns": [
+    {
+      "comment": "hello",
+      "default": "gen_random_uuid()",
+      "name": "id",
+      "nullable": false,
+      "primary_key": true,
+      "type": "uuid"
+    },
+    {
+      "name": "name",
+      "nullable": false,
+      "type": {
+        "kind": "varchar",
+        "length": 100
+      }
+    },
+    {
+      "name": "description",
+      "nullable": true,
+      "type": "text"
+    },
+    {
+      "name": "logo",
+      "nullable": true,
+      "type": "text"
+    },
+    {
+      "foreign_key": {
+        "on_delete": "cascade",
+        "ref_columns": [
+          "id"
+        ],
+        "ref_table": "user"
+      },
+      "index": true,
+      "name": "owner_id",
+      "nullable": false,
+      "type": "uuid"
+    },
+    {
+      "default": "now()",
+      "name": "created_at",
+      "nullable": false,
+      "type": "timestamptz"
+    },
+    {
+      "name": "updated_at",
+      "nullable": true,
+      "type": "timestamptz"
+    }
+  ],
+  "constraints": [],
+  "indexes": [],
+  "name": "media"
+}

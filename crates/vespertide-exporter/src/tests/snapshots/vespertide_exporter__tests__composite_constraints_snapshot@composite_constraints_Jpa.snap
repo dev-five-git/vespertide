@@ -1,0 +1,30 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "order_items", indexes = {
+    @Index(name = "ix_order_items__order_id", columnList = "order_id")
+}, uniqueConstraints = {
+    @UniqueConstraint(name = "uq_order_items__order_product", columnNames = {"order_id", "product_id"})
+})
+public class OrderItems {
+
+    @Id
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "order_id", nullable = false)
+    private Orders order;
+
+    @Id
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "product_id", nullable = false)
+    private Products product;
+
+    @Column(name = "quantity", nullable = false)
+    private Integer quantity;
+
+    protected OrderItems() {
+    }
+}

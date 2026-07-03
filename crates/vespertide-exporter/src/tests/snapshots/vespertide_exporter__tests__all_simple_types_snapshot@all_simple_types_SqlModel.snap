@@ -1,0 +1,34 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from datetime import date, datetime, time
+from uuid import UUID
+
+from sqlmodel import Field, SQLModel
+
+
+class AllTypes(SQLModel, table=True):
+    __tablename__ = "all_types"
+
+    id: int = Field(primary_key=True)
+    small: int = Field(...)
+    big: int = Field(...)
+    real_num: float = Field(...)
+    double_num: float = Field(...)
+    text_col: str = Field(...)
+    bool_col: bool = Field(...)
+    date_col: date = Field(...)
+    time_col: time = Field(...)
+    ts_col: datetime = Field(...)
+    tstz_col: datetime = Field(...)
+    interval_col: str = Field(...)
+    bytea_col: bytes = Field(...)
+    uuid_col: UUID = Field(...)
+    json_col: dict = Field(...)
+    inet_col: str = Field(...)
+    cidr_col: str = Field(...)
+    macaddr_col: str = Field(...)
+    xml_col: str = Field(...)

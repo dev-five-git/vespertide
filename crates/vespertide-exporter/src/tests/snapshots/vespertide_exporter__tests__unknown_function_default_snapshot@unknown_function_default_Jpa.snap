@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "unknown_defaults")
+public class UnknownDefaults {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @Column(name = "code", nullable = false, columnDefinition = "TEXT")
+    private String code;
+
+    protected UnknownDefaults() {
+    }
+}

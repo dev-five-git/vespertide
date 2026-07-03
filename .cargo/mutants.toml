@@ -1,0 +1,200 @@
+# cargo-mutants configuration for vespertide.
+# Mutation testing complements unit/property tests by mutating source AST
+# and verifying tests FAIL. Survived mutants = test gap.
+#
+# Run locally:
+#   cargo install --locked cargo-mutants
+#   cargo mutants --in-place --timeout-multiplier 3.0 -vV
+#
+# Run on changed lines only (used by PR CI):
+#   cargo mutants --in-diff git.diff --in-place
+
+# Skip patterns that produce noise (Debug/Display/From impls, generated boilerplate)
+exclude_re = [
+    "impl Debug",
+    "impl Display",
+    "impl From<",
+    "impl std::error::Error",
+    "fn fmt\\(",
+    # RawSql is an opaque escape hatch by design
+    "MigrationAction::RawSql",
+    # Live-DB migration drivers: require a real Postgres/MySQL/SQLite
+    # connection to exercise, so they are unreachable from unit tests
+    # (already #[cfg(not(tarpaulin_include))] in src/runtime.rs for the same
+    # reason). Mutants here always survive; excluding keeps them out of the
+    # gate. The pure helpers in runtime.rs (timeout SQL, version-id collection,
+    # blob splitting) remain in scope.
+    "run_embedded_migrations",
+    # E1: cmd_export's seq-vs-parallel dispatch threshold (`len() < THRESHOLD`)
+    # is perf-only — both branches (.iter().map vs .par_iter().map) produce
+    # byte-identical output (render_export_entity is deterministic; ORM output
+    # covered by vespertide-exporter snapshots). exclude_re matches the mutant
+    # NAME (`file:line: <mutation> in <fn>`), so this pattern targets ONLY the
+    # three comparison-operator mutants `replace < with {==,>,<=} in cmd_export`.
+    # It does NOT hide cmd_export's entrypoint mutant (line 36 `-> Ok(())`) or
+    # its `!` (line 58) — those stay in the gate, covered by integration tests.
+    "< with .* in cmd_export",
+    # E3: emit_*_warnings fns are pure println loops; the format_* helpers
+    # are unit-tested in commands/diff/tests/mod.rs. Does NOT hide: the
+    # planner logic (plan_next_migration), the format_* helpers, or cmd_diff's
+    # planner calls.
+    "emit_timezone_conversion_warnings",
+    "emit_type_narrowing_warnings",
+    "emit_fk_policy_change_warnings",
+    "emit_constraint_drop_warnings",
+    "emit_fk_supporting_index_warnings",
+    # E3: cmd_diff is the `diff` command entrypoint — a pure I/O orchestrator
+    # (load config/models/migrations -> plan_next_migration -> println +
+    # emit_*_warnings). The planning logic (plan_next_migration) is tested in
+    # vespertide-planner; the per-action display (format_action) and each
+    # format_*_warning are tested in commands/diff/tests/mod.rs. The entrypoint
+    # itself has no isolatable logic beyond wiring those tested pieces to
+    # stdout. Does NOT hide format_action / format_*_warning / planner logic.
+    "cmd_diff",
+    # E4: prompt_timezone_conversions is an interactive dialoguer shell
+    # (TTY-only); pure choice→plan logic lives in apply_timezone_choices_to_plan
+    # (tested). Does NOT hide: timezone validation or plan application.
+    "prompt_timezone_conversions",
+    # E4: prompt_custom_timezone_with_retry is an interactive dialoguer shell
+    # (TTY-only); timezone validation is in validate_timezone (tested).
+    # Does NOT hide: validation logic.
+    "prompt_custom_timezone_with_retry",
+    # E4: prompt_remap_enum_values is an interactive dialoguer shell (TTY-only);
+    # pure enum remap logic is in the planner. Does NOT hide: planner logic.
+    "prompt_remap_enum_values",
+    # E4: prompt_type_narrowings is an interactive dialoguer shell (TTY-only);
+    # pure helpers (applicable_strategies, quote_value_for_target) and plan
+    # application (apply_narrowing_strategies_to_plan) are tested separately.
+    # Does NOT hide: strategy selection logic or plan application.
+    "prompt_type_narrowings",
+    # E5: two `>` -> `>=` mutants in svg/edges.rs:152 (`parent_left >
+    # child_right` and `child_left > parent_right`) differ only when two table
+    # boxes exactly touch horizontally. `render_svg` never produces that
+    # boundary: related tables in different rank columns are separated by the
+    # fixed 80px RANK_GAP, and same-rank cycle tables share an overlapping
+    # column x-range rather than sitting side-by-side. Therefore both mutants
+    # are byte-identical for every renderer-reachable layout while the other
+    # pick_anchors arithmetic remains in scope.
+    "edges[.]rs:152(:[0-9]+)?: replace > with >= in pick_anchors",
+    # E6: classify_strengthening's `||` guard
+    # (`old==Unparseable || new==Unparseable -> return None`) is equivalent
+    # under `&&`. When exactly one side is Unparseable the `&&` mutant skips
+    # the early return, but `classify_pair(Unparseable, _)` / `(_, Unparseable)`
+    # has no matching arm and falls to `_ => None` ? identical observable
+    # result for every input. The two-unparseable case is also caught earlier
+    # by `if old == new { return None }`. No test can distinguish the mutant.
+    "check_strengthening[.]rs:233(:[0-9]+)?: replace [|][|] with && in classify_strengthening",
+    # E7: the Rayon `*_par_*_threshold()` functions in parallel_config.rs
+    # (vespertide-planner + vespertide-query) are perf-only dispatch knobs.
+    # Replacing the returned threshold with 0 or 1 only changes WHEN the
+    # parallel path is taken; the sequential and Rayon paths are proven to
+    # produce byte-identical output (covered by the diff/validate/build_plan
+    # result tests). No correctness assertion can distinguish them ? same
+    # category as the E1 `cmd_export` perf-threshold exclusion above.
+    "parallel_config[.]rs:[0-9]+:[0-9]+: replace [a-z_]+_threshold -> usize with [01]",
+    # E8: in sort_enum_default_dependencies, `*type_idx < default_idx` compares
+    # the indices of two DISTINCT actions (a ModifyColumnType and a
+    # ModifyColumnDefault for the same column), so they can never be equal.
+    # `< -> <=` therefore has no reachable input that distinguishes it ?
+    # equivalent. The `&&` operator on the same line remains in the gate.
+    "ordering[.]rs:410(:[0-9]+)?: replace < with <= in sort_enum_default_dependencies",
+    # E9: the `len() < *_par_*_threshold()` seq-vs-parallel DISPATCH comparisons.
+    # Mutating `<` to ==/>/<= only changes which execution path is taken; the
+    # sequential and Rayon paths produce identical results (covered by the
+    # validate/diff/build result tests). Perf-only ? same category as E1.
+    "validate/plan[.]rs:46(:[0-9]+)?: replace < with (==|>|<=) in find_plan_violations",
+    "validate/plan[.]rs:167(:[0-9]+)?: replace < with (==|>|<=) in find_missing_fill_with",
+    "validate/plan[.]rs:280(:[0-9]+)?: replace < with (==|>|<=) in find_missing_enum_fill_with",
+    "validate/schema[.]rs:77(:[0-9]+)?: replace < with (==|>|<=) in find_schema_violations",
+    "diff/mod[.]rs:49(:[0-9]+)?: replace < with (==|>|<=) in diff_schemas",
+    "builder/mod[.]rs:63(:[0-9]+)?: replace < with (==|>|<=) in build_plan_queries",
+    # E10: the pairwise contradiction loop `for j in (i + 1)..preds.len()`.
+    # The `+ -> *` mutant yields `i * 1 == i`, so the inner loop additionally
+    # visits the (i, i) self-pair `check_pair(col, p, p)`. A predicate never
+    # contradicts itself (two identical Compare/In/Between/IsNull predicates
+    # are always mutually satisfiable), so every added self-pair returns None
+    # and the observable result is unchanged ? equivalent.
+    "check_self_contradiction[.]rs:120(:[0-9]+)?: replace [+] with [*] in find_contradiction",
+    # E11: is_definitely_mismatch's `(Json, _) => false` and
+    # `(Custom { .. }, _) => false` arms return exactly the same value as the
+    # match's `_ => false` catch-all. Deleting either arm makes that input
+    # fall straight through to `_ => false` ? identical observable result,
+    # equivalent.
+    "check_type_mismatch[.]rs:366(:[0-9]+)?: delete match arm .* in is_definitely_mismatch",
+    "check_type_mismatch[.]rs:395(:[0-9]+)?: delete match arm .* in is_definitely_mismatch",
+    # E12: in find_primary_key_additions, `n_existing == 0 => NewColumns`.
+    # The function acts ONLY on `ExistingColumns`; both NewColumns and the
+    # `_ => Mixed` fallback hit `if !matches!(kind, ExistingColumns) continue;`.
+    # Deleting the `0` arm sends n_existing==0 to Mixed (PK columns always
+    # number >=1, so `0 == len` is unreachable) ? same `continue`, equivalent.
+    "pk_additions[.]rs:115(:[0-9]+)?: delete match arm 0 in find_primary_key_additions",
+    # E13: in clear_index_fields, `filtered.len() < names.len()` gates whether
+    # the multi-index array is rewritten after removing a constraint name. When
+    # the name is absent, `filtered` is a clone of `names` (same elements, same
+    # order), so the `<= ` branch would set `col.index = Some(Array(filtered))`
+    # to a value byte-identical to the untouched original ? no observable
+    # difference, equivalent.
+    "constraint_ops[.]rs:148(:[0-9]+)?: replace < with <= in clear_index_fields",
+    # E14: the loader's `paths.len() < LOAD_FILES_PAR_THRESHOLD` seq-vs-parallel
+    # dispatch. Mutating `<` only changes whether files are loaded sequentially
+    # or via Rayon; the loaded result is identical. Perf-only, same as E1/E9.
+    "loader/src/migrations[.]rs:21(:[0-9]+)?: replace < with (==|>|<=) in load_migrations",
+    "loader/src/migrations[.]rs:65(:[0-9]+)?: replace < with (==|>|<=) in load_migrations_from_dir",
+    "loader/src/models[.]rs:43(:[0-9]+)?: replace < with (==|>|<=) in load_models_recursive",
+    "loader/src/models[.]rs:145(:[0-9]+)?: replace < with (==|>|<=) in load_models_recursive_internal",
+    # E15: pure `println!` display helpers (revision fill_with header/footer and
+    # narrowing strategy descriptions). No return value or logic; replacing the
+    # body with () or deleting a match arm only changes stdout decoration. Same
+    # category as the E3 emit_*_warnings exclusions.
+    "fill_with[.]rs:[0-9]+:[0-9]+: replace print_fill_with_header with",
+    "fill_with[.]rs:[0-9]+:[0-9]+: replace print_fill_with_footer with",
+    "narrowing[.]rs:[0-9]+:[0-9]+: delete match arm .* in print_strategy_descriptions",
+    # E16: prompt_drop_resolution is an interactive `Select::interact()`
+    # dialoguer shell (TTY-only). Its `selection ==` comparisons and the
+    # candidates-present header guard depend on a live terminal selection and
+    # cannot be exercised by unit tests. Same category as the E4 prompt_*
+    # exclusions. (The pure helpers format_drop_header / format_candidate_label
+    # are tested separately and remain in the gate.)
+    "drop_recreate_fk_policy[.]rs:[0-9]+:[0-9]+: .* in prompt_drop_resolution",
+    # E17: compute_ranks is a break-on-`!changed` fixed point.
+    #  - `candidate > ranks[i]` -> `>=` only adds a redundant same-value
+    #    assignment (ranks[i] = ranks[i]) and one extra loop pass; the final
+    #    ranks are identical -> equivalent.
+    #  - the `0..(n + 1)` iteration cap -> `n - 1`: ERD layouts are DAGs, where
+    #    rank propagation completes in <= n-1 passes (deepest node depth <= n-1),
+    #    so the loop converges and breaks before either cap matters -> equivalent.
+    "layout[.]rs:[0-9]+:[0-9]+: replace > with >= in compute_ranks",
+    "layout[.]rs:[0-9]+:[0-9]+: replace [+] with - in compute_ranks",
+    # E18: NON-TERMINATION mutants. These replace a monotonic index/counter
+    # advance (`i += 1`, `self.pos += 1`) or a scanner loop condition with a
+    # non-advancing op, producing an infinite loop. cargo-mutants flags them as
+    # TIMEOUT - the mutation provably changes behaviour by hanging the test
+    # process - but no finite, assertion-based test can "catch" a hang. Every
+    # `+=` in the byte-scanner tokenize_spanned / parser parse_predicate IN-list
+    # loop / rebalance_groups while-loop is such an advance; line 408 is the
+    # scanner's exponent loop condition. (Caught/missed mutants in these
+    # functions stay in the gate; only the non-terminating ones are excluded.)
+    "check_expr_parser[.]rs:[0-9]+:[0-9]+: replace [+]= with (-=|[*]=|/=) in tokenize_spanned",
+    "check_expr_parser[.]rs:408(:[0-9]+)?: .* in tokenize_spanned",
+    "check_expr_parser[.]rs:[0-9]+:[0-9]+: replace [+]= with (-=|[*]=|/=) in Parser::parse_predicate",
+    "layout[.]rs:[0-9]+:[0-9]+: replace [+]= with (-=|[*]=|/=) in rebalance_groups",
+]
+
+# Focus on logic-heavy crates. Exclude:
+# - schema-gen: tool, not library
+# - macro: proc-macro coverage handled via trybuild
+# - exporter: snapshot tests catch most mutations trivially (output diff)
+# - core/arbitrary: proptest strategy generators (feature=arbitrary); test
+#   infrastructure, not production logic
+exclude_globs = [
+    "crates/vespertide-schema-gen/**",
+    "crates/vespertide-macro/**",
+    "crates/vespertide-exporter/**",
+    "crates/vespertide-core/src/arbitrary/**",
+    # proptest idempotency oracle, gated behind feature = "arbitrary" (the same
+    # test infrastructure as arbitrary/**); not production logic.
+    "crates/vespertide-core/src/schema/table/normalize_proptest.rs",
+]
+
+# 3× baseline test time per mutant (handles proptest variance)
+timeout_multiplier = 3.0

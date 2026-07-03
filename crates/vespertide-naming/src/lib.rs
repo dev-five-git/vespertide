@@ -14,7 +14,7 @@
 /// column name (e.g., "id", "idx"), extracts the semantic role portion.
 ///
 /// # Arguments
-/// * `fk_column` - The FK column name (e.g., "user_id", "answered_by_user_id", "author_id")
+/// * `fk_column` - The FK column name (e.g., "`user_id`", "`answered_by_user_id`", "`author_id`")
 /// * `current_table` - The table being referenced (e.g., "user")
 /// * `ref_column` - The referenced column name (e.g., "id", "idx", "pk")
 ///
@@ -39,11 +39,11 @@
 /// ```
 pub fn extract_relation_prefix(fk_column: &str, current_table: &str, ref_column: &str) -> String {
     // Build the suffix to strip: _{ref_column} (e.g., "_id", "_idx")
-    let ref_suffix = format!("_{}", ref_column);
+    let ref_suffix = format!("_{ref_column}");
 
     // Remove the ref_column suffix if present
-    let without_ref = if fk_column.ends_with(&ref_suffix) {
-        &fk_column[..fk_column.len() - ref_suffix.len()]
+    let without_ref = if let Some(stripped) = fk_column.strip_suffix(&ref_suffix) {
+        stripped
     } else {
         fk_column
     };
@@ -59,10 +59,10 @@ pub fn extract_relation_prefix(fk_column: &str, current_table: &str, ref_column:
 
     // Case 2: FK column ends with _{current_table} (e.g., "answered_by_user_id" for table "user")
     // Strip the _{table} suffix to get the semantic prefix
-    let table_suffix = format!("_{}", current_lower);
+    let table_suffix = format!("_{current_lower}");
     if without_ref_lower.ends_with(&table_suffix) {
-        let prefix_len = without_ref.len() - table_suffix.len();
-        return without_ref[..prefix_len].to_string();
+        let prefix_chars = without_ref_lower.chars().count() - table_suffix.chars().count();
+        return without_ref.chars().take(prefix_chars).collect();
     }
 
     // Case 3: FK column is a different role (e.g., "author_id" for table "user")
@@ -70,18 +70,18 @@ pub fn extract_relation_prefix(fk_column: &str, current_table: &str, ref_column:
     without_ref.to_string()
 }
 
-/// Generate reverse relation field name for has_many/has_one relations.
+/// Generate reverse relation field name for `has_many/has_one` relations.
 ///
 /// # Arguments
 /// * `fk_columns` - The FK column names
 /// * `current_table` - The table being referenced (e.g., "user")
 /// * `source_table` - The table that has the FK (e.g., "inquiry")
 /// * `ref_column` - The referenced column name (e.g., "id")
-/// * `has_multiple_fks` - Whether source_table has multiple FKs to current_table
-/// * `is_one_to_one` - Whether this is a has_one relation
+/// * `has_multiple_fks` - Whether `source_table` has multiple FKs to `current_table`
+/// * `is_one_to_one` - Whether this is a `has_one` relation
 ///
 /// # Returns
-/// The field name (e.g., "inquiries", "answered_by_inquiries")
+/// The field name (e.g., "inquiries", "`answered_by_inquiries`")
 pub fn build_reverse_relation_field_name(
     fk_columns: &[String],
     current_table: &str,
@@ -105,14 +105,14 @@ pub fn build_reverse_relation_field_name(
     if prefix.is_empty() {
         base_name
     } else {
-        format!("{}_{}", prefix, base_name)
+        format!("{prefix}_{base_name}")
     }
 }
 
 /// Generate relation enum name for FK relations.
 ///
-/// Uses the same logic as field naming but converts to PascalCase.
-/// This ensures relation_enum aligns with field names for consistency.
+/// Uses the same logic as field naming but converts to `PascalCase`.
+/// This ensures `relation_enum` aligns with field names for consistency.
 ///
 /// # Examples
 /// ```
@@ -140,7 +140,7 @@ pub fn build_relation_enum_name(
     }
 }
 
-/// Convert snake_case to PascalCase.
+/// Convert `snake_case` to `PascalCase`.
 ///
 /// # Examples
 /// ```
@@ -190,9 +190,9 @@ pub fn pluralize(name: &str) -> String {
         && !name.ends_with("uy")
     {
         // e.g., category -> categories, inquiry -> inquiries
-        format!("{}ies", &name[..name.len() - 1])
+        format!("{}ies", name.strip_suffix('y').unwrap_or(name))
     } else {
-        format!("{}s", name)
+        format!("{name}s")
     }
 }
 
@@ -204,10 +204,10 @@ pub fn pluralize(name: &str) -> String {
 /// Always includes table name to avoid conflicts across tables.
 /// Uses double underscore to separate table name from the rest.
 /// Format: ix_{table}__{key} or ix_{table}__{col1}_{col2}...
-pub fn build_index_name(table: &str, columns: &[String], key: Option<&str>) -> String {
+pub fn build_index_name<T: AsRef<str>>(table: &str, columns: &[T], key: Option<&str>) -> String {
     match key {
-        Some(k) => format!("ix_{}__{}", table, k),
-        None => format!("ix_{}__{}", table, columns.join("_")),
+        Some(k) => format!("ix_{table}__{k}"),
+        None => format!("ix_{}__{}", table, sort_columns_for_name(columns).join("_")),
     }
 }
 
@@ -215,10 +215,14 @@ pub fn build_index_name(table: &str, columns: &[String], key: Option<&str>) -> S
 /// Always includes table name to avoid conflicts across tables.
 /// Uses double underscore to separate table name from the rest.
 /// Format: uq_{table}__{key} or uq_{table}__{col1}_{col2}...
-pub fn build_unique_constraint_name(table: &str, columns: &[String], key: Option<&str>) -> String {
+pub fn build_unique_constraint_name<T: AsRef<str>>(
+    table: &str,
+    columns: &[T],
+    key: Option<&str>,
+) -> String {
     match key {
-        Some(k) => format!("uq_{}__{}", table, k),
-        None => format!("uq_{}__{}", table, columns.join("_")),
+        Some(k) => format!("uq_{table}__{k}"),
+        None => format!("uq_{}__{}", table, sort_columns_for_name(columns).join("_")),
     }
 }
 
@@ -226,33 +230,44 @@ pub fn build_unique_constraint_name(table: &str, columns: &[String], key: Option
 /// Always includes table name to avoid conflicts across tables.
 /// Uses double underscore to separate table name from the rest.
 /// Format: fk_{table}__{key} or fk_{table}__{col1}_{col2}...
-pub fn build_foreign_key_name(table: &str, columns: &[String], key: Option<&str>) -> String {
+pub fn build_foreign_key_name<T: AsRef<str>>(
+    table: &str,
+    columns: &[T],
+    key: Option<&str>,
+) -> String {
     match key {
-        Some(k) => format!("fk_{}__{}", table, k),
-        None => format!("fk_{}__{}", table, columns.join("_")),
+        Some(k) => format!("fk_{table}__{k}"),
+        None => format!("fk_{}__{}", table, sort_columns_for_name(columns).join("_")),
     }
 }
 
-/// Generate CHECK constraint name for SQLite enum column.
+fn sort_columns_for_name<T: AsRef<str>>(columns: &[T]) -> Vec<&str> {
+    let mut sorted: Vec<&str> = columns.iter().map(AsRef::as_ref).collect();
+    sorted.sort_unstable();
+    sorted
+}
+
+/// Generate CHECK constraint name for `SQLite` enum column.
 /// Uses double underscore to separate table name from the rest.
 /// Format: chk_{table}__{column}
 pub fn build_check_constraint_name(table: &str, column: &str) -> String {
-    format!("chk_{}__{}", table, column)
+    format!("chk_{table}__{column}")
 }
 
 /// Generate enum type name with table prefix to avoid conflicts.
 /// Always includes table name to ensure uniqueness across tables.
-/// Format: {table}_{enum_name}
+/// Format: {table}_{`enum_name`}
 ///
 /// This prevents conflicts when multiple tables use the same enum name
 /// (e.g., "status" or "gender") with potentially different values.
 pub fn build_enum_type_name(table: &str, enum_name: &str) -> String {
-    format!("{}_{}", table, enum_name)
+    format!("{table}_{enum_name}")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     // ========================================================================
     // Relation Naming Tests
@@ -311,6 +326,31 @@ mod tests {
         // Edge case: no ref_column suffix
         assert_eq!(extract_relation_prefix("user", "user", "id"), "");
         assert_eq!(extract_relation_prefix("admin_user", "user", "id"), "admin");
+    }
+
+    #[test]
+    fn test_extract_relation_prefix_unicode_table_name() {
+        assert_eq!(
+            extract_relation_prefix("작성자_한국어테이블_id", "한국어테이블", "id"),
+            "작성자"
+        );
+        assert_eq!(extract_relation_prefix("📊_stats_id", "📊_stats", "id"), "");
+    }
+
+    #[test]
+    fn test_pluralize_unicode_name_ending_with_ascii_y() {
+        assert_eq!(pluralize("café_category"), "café_categories");
+    }
+
+    proptest! {
+        #[test]
+        fn extract_relation_prefix_does_not_panic_on_unicode(
+            table in proptest::collection::vec(any::<char>(), 0..30).prop_map(|v| v.into_iter().collect::<String>()),
+            prefix in proptest::collection::vec(any::<char>(), 0..30).prop_map(|v| v.into_iter().collect::<String>())
+        ) {
+            let fk_column = format!("{prefix}_{table}_id");
+            let _ = extract_relation_prefix(&fk_column, &table, "id");
+        }
     }
 
     #[test]
@@ -447,7 +487,7 @@ mod tests {
     #[test]
     fn test_build_index_name_with_key() {
         assert_eq!(
-            build_index_name("users", &["email".into()], Some("email_idx")),
+            build_index_name("users", &["email"], Some("email_idx")),
             "ix_users__email_idx"
         );
     }
@@ -455,7 +495,7 @@ mod tests {
     #[test]
     fn test_build_index_name_without_key() {
         assert_eq!(
-            build_index_name("users", &["email".into()], None),
+            build_index_name("users", &["email"], None),
             "ix_users__email"
         );
     }
@@ -463,15 +503,34 @@ mod tests {
     #[test]
     fn test_build_index_name_multiple_columns() {
         assert_eq!(
-            build_index_name("users", &["first_name".into(), "last_name".into()], None),
+            build_index_name("users", &["first_name", "last_name"], None),
             "ix_users__first_name_last_name"
+        );
+    }
+
+    #[test]
+    fn test_build_index_name_multiple_columns_is_deterministic() {
+        assert_eq!(
+            build_index_name("users", &["last_name", "first_name"], None),
+            build_index_name("users", &["first_name", "last_name"], None)
+        );
+    }
+
+    #[test]
+    fn test_build_index_name_sorts_columns_for_deterministic_name() {
+        let columns = vec!["last_name".to_string(), "first_name".to_string()];
+        let reversed = vec!["first_name".to_string(), "last_name".to_string()];
+
+        assert_eq!(
+            build_index_name("users", &columns, None),
+            build_index_name("users", &reversed, None)
         );
     }
 
     #[test]
     fn test_build_unique_constraint_name_with_key() {
         assert_eq!(
-            build_unique_constraint_name("users", &["email".into()], Some("email_unique")),
+            build_unique_constraint_name("users", &["email"], Some("email_unique")),
             "uq_users__email_unique"
         );
     }
@@ -479,15 +538,34 @@ mod tests {
     #[test]
     fn test_build_unique_constraint_name_without_key() {
         assert_eq!(
-            build_unique_constraint_name("users", &["email".into()], None),
+            build_unique_constraint_name("users", &["email"], None),
             "uq_users__email"
+        );
+    }
+
+    #[test]
+    fn test_build_unique_constraint_name_multiple_columns_is_deterministic() {
+        assert_eq!(
+            build_unique_constraint_name("users", &["last_name", "first_name"], None),
+            build_unique_constraint_name("users", &["first_name", "last_name"], None)
+        );
+    }
+
+    #[test]
+    fn test_build_unique_constraint_name_sorts_columns_for_deterministic_name() {
+        let columns = vec!["product_id".to_string(), "order_id".to_string()];
+        let reversed = vec!["order_id".to_string(), "product_id".to_string()];
+
+        assert_eq!(
+            build_unique_constraint_name("order_items", &columns, None),
+            build_unique_constraint_name("order_items", &reversed, None)
         );
     }
 
     #[test]
     fn test_build_foreign_key_name_with_key() {
         assert_eq!(
-            build_foreign_key_name("posts", &["user_id".into()], Some("fk_user")),
+            build_foreign_key_name("posts", &["user_id"], Some("fk_user")),
             "fk_posts__fk_user"
         );
     }
@@ -495,8 +573,27 @@ mod tests {
     #[test]
     fn test_build_foreign_key_name_without_key() {
         assert_eq!(
-            build_foreign_key_name("posts", &["user_id".into()], None),
+            build_foreign_key_name("posts", &["user_id"], None),
             "fk_posts__user_id"
+        );
+    }
+
+    #[test]
+    fn test_build_foreign_key_name_multiple_columns_is_deterministic() {
+        assert_eq!(
+            build_foreign_key_name("posts", &["tenant_id", "user_id"], None),
+            build_foreign_key_name("posts", &["user_id", "tenant_id"], None)
+        );
+    }
+
+    #[test]
+    fn test_build_foreign_key_name_sorts_columns_for_deterministic_name() {
+        let columns = vec!["tenant_id".to_string(), "account_id".to_string()];
+        let reversed = vec!["account_id".to_string(), "tenant_id".to_string()];
+
+        assert_eq!(
+            build_foreign_key_name("memberships", &columns, None),
+            build_foreign_key_name("memberships", &reversed, None)
         );
     }
 

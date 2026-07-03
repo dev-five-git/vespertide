@@ -1,0 +1,27 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+/** User accounts table */
+@Entity
+@Table(name = "users")
+public class Users {
+
+    /** Primary key */
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
+    private Integer id;
+
+    /** User email address */
+    @Column(name = "email", nullable = false, unique = true, columnDefinition = "TEXT")
+    private String email;
+
+    @Column(name = "name", columnDefinition = "TEXT")
+    private String name;
+
+    protected Users() {
+    }
+}

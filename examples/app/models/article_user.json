@@ -34,7 +34,11 @@
     },
     {
       "name": "role",
-      "type": { "kind": "enum", "name": "role", "values": ["lead", "contributor"] },
+      "type": {
+        "kind": "enum",
+        "name": "role",
+        "values": ["lead", "contributor"]
+      },
       "nullable": false,
       "default": "'contributor'"
     },

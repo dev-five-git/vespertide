@@ -79,7 +79,7 @@ fn test_composite_unique_constraint_generates_single_index() {
     );
 
     let create_unique_sql = postgres_sql[1].build(DatabaseBackend::Postgres);
-    println!("\nGenerated unique index SQL: {}", create_unique_sql);
+    println!("\nGenerated unique index SQL: {create_unique_sql}");
 
     // Should create a single composite unique index, not two separate ones
     assert!(
@@ -88,13 +88,11 @@ fn test_composite_unique_constraint_generates_single_index() {
     );
     assert!(
         create_unique_sql.contains("\"uq_user__route_provider_id\""),
-        "Should use the named constraint. Got: {}",
-        create_unique_sql
+        "Should use the named constraint. Got: {create_unique_sql}"
     );
     assert!(
         create_unique_sql.contains("(\"join_route\", \"provider_id\")"),
-        "Should include both columns in composite index. Got: {}",
-        create_unique_sql
+        "Should include both columns in composite index. Got: {create_unique_sql}"
     );
 
     println!("\n✅ Composite unique constraint correctly generates a single index!");

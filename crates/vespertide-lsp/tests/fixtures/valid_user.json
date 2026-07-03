@@ -1,0 +1,8 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
+  "name": "user",
+  "columns": [
+    { "name": "id", "type": "integer", "nullable": false, "primary_key": true },
+    { "name": "email", "type": "text", "nullable": false, "unique": true }
+  ]
+}

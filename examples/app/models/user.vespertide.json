@@ -1,0 +1,80 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dev-five-git/vespertide/refs/heads/main/schemas/model.schema.json",
+  "columns": [
+    {
+      "default": "gen_random_uuid()",
+      "name": "id",
+      "nullable": false,
+      "primary_key": true,
+      "type": "uuid"
+    },
+    {
+      "index": true,
+      "name": "email",
+      "nullable": false,
+      "type": {
+        "kind": "varchar",
+        "length": 255
+      },
+      "unique": true
+    },
+    {
+      "name": "password",
+      "nullable": false,
+      "type": {
+        "kind": "varchar",
+        "length": 255
+      }
+    },
+    {
+      "name": "name",
+      "nullable": false,
+      "type": {
+        "kind": "varchar",
+        "length": 100
+      }
+    },
+    {
+      "name": "profile_image",
+      "nullable": true,
+      "type": "text"
+    },
+    {
+      "default": "now()",
+      "name": "created_at",
+      "nullable": false,
+      "type": "timestamptz"
+    },
+    {
+      "name": "updated_at",
+      "nullable": true,
+      "type": "timestamptz"
+    },
+    {
+      "default": 100,
+      "name": "priority",
+      "nullable": false,
+      "type": {
+        "kind": "enum",
+        "name": "user_priority",
+        "values": [
+          {
+            "name": "low",
+            "value": 100
+          },
+          {
+            "name": "medium",
+            "value": 101
+          },
+          {
+            "name": "high",
+            "value": 200
+          }
+        ]
+      }
+    }
+  ],
+  "constraints": [],
+  "indexes": [],
+  "name": "user"
+}

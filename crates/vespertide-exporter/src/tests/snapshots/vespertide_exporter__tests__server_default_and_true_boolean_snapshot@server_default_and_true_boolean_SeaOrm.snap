@@ -1,0 +1,24 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+#[sea_orm(table_name = "logs")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    #[sea_orm(default_value = true)]
+    pub active: bool,
+    #[sea_orm(default_value = "NOW()")]
+    pub created_at: DateTimeWithTimeZone,
+    #[sea_orm(default_value = 1.5)]
+    pub score: f32,
+    #[sea_orm(default_value = "UNKNOWN_EXPR")]
+    pub tag: String,
+}
+
+vespera::schema_type!(Schema from Model, name = "LogsSchema");
+impl ActiveModelBehavior for ActiveModel {}

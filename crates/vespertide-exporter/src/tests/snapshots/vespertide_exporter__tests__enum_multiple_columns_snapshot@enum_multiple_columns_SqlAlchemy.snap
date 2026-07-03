@@ -1,0 +1,28 @@
+---
+source: crates/vespertide-exporter/src/tests.rs
+expression: rendered
+---
+from __future__ import annotations
+
+import enum
+
+from sqlalchemy import Enum, Integer
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class ProductCategory(str, enum.Enum):
+    ELECTRONICS = "electronics"
+    CLOTHING = "clothing"
+    FOOD = "food"
+
+class AvailabilityStatus(str, enum.Enum):
+    IN_STOCK = "in_stock"
+    OUT_OF_STOCK = "out_of_stock"
+    PRE_ORDER = "pre_order"
+
+class Products(DeclarativeBase):
+    __tablename__ = "products"
+
+    id: Mapped[int] = mapped_column(Integer, nullable=False)
+    category: Mapped[ProductCategory] = mapped_column(Enum(ProductCategory), nullable=False)
+    availability: Mapped[AvailabilityStatus] = mapped_column(Enum(AvailabilityStatus), nullable=False)
