@@ -12,12 +12,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aliasable"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "250f629c0161ad8107cf89319e990051fae62832fd343083bea452d93e2205fd"
-
-[[package]]
 name = "alloca"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -93,9 +87,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.102"
+version = "1.0.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
+checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
 name = "ar_archive_writer"
@@ -1392,30 +1386,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ouroboros"
-version = "0.18.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e0f050db9c44b97a94723127e6be766ac5c340c48f2c4bb3ffa11713744be59"
-dependencies = [
- "aliasable",
- "ouroboros_macro",
- "static_assertions",
-]
-
-[[package]]
-name = "ouroboros_macro"
-version = "0.18.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c7028bdd3d43083f6d8d4d5187680d0d3560d54df4cc9d752005268b41e64d0"
-dependencies = [
- "heck 0.4.1",
- "proc-macro2",
- "proc-macro2-diagnostics",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "page_size"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1615,19 +1585,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "proc-macro2-diagnostics"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af066a9c399a26e020ada66a034357a868728e72cd426f3adcd35f80d88d88c8"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
- "version_check",
- "yansi",
-]
-
-[[package]]
 name = "proptest"
 version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1716,9 +1673,9 @@ checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
 
 [[package]]
 name = "quote"
-version = "1.0.45"
+version = "1.0.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41f2619966050689382d2b44f664f4bc593e129785a36d6ee376ddf37259b924"
+checksum = "dfbc457d0c7a0759a614551b11a6409e5951f6c7537be1f1b7682b9ae9230368"
 dependencies = [
  "proc-macro2",
 ]
@@ -1950,9 +1907,9 @@ checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "rustc-hash"
-version = "2.1.2"
+version = "2.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94300abf3f1ae2e2b8ffb7b58043de3d399c73fa6f4b73826402a5c457614dbe"
+checksum = "6b1e7f9a428571be2dc5bc0505c13fb6bf936822b894ec87abf8a08a4e51742d"
 
 [[package]]
 name = "rustc_version"
@@ -2055,9 +2012,9 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "sea-orm"
-version = "2.0.0-rc.40"
+version = "2.0.0-rc.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "628c3b6acb53ca9942f7f151431ed49db92dafa14d15976a1b9db9d4bd06431c"
+checksum = "a1db0850846a673d7819a8120bae1df3c2cc0c020bd7cbe50eb7b2f74b9efabb"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -2065,7 +2022,6 @@ dependencies = [
  "futures-util",
  "itertools 0.14.0",
  "log",
- "ouroboros",
  "sea-orm-macros",
  "sea-query",
  "serde",
@@ -2073,14 +2029,15 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "url",
+ "uuid",
  "web-time",
 ]
 
 [[package]]
 name = "sea-orm-macros"
-version = "2.0.0-rc.40"
+version = "2.0.0-rc.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68a91def07bceb98aab308f7dd16c27496b76a6b7b92b94a61b309b5043d93d5"
+checksum = "8e166e50db6f9992fc65c488ef089e50072a31253588e3aa863aa6a9f34f2851"
 dependencies = [
  "heck 0.5.0",
  "itertools 0.14.0",
@@ -2342,12 +2299,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "static_assertions"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
-
-[[package]]
 name = "streaming-iterator"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2367,9 +2318,9 @@ checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
 
 [[package]]
 name = "syn"
-version = "2.0.117"
+version = "2.0.118"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e665b8803e7b1d2a727f4023456bbbbe74da67099c585258af0ad9c5013b9b99"
+checksum = "1b9ae57f904213ebb649ce6895b8a66c66f0203b9319718f69a5612a065b1422"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2698,9 +2649,9 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter"
-version = "0.26.9"
+version = "0.26.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4dab76d0b724ba557954125188cf0633a1ca43199ced82d95c7b9c32cc3de1f3"
+checksum = "3c343ed63e3f5c64d1acdecb5d2c13d4e169cb5fde0052106ebaa6c6f27f9e55"
 dependencies = [
  "cc",
  "regex",
@@ -2738,9 +2689,9 @@ dependencies = [
 
 [[package]]
 name = "trybuild"
-version = "1.0.116"
+version = "1.0.117"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47c635f0191bd3a2941013e5062667100969f8c4e9cd787c14f977265d73616e"
+checksum = "0710d4dfbeae4f9c390baa784c49858a7468fa433f3fe5d0ec5ebef651cf59f9"
 dependencies = [
  "dissimilar",
  "glob",
@@ -2807,12 +2758,13 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
-version = "1.23.2"
+version = "1.23.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d258b83ceec21034727ecee8c382cfa6c3e133699b0742c64571814fb420c9f7"
+checksum = "bf80a72845275afea99e7f2b434723d3bc7e38470fcd1c7ed39a599c73319a53"
 dependencies = [
  "getrandom 0.4.2",
  "js-sys",
+ "serde_core",
  "wasm-bindgen",
 ]
 
@@ -2829,14 +2781,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
-name = "version_check"
-version = "0.9.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-
-[[package]]
 name = "vespertide"
-version = "0.1.61"
+version = "0.2.1"
 dependencies = [
  "sea-orm",
  "tokio",
@@ -2846,7 +2792,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-cli"
-version = "0.1.61"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2878,7 +2824,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-config"
-version = "0.1.61"
+version = "0.2.1"
 dependencies = [
  "clap",
  "schemars",
@@ -2888,7 +2834,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-core"
-version = "0.1.61"
+version = "0.2.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -2903,7 +2849,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-exporter"
-version = "0.1.61"
+version = "0.2.1"
 dependencies = [
  "criterion",
  "insta",
@@ -2932,7 +2878,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-loader"
-version = "0.1.61"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "rayon",
@@ -2948,7 +2894,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-lsp"
-version = "0.1.61"
+version = "0.2.1"
 dependencies = [
  "dashmap",
  "insta",
@@ -2956,7 +2902,7 @@ dependencies = [
  "lsp-types",
  "proptest",
  "rstest",
- "rustc-hash 2.1.2",
+ "rustc-hash 2.1.3",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -2977,7 +2923,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-macro"
-version = "0.1.61"
+version = "0.2.1"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -2996,7 +2942,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-naming"
-version = "0.1.61"
+version = "0.2.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -3004,7 +2950,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-planner"
-version = "0.1.61"
+version = "0.2.1"
 dependencies = [
  "criterion",
  "insta",
@@ -3019,7 +2965,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-query"
-version = "0.1.61"
+version = "0.2.1"
 dependencies = [
  "criterion",
  "insta",
@@ -3486,12 +3432,6 @@ name = "writeable"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
-
-[[package]]
-name = "yansi"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfe53a6657fd280eaa890a3bc59152892ffa3e30101319d168b781ed6529b049"
 
 [[package]]
 name = "yoke"
