@@ -1,7 +1,23 @@
-import { Box, Flex, Text } from '@devup-ui/react'
+import { Box, Flex, globalCss, Text } from '@devup-ui/react'
 import type { ComponentProps, ReactNode } from 'react'
 
-import './code-theme'
+globalCss({
+  '.shiki, .shiki span': {
+    fontFamily: 'D2Coding',
+    fontSize: '13px',
+    lineHeight: '1.65',
+  },
+  '.shiki': {
+    background: 'transparent !important',
+    padding: '0',
+    margin: '0',
+    overflowX: 'auto',
+  },
+  '[data-theme="dark"] .shiki, [data-theme="dark"] .shiki span': {
+    color: 'var(--shiki-dark) !important',
+    backgroundColor: 'transparent !important',
+  },
+})
 
 export function CodeWindow({
   title,
@@ -68,4 +84,26 @@ export function CodeWindow({
 
 export function HighlightedCode({ html }: { html: string }) {
   return <div dangerouslySetInnerHTML={{ __html: html }} />
+}
+
+export function StaticCodeBlock({
+  title,
+  html,
+}: {
+  title: string
+  html: string
+}) {
+  return (
+    <CodeWindow title={title}>
+      <HighlightedCode html={html} />
+    </CodeWindow>
+  )
+}
+
+export function HeroCodeWrapper({ children }: { children: ReactNode }) {
+  return (
+    <Flex justifyContent={[null, null, null, 'flex-end']} w="100%">
+      {children}
+    </Flex>
+  )
 }

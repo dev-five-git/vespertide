@@ -1,6 +1,6 @@
 'use client'
 
-import { Box, Flex, Text } from '@devup-ui/react'
+import { Box, Text } from '@devup-ui/react'
 import { useState } from 'react'
 
 import { CodeWindow, HighlightedCode } from './code-window'
@@ -49,24 +49,3 @@ export function CodeTabs({ examples }: { examples: CodeExample[] }) {
   )
 }
 
-export function StaticCodeBlock({
-  title,
-  html,
-}: {
-  title: string
-  html: string
-}) {
-  return (
-    <CodeWindow title={title}>
-      <HighlightedCode html={html} />
-    </CodeWindow>
-  )
-}
-
-export function HeroCodeWrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <Flex justifyContent={[null, null, null, 'flex-end']} w="100%">
-      {children}
-    </Flex>
-  )
-}
