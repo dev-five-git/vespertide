@@ -1817,11 +1817,12 @@ function AddRelFormPanel({
           cursor="pointer"
           opacity={1}
         >
-          <input
+          <Box
+            as="input"
             type="checkbox"
             checked={form.addBackRef}
-            onChange={(e) => onPatch({ addBackRef: e.target.checked })}
-            style={{ accentColor: '#6366f1' }}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => onPatch({ addBackRef: e.target.checked })}
+            accentColor="#6366f1"
           />
           <Box as="span" fontSize="10px" color="var(--node-text-dim)">역참조 추가 ({form.target} 모델에)</Box>
         </Box>

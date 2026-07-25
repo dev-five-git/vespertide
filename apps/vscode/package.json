@@ -1,5 +1,5 @@
 {
-  "name": "vespertide",
+  "name": "vespertide-vscode",
   "displayName": "Vespertide",
   "description": "Database schema management — ORM editor, ERD viewer, migration diff, and ORM converter",
   "version": "0.1.61",

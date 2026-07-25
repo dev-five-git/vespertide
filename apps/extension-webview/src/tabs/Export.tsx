@@ -412,7 +412,7 @@ function FilePreviewBody({ file }: { file: ExportFile }) {
   if (file.id === 'erd-svg' && file.content.startsWith('<svg')) {
     return (
       <Box flex={1} overflow="auto" p="24px" bg="var(--vscode-editor-background, #1e1e1e)">
-        <div dangerouslySetInnerHTML={{ __html: file.content }} style={{ maxWidth: '100%' }} />
+        <Box dangerouslySetInnerHTML={{ __html: file.content }} maxWidth="100%" />
         <Box mt="16px" fontSize="11px" opacity={0.4}>SVG 소스:</Box>
         <Box
           as="pre"
@@ -586,7 +586,7 @@ function ChatPanel({ messages, loading, input, activeAI, connectedAIs, endRef, o
             <Box as="span" fontSize="12px" color="var(--node-text-dim)">응답 생성 중...</Box>
           </Flex>
         )}
-        <div ref={endRef} />
+        <Box ref={endRef} />
       </Box>
 
       <Flex

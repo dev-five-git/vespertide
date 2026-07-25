@@ -4,6 +4,29 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Vespertide AI Agent</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body, #root { height: 100%; margin: 0; padding: 0; }
+      body {
+        font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+        font-size: var(--vscode-font-size, 13px);
+        font-weight: var(--vscode-font-weight, normal);
+        color: var(--vscode-foreground, #cccccc);
+        background: var(--vscode-sideBar-background, #252526);
+        overflow: hidden;
+      }
+      button { cursor: pointer; font-family: inherit; font-size: inherit; }
+      textarea, input { font-family: inherit; font-size: inherit; }
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb {
+        background: var(--vscode-scrollbarSlider-background, rgba(121,121,121,0.4));
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--vscode-scrollbarSlider-hoverBackground, rgba(121,121,121,0.7));
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Box, Flex } from '@devup-ui/react';
 import { postMessage, onMessage } from './vscode';
 import type { ConnectorService, ConnectorStatus, ChatMessage } from './vscode';
 
@@ -63,17 +64,17 @@ const CONNECTORS: ConnectorMeta[] = [
 type View = 'chat' | 'connectors';
 
 export default function AIAgentApp() {
-  const [theme, setTheme]               = useState<'dark' | 'light'>('dark');
-  const [view, setView]                 = useState<View>('chat');
-  const [connectors, setConnectors]     = useState<ConnectorStatus[]>([]);
-  const [messages, setMessages]         = useState<ChatMessage[]>([]);
-  const [input, setInput]               = useState('');
-  const [loading, setLoading]           = useState(false);
-  const [activeAI, setActiveAI]         = useState<ConnectorService>('claude');
-  const [configuring, setConfiguring]   = useState<ConnectorService | null>(null);
-  const [keyInputs, setKeyInputs]       = useState<Partial<Record<ConnectorService, string>>>({});
-  const [saving, setSaving]             = useState<ConnectorService | null>(null);
-  const [showKey, setShowKey]           = useState<Partial<Record<ConnectorService, boolean>>>({});
+  const [theme, setTheme]             = useState<'dark' | 'light'>('dark');
+  const [view, setView]               = useState<View>('chat');
+  const [connectors, setConnectors]   = useState<ConnectorStatus[]>([]);
+  const [messages, setMessages]       = useState<ChatMessage[]>([]);
+  const [input, setInput]             = useState('');
+  const [loading, setLoading]         = useState(false);
+  const [activeAI, setActiveAI]       = useState<ConnectorService>('claude');
+  const [configuring, setConfiguring] = useState<ConnectorService | null>(null);
+  const [keyInputs, setKeyInputs]     = useState<Partial<Record<ConnectorService, string>>>({});
+  const [saving, setSaving]           = useState<ConnectorService | null>(null);
+  const [showKey, setShowKey]         = useState<Partial<Record<ConnectorService, boolean>>>({});
   const endRef = useRef<HTMLDivElement>(null) as React.RefObject<HTMLDivElement>;
 
   const statusMap = Object.fromEntries(
@@ -135,177 +136,230 @@ export default function AIAgentApp() {
   }
 
   return (
-    <div
+    <Box
       data-theme={theme}
-      style={{
-        display: 'flex', flexDirection: 'column', height: '100vh',
-        background: 'var(--vscode-editor-background, #1e1e1e)',
-        color: 'var(--vscode-foreground, #ccc)',
-        fontFamily: 'var(--vscode-font-family, sans-serif)',
-      }}
+      display="flex"
+      flexDir="column"
+      h="100vh"
+      bg="var(--vscode-editor-background, #1e1e1e)"
+      color="var(--vscode-foreground, #ccc)"
+      fontFamily="var(--vscode-font-family, sans-serif)"
     >
       {/* ── Header / Tab bar ── */}
-      <div style={{
-        display: 'flex', alignItems: 'stretch', flexShrink: 0,
-        borderBottom: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))',
-        background: 'var(--vscode-editorGroupHeader-tabsBackground, #2d2d2d)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 14px', flexShrink: 0 }}>
-          <span style={{ fontSize: 15 }}>🤖</span>
-          <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--node-text)' }}>AI Agent</span>
-        </div>
+      <Flex
+        alignItems="stretch"
+        flexShrink={0}
+        borderBottom="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+        bg="var(--vscode-editorGroupHeader-tabsBackground, #2d2d2d)"
+      >
+        <Flex alignItems="center" gap="6px" px="14px" flexShrink={0}>
+          <Box as="span" fontSize="15px">🤖</Box>
+          <Box as="span" fontWeight={700} fontSize="13px" color="var(--node-text)">AI Agent</Box>
+        </Flex>
 
-        <div style={{ flex: 1, display: 'flex' }}>
+        <Flex flex={1}>
           {(['chat', 'connectors'] as View[]).map((v) => (
-            <button key={v} onClick={() => setView(v)} style={{
-              padding: '8px 16px', border: 'none', cursor: 'pointer',
-              background: 'transparent',
-              borderBottom: view === v
-                ? '2px solid var(--vscode-focusBorder, #007acc)'
-                : '2px solid transparent',
-              color: view === v ? 'var(--node-text)' : 'var(--node-text-dim)',
-              fontSize: 12, fontWeight: view === v ? 600 : 400,
-            }}>
+            <Box
+              key={v}
+              as="button"
+              onClick={() => setView(v)}
+              py="8px"
+              px="16px"
+              border="none"
+              cursor="pointer"
+              bg="transparent"
+              borderBottom={view === v ? '2px solid var(--vscode-focusBorder, #007acc)' : '2px solid transparent'}
+              color={view === v ? 'var(--node-text)' : 'var(--node-text-dim)'}
+              fontSize="12px"
+              fontWeight={view === v ? 600 : 400}
+            >
               {v === 'chat' ? 'Chat' : 'Connectors'}
               {v === 'connectors' && connectedAIs.length > 0 && (
-                <span style={{
-                  marginLeft: 6, fontSize: 10, padding: '1px 5px', borderRadius: 8,
-                  background: 'rgba(74,222,128,0.18)', color: 'var(--diff-add-sign)',
-                }}>{connectedAIs.length}</span>
+                <Box
+                  as="span"
+                  ml="6px"
+                  fontSize="10px"
+                  px="5px"
+                  py="1px"
+                  borderRadius="8px"
+                  bg="rgba(74,222,128,0.18)"
+                  color="var(--diff-add-sign)"
+                >{connectedAIs.length}</Box>
               )}
-            </button>
+            </Box>
           ))}
-        </div>
+        </Flex>
 
         {view === 'chat' && connectedAIs.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 10px' }}>
+          <Flex alignItems="center" gap="4px" px="10px">
             {connectedAIs.map((ai) => (
-              <button key={ai.service} onClick={() => setActiveAI(ai.service)} style={{
-                padding: '3px 10px', borderRadius: 10, fontSize: 11, cursor: 'pointer',
-                background: activeAI === ai.service ? 'rgba(99,102,241,0.28)' : 'transparent',
-                border: `1px solid ${activeAI === ai.service ? 'rgba(99,102,241,0.6)' : 'var(--node-border)'}`,
-                color: activeAI === ai.service ? '#818cf8' : 'var(--node-text-dim)',
-              }}>
+              <Box
+                key={ai.service}
+                as="button"
+                onClick={() => setActiveAI(ai.service)}
+                py="3px"
+                px="10px"
+                borderRadius="10px"
+                fontSize="11px"
+                cursor="pointer"
+                bg={activeAI === ai.service ? 'rgba(99,102,241,0.28)' : 'transparent'}
+                border={`1px solid ${activeAI === ai.service ? 'rgba(99,102,241,0.6)' : 'var(--node-border)'}`}
+                color={activeAI === ai.service ? '#818cf8' : 'var(--node-text-dim)'}
+              >
                 {ai.icon} {ai.label}
-              </button>
+              </Box>
             ))}
-          </div>
+          </Flex>
         )}
 
-        <button
+        <Box
+          as="button"
           onClick={() => setTheme((t) => t === 'dark' ? 'light' : 'dark')}
           title={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
-          style={{
-            width: 36, flexShrink: 0, border: 'none',
-            borderBottom: '2px solid transparent',
-            background: 'transparent', color: 'var(--node-text-dim)',
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
+          w="36px"
+          flexShrink={0}
+          border="none"
+          borderBottom="2px solid transparent"
+          bg="transparent"
+          color="var(--node-text-dim)"
+          cursor="pointer"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
         >
           {theme === 'dark'
             ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
             : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
           }
-        </button>
-      </div>
+        </Box>
+      </Flex>
 
       {/* ── Chat view ── */}
       {view === 'chat' && (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px' }}>
+        <Flex flex={1} flexDir="column" overflow="hidden">
+          <Box flex={1} overflow="auto" px="20px" py="16px">
             {messages.length === 0 && (
-              <div style={{ color: 'var(--node-text-dim)', fontSize: 13, textAlign: 'center', marginTop: 60, lineHeight: 1.9 }}>
-                <div style={{ fontSize: 36, marginBottom: 10 }}>🤖</div>
-                <div style={{ fontWeight: 600, color: 'var(--node-text)' }}>Vespertide AI Agent</div>
+              <Flex flexDir="column" alignItems="center" color="var(--node-text-dim)" fontSize="13px" textAlign="center" mt="60px" lineHeight={1.9}>
+                <Box fontSize="36px" mb="10px">🤖</Box>
+                <Box fontWeight={600} color="var(--node-text)">Vespertide AI Agent</Box>
                 {connectedAIs.length === 0 ? (
-                  <div style={{ marginTop: 12, fontSize: 12 }}>
-                    <span style={{ color: 'var(--node-text-dim)' }}>AI가 연결되지 않았습니다.</span>
+                  <Box mt="12px" fontSize="12px">
+                    <Box as="span" color="var(--node-text-dim)">AI가 연결되지 않았습니다.</Box>
                     <br />
-                    <button onClick={() => setView('connectors')} style={{
-                      marginTop: 10, padding: '6px 14px', borderRadius: 6, border: 'none',
-                      background: 'rgba(99,102,241,0.2)', color: '#818cf8',
-                      cursor: 'pointer', fontSize: 12,
-                    }}>
+                    <Box
+                      as="button"
+                      onClick={() => setView('connectors')}
+                      mt="10px"
+                      py="6px"
+                      px="14px"
+                      borderRadius="6px"
+                      border="none"
+                      bg="rgba(99,102,241,0.2)"
+                      color="#818cf8"
+                      cursor="pointer"
+                      fontSize="12px"
+                    >
                       Connectors에서 AI 추가하기 →
-                    </button>
-                  </div>
+                    </Box>
+                  </Box>
                 ) : (
-                  <div style={{ marginTop: 8, fontSize: 12, color: 'var(--node-text-dim)' }}>
+                  <Box mt="8px" fontSize="12px" color="var(--node-text-dim)">
                     "이 스키마를 Notion에 정리해줘"<br />
                     "마이그레이션 변경사항을 Slack으로 보내줘"<br />
                     "Post 테이블에 인덱스를 추가하면 좋을까?"
-                  </div>
+                  </Box>
                 )}
-              </div>
+              </Flex>
             )}
 
             {messages.map((m, i) => {
               const isUser = m.role === 'user';
               return (
-                <div key={i} style={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
+                <Flex key={i} justifyContent={isUser ? 'flex-end' : 'flex-start'} mb="12px">
                   {!isUser && (
-                    <span style={{ fontSize: 16, marginRight: 8, alignSelf: 'flex-start', marginTop: 4, color: 'var(--node-text-dim)' }}>🤖</span>
+                    <Box as="span" fontSize="16px" mr="8px" alignSelf="flex-start" mt="4px" color="var(--node-text-dim)">🤖</Box>
                   )}
-                  <div style={{
-                    maxWidth: '72%', padding: '10px 14px',
-                    borderRadius: isUser ? '14px 14px 3px 14px' : '14px 14px 14px 3px',
-                    background: theme === 'light'
-                      ? '#ffffff'
-                      : isUser ? 'rgba(99,102,241,0.15)' : 'var(--vscode-editorWidget-background, rgba(255,255,255,0.05))',
-                    border: theme === 'light'
-                      ? '1px solid rgba(0,0,0,0.18)'
-                      : `1px solid ${isUser ? 'rgba(99,102,241,0.4)' : 'var(--node-border)'}`,
-                    fontSize: 13, lineHeight: 1.7, color: 'var(--node-text)',
-                    whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                  }}>
+                  <Box
+                    maxWidth="72%"
+                    py="10px"
+                    px="14px"
+                    borderRadius={isUser ? '14px 14px 3px 14px' : '14px 14px 14px 3px'}
+                    bg={theme === 'light' ? '#ffffff' : isUser ? 'rgba(99,102,241,0.15)' : 'var(--vscode-editorWidget-background, rgba(255,255,255,0.05))'}
+                    border={theme === 'light' ? '1px solid rgba(0,0,0,0.18)' : `1px solid ${isUser ? 'rgba(99,102,241,0.4)' : 'var(--node-border)'}`}
+                    fontSize="13px"
+                    lineHeight={1.7}
+                    color="var(--node-text)"
+                    whiteSpace="pre-wrap"
+                    wordBreak="break-word"
+                  >
                     {m.content}
-                  </div>
-                </div>
+                  </Box>
+                </Flex>
               );
             })}
 
             {loading && (
-              <div style={{ display: 'flex', gap: 8, padding: '8px 0', alignItems: 'center' }}>
-                <span style={{ fontSize: 16, color: 'var(--node-text-dim)' }}>🤖</span>
-                <span style={{ fontSize: 12, color: 'var(--node-text-dim)' }}>응답 생성 중...</span>
-              </div>
+              <Flex gap="8px" py="8px" alignItems="center">
+                <Box as="span" fontSize="16px" color="var(--node-text-dim)">🤖</Box>
+                <Box as="span" fontSize="12px" color="var(--node-text-dim)">응답 생성 중...</Box>
+              </Flex>
             )}
-            <div ref={endRef} />
-          </div>
+            <Box ref={endRef} />
+          </Box>
 
-          <div style={{
-            padding: '10px 16px', flexShrink: 0,
-            borderTop: '1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))',
-            background: 'var(--vscode-sideBar-background, #252526)',
-            display: 'flex', gap: 8, alignItems: 'flex-end',
-          }}>
-            <textarea
+          <Flex
+            py="10px"
+            px="16px"
+            flexShrink={0}
+            borderTop="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+            bg="var(--vscode-sideBar-background, #252526)"
+            gap="8px"
+            alignItems="flex-end"
+          >
+            <Box
+              as="textarea"
               value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setInput(e.target.value)}
+              onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
               placeholder="질문하세요... (Shift+Enter: 줄바꿈)"
               disabled={loading}
               rows={1}
-              style={{
-                flex: 1, padding: '8px 12px', borderRadius: 6, fontSize: 12,
-                background: theme === 'light' ? '#ffffff' : 'var(--vscode-input-background, rgba(255,255,255,0.06))',
-                border: `1px solid ${theme === 'light' ? 'rgba(0,0,0,0.2)' : 'var(--vscode-input-border, rgba(255,255,255,0.15))'}`,
-                color: 'var(--node-text)', outline: 'none',
-                resize: 'none', lineHeight: 1.6, fontFamily: 'inherit', maxHeight: 120, overflowY: 'auto',
-              }}
+              flex={1}
+              py="8px"
+              px="12px"
+              borderRadius="6px"
+              fontSize="12px"
+              bg={theme === 'light' ? '#ffffff' : 'var(--vscode-input-background, rgba(255,255,255,0.06))'}
+              border={`1px solid ${theme === 'light' ? 'rgba(0,0,0,0.2)' : 'var(--vscode-input-border, rgba(255,255,255,0.15))'}`}
+              color="var(--node-text)"
+              outline="none"
+              resize="none"
+              lineHeight={1.6}
+              fontFamily="inherit"
+              maxHeight="120px"
+              overflowY="auto"
             />
-            <button onClick={sendChat} disabled={!input.trim() || loading} style={{
-              padding: '8px 16px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600,
-              background: !input.trim() || loading ? 'rgba(99,102,241,0.15)' : 'var(--vscode-button-background, #0e639c)',
-              color: !input.trim() || loading ? 'var(--node-text-dim)' : 'var(--vscode-button-foreground, #fff)',
-            }}>전송</button>
-          </div>
-        </div>
+            <Box
+              as="button"
+              onClick={sendChat}
+              disabled={!input.trim() || loading}
+              py="8px"
+              px="16px"
+              borderRadius="6px"
+              border="none"
+              cursor="pointer"
+              fontSize="12px"
+              fontWeight={600}
+              bg={!input.trim() || loading ? 'rgba(99,102,241,0.15)' : 'var(--vscode-button-background, #0e639c)'}
+              color={!input.trim() || loading ? 'var(--node-text-dim)' : 'var(--vscode-button-foreground, #fff)'}
+            >전송</Box>
+          </Flex>
+        </Flex>
       )}
 
       {/* ── Connectors view ── */}
       {view === 'connectors' && (
-        <div style={{ flex: 1, overflow: 'auto' }}>
+        <Box flex={1} overflow="auto">
           <SectionLabel label="AI" />
           {CONNECTORS.filter((c) => c.isAI).map((meta) => (
             <ConnectorItem
@@ -328,7 +382,7 @@ export default function AIAgentApp() {
             />
           ))}
 
-          <SectionLabel label="기타 연동" style={{ marginTop: 8 }} />
+          <SectionLabel label="기타 연동" mt="8px" />
           {CONNECTORS.filter((c) => !c.isAI).map((meta) => (
             <ConnectorItem
               key={meta.service}
@@ -349,23 +403,28 @@ export default function AIAgentApp() {
               onOpenBrowser={() => openBrowser(meta.getKeyUrl)}
             />
           ))}
-        </div>
+        </Box>
       )}
-    </div>
+    </Box>
   );
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function SectionLabel({ label, style }: { label: string; style?: React.CSSProperties }) {
+function SectionLabel({ label, mt }: { label: string; mt?: string }) {
   return (
-    <div style={{
-      padding: '10px 18px 4px', fontSize: 10, fontWeight: 700,
-      letterSpacing: '0.08em', color: 'var(--node-text-dim)',
-      ...style,
-    }}>
+    <Box
+      pt="10px"
+      pb="4px"
+      px="18px"
+      fontSize="10px"
+      fontWeight={700}
+      letterSpacing="0.08em"
+      color="var(--node-text-dim)"
+      mt={mt}
+    >
       {label}
-    </div>
+    </Box>
   );
 }
 
@@ -381,134 +440,184 @@ function ConnectorItem({
   onSave: () => void; onDisconnect: () => void; onOpenBrowser: () => void;
 }) {
   return (
-    <div style={{ borderBottom: '1px solid var(--node-field-divider)' }}>
-      {/* Row */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px',
-        background: configuring ? 'rgba(99,102,241,0.06)' : 'transparent',
-      }}>
-        <div style={{
-          width: 36, height: 36, borderRadius: 8, flexShrink: 0,
-          background: 'var(--vscode-editorWidget-background, rgba(255,255,255,0.05))',
-          border: '1px solid var(--node-border)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
-        }}>{meta.icon}</div>
+    <Box borderBottom="1px solid var(--node-field-divider)">
+      <Flex
+        alignItems="center"
+        gap="12px"
+        py="12px"
+        px="18px"
+        bg={configuring ? 'rgba(99,102,241,0.06)' : 'transparent'}
+      >
+        <Flex
+          w="36px"
+          h="36px"
+          borderRadius="8px"
+          flexShrink={0}
+          bg="var(--vscode-editorWidget-background, rgba(255,255,255,0.05))"
+          border="1px solid var(--node-border)"
+          alignItems="center"
+          justifyContent="center"
+          fontSize="18px"
+        >{meta.icon}</Flex>
 
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--node-text)' }}>{meta.label}</span>
+        <Box flex={1} minWidth={0}>
+          <Flex alignItems="center" gap="6px">
+            <Box as="span" fontWeight={600} fontSize="13px" color="var(--node-text)">{meta.label}</Box>
             {isActive && (
-              <span style={{
-                fontSize: 9, padding: '1px 6px', borderRadius: 6, fontWeight: 700,
-                background: 'rgba(99,102,241,0.2)', color: '#818cf8',
-                border: '1px solid rgba(99,102,241,0.4)',
-              }}>사용 중</span>
+              <Box
+                as="span"
+                fontSize="9px"
+                py="1px"
+                px="6px"
+                borderRadius="6px"
+                fontWeight={700}
+                bg="rgba(99,102,241,0.2)"
+                color="#818cf8"
+                border="1px solid rgba(99,102,241,0.4)"
+              >사용 중</Box>
             )}
-          </div>
-          <div style={{ fontSize: 11, marginTop: 1 }}>
+          </Flex>
+          <Box fontSize="11px" mt="1px">
             {connected
-              ? <span style={{ color: 'var(--diff-add-sign)' }}>● 연결됨</span>
-              : <span style={{ color: 'var(--node-text-dim)' }}>{meta.subtitle}</span>
+              ? <Box as="span" color="var(--diff-add-sign)">● 연결됨</Box>
+              : <Box as="span" color="var(--node-text-dim)">{meta.subtitle}</Box>
             }
-          </div>
-        </div>
+          </Box>
+        </Box>
 
-        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+        <Flex gap="6px" flexShrink={0}>
           {connected && meta.isAI && !isActive && (
-            <button onClick={onSetActive} style={btn('ghost')}>사용</button>
+            <BtnBox variant="ghost" onClick={onSetActive}>사용</BtnBox>
           )}
           {connected ? (
-            <button onClick={onConfigure} style={btn(configuring ? 'active' : 'ghost')}>
+            <BtnBox variant={configuring ? 'active' : 'ghost'} onClick={onConfigure}>
               {configuring ? '닫기' : '설정'}
-            </button>
+            </BtnBox>
           ) : (
-            <button onClick={onConfigure} style={btn('primary')}>
+            <BtnBox variant="primary" onClick={onConfigure}>
               {configuring ? '닫기' : '+ 연결'}
-            </button>
+            </BtnBox>
           )}
-        </div>
-      </div>
+        </Flex>
+      </Flex>
 
-      {/* Config panel */}
       {configuring && (
-        <div style={{
-          padding: '0 18px 16px',
-          background: 'var(--vscode-sideBar-background, rgba(0,0,0,0.15))',
-          borderTop: '1px solid var(--node-field-divider)',
-        }}>
-          {/* Step-by-step guide */}
-          <div style={{
-            marginTop: 12, marginBottom: 12, padding: '10px 12px', borderRadius: 6,
-            background: theme === 'light' ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.04)',
-            border: '1px solid var(--node-field-divider)',
-          }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--node-text-dim)', marginBottom: 6 }}>
+        <Box
+          py="16px"
+          px="18px"
+          bg="var(--vscode-sideBar-background, rgba(0,0,0,0.15))"
+          borderTop="1px solid var(--node-field-divider)"
+        >
+          <Box
+            mt="12px"
+            mb="12px"
+            py="10px"
+            px="12px"
+            borderRadius="6px"
+            bg={theme === 'light' ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.04)'}
+            border="1px solid var(--node-field-divider)"
+          >
+            <Box fontSize="11px" fontWeight={600} color="var(--node-text-dim)" mb="6px">
               키 발급 방법
-            </div>
+            </Box>
             {meta.steps.map((step, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, marginBottom: i < meta.steps.length - 1 ? 4 : 0 }}>
-                <span style={{
-                  fontSize: 10, fontWeight: 700, color: '#818cf8',
-                  minWidth: 16, marginTop: 1,
-                }}>{i + 1}.</span>
-                <span style={{ fontSize: 11, color: 'var(--node-text)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{step}</span>
-              </div>
+              <Flex key={i} gap="8px" mb={i < meta.steps.length - 1 ? '4px' : '0'}>
+                <Box as="span" fontSize="10px" fontWeight={700} color="#818cf8" minWidth="16px" mt="1px">{i + 1}.</Box>
+                <Box as="span" fontSize="11px" color="var(--node-text)" lineHeight={1.5} whiteSpace="pre-wrap">{step}</Box>
+              </Flex>
             ))}
-            <button onClick={onOpenBrowser} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 8,
-              padding: '4px 10px', borderRadius: 4, border: 'none',
-              background: 'rgba(99,102,241,0.15)', color: '#818cf8',
-              fontSize: 11, cursor: 'pointer', fontFamily: 'inherit',
-            }}>
+            <Flex
+              as="button"
+              alignItems="center"
+              gap="4px"
+              mt="8px"
+              py="4px"
+              px="10px"
+              borderRadius="4px"
+              border="none"
+              bg="rgba(99,102,241,0.15)"
+              color="#818cf8"
+              fontSize="11px"
+              cursor="pointer"
+              fontFamily="inherit"
+              onClick={onOpenBrowser}
+            >
               🔗 {meta.getKeyLabel}
-            </button>
-          </div>
+            </Flex>
+          </Box>
 
-          <label style={{ fontSize: 11, color: 'var(--node-text-dim)', display: 'block', marginBottom: 5 }}>
+          <Box as="label" fontSize="11px" color="var(--node-text-dim)" display="block" mb="5px">
             {meta.keyLabel}
-          </label>
+          </Box>
 
-          <div style={{ display: 'flex', gap: 6 }}>
-            <input
+          <Flex gap="6px">
+            <Box
+              as="input"
               type={showKey ? 'text' : 'password'}
               value={keyValue}
-              onChange={(e) => onKeyChange(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => onKeyChange(e.target.value)}
               placeholder={meta.keyPlaceholder}
-              onKeyDown={(e) => e.key === 'Enter' && onSave()}
-              style={{
-                flex: 1, padding: '7px 10px', borderRadius: 4, fontSize: 12,
-                background: theme === 'light' ? '#ffffff' : 'var(--vscode-input-background, rgba(255,255,255,0.07))',
-                border: `1px solid ${theme === 'light' ? 'rgba(0,0,0,0.2)' : 'var(--vscode-input-border, rgba(255,255,255,0.15))'}`,
-                color: 'var(--node-text)', outline: 'none',
-              }}
+              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && onSave()}
+              flex={1}
+              py="7px"
+              px="10px"
+              borderRadius="4px"
+              fontSize="12px"
+              bg={theme === 'light' ? '#ffffff' : 'var(--vscode-input-background, rgba(255,255,255,0.07))'}
+              border={`1px solid ${theme === 'light' ? 'rgba(0,0,0,0.2)' : 'var(--vscode-input-border, rgba(255,255,255,0.15))'}`}
+              color="var(--node-text)"
+              outline="none"
             />
-            <button onClick={onToggleShow} style={{ ...btn('ghost'), padding: '0 8px' }}>
+            <BtnBox variant="ghost" onClick={onToggleShow} px="8px">
               {showKey ? '숨김' : '표시'}
-            </button>
-          </div>
+            </BtnBox>
+          </Flex>
 
-          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-            <button onClick={onSave} disabled={saving || !keyValue.trim()} style={btn('primary')}>
+          <Flex gap="6px" mt="8px">
+            <BtnBox variant="primary" onClick={onSave} disabled={saving || !keyValue.trim()}>
               {saving ? '저장 중...' : connected ? 'Update' : 'Connect'}
-            </button>
+            </BtnBox>
             {connected && (
-              <button onClick={onDisconnect} style={btn('danger')}>연결 해제</button>
+              <BtnBox variant="danger" onClick={onDisconnect}>연결 해제</BtnBox>
             )}
-          </div>
-        </div>
+          </Flex>
+        </Box>
       )}
-    </div>
+    </Box>
   );
 }
 
-function btn(variant: 'primary' | 'ghost' | 'active' | 'danger'): React.CSSProperties {
-  const base: React.CSSProperties = {
-    padding: '4px 12px', borderRadius: 4, fontSize: 11,
-    cursor: 'pointer', fontFamily: 'inherit',
-  };
-  if (variant === 'primary') return { ...base, background: 'var(--vscode-button-background, #0e639c)', color: 'var(--vscode-button-foreground, #fff)', border: 'none' };
-  if (variant === 'ghost')   return { ...base, background: 'transparent', color: 'var(--node-text)', border: '1px solid var(--node-border)' };
-  if (variant === 'active')  return { ...base, background: 'rgba(99,102,241,0.2)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.4)' };
-  if (variant === 'danger')  return { ...base, background: 'rgba(239,68,68,0.12)', color: 'var(--diff-rm-sign)', border: '1px solid rgba(239,68,68,0.2)' };
-  return base;
+function BtnBox({
+  variant, children, onClick, disabled, px,
+}: {
+  variant: 'primary' | 'ghost' | 'active' | 'danger';
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  px?: string;
+}) {
+  const styles = {
+    primary: { bg: 'var(--vscode-button-background, #0e639c)', color: 'var(--vscode-button-foreground, #fff)', border: 'none' },
+    ghost:   { bg: 'transparent', color: 'var(--node-text)', border: '1px solid var(--node-border)' },
+    active:  { bg: 'rgba(99,102,241,0.2)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.4)' },
+    danger:  { bg: 'rgba(239,68,68,0.12)', color: 'var(--diff-rm-sign)', border: '1px solid rgba(239,68,68,0.2)' },
+  }[variant];
+
+  return (
+    <Box
+      as="button"
+      py="4px"
+      px={px ?? '12px'}
+      borderRadius="4px"
+      fontSize="11px"
+      cursor={disabled ? 'not-allowed' : 'pointer'}
+      fontFamily="inherit"
+      disabled={disabled}
+      opacity={disabled ? 0.5 : 1}
+      onClick={onClick}
+      {...styles}
+    >
+      {children}
+    </Box>
+  );
 }

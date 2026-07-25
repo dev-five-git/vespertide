@@ -430,7 +430,7 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
 
         {/* Summary */}
         <Flex py="4px" px="10px" fontSize="10px" gap="6px" alignItems="center" color="var(--node-text-dim)" flexShrink={0}>
-          <span>{files.length} files</span>
+          <Box as="span">{files.length} files</Box>
           {totalAdds    > 0 && <Box as="span" color="var(--diff-add-sign)">+{totalAdds}</Box>}
           {totalRemoves > 0 && <Box as="span" color="var(--diff-rm-sign)">−{totalRemoves}</Box>}
           {!hasReal && (
