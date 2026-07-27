@@ -60,7 +60,7 @@ export default function OrmConverter({ state, setState }: Props) {
                 border="1px solid"
                 borderColor={
                   isCurrent ? 'var(--focusBorder)'
-                  : isTarget ? 'var(--vscode-charts-green, #4caf50)'
+                  : isTarget ? 'var(--chartsGreen)'
                   : 'var(--inputBorder)'
                 }
                 borderRadius="4px"
@@ -114,7 +114,7 @@ export default function OrmConverter({ state, setState }: Props) {
             px="18px"
             bg={canConvert
               ? 'var(--btnBg)'
-              : 'var(--vscode-button-secondaryBackground, #3a3a3a)'}
+              : 'var(--btnSecBg)'}
             color="$btnFg"
             border="none"
             borderRadius="3px"
