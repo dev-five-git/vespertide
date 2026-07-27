@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Box, Flex } from '@devup-ui/react';
+import { Box, Flex, VStack } from '@devup-ui/react';
 import { postMessage, onMessage } from './vscode';
 import type { ConnectorService, ConnectorStatus, ChatMessage } from './vscode';
 
@@ -136,21 +136,19 @@ export default function AIAgentApp() {
   }
 
   return (
-    <Box
+    <VStack
       data-theme={theme}
-      display="flex"
-      flexDir="column"
       h="100vh"
-      bg="var(--vscode-editor-background, #1e1e1e)"
-      color="var(--vscode-foreground, #ccc)"
-      fontFamily="var(--vscode-font-family, sans-serif)"
+      bg="$editorBg"
+      color="$fg"
+      fontFamily="$appFont"
     >
       {/* ── Header / Tab bar ── */}
       <Flex
         alignItems="stretch"
         flexShrink={0}
-        borderBottom="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
-        bg="var(--vscode-editorGroupHeader-tabsBackground, #2d2d2d)"
+        borderBottom="1px solid var(--border)"
+        bg="$tabsBg"
       >
         <Flex alignItems="center" gap="6px" px="14px" flexShrink={0}>
           <Box as="span" fontSize="15px">🤖</Box>
@@ -168,7 +166,7 @@ export default function AIAgentApp() {
               border="none"
               cursor="pointer"
               bg="transparent"
-              borderBottom={view === v ? '2px solid var(--vscode-focusBorder, #007acc)' : '2px solid transparent'}
+              borderBottom={view === v ? '2px solid var(--focusBorder)' : '2px solid transparent'}
               color={view === v ? 'var(--node-text)' : 'var(--node-text-dim)'}
               fontSize="12px"
               fontWeight={view === v ? 600 : 400}
@@ -236,10 +234,10 @@ export default function AIAgentApp() {
 
       {/* ── Chat view ── */}
       {view === 'chat' && (
-        <Flex flex={1} flexDir="column" overflow="hidden">
+        <VStack flex={1} overflow="hidden">
           <Box flex={1} overflow="auto" px="20px" py="16px">
             {messages.length === 0 && (
-              <Flex flexDir="column" alignItems="center" color="var(--node-text-dim)" fontSize="13px" textAlign="center" mt="60px" lineHeight={1.9}>
+              <VStack alignItems="center" color="var(--node-text-dim)" fontSize="13px" textAlign="center" mt="60px" lineHeight={1.9}>
                 <Box fontSize="36px" mb="10px">🤖</Box>
                 <Box fontWeight={600} color="var(--node-text)">Vespertide AI Agent</Box>
                 {connectedAIs.length === 0 ? (
@@ -269,7 +267,7 @@ export default function AIAgentApp() {
                     "Post 테이블에 인덱스를 추가하면 좋을까?"
                   </Box>
                 )}
-              </Flex>
+              </VStack>
             )}
 
             {messages.map((m, i) => {
@@ -284,7 +282,7 @@ export default function AIAgentApp() {
                     py="10px"
                     px="14px"
                     borderRadius={isUser ? '14px 14px 3px 14px' : '14px 14px 14px 3px'}
-                    bg={theme === 'light' ? '#ffffff' : isUser ? 'rgba(99,102,241,0.15)' : 'var(--vscode-editorWidget-background, rgba(255,255,255,0.05))'}
+                    bg={theme === 'light' ? '#ffffff' : isUser ? 'rgba(99,102,241,0.15)' : 'var(--widgetBg)'}
                     border={theme === 'light' ? '1px solid rgba(0,0,0,0.18)' : `1px solid ${isUser ? 'rgba(99,102,241,0.4)' : 'var(--node-border)'}`}
                     fontSize="13px"
                     lineHeight={1.7}
@@ -311,8 +309,8 @@ export default function AIAgentApp() {
             py="10px"
             px="16px"
             flexShrink={0}
-            borderTop="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
-            bg="var(--vscode-sideBar-background, #252526)"
+            borderTop="1px solid var(--border)"
+            bg="$sidebarBg"
             gap="8px"
             alignItems="flex-end"
           >
@@ -329,8 +327,8 @@ export default function AIAgentApp() {
               px="12px"
               borderRadius="6px"
               fontSize="12px"
-              bg={theme === 'light' ? '#ffffff' : 'var(--vscode-input-background, rgba(255,255,255,0.06))'}
-              border={`1px solid ${theme === 'light' ? 'rgba(0,0,0,0.2)' : 'var(--vscode-input-border, rgba(255,255,255,0.15))'}`}
+              bg={theme === 'light' ? '#ffffff' : '$inputBg'}
+              border={`1px solid ${theme === 'light' ? 'rgba(0,0,0,0.2)' : 'var(--inputBorder)'}`}
               color="var(--node-text)"
               outline="none"
               resize="none"
@@ -350,11 +348,11 @@ export default function AIAgentApp() {
               cursor="pointer"
               fontSize="12px"
               fontWeight={600}
-              bg={!input.trim() || loading ? 'rgba(99,102,241,0.15)' : 'var(--vscode-button-background, #0e639c)'}
-              color={!input.trim() || loading ? 'var(--node-text-dim)' : 'var(--vscode-button-foreground, #fff)'}
+              bg={!input.trim() || loading ? 'rgba(99,102,241,0.15)' : '$btnBg'}
+              color={!input.trim() || loading ? 'var(--node-text-dim)' : '$btnFg'}
             >전송</Box>
           </Flex>
-        </Flex>
+        </VStack>
       )}
 
       {/* ── Connectors view ── */}
@@ -405,7 +403,7 @@ export default function AIAgentApp() {
           ))}
         </Box>
       )}
-    </Box>
+    </VStack>
   );
 }
 
@@ -453,7 +451,7 @@ function ConnectorItem({
           h="36px"
           borderRadius="8px"
           flexShrink={0}
-          bg="var(--vscode-editorWidget-background, rgba(255,255,255,0.05))"
+          bg="$widgetBg"
           border="1px solid var(--node-border)"
           alignItems="center"
           justifyContent="center"
@@ -505,7 +503,7 @@ function ConnectorItem({
         <Box
           py="16px"
           px="18px"
-          bg="var(--vscode-sideBar-background, rgba(0,0,0,0.15))"
+          bg="$sidebarBg"
           borderTop="1px solid var(--node-field-divider)"
         >
           <Box
@@ -563,8 +561,8 @@ function ConnectorItem({
               px="10px"
               borderRadius="4px"
               fontSize="12px"
-              bg={theme === 'light' ? '#ffffff' : 'var(--vscode-input-background, rgba(255,255,255,0.07))'}
-              border={`1px solid ${theme === 'light' ? 'rgba(0,0,0,0.2)' : 'var(--vscode-input-border, rgba(255,255,255,0.15))'}`}
+              bg={theme === 'light' ? '#ffffff' : '$inputBg'}
+              border={`1px solid ${theme === 'light' ? 'rgba(0,0,0,0.2)' : 'var(--inputBorder)'}`}
               color="var(--node-text)"
               outline="none"
             />
@@ -597,7 +595,7 @@ function BtnBox({
   px?: string;
 }) {
   const styles = {
-    primary: { bg: 'var(--vscode-button-background, #0e639c)', color: 'var(--vscode-button-foreground, #fff)', border: 'none' },
+    primary: { bg: '$btnBg', color: '$btnFg', border: 'none' },
     ghost:   { bg: 'transparent', color: 'var(--node-text)', border: '1px solid var(--node-border)' },
     active:  { bg: 'rgba(99,102,241,0.2)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.4)' },
     danger:  { bg: 'rgba(239,68,68,0.12)', color: 'var(--diff-rm-sign)', border: '1px solid rgba(239,68,68,0.2)' },

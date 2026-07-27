@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Flex } from '@devup-ui/react';
+import { Box, Flex, VStack } from '@devup-ui/react';
 import { onMessage } from './vscode';
 import type { HostMessage, OrmType, Schema } from './vscode';
 import OrmEditor from './tabs/OrmEditor';
@@ -188,12 +188,12 @@ export default function App() {
   }, []);
 
   return (
-    <Box data-theme={state.theme} display="flex" flexDir="column" h="100vh">
+    <VStack data-theme={state.theme} h="100vh">
       <Flex
         role="tablist"
         alignItems="stretch"
-        borderBottom="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
-        bg="var(--vscode-editorGroupHeader-tabsBackground, #2d2d2d)"
+        borderBottom="1px solid var(--border)"
+        bg="$tabsBg"
         flexShrink={0}
       >
         {TABS.map(({ id, label }) => (
@@ -207,13 +207,9 @@ export default function App() {
             py="8px"
             px="4px"
             border="none"
-            borderBottom={tab === id
-              ? '2px solid var(--vscode-focusBorder, #007acc)'
-              : '2px solid transparent'}
+            borderBottom={tab === id ? '2px solid var(--focusBorder)' : '2px solid transparent'}
             bg="transparent"
-            color={tab === id
-              ? 'var(--vscode-foreground)'
-              : 'var(--vscode-tab-inactiveForeground, #8e8e8e)'}
+            color={tab === id ? '$fg' : '$inactiveFg'}
             fontSize="11px"
             fontWeight={tab === id ? 600 : 400}
             cursor="pointer"
@@ -233,7 +229,7 @@ export default function App() {
           border="none"
           borderBottom="2px solid transparent"
           bg="transparent"
-          color="var(--vscode-tab-inactiveForeground, #8e8e8e)"
+          color="$inactiveFg"
           cursor="pointer"
           display="flex"
           alignItems="center"
@@ -250,8 +246,8 @@ export default function App() {
         <Box
           py="6px"
           px="12px"
-          bg="var(--vscode-inputValidation-errorBackground, rgba(90,29,29,0.9))"
-          color="var(--vscode-inputValidation-errorForeground, #f48771)"
+          bg="$errBg"
+          color="$errFg"
           fontSize="12px"
           flexShrink={0}
         >
@@ -264,6 +260,6 @@ export default function App() {
         {tab === 'migration' && <MigrationDiff state={state} setState={setState} />}
         {tab === 'export'    && <Export       state={state} setState={setState} />}
       </Box>
-    </Box>
+    </VStack>
   );
 }

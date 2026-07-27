@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, Flex } from '@devup-ui/react';
+import { Box, Flex, VStack } from '@devup-ui/react';
 import { postMessage } from '../vscode';
 import type { AppState } from '../App';
 
@@ -379,11 +379,10 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
     <Flex h="100%" overflow="hidden">
 
       {/* ── Left: file list ── */}
-      <Flex
+      <VStack
         w="224px"
         flexShrink={0}
-        flexDir="column"
-        borderRight="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+        borderRight="1px solid var(--border)"
         bg="var(--diff-sidebar-bg, #252526)"
         color="var(--diff-sidebar-text, #cccccc)"
       >
@@ -395,7 +394,7 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
           flexShrink={0}
           alignItems="center"
           justifyContent="space-between"
-          borderBottom="1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))"
+          borderBottom="1px solid var(--border)"
         >
           <Box as="span" fontSize="10px" fontWeight={700} letterSpacing="0.08em" color="var(--node-text-dim)">
             CHANGES
@@ -404,7 +403,7 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
           <Flex
             gap="1px"
             p="2px"
-            bg="var(--vscode-editorWidget-background, rgba(0,0,0,0.25))"
+            bg="$widgetBg"
             borderRadius="5px"
             border="1px solid var(--node-border)"
           >
@@ -420,7 +419,7 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
                 cursor="pointer"
                 fontSize="10px"
                 fontWeight={600}
-                bg={dialect === d ? 'var(--vscode-button-background, #0e639c)' : 'transparent'}
+                bg={dialect === d ? 'var(--btnBg)' : 'transparent'}
                 color={dialect === d ? '#fff' : 'var(--node-text-dim)'}
                 transition="background 0.1s"
               >{DIALECT_LABELS[d]}</Box>
@@ -463,7 +462,7 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
                 px="10px"
                 cursor="pointer"
                 bg={isSel ? 'rgba(99,102,241,0.15)' : 'transparent'}
-                borderLeft={isSel ? '2px solid var(--vscode-focusBorder, #007acc)' : '2px solid transparent'}
+                borderLeft={isSel ? '2px solid var(--focusBorder)' : '2px solid transparent'}
               >
                 <Box as="span" fontSize="11px" color="var(--node-text-dim)" flexShrink={0}>
                   {f.kind === 'index' ? '⊞' : '≡'}
@@ -480,10 +479,10 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
             );
           })}
         </Box>
-      </Flex>
+      </VStack>
 
       {/* ── Right: diff viewer ── */}
-      <Flex flex={1} flexDir="column" overflow="hidden">
+      <VStack flex={1} overflow="hidden">
 
         {/* File header */}
         {selected && (
@@ -493,7 +492,7 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
             py="5px"
             px="12px"
             flexShrink={0}
-            borderBottom="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+            borderBottom="1px solid var(--border)"
             bg="var(--diff-header-bg, #2d2d2d)"
             color="var(--diff-header-text, #cccccc)"
             fontSize="12px"
@@ -524,7 +523,7 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
           flex={1}
           overflow="auto"
           bg="var(--diff-bg, #1e1e1e)"
-          fontFamily="var(--vscode-editor-font-family, Consolas, 'Courier New', monospace)"
+          fontFamily="$editorFont"
           fontSize="12px"
           lineHeight="20px"
         >
@@ -564,7 +563,7 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
                 lineHeight="20px"
                 userSelect="none"
                 color="var(--diff-linenum)"
-                borderRight="1px solid var(--vscode-panel-border, rgba(128,128,128,0.2))"
+                borderRight="1px solid var(--border)"
                 mr="4px"
               >{line.newNum ?? ''}</Box>
               {/* +/- sign */}
@@ -600,7 +599,7 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
             </Flex>
           ))}
         </Box>
-      </Flex>
+      </VStack>
     </Flex>
   );
 }

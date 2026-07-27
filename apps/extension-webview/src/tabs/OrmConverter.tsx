@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, Flex } from '@devup-ui/react';
+import { Box, Flex, VStack } from '@devup-ui/react';
 import { postMessage } from '../vscode';
 import type { OrmType } from '../vscode';
 import type { AppState } from '../App';
@@ -33,12 +33,10 @@ export default function OrmConverter({ state, setState }: Props) {
   };
 
   return (
-    <Box
+    <VStack
       p="16px"
       h="100%"
       overflow="auto"
-      display="flex"
-      flexDir="column"
       gap="16px"
     >
       {/* ORM buttons */}
@@ -61,19 +59,19 @@ export default function OrmConverter({ state, setState }: Props) {
                 px="14px"
                 border="1px solid"
                 borderColor={
-                  isCurrent ? 'var(--vscode-focusBorder, #007acc)'
+                  isCurrent ? 'var(--focusBorder)'
                   : isTarget ? 'var(--vscode-charts-green, #4caf50)'
-                  : 'var(--vscode-input-border, rgba(255,255,255,0.2))'
+                  : 'var(--inputBorder)'
                 }
                 borderRadius="4px"
                 bg={
-                  isCurrent ? 'var(--vscode-button-background, #0e639c)'
+                  isCurrent ? 'var(--btnBg)'
                   : isTarget ? 'rgba(76,175,80,0.15)'
                   : 'transparent'
                 }
                 color={
-                  isCurrent ? 'var(--vscode-button-foreground, #fff)'
-                  : 'var(--vscode-foreground)'
+                  isCurrent ? 'var(--btnFg)'
+                  : 'var(--fg)'
                 }
                 fontSize="12px"
                 opacity={isCurrent ? 1 : 0.9}
@@ -96,8 +94,8 @@ export default function OrmConverter({ state, setState }: Props) {
           py="12px"
           px="16px"
           borderRadius="4px"
-          bg="var(--vscode-editorWidget-background, #252526)"
-          border="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+          bg="$widgetBg"
+          border="1px solid var(--border)"
           alignItems="center"
           justifyContent="space-between"
           gap="12px"
@@ -115,9 +113,9 @@ export default function OrmConverter({ state, setState }: Props) {
             py="6px"
             px="18px"
             bg={canConvert
-              ? 'var(--vscode-button-background, #0e639c)'
+              ? 'var(--btnBg)'
               : 'var(--vscode-button-secondaryBackground, #3a3a3a)'}
-            color="var(--vscode-button-foreground, #fff)"
+            color="$btnFg"
             border="none"
             borderRadius="3px"
             fontSize="12px"
@@ -138,7 +136,7 @@ export default function OrmConverter({ state, setState }: Props) {
 
       {/* Current source preview */}
       {state.ormSource && (
-        <Box flex={1} overflow="hidden" display="flex" flexDir="column">
+        <VStack flex={1} overflow="hidden">
           <Box fontSize="11px" opacity={0.55} mb="6px">
             현재 스키마 ({ORM_LABELS[state.ormType]})
           </Box>
@@ -148,18 +146,18 @@ export default function OrmConverter({ state, setState }: Props) {
             p="12px"
             flex={1}
             overflow="auto"
-            bg="var(--vscode-editor-background, #1e1e1e)"
+            bg="$editorBg"
             borderRadius="4px"
             fontSize="12px"
-            fontFamily="var(--vscode-editor-font-family, Consolas, 'Courier New', monospace)"
-            color="var(--vscode-editor-foreground, #d4d4d4)"
+            fontFamily="$editorFont"
+            color="$editorFg"
             lineHeight={1.5}
             whiteSpace="pre"
           >
             {state.ormSource}
           </Box>
-        </Box>
+        </VStack>
       )}
-    </Box>
+    </VStack>
   );
 }

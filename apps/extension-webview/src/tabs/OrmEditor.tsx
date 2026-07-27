@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Box, Flex } from '@devup-ui/react';
+import { Box, Flex, VStack } from '@devup-ui/react';
 import { postMessage } from '../vscode';
 import type { OrmType } from '../vscode';
 import type { AppState } from '../App';
@@ -470,13 +470,13 @@ const navBtnProps = (active = false) => ({
   borderRadius: '5px',
   cursor: 'pointer' as const,
   bg: active ? 'rgba(99,102,241,0.18)' : 'transparent',
-  color: active ? '#a5b4fc' : 'var(--vscode-foreground)',
+  color: active ? '#a5b4fc' : 'var(--fg)',
   opacity: active ? 1 : 0.7,
   transition: 'background 0.12s, color 0.12s, opacity 0.12s',
 });
 
 const NavDivider = () => (
-  <Box w="1px" h="16px" bg="var(--vscode-panel-border, rgba(255,255,255,0.12))" mx="3px" flexShrink={0} />
+  <Box w="1px" h="16px" bg="var(--border)" mx="3px" flexShrink={0} />
 );
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -829,7 +829,7 @@ export default function OrmEditor({ state, setState }: Props) {
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
-    <Flex flexDir="column" h="100%">
+    <VStack h="100%">
 
       {/* ── Toolbar ── */}
       <Flex
@@ -837,18 +837,18 @@ export default function OrmEditor({ state, setState }: Props) {
         py="5px"
         px="10px"
         flexShrink={0}
-        bg="var(--vscode-editorWidget-background, #252526)"
-        borderBottom="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+        bg="$widgetBg"
+        borderBottom="1px solid var(--border)"
       >
         <Box flex={1} />
         <Box
           as="button"
           py="2px"
           px="8px"
-          border={showCode ? '1px solid var(--vscode-focusBorder,#007acc)' : '1px solid rgba(255,255,255,0.15)'}
+          border={showCode ? '1px solid var(--focusBorder)' : '1px solid rgba(255,255,255,0.15)'}
           borderRadius="3px"
           bg={showCode ? 'rgba(0,122,204,0.15)' : 'transparent'}
-          color="var(--vscode-foreground)"
+          color="$fg"
           fontSize="11px"
           cursor="pointer"
           onClick={() => setShowCode((v) => !v)}
@@ -871,7 +871,7 @@ export default function OrmEditor({ state, setState }: Props) {
           position="relative"
           overflow="hidden"
           cursor={lockMode ? 'grab' : 'default'}
-          bg="var(--vscode-editor-background, #1e1e1e)"
+          bg="$editorBg"
         >
           {/* Dot grid */}
           <Box
@@ -1030,7 +1030,7 @@ export default function OrmEditor({ state, setState }: Props) {
                     {sel && !draggingEndpoint && (
                       <circle
                         cx={x2} cy={y2} r={5}
-                        fill="#818cf8" stroke="var(--vscode-editor-background,#1e1e1e)" strokeWidth={1.5}
+                        fill="#818cf8" stroke="var(--editorBg)" strokeWidth={1.5}
                         style={{ pointerEvents: 'all', cursor: 'grab' }}
                         onMouseDown={(e) => startEndpointDrag(e, edge)}
                       />
@@ -1163,7 +1163,7 @@ export default function OrmEditor({ state, setState }: Props) {
                         as="span"
                         fontSize="10px"
                         flexShrink={0}
-                        fontFamily="var(--vscode-editor-font-family, monospace)"
+                        fontFamily="$editorFont"
                         color={f.isPrimary ? '#f59e0b' : f.isRelation ? color : 'var(--node-text-dim)'}
                       >
                         {f.type}
@@ -1340,7 +1340,7 @@ export default function OrmEditor({ state, setState }: Props) {
                       border="none"
                       bg="transparent"
                       _hover={{ bg: 'rgba(99,102,241,0.15)' }}
-                      color="var(--vscode-foreground)"
+                      color="$fg"
                       fontSize="11px"
                       textAlign="left"
                       cursor="pointer"
@@ -1368,12 +1368,11 @@ export default function OrmEditor({ state, setState }: Props) {
 
         {/* Detail panel */}
         {(selected || selectedEdge) && (
-          <Flex
+          <VStack
             w="276px"
             flexShrink={0}
-            borderLeft="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
-            flexDir="column"
-            bg="var(--vscode-sideBar-background, #252526)"
+            borderLeft="1px solid var(--border)"
+            bg="$sidebarBg"
             animation="slideInRight 0.15s ease-out"
           >
             {selected ? (
@@ -1385,7 +1384,7 @@ export default function OrmEditor({ state, setState }: Props) {
                   py="10px"
                   px="14px"
                   flexShrink={0}
-                  borderBottom="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+                  borderBottom="1px solid var(--border)"
                 >
                   <Flex alignItems="center" gap="8px" minW={0}>
                     <Box w="10px" h="10px" borderRadius="50%" bg={modelColor(selected.name)} flexShrink={0} />
@@ -1400,8 +1399,8 @@ export default function OrmEditor({ state, setState }: Props) {
                       borderRadius="10px"
                       flexShrink={0}
                       bg="rgba(99,102,241,0.15)"
-                      color="var(--vscode-focusBorder, #4f46e5)"
-                      border="1px solid var(--vscode-focusBorder, #4f46e5)"
+                      color="var(--focusBorder)"
+                      border="1px solid var(--focusBorder)"
                       fontWeight={600}
                     >{state.ormType}</Box>
                   </Flex>
@@ -1448,7 +1447,7 @@ export default function OrmEditor({ state, setState }: Props) {
                 <Box
                   flex={1}
                   overflow="auto"
-                  fontFamily="var(--vscode-editor-font-family, Consolas, monospace)"
+                  fontFamily="$editorFont"
                   fontSize="11px"
                   lineHeight="18px"
                   color="var(--diff-text, #d4d4d4)"
@@ -1465,7 +1464,7 @@ export default function OrmEditor({ state, setState }: Props) {
                         color="var(--diff-linenum, rgba(255,255,255,0.25))"
                         userSelect="none"
                         lineHeight="18px"
-                        borderRight="1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))"
+                        borderRight="1px solid var(--border)"
                       >{i + 1}</Box>
                       <Box as="span" pl="10px" whiteSpace="pre" lineHeight="18px">{line}</Box>
                     </Flex>
@@ -1482,10 +1481,10 @@ export default function OrmEditor({ state, setState }: Props) {
                           onClick={(e: React.MouseEvent) => { e.stopPropagation(); openAddRelForm(selected.name); }}
                           w="100%"
                           py="5px"
-                          border="1px dashed var(--vscode-focusBorder, #4f46e5)"
+                          border="1px dashed var(--focusBorder)"
                           borderRadius="5px"
                           bg="transparent"
-                          color="var(--vscode-focusBorder, #4f46e5)"
+                          color="var(--focusBorder)"
                           fontSize="11px"
                           cursor="pointer"
                         >+ Relation 추가</Box>
@@ -1512,7 +1511,7 @@ export default function OrmEditor({ state, setState }: Props) {
                   py="10px"
                   px="14px"
                   flexShrink={0}
-                  borderBottom="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+                  borderBottom="1px solid var(--border)"
                 >
                   <Flex alignItems="center" gap="8px">
                     <Box as="span" fontSize="10px" color="var(--node-text-dim)">⇢</Box>
@@ -1590,17 +1589,16 @@ export default function OrmEditor({ state, setState }: Props) {
                 )}
               </>
             ) : null}
-          </Flex>
+          </VStack>
         )}
       </Flex>
 
       {/* Code drawer */}
       {showCode && (
-        <Flex
+        <VStack
           h="220px"
           flexShrink={0}
-          borderTop="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
-          flexDir="column"
+          borderTop="1px solid var(--border)"
           animation="slideInUp 0.15s ease-out"
         >
           {/* ORM type tabs */}
@@ -1610,7 +1608,7 @@ export default function OrmEditor({ state, setState }: Props) {
             px="10px"
             flexShrink={0}
             alignItems="center"
-            borderBottom="1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))"
+            borderBottom="1px solid var(--border)"
             bg="var(--diff-header-bg, #2d2d2d)"
           >
             {ORM_TYPES.map((orm) => (
@@ -1624,9 +1622,9 @@ export default function OrmEditor({ state, setState }: Props) {
                 borderRadius="3px"
                 fontSize="10px"
                 cursor="pointer"
-                borderColor={state.ormType === orm ? 'var(--vscode-focusBorder, #007acc)' : 'var(--node-text)'}
-                bg={state.ormType === orm ? 'var(--vscode-button-background, #0e639c)' : 'transparent'}
-                color={state.ormType === orm ? 'var(--vscode-button-foreground, #fff)' : 'var(--diff-header-text, #cccccc)'}
+                borderColor={state.ormType === orm ? 'var(--focusBorder)' : 'var(--node-text)'}
+                bg={state.ormType === orm ? '$btnBg' : 'transparent'}
+                color={state.ormType === orm ? '$btnFg' : 'var(--diff-header-text, #cccccc)'}
               >{orm}</Box>
             ))}
           </Flex>
@@ -1636,7 +1634,7 @@ export default function OrmEditor({ state, setState }: Props) {
             flex={1}
             overflow="hidden"
             bg="var(--diff-bg, #1e1e1e)"
-            fontFamily="var(--vscode-editor-font-family, Consolas, 'Courier New', monospace)"
+            fontFamily="$editorFont"
             fontSize="12px"
           >
             {/* Gutter */}
@@ -1653,7 +1651,7 @@ export default function OrmEditor({ state, setState }: Props) {
               lineHeight="20px"
               userSelect="none"
               overflowY="hidden"
-              borderRight="1px solid var(--vscode-panel-border, rgba(255,255,255,0.08))"
+              borderRight="1px solid var(--border)"
               bg="var(--diff-bg, #1e1e1e)"
             >
               {state.ormSource.split('\n').map((_, i) => (
@@ -1684,9 +1682,9 @@ export default function OrmEditor({ state, setState }: Props) {
               overflowY="auto"
             />
           </Flex>
-        </Flex>
+        </VStack>
       )}
-    </Flex>
+    </VStack>
   );
 }
 
@@ -1772,7 +1770,7 @@ function AddRelFormPanel({
               fontSize="10px"
               borderRadius="3px"
               border="1px solid"
-              borderColor={form.relType === t ? 'var(--vscode-focusBorder,#007acc)' : 'var(--node-border)'}
+              borderColor={form.relType === t ? 'var(--focusBorder)' : 'var(--node-border)'}
               bg={form.relType === t ? 'rgba(99,102,241,0.15)' : 'transparent'}
               color="var(--node-text)"
               cursor="pointer"
@@ -1840,8 +1838,8 @@ function AddRelFormPanel({
           py="5px"
           borderRadius="3px"
           border="none"
-          bg="var(--vscode-button-background, #0e639c)"
-          color="var(--vscode-button-foreground, #fff)"
+          bg="$btnBg"
+          color="$btnFg"
           fontSize="11px"
           cursor="pointer"
         >추가</Box>

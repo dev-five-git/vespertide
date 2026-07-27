@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Box, Flex } from '@devup-ui/react';
+import { Box, Flex, VStack } from '@devup-ui/react';
 import { postMessage, onMessage } from '../vscode';
 import type { AppState } from '../App';
 import { DEFAULT_SCHEMAS } from '../App';
@@ -206,12 +206,11 @@ export default function Export({ state }: Props) {
     <Flex h="100%" overflow="hidden">
 
       {/* ── Left sidebar ── */}
-      <Flex
+      <VStack
         w="220px"
         flexShrink={0}
-        flexDir="column"
-        borderRight="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
-        bg="var(--vscode-sideBar-background, #252526)"
+        borderRight="1px solid var(--border)"
+        bg="$sidebarBg"
         overflow="hidden"
       >
         <Box flex={1} overflow="auto" minH={0}>
@@ -235,10 +234,10 @@ export default function Export({ state }: Props) {
               onClick={() => setPanel({ kind: 'file', id: f.id })} />
           ))}
         </Box>
-      </Flex>
+      </VStack>
 
       {/* ── Right panel ── */}
-      <Flex flex={1} flexDir="column" overflow="hidden">
+      <VStack flex={1} overflow="hidden">
 
         {panel.kind === 'file' && selectedFile && (
           <>
@@ -252,7 +251,7 @@ export default function Export({ state }: Props) {
           </>
         )}
 
-      </Flex>
+      </VStack>
     </Flex>
   );
 }
@@ -285,7 +284,7 @@ function FileRow({ f, active, onClick }: { f: ExportFile; active: boolean; onCli
       px="10px"
       cursor="pointer"
       bg={active ? 'rgba(99,102,241,0.15)' : 'transparent'}
-      borderLeft={active ? '2px solid var(--vscode-focusBorder, #007acc)' : '2px solid transparent'}
+      borderLeft={active ? '2px solid var(--focusBorder)' : '2px solid transparent'}
     >
       <Box as="span" fontSize="10px" color="var(--node-text-dim)" flexShrink={0}>
         {f.ext === '.sql' ? '≡' : f.ext === '.svg' || f.ext === '.pdf' ? '◫' : '{ }'}
@@ -310,14 +309,14 @@ function ConnectorRow({ meta, connected, active, onClick }: {
       px="10px"
       cursor="pointer"
       bg={active ? 'rgba(99,102,241,0.12)' : 'transparent'}
-      borderLeft={active ? '2px solid var(--vscode-focusBorder, #007acc)' : '2px solid transparent'}
+      borderLeft={active ? '2px solid var(--focusBorder)' : '2px solid transparent'}
     >
       <Flex
         w="22px"
         h="22px"
         borderRadius="5px"
         flexShrink={0}
-        bg="var(--vscode-editorWidget-background)"
+        bg="$widgetBg"
         border="1px solid var(--node-border)"
         alignItems="center"
         justifyContent="center"
@@ -349,8 +348,8 @@ function FileHeader({ file, copied, onCopy, onSave }: {
       py="5px"
       px="12px"
       flexShrink={0}
-      borderBottom="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
-      bg="var(--vscode-editorGroupHeader-tabsBackground, #2d2d2d)"
+      borderBottom="1px solid var(--border)"
+      bg="$tabsBg"
       fontSize="12px"
     >
       <Box as="span" fontWeight={600}>{file.label}</Box>
@@ -390,7 +389,7 @@ function FileHeader({ file, copied, onCopy, onSave }: {
 function FilePreviewBody({ file }: { file: ExportFile }) {
   if (file.id === 'erd-pdf') {
     return (
-      <Box flex={1} overflow="auto" p="24px" bg="var(--vscode-editor-background, #1e1e1e)">
+      <Box flex={1} overflow="auto" p="24px" bg="$editorBg">
         <Box
           py="16px"
           px="20px"
@@ -399,7 +398,7 @@ function FilePreviewBody({ file }: { file: ExportFile }) {
           border="1px solid rgba(99,102,241,0.2)"
           fontSize="13px"
           lineHeight={1.8}
-          color="var(--vscode-editor-foreground, #d4d4d4)"
+          color="var(--editorFg)"
         >
           PDF export converts the ERD diagram SVG to a portable document.{'\n\n'}
           Click "저장" to generate the PDF file.{'\n'}
@@ -411,7 +410,7 @@ function FilePreviewBody({ file }: { file: ExportFile }) {
 
   if (file.id === 'erd-svg' && file.content.startsWith('<svg')) {
     return (
-      <Box flex={1} overflow="auto" p="24px" bg="var(--vscode-editor-background, #1e1e1e)">
+      <Box flex={1} overflow="auto" p="24px" bg="$editorBg">
         <Box dangerouslySetInnerHTML={{ __html: file.content }} maxWidth="100%" />
         <Box mt="16px" fontSize="11px" opacity={0.4}>SVG 소스:</Box>
         <Box
@@ -425,7 +424,7 @@ function FilePreviewBody({ file }: { file: ExportFile }) {
           lineHeight={1.6}
           whiteSpace="pre"
           overflowX="auto"
-          color="var(--vscode-editor-foreground, #d4d4d4)"
+          color="var(--editorFg)"
         >{file.content}</Box>
       </Box>
     );
@@ -435,8 +434,8 @@ function FilePreviewBody({ file }: { file: ExportFile }) {
     <Box
       flex={1}
       overflow="auto"
-      bg="var(--vscode-editor-background, #1e1e1e)"
-      fontFamily="var(--vscode-editor-font-family, Consolas, 'Courier New', monospace)"
+      bg="$editorBg"
+      fontFamily="$editorFont"
       fontSize="12px"
       lineHeight="20px"
     >
@@ -453,7 +452,7 @@ function FilePreviewBody({ file }: { file: ExportFile }) {
             userSelect="none"
             color="var(--diff-linenum)"
           >{i + 1}</Box>
-          <Box as="span" flex={1} pr="16px" lineHeight="20px" whiteSpace="pre" color="var(--vscode-editor-foreground, #d4d4d4)">{line}</Box>
+          <Box as="span" flex={1} pr="16px" lineHeight="20px" whiteSpace="pre" color="var(--editorFg)">{line}</Box>
         </Flex>
       ))}
     </Box>
@@ -465,13 +464,13 @@ function ConnectorPanel({ meta, connected, keyValue, saving, onKeyChange, onSave
   onKeyChange: (v: string) => void; onSave: () => void; onDisconnect: () => void;
 }) {
   return (
-    <Box flex={1} overflow="auto" p="24px" bg="var(--vscode-editor-background, #1e1e1e)">
+    <Box flex={1} overflow="auto" p="24px" bg="$editorBg">
       <Flex alignItems="center" gap="12px" mb="20px">
         <Flex
           w="40px"
           h="40px"
           borderRadius="10px"
-          bg="var(--vscode-editorWidget-background)"
+          bg="$widgetBg"
           border="1px solid var(--node-border)"
           alignItems="center"
           justifyContent="center"
@@ -506,9 +505,9 @@ function ConnectorPanel({ meta, connected, keyValue, saving, onKeyChange, onSave
           px="10px"
           borderRadius="4px"
           fontSize="12px"
-          bg="var(--vscode-input-background, rgba(255,255,255,0.06))"
-          border="1px solid var(--vscode-input-border, rgba(255,255,255,0.15))"
-          color="var(--vscode-foreground, #ccc)"
+          bg="$inputBg"
+          border="1px solid var(--inputBorder)"
+          color="$fg"
           outline="none"
           boxSizing="border-box"
         />
@@ -535,11 +534,11 @@ function ChatPanel({ messages, loading, input, activeAI, connectedAIs, endRef, o
   onInputChange: (v: string) => void; onSend: () => void; onAIChange: (s: ConnectorService) => void;
 }) {
   return (
-    <Flex flex={1} flexDir="column" overflow="hidden" bg="var(--vscode-editor-background, #1e1e1e)">
+    <VStack flex={1} overflow="hidden" bg="$editorBg">
       <Flex
         py="8px"
         px="12px"
-        borderBottom="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+        borderBottom="1px solid var(--border)"
         alignItems="center"
         gap="8px"
         flexShrink={0}
@@ -592,10 +591,10 @@ function ChatPanel({ messages, loading, input, activeAI, connectedAIs, endRef, o
       <Flex
         py="8px"
         px="12px"
-        borderTop="1px solid var(--vscode-panel-border, rgba(255,255,255,0.1))"
+        borderTop="1px solid var(--border)"
         gap="8px"
         flexShrink={0}
-        bg="var(--vscode-sideBar-background, #252526)"
+        bg="$sidebarBg"
       >
         <Box
           as="input"
@@ -609,14 +608,14 @@ function ChatPanel({ messages, loading, input, activeAI, connectedAIs, endRef, o
           px="10px"
           borderRadius="4px"
           fontSize="12px"
-          bg="var(--vscode-input-background, rgba(255,255,255,0.06))"
-          border="1px solid var(--vscode-input-border, rgba(255,255,255,0.15))"
-          color="var(--vscode-foreground, #ccc)"
+          bg="$inputBg"
+          border="1px solid var(--inputBorder)"
+          color="$fg"
           outline="none"
         />
         <Box as="button" onClick={onSend} disabled={!input.trim() || loading} {...btnStyle('primary')}>전송</Box>
       </Flex>
-    </Flex>
+    </VStack>
   );
 }
 
@@ -635,7 +634,7 @@ function ChatBubble({ message }: { message: ChatMessage }) {
         py="8px"
         px="12px"
         borderRadius={isUser ? '12px 12px 2px 12px' : '12px 12px 12px 2px'}
-        bg={isUser ? 'rgba(99,102,241,0.15)' : 'var(--vscode-editorWidget-background)'}
+        bg={isUser ? 'rgba(99,102,241,0.15)' : 'var(--widgetBg)'}
         border={`1px solid ${isUser ? 'rgba(99,102,241,0.35)' : 'var(--node-border)'}`}
         fontSize="12px"
         lineHeight={1.7}
@@ -662,7 +661,7 @@ function btnStyle(variant: 'primary' | 'default' | 'green' | 'danger') {
     fontFamily: 'inherit',
     flexShrink: 0,
   };
-  if (variant === 'primary') return { ...base, bg: 'var(--vscode-button-background, #0e639c)', color: 'var(--vscode-button-foreground, #fff)' };
+  if (variant === 'primary') return { ...base, bg: '$btnBg', color: '$btnFg' };
   if (variant === 'green')   return { ...base, bg: 'rgba(74,222,128,0.12)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.25)' };
   if (variant === 'danger')  return { ...base, bg: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' };
   return { ...base, bg: 'transparent', color: 'var(--node-text)', border: '1px solid var(--node-border)' };
