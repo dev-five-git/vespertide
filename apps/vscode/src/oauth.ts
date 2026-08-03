@@ -70,6 +70,8 @@ const OAUTH_DEFS: Record<string, OAuthDef> = {
 
 export const OAUTH_SERVICES = new Set(Object.keys(OAUTH_DEFS));
 
+const TOKEN_EXCHANGE_TIMEOUT_MS = 30_000;
+
 // ── PKCE helpers ──────────────────────────────────────────────────────────────
 
 function randomHex(bytes: number) { return crypto.randomBytes(bytes).toString('hex'); }
@@ -208,6 +210,7 @@ async function exchangeToken(
         port: 443,
         path: url.pathname + url.search,
         method: 'POST',
+        timeout: TOKEN_EXCHANGE_TIMEOUT_MS,
         headers,
       },
       (res) => {
@@ -224,6 +227,10 @@ async function exchangeToken(
       },
     );
     req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error(`Token exchange 요청 시간 초과 (${TOKEN_EXCHANGE_TIMEOUT_MS / 1000}초)`));
+    });
     req.write(bodyStr);
     req.end();
   });

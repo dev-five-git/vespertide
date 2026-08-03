@@ -12,7 +12,7 @@ declare function acquireVsCodeApi(): {
 
 export type OrmType = 'prisma' | 'typeorm' | 'drizzle' | 'jpa' | 'sqlalchemy' | 'gorm';
 export type DbDialect = 'postgres' | 'mysql' | 'sqlite';
-export type ConnectorService = 'claude' | 'openai' | 'gemini' | 'slack' | 'notion' | 'jira';
+export type ConnectorService = 'claude' | 'openai' | 'gemini' | 'ollama' | 'slack' | 'notion' | 'jira';
 export type ConnectorStatus = { service: ConnectorService; connected: boolean };
 export type ChatMessage = { role: 'user' | 'assistant'; content: string };
 export type Schema = Record<string, unknown>;
@@ -30,6 +30,8 @@ export type WebviewMessage =
   | { type: 'connector_delete'; service: ConnectorService }
   | { type: 'connector_load' }
   | { type: 'ai_chat'; service: ConnectorService; messages: ChatMessage[]; context: string }
+  | { type: 'ai_chat_cancel' }
+  | { type: 'ollama_check' }
   | { type: 'open_external'; url: string };
 
 // Host → Webview
@@ -40,6 +42,8 @@ export type HostMessage =
   | { type: 'export_done'; path?: string }
   | { type: 'connector_status'; connectors: ConnectorStatus[] }
   | { type: 'ai_response'; content: string; done: boolean }
+  | { type: 'ai_cancelled' }
+  | { type: 'ollama_status'; available: boolean; models: string[] }
   | { type: 'error'; message: string };
 
 // Singleton API handle

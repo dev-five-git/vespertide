@@ -11,6 +11,7 @@ import {
   sendSlack,
   createNotionPage,
   createJiraIssue,
+  checkOllama,
 } from './connectors';
 
 export class AIAgentPanel {
@@ -19,6 +20,7 @@ export class AIAgentPanel {
 
   private readonly _panel: vscode.WebviewPanel;
   private _disposables: vscode.Disposable[] = [];
+  private _pendingAbort: AbortController | undefined;
 
   public static createOrShow(extensionUri: vscode.Uri, ctx: vscode.ExtensionContext): void {
     if (AIAgentPanel._instance) {
@@ -89,28 +91,46 @@ export class AIAgentPanel {
           await vscode.env.openExternal(vscode.Uri.parse(msg.url));
           break;
         }
+        case 'ollama_check': {
+          const status = await checkOllama();
+          this._post({ type: 'ollama_status', ...status });
+          break;
+        }
         case 'ai_chat': {
-          this._post({ type: 'ai_response', content: '', done: false });
-          if (msg.service === 'slack') {
-            const last = msg.messages[msg.messages.length - 1];
-            await sendSlack(last?.content ?? '', this._ctx);
-            this._post({ type: 'ai_response', content: 'Slack 메시지를 전송했습니다.', done: true });
-          } else if (msg.service === 'notion') {
-            const last = msg.messages[msg.messages.length - 1];
-            const url = await createNotionPage('Vespertide 스키마', last?.content ?? msg.context, this._ctx);
-            this._post({ type: 'ai_response', content: `Notion 페이지가 생성되었습니다:\n${url}`, done: true });
-          } else if (msg.service === 'jira') {
-            const last = msg.messages[msg.messages.length - 1];
-            const url = await createJiraIssue('Vespertide 작업', last?.content ?? '', this._ctx);
-            this._post({ type: 'ai_response', content: `Jira 이슈가 생성되었습니다:\n${url}`, done: true });
-          } else {
-            const text = await callAI(msg.service, msg.messages, msg.context, this._ctx);
-            this._post({ type: 'ai_response', content: text, done: true });
+          const controller = new AbortController();
+          this._pendingAbort = controller;
+          try {
+            if (msg.service === 'slack') {
+              const last = msg.messages[msg.messages.length - 1];
+              await sendSlack(last?.content ?? '', this._ctx, controller.signal);
+              this._post({ type: 'ai_response', content: 'Slack 메시지를 전송했습니다.', done: true });
+            } else if (msg.service === 'notion') {
+              const last = msg.messages[msg.messages.length - 1];
+              const url = await createNotionPage('Vespertide 스키마', last?.content ?? msg.context, this._ctx, controller.signal);
+              this._post({ type: 'ai_response', content: `Notion 페이지가 생성되었습니다:\n${url}`, done: true });
+            } else if (msg.service === 'jira') {
+              const last = msg.messages[msg.messages.length - 1];
+              const url = await createJiraIssue('Vespertide 작업', last?.content ?? '', this._ctx, controller.signal);
+              this._post({ type: 'ai_response', content: `Jira 이슈가 생성되었습니다:\n${url}`, done: true });
+            } else {
+              const text = await callAI(msg.service, msg.messages, msg.context, this._ctx, controller.signal);
+              this._post({ type: 'ai_response', content: text, done: true });
+            }
+          } finally {
+            if (this._pendingAbort === controller) this._pendingAbort = undefined;
           }
+          break;
+        }
+        case 'ai_chat_cancel': {
+          this._pendingAbort?.abort();
           break;
         }
       }
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        this._post({ type: 'ai_cancelled' });
+        return;
+      }
       const message = err instanceof Error ? err.message : String(err);
       this._post({ type: 'error', message });
     }

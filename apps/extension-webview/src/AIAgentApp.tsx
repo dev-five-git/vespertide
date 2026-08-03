@@ -39,6 +39,13 @@ const CONNECTORS: ConnectorMeta[] = [
     steps: ['aistudio.google.com 방문', 'Get API Key 클릭', 'Create API key 후 복사'],
   },
   {
+    service: 'ollama', label: 'Ollama', icon: '🦙', subtitle: 'Local · 완전 무료', isAI: true,
+    keyLabel: '', keyPlaceholder: '',
+    getKeyUrl: 'https://ollama.com/download',
+    getKeyLabel: 'Ollama 다운로드 →',
+    steps: ['ollama.com에서 설치', '터미널에서 모델 pull (예: ollama pull qwen2.5-coder)', 'Ollama가 백그라운드에서 실행 중인지 확인'],
+  },
+  {
     service: 'slack', label: 'Slack', icon: '💬', subtitle: 'Workspace', isAI: false,
     keyLabel: 'Webhook URL', keyPlaceholder: 'https://hooks.slack.com/services/...',
     getKeyUrl: 'https://api.slack.com/apps',
@@ -75,6 +82,8 @@ export default function AIAgentApp() {
   const [keyInputs, setKeyInputs]     = useState<Partial<Record<ConnectorService, string>>>({});
   const [saving, setSaving]           = useState<ConnectorService | null>(null);
   const [showKey, setShowKey]         = useState<Partial<Record<ConnectorService, boolean>>>({});
+  const [ollamaStatus, setOllamaStatus]   = useState<{ available: boolean; models: string[] } | null>(null);
+  const [ollamaChecking, setOllamaChecking] = useState(false);
   const endRef = useRef<HTMLDivElement>(null) as React.RefObject<HTMLDivElement>;
 
   const statusMap = Object.fromEntries(
@@ -92,6 +101,13 @@ export default function AIAgentApp() {
         setMessages((prev) => [...prev, { role: 'assistant', content: msg.content }]);
         setLoading(false);
       }
+      if (msg.type === 'ai_cancelled') {
+        setLoading(false);
+      }
+      if (msg.type === 'ollama_status') {
+        setOllamaStatus({ available: msg.available, models: msg.models });
+        setOllamaChecking(false);
+      }
       if (msg.type === 'error') {
         setMessages((prev) => [...prev, { role: 'assistant', content: `오류: ${msg.message}` }]);
         setLoading(false);
@@ -101,7 +117,21 @@ export default function AIAgentApp() {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
+  // 현재 activeAI가 연결되어 있지 않으면 연결된 첫 AI로 자동 전환한다.
+  useEffect(() => {
+    if (connectors.length === 0) return;
+    const connectedServices = new Set(connectors.filter((c) => c.connected).map((c) => c.service));
+    if (connectedServices.has(activeAI)) return;
+    const firstConnected = CONNECTORS.find((c) => c.isAI && connectedServices.has(c.service));
+    if (firstConnected) setActiveAI(firstConnected.service);
+  }, [connectors, activeAI]);
+
   function openBrowser(url: string) { postMessage({ type: 'open_external', url }); }
+
+  function checkOllama() {
+    setOllamaChecking(true);
+    postMessage({ type: 'ollama_check' });
+  }
 
   function saveKey(service: ConnectorService) {
     const key = keyInputs[service]?.trim();
@@ -114,7 +144,12 @@ export default function AIAgentApp() {
 
   function disconnect(service: ConnectorService) {
     postMessage({ type: 'connector_delete', service });
-    if (activeAI === service) setActiveAI('claude');
+    // activeAI가 방금 끊긴 서비스를 가리키던 경우, 연결 상태 갱신 후
+    // 위 useEffect가 연결된 다른 AI로 자동 전환한다.
+  }
+
+  function cancelChat() {
+    postMessage({ type: 'ai_chat_cancel' });
   }
 
   function sendChat() {
@@ -262,9 +297,9 @@ export default function AIAgentApp() {
                   </Box>
                 ) : (
                   <Box mt="8px" fontSize="12px" color="var(--node-text-dim)">
-                    "이 스키마를 Notion에 정리해줘"<br />
-                    "마이그레이션 변경사항을 Slack으로 보내줘"<br />
-                    "Post 테이블에 인덱스를 추가하면 좋을까?"
+                    "Post 테이블에 인덱스를 추가하면 좋을까?"<br />
+                    "이 스키마의 정규화 수준을 검토해줘"<br />
+                    "N+1 쿼리를 피하려면 어떻게 설계해야 할까?"
                   </Box>
                 )}
               </VStack>
@@ -339,8 +374,8 @@ export default function AIAgentApp() {
             />
             <Box
               as="button"
-              onClick={sendChat}
-              disabled={!input.trim() || loading}
+              onClick={loading ? cancelChat : sendChat}
+              disabled={!loading && !input.trim()}
               py="8px"
               px="16px"
               borderRadius="6px"
@@ -348,9 +383,9 @@ export default function AIAgentApp() {
               cursor="pointer"
               fontSize="12px"
               fontWeight={600}
-              bg={!input.trim() || loading ? 'rgba(99,102,241,0.15)' : '$btnBg'}
-              color={!input.trim() || loading ? 'var(--node-text-dim)' : '$btnFg'}
-            >전송</Box>
+              bg={loading ? 'rgba(239,68,68,0.15)' : !input.trim() ? 'rgba(99,102,241,0.15)' : '$btnBg'}
+              color={loading ? 'var(--diff-rm-sign)' : !input.trim() ? 'var(--node-text-dim)' : '$btnFg'}
+            >{loading ? '취소' : '전송'}</Box>
           </Flex>
         </VStack>
       )}
@@ -370,8 +405,14 @@ export default function AIAgentApp() {
               keyValue={keyInputs[meta.service] ?? ''}
               saving={saving === meta.service}
               showKey={!!showKey[meta.service]}
+              ollamaStatus={ollamaStatus}
+              ollamaChecking={ollamaChecking}
               onSetActive={() => { setActiveAI(meta.service); setView('chat'); }}
-              onConfigure={() => setConfiguring(configuring === meta.service ? null : meta.service)}
+              onConfigure={() => {
+                const next = configuring === meta.service ? null : meta.service;
+                setConfiguring(next);
+                if (next === 'ollama') checkOllama();
+              }}
               onKeyChange={(v) => setKeyInputs((p) => ({ ...p, [meta.service]: v }))}
               onToggleShow={() => setShowKey((p) => ({ ...p, [meta.service]: !p[meta.service] }))}
               onSave={() => saveKey(meta.service)}
@@ -429,14 +470,18 @@ function SectionLabel({ label, mt }: { label: string; mt?: string }) {
 function ConnectorItem({
   meta, connected, isActive, configuring,
   keyValue, saving, showKey, theme,
+  ollamaStatus, ollamaChecking,
   onSetActive, onConfigure, onKeyChange, onToggleShow, onSave, onDisconnect, onOpenBrowser,
 }: {
   meta: ConnectorMeta; connected: boolean; isActive: boolean; configuring: boolean;
   keyValue: string; saving: boolean; showKey: boolean; theme: 'dark' | 'light';
+  ollamaStatus?: { available: boolean; models: string[] } | null;
+  ollamaChecking?: boolean;
   onSetActive: () => void; onConfigure: () => void;
   onKeyChange: (v: string) => void; onToggleShow: () => void;
   onSave: () => void; onDisconnect: () => void; onOpenBrowser: () => void;
 }) {
+  const isOllama = meta.service === 'ollama';
   return (
     <Box borderBottom="1px solid var(--node-field-divider)">
       <Flex
@@ -544,32 +589,38 @@ function ConnectorItem({
             </Flex>
           </Box>
 
-          <Box as="label" fontSize="11px" color="var(--node-text-dim)" display="block" mb="5px">
-            {meta.keyLabel}
-          </Box>
+          {isOllama ? (
+            <OllamaConfigPanel status={ollamaStatus} checking={ollamaChecking} selected={keyValue} onSelect={onKeyChange} />
+          ) : (
+            <>
+              <Box as="label" fontSize="11px" color="var(--node-text-dim)" display="block" mb="5px">
+                {meta.keyLabel}
+              </Box>
 
-          <Flex gap="6px">
-            <Box
-              as="input"
-              type={showKey ? 'text' : 'password'}
-              value={keyValue}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => onKeyChange(e.target.value)}
-              placeholder={meta.keyPlaceholder}
-              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && onSave()}
-              flex={1}
-              py="7px"
-              px="10px"
-              borderRadius="4px"
-              fontSize="12px"
-              bg={theme === 'light' ? '#ffffff' : '$inputBg'}
-              border={`1px solid ${theme === 'light' ? 'rgba(0,0,0,0.2)' : 'var(--inputBorder)'}`}
-              color="var(--node-text)"
-              outline="none"
-            />
-            <BtnBox variant="ghost" onClick={onToggleShow} px="8px">
-              {showKey ? '숨김' : '표시'}
-            </BtnBox>
-          </Flex>
+              <Flex gap="6px">
+                <Box
+                  as="input"
+                  type={showKey ? 'text' : 'password'}
+                  value={keyValue}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => onKeyChange(e.target.value)}
+                  placeholder={meta.keyPlaceholder}
+                  onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && onSave()}
+                  flex={1}
+                  py="7px"
+                  px="10px"
+                  borderRadius="4px"
+                  fontSize="12px"
+                  bg={theme === 'light' ? '#ffffff' : '$inputBg'}
+                  border={`1px solid ${theme === 'light' ? 'rgba(0,0,0,0.2)' : 'var(--inputBorder)'}`}
+                  color="var(--node-text)"
+                  outline="none"
+                />
+                <BtnBox variant="ghost" onClick={onToggleShow} px="8px">
+                  {showKey ? '숨김' : '표시'}
+                </BtnBox>
+              </Flex>
+            </>
+          )}
 
           <Flex gap="6px" mt="8px">
             <BtnBox variant="primary" onClick={onSave} disabled={saving || !keyValue.trim()}>
@@ -581,6 +632,69 @@ function ConnectorItem({
           </Flex>
         </Box>
       )}
+    </Box>
+  );
+}
+
+function OllamaConfigPanel({
+  status, checking, selected, onSelect,
+}: {
+  status: { available: boolean; models: string[] } | null | undefined;
+  checking: boolean | undefined;
+  selected: string;
+  onSelect: (model: string) => void;
+}) {
+  if (checking || !status) {
+    return (
+      <Box mb="12px" fontSize="12px" color="var(--node-text-dim)">
+        Ollama 상태 확인 중...
+      </Box>
+    );
+  }
+
+  if (!status.available) {
+    return (
+      <Box mb="12px" fontSize="12px" color="var(--node-text-dim)" lineHeight={1.6}>
+        Ollama가 설치되어 있지 않거나 실행 중이 아닙니다. 위 안내를 따라 설치·실행한 뒤 다시 열어주세요.
+      </Box>
+    );
+  }
+
+  if (status.models.length === 0) {
+    return (
+      <Box mb="12px" fontSize="12px" color="var(--node-text-dim)" lineHeight={1.6}>
+        Ollama는 실행 중이지만 pull된 모델이 없습니다.<br />
+        터미널에서 예: <Box as="code" bg="rgba(255,255,255,0.08)" px="4px" borderRadius="3px">ollama pull qwen2.5-coder</Box> 실행 후 다시 열어주세요.
+      </Box>
+    );
+  }
+
+  return (
+    <Box mb="12px">
+      <Box as="label" fontSize="11px" color="var(--node-text-dim)" display="block" mb="6px">
+        사용할 모델
+      </Box>
+      <VStack gap="4px">
+        {status.models.map((m) => (
+          <Box
+            key={m}
+            as="button"
+            onClick={() => onSelect(m)}
+            py="6px"
+            px="10px"
+            borderRadius="4px"
+            fontSize="12px"
+            textAlign="left"
+            cursor="pointer"
+            fontFamily="inherit"
+            bg={selected === m ? 'rgba(99,102,241,0.2)' : 'transparent'}
+            border={`1px solid ${selected === m ? 'rgba(99,102,241,0.5)' : 'var(--node-border)'}`}
+            color="var(--node-text)"
+          >
+            {m}
+          </Box>
+        ))}
+      </VStack>
     </Box>
   );
 }
