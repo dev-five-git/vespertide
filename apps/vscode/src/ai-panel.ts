@@ -113,7 +113,14 @@ export class AIAgentPanel {
               const url = await createJiraIssue('Vespertide 작업', last?.content ?? '', this._ctx, controller.signal);
               this._post({ type: 'ai_response', content: `Jira 이슈가 생성되었습니다:\n${url}`, done: true });
             } else {
-              const text = await callAI(msg.service, msg.messages, msg.context, this._ctx, controller.signal);
+              const text = await callAI(
+                msg.service,
+                msg.messages,
+                msg.context,
+                this._ctx,
+                controller.signal,
+                (tool, detail) => this._post({ type: 'ai_tool_call', tool, detail }),
+              );
               this._post({ type: 'ai_response', content: text, done: true });
             }
           } finally {
@@ -175,6 +182,7 @@ export class AIAgentPanel {
   }
 
   private _dispose(): void {
+    this._pendingAbort?.abort();
     AIAgentPanel._instance = undefined;
     this._panel.dispose();
     for (const d of this._disposables) d.dispose();

@@ -158,7 +158,14 @@ export class VespertideWebviewProvider implements vscode.WebviewViewProvider {
             const url = await createJiraIssue('Vespertide 작업', lastMsg?.content ?? '', this._ctx);
             this._post({ type: 'ai_response', content: `Jira 이슈가 생성되었습니다:\n${url}`, done: true });
           } else {
-            const text = await callAI(msg.service, msg.messages, msg.context, this._ctx);
+            const text = await callAI(
+              msg.service,
+              msg.messages,
+              msg.context,
+              this._ctx,
+              undefined,
+              (tool, detail) => this._post({ type: 'ai_tool_call', tool, detail }),
+            );
             this._post({ type: 'ai_response', content: text, done: true });
           }
           break;

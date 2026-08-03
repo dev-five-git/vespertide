@@ -84,6 +84,7 @@ export default function AIAgentApp() {
   const [showKey, setShowKey]         = useState<Partial<Record<ConnectorService, boolean>>>({});
   const [ollamaStatus, setOllamaStatus]   = useState<{ available: boolean; models: string[] } | null>(null);
   const [ollamaChecking, setOllamaChecking] = useState(false);
+  const [toolActivity, setToolActivity]   = useState<{ tool: string; detail: string; count: number } | null>(null);
   const endRef = useRef<HTMLDivElement>(null) as React.RefObject<HTMLDivElement>;
 
   const statusMap = Object.fromEntries(
@@ -100,9 +101,18 @@ export default function AIAgentApp() {
       if (msg.type === 'ai_response' && msg.done) {
         setMessages((prev) => [...prev, { role: 'assistant', content: msg.content }]);
         setLoading(false);
+        setToolActivity(null);
       }
       if (msg.type === 'ai_cancelled') {
         setLoading(false);
+        setToolActivity(null);
+      }
+      if (msg.type === 'ai_tool_call') {
+        setToolActivity((prev) => ({
+          tool: msg.tool,
+          detail: msg.detail,
+          count: prev?.tool === msg.tool ? prev.count + 1 : 1,
+        }));
       }
       if (msg.type === 'ollama_status') {
         setOllamaStatus({ available: msg.available, models: msg.models });
@@ -111,6 +121,7 @@ export default function AIAgentApp() {
       if (msg.type === 'error') {
         setMessages((prev) => [...prev, { role: 'assistant', content: `오류: ${msg.message}` }]);
         setLoading(false);
+        setToolActivity(null);
       }
     });
   }, []);
@@ -167,6 +178,7 @@ export default function AIAgentApp() {
     const newMessages: ChatMessage[] = [...messages, { role: 'user', content: text }];
     setMessages(newMessages);
     setLoading(true);
+    setToolActivity(null);
     postMessage({ type: 'ai_chat', service: activeAI, messages: newMessages, context: '' });
   }
 
@@ -334,7 +346,9 @@ export default function AIAgentApp() {
             {loading && (
               <Flex gap="8px" py="8px" alignItems="center">
                 <Box as="span" fontSize="16px" color="var(--node-text-dim)">🤖</Box>
-                <Box as="span" fontSize="12px" color="var(--node-text-dim)">응답 생성 중...</Box>
+                <Box as="span" fontSize="12px" color="var(--node-text-dim)">
+                  {toolActivity ? `🔧 ${toolActivity.detail}` : '응답 생성 중...'}
+                </Box>
               </Flex>
             )}
             <Box ref={endRef} />

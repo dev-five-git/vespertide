@@ -43,6 +43,7 @@ export type HostMessage =
   | { type: 'connector_status'; connectors: ConnectorStatus[] }
   | { type: 'ai_response'; content: string; done: boolean }
   | { type: 'ai_cancelled' }
+  | { type: 'ai_tool_call'; tool: string; detail: string }
   | { type: 'ollama_status'; available: boolean; models: string[] }
   | { type: 'error'; message: string };
 
