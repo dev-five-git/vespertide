@@ -87,7 +87,7 @@ function makePKCE(): { verifier: string; challenge: string } {
 
 export async function startOAuthFlow(
   service: string,
-  ctx: vscode.ExtensionContext,
+  _ctx: vscode.ExtensionContext,
 ): Promise<string> {
   const def = OAUTH_DEFS[service];
   if (!def) throw new Error(`${service}는 OAuth를 지원하지 않습니다`);

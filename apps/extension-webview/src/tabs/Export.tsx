@@ -230,7 +230,7 @@ function FilePreviewBody({ file }: { file: ExportFile }) {
           color="$editorFg"
         >
           PDF export converts the ERD diagram SVG to a portable document.{'\n\n'}
-          Click "저장" to generate the PDF file.{'\n'}
+          Click &quot;저장&quot; to generate the PDF file.{'\n'}
           {file.isDummy ? '⚠ ORM Editor에서 스키마를 먼저 입력하세요.' : '✓ ERD 준비 완료.'}
         </Box>
       </Box>

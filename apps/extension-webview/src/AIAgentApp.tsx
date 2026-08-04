@@ -126,7 +126,7 @@ export default function AIAgentApp() {
     });
   }, []);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 현재 activeAI가 연결되어 있지 않으면 연결된 첫 AI로 자동 전환한다.
   useEffect(() => {
@@ -309,9 +309,9 @@ export default function AIAgentApp() {
                   </Box>
                 ) : (
                   <Box mt="8px" fontSize="12px" color="var(--node-text-dim)">
-                    "Post 테이블에 인덱스를 추가하면 좋을까?"<br />
-                    "이 스키마의 정규화 수준을 검토해줘"<br />
-                    "N+1 쿼리를 피하려면 어떻게 설계해야 할까?"
+                    &quot;Post 테이블에 인덱스를 추가하면 좋을까?&quot;<br />
+                    &quot;이 스키마의 정규화 수준을 검토해줘&quot;<br />
+                    &quot;N+1 쿼리를 피하려면 어떻게 설계해야 할까?&quot;
                   </Box>
                 )}
               </VStack>

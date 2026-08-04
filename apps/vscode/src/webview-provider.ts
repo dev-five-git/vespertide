@@ -8,7 +8,6 @@ import {
   exportPdf,
   exportSql,
   exportSchema,
-  exportSchemaJson,
   setCurrentSchema,
   setCurrentSvg,
 } from './export';
