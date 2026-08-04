@@ -328,8 +328,8 @@ function toDiffLines(file: SqlFile): DiffLine[] {
 const DIALECT_LABELS: Record<Dialect, string> = { postgres: 'PG', mysql: 'MY', sqlite: 'SQ' };
 
 function kindBadge(kind: FileKind) {
-  if (kind === 'create') return { label: 'A', color: 'var(--diff-add-sign)' };
-  if (kind === 'drop')   return { label: 'D', color: 'var(--diff-rm-sign)' };
+  if (kind === 'create') return { label: 'A', color: '$diffAddSign' };
+  if (kind === 'drop')   return { label: 'D', color: '$diffRmSign' };
   if (kind === 'index')  return { label: 'I', color: '#3b82f6' };
   return { label: 'M', color: '#d97706' };
 }
@@ -383,8 +383,8 @@ export default function MigrationDiff({ state }: Props) {
         w="224px"
         flexShrink={0}
         borderRight="1px solid $border"
-        bg="var(--diff-sidebar-bg)"
-        color="var(--diff-sidebar-text)"
+        bg="$diffSidebarBg"
+        color="$diffSidebarText"
       >
         {/* Header */}
         <Flex
@@ -396,7 +396,7 @@ export default function MigrationDiff({ state }: Props) {
           justifyContent="space-between"
           borderBottom="1px solid $border"
         >
-          <Box as="span" fontSize="10px" fontWeight={700} letterSpacing="0.08em" color="var(--node-text-dim)">
+          <Box as="span" fontSize="10px" fontWeight={700} letterSpacing="0.08em" color="$nodeTextDim">
             CHANGES
           </Box>
           {/* Dialect toggle */}
@@ -405,7 +405,7 @@ export default function MigrationDiff({ state }: Props) {
             p="2px"
             bg="$widgetBg"
             borderRadius="5px"
-            border="1px solid var(--node-border)"
+            border="1px solid $nodeBorder"
           >
             {(['postgres', 'mysql', 'sqlite'] as Dialect[]).map((d) => (
               <Box
@@ -420,7 +420,7 @@ export default function MigrationDiff({ state }: Props) {
                 fontSize="10px"
                 fontWeight={600}
                 bg={dialect === d ? '$btnBg' : 'transparent'}
-                color={dialect === d ? '#fff' : 'var(--node-text-dim)'}
+                color={dialect === d ? '#fff' : '$nodeTextDim'}
                 transition="background 0.1s"
               >{DIALECT_LABELS[d]}</Box>
             ))}
@@ -428,10 +428,10 @@ export default function MigrationDiff({ state }: Props) {
         </Flex>
 
         {/* Summary */}
-        <Flex py="4px" px="10px" fontSize="10px" gap="6px" alignItems="center" color="var(--node-text-dim)" flexShrink={0}>
+        <Flex py="4px" px="10px" fontSize="10px" gap="6px" alignItems="center" color="$nodeTextDim" flexShrink={0}>
           <Box as="span">{files.length} files</Box>
-          {totalAdds    > 0 && <Box as="span" color="var(--diff-add-sign)">+{totalAdds}</Box>}
-          {totalRemoves > 0 && <Box as="span" color="var(--diff-rm-sign)">−{totalRemoves}</Box>}
+          {totalAdds    > 0 && <Box as="span" color="$diffAddSign">+{totalAdds}</Box>}
+          {totalRemoves > 0 && <Box as="span" color="$diffRmSign">−{totalRemoves}</Box>}
           {!hasReal && (
             <Box
               as="span"
@@ -464,14 +464,14 @@ export default function MigrationDiff({ state }: Props) {
                 bg={isSel ? 'rgba(99,102,241,0.15)' : 'transparent'}
                 borderLeft={isSel ? '2px solid $focusBorder' : '2px solid transparent'}
               >
-                <Box as="span" fontSize="11px" color="var(--node-text-dim)" flexShrink={0}>
+                <Box as="span" fontSize="11px" color="$nodeTextDim" flexShrink={0}>
                   {f.kind === 'index' ? '⊞' : '≡'}
                 </Box>
-                <Box as="span" flex={1} fontSize="12px" overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap" color="var(--diff-sidebar-text)">
-                  {f.name}<Box as="span" color="var(--node-text-dim)">.sql</Box>
+                <Box as="span" flex={1} fontSize="12px" overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap" color="$diffSidebarText">
+                  {f.name}<Box as="span" color="$nodeTextDim">.sql</Box>
                 </Box>
-                {f.adds    > 0 && <Box as="span" fontSize="10px" color="var(--diff-add-sign)" flexShrink={0} fontWeight={600}>+{f.adds}</Box>}
-                {f.removes > 0 && <Box as="span" fontSize="10px" color="var(--diff-rm-sign)"  flexShrink={0} fontWeight={600}>−{f.removes}</Box>}
+                {f.adds    > 0 && <Box as="span" fontSize="10px" color="$diffAddSign" flexShrink={0} fontWeight={600}>+{f.adds}</Box>}
+                {f.removes > 0 && <Box as="span" fontSize="10px" color="$diffRmSign"  flexShrink={0} fontWeight={600}>−{f.removes}</Box>}
                 <Box as="span" fontSize="10px" fontWeight={700} color={badge.color} w="12px" textAlign="right" flexShrink={0}>
                   {badge.label}
                 </Box>
@@ -493,24 +493,24 @@ export default function MigrationDiff({ state }: Props) {
             px="12px"
             flexShrink={0}
             borderBottom="1px solid $border"
-            bg="var(--diff-header-bg)"
-            color="var(--diff-header-text)"
+            bg="$diffHeaderBg"
+            color="$diffHeaderText"
             fontSize="12px"
           >
-            <Box as="span" color="var(--node-text-dim)">{selected.kind === 'index' ? '⊞' : '≡'}</Box>
+            <Box as="span" color="$nodeTextDim">{selected.kind === 'index' ? '⊞' : '≡'}</Box>
             <Box as="span" fontWeight={600}>{selected.name}</Box>
-            <Box as="span" color="var(--node-text-dim)">.sql</Box>
+            <Box as="span" color="$nodeTextDim">.sql</Box>
             <Box flex={1} />
-            {selected.adds    > 0 && <Box as="span" fontSize="11px" color="var(--diff-add-sign)" fontWeight={600}>+{selected.adds}</Box>}
-            {selected.removes > 0 && <Box as="span" fontSize="11px" color="var(--diff-rm-sign)"  fontWeight={600}>−{selected.removes}</Box>}
+            {selected.adds    > 0 && <Box as="span" fontSize="11px" color="$diffAddSign" fontWeight={600}>+{selected.adds}</Box>}
+            {selected.removes > 0 && <Box as="span" fontSize="11px" color="$diffRmSign"  fontWeight={600}>−{selected.removes}</Box>}
             <Box
               as="button"
               onClick={() => navigator.clipboard.writeText(selected.sql)}
               bg="transparent"
               cursor="pointer"
-              border="1px solid var(--node-border)"
+              border="1px solid $nodeBorder"
               borderRadius="3px"
-              color="var(--diff-header-text)"
+              color="$diffHeaderText"
               py="1px"
               px="8px"
               fontSize="10px"
@@ -522,7 +522,7 @@ export default function MigrationDiff({ state }: Props) {
         <Box
           flex={1}
           overflow="auto"
-          bg="var(--diff-bg)"
+          bg="$diffBg"
           fontFamily="$editorFont"
           fontSize="12px"
           lineHeight="20px"
@@ -532,12 +532,12 @@ export default function MigrationDiff({ state }: Props) {
               key={i}
               minH="20px"
               bg={
-                line.type === 'add'    ? 'var(--diff-add-bg)'  :
-                line.type === 'remove' ? 'var(--diff-rm-bg)'   : 'transparent'
+                line.type === 'add'    ? '$diffAddBg'  :
+                line.type === 'remove' ? '$diffRmBg'   : 'transparent'
               }
               borderLeft={
-                line.type === 'add'    ? '3px solid var(--diff-add-border)'  :
-                line.type === 'remove' ? '3px solid var(--diff-rm-border)'   : '3px solid transparent'
+                line.type === 'add'    ? '3px solid $diffAddBorder'  :
+                line.type === 'remove' ? '3px solid $diffRmBorder'   : '3px solid transparent'
               }
             >
               {/* Old line number */}
@@ -550,7 +550,7 @@ export default function MigrationDiff({ state }: Props) {
                 fontSize="11px"
                 lineHeight="20px"
                 userSelect="none"
-                color="var(--diff-linenum)"
+                color="$diffLinenum"
               >{line.oldNum ?? ''}</Box>
               {/* New line number */}
               <Box
@@ -562,7 +562,7 @@ export default function MigrationDiff({ state }: Props) {
                 fontSize="11px"
                 lineHeight="20px"
                 userSelect="none"
-                color="var(--diff-linenum)"
+                color="$diffLinenum"
                 borderRight="1px solid $border"
                 mr="4px"
               >{line.newNum ?? ''}</Box>
@@ -577,8 +577,8 @@ export default function MigrationDiff({ state }: Props) {
                 fontWeight={700}
                 userSelect="none"
                 color={
-                  line.type === 'add'    ? 'var(--diff-add-sign)' :
-                  line.type === 'remove' ? 'var(--diff-rm-sign)'  : 'transparent'
+                  line.type === 'add'    ? '$diffAddSign' :
+                  line.type === 'remove' ? '$diffRmSign'  : 'transparent'
                 }
               >
                 {line.type === 'add' ? '+' : line.type === 'remove' ? '−' : ' '}
@@ -591,9 +591,9 @@ export default function MigrationDiff({ state }: Props) {
                 lineHeight="20px"
                 whiteSpace="pre"
                 color={
-                  line.type === 'add'    ? 'var(--diff-add-text)' :
-                  line.type === 'remove' ? 'var(--diff-rm-text)'  :
-                  'var(--diff-text)'
+                  line.type === 'add'    ? '$diffAddText' :
+                  line.type === 'remove' ? '$diffRmText'  :
+                  '$diffText'
                 }
               >{line.text}</Box>
             </Flex>

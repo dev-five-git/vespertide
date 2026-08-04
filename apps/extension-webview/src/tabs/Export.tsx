@@ -130,7 +130,7 @@ export default function Export({ state }: Props) {
 
 function SectionHeader({ label }: { label: string }) {
   return (
-    <Text as="div" py="8px" px="10px" pb="4px" fontSize="10px" fontWeight={700} letterSpacing="0.08em" color="var(--node-text-dim)" flexShrink={0}>
+    <Text as="div" py="8px" px="10px" pb="4px" fontSize="10px" fontWeight={700} letterSpacing="0.08em" color="$nodeTextDim" flexShrink={0}>
       {label}
     </Text>
   );
@@ -138,7 +138,7 @@ function SectionHeader({ label }: { label: string }) {
 
 function GroupLabel({ label }: { label: string }) {
   return (
-    <Text as="div" py="6px" px="10px" pb="2px" fontSize="9px" fontWeight={600} color="var(--node-text-dim)" letterSpacing="0.06em">
+    <Text as="div" py="6px" px="10px" pb="2px" fontSize="9px" fontWeight={600} color="$nodeTextDim" letterSpacing="0.06em">
       {label}
     </Text>
   );
@@ -156,13 +156,13 @@ function FileRow({ f, active, onClick }: { f: ExportFile; active: boolean; onCli
       bg={active ? 'rgba(99,102,241,0.15)' : 'transparent'}
       borderLeft={active ? '2px solid $focusBorder' : '2px solid transparent'}
     >
-      <Box as="span" fontSize="10px" color="var(--node-text-dim)" flexShrink={0}>
+      <Box as="span" fontSize="10px" color="$nodeTextDim" flexShrink={0}>
         {f.ext === '.sql' ? '≡' : f.ext === '.svg' || f.ext === '.pdf' ? '◫' : '{ }'}
       </Box>
-      <Box as="span" flex={1} fontSize="12px" overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap" color="var(--node-text)">
-        {f.label}<Box as="span" color="var(--node-text-dim)">{f.ext}</Box>
+      <Box as="span" flex={1} fontSize="12px" overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap" color="$nodeText">
+        {f.label}<Box as="span" color="$nodeTextDim">{f.ext}</Box>
       </Box>
-      {f.isDummy && <Box as="span" fontSize="9px" color="var(--node-text-dim)">~</Box>}
+      {f.isDummy && <Box as="span" fontSize="9px" color="$nodeTextDim">~</Box>}
     </Flex>
   );
 }
@@ -182,7 +182,7 @@ function FileHeader({ file, copied, onCopy, onSave }: {
       fontSize="12px"
     >
       <Box as="span" fontWeight={600}>{file.label}</Box>
-      <Box as="span" color="var(--node-text-dim)">{file.ext}</Box>
+      <Box as="span" color="$nodeTextDim">{file.ext}</Box>
       <Box
         as="span"
         fontSize="9px"
@@ -279,7 +279,7 @@ function FilePreviewBody({ file }: { file: ExportFile }) {
             fontSize="11px"
             lineHeight="20px"
             userSelect="none"
-            color="var(--diff-linenum)"
+            color="$diffLinenum"
           >{i + 1}</Box>
           <Box as="span" flex={1} pr="16px" lineHeight="20px" whiteSpace="pre" color="$editorFg">{line}</Box>
         </Flex>
@@ -303,5 +303,5 @@ function btnStyle(variant: 'primary' | 'default' | 'green') {
   };
   if (variant === 'primary') return { ...base, bg: '$btnBg', color: '$btnFg' };
   if (variant === 'green')   return { ...base, bg: 'rgba(74,222,128,0.12)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.25)' };
-  return { ...base, bg: 'transparent', color: 'var(--node-text)', border: '1px solid var(--node-border)' };
+  return { ...base, bg: 'transparent', color: '$nodeText', border: '1px solid $nodeBorder' };
 }

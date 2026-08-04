@@ -879,7 +879,7 @@ export default function OrmEditor({ state, setState }: Props) {
             position="absolute"
             inset={0}
             pointerEvents="none"
-            bgImage="radial-gradient(circle, var(--canvas-dot) 1px, transparent 1px)"
+            bgImage="radial-gradient(circle, $canvasDot 1px, transparent 1px)"
             styleVars={{
               '--bg-sz': `${24 * scale}px ${24 * scale}px`,
               '--bg-pos': `${pan.x % (24 * scale)}px ${pan.y % (24 * scale)}px`,
@@ -899,7 +899,7 @@ export default function OrmEditor({ state, setState }: Props) {
           >
             <defs>
               <marker id="vt-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-                <path d="M0,0.5 L0,5.5 L6.5,3 z" style={{ fill: 'var(--edge-arrow, rgba(99,102,241,0.8))' }} />
+                <path d="M0,0.5 L0,5.5 L6.5,3 z" style={{ fill: 'var(--edgeArrow, rgba(99,102,241,0.8))' }} />
               </marker>
               <marker id="vt-arrow-sel" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
                 <path d="M0,0.5 L0,5.5 L6.5,3 z" fill="#818cf8" />
@@ -999,7 +999,7 @@ export default function OrmEditor({ state, setState }: Props) {
                         <circle
                           cx={x1 + (useRight ? 13 : -13)} cy={y1}
                           r={8}
-                          fill="var(--node-bg)"
+                          fill="var(--nodeBg)"
                           stroke={edgeColor}
                           strokeWidth={1.2}
                         />
@@ -1016,7 +1016,7 @@ export default function OrmEditor({ state, setState }: Props) {
                         <circle
                           cx={x2 + (useRight ? -13 : 13)} cy={y2}
                           r={8}
-                          fill="var(--node-bg)"
+                          fill="var(--nodeBg)"
                           stroke={edgeColor}
                           strokeWidth={1.2}
                         />
@@ -1072,11 +1072,11 @@ export default function OrmEditor({ state, setState }: Props) {
                   overflow="hidden"
                   userSelect="none"
                   cursor={lockMode ? 'grab' : 'pointer'}
-                  border={`1px solid ${isSel ? color : hasSelEdge ? color + '55' : 'var(--node-border)'}`}
+                  border={`1px solid ${isSel ? color : hasSelEdge ? color + '55' : 'var(--nodeBorder)'}`}
                   boxShadow={isSel
                     ? `0 0 0 2.5px ${color}38, 0 8px 28px rgba(0,0,0,0.32)`
-                    : hasSelEdge ? `0 0 0 1.5px ${color}22, var(--node-shadow)` : 'var(--node-shadow)'}
-                  bg="var(--node-bg)"
+                    : hasSelEdge ? `0 0 0 1.5px ${color}22, var(--nodeShadow)` : 'var(--nodeShadow)'}
+                  bg="$nodeBg"
                   transition="border-color 0.12s, box-shadow 0.12s"
                 >
                   {/* Accent bar */}
@@ -1090,7 +1090,7 @@ export default function OrmEditor({ state, setState }: Props) {
                     px="10px"
                     gap="7px"
                     bg={`${color}10`}
-                    borderBottom="1px solid var(--node-field-divider)"
+                    borderBottom="1px solid $nodeFieldDivider"
                   >
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="none"
                       style={{ flexShrink: 0, color, opacity: 0.8 }}>
@@ -1108,11 +1108,11 @@ export default function OrmEditor({ state, setState }: Props) {
                       overflow="hidden"
                       textOverflow="ellipsis"
                       whiteSpace="nowrap"
-                      color="var(--node-text)"
+                      color="$nodeText"
                     >
                       {model.name}
                     </Box>
-                    <Box as="span" fontSize="9px" flexShrink={0} color="var(--node-text-dim)">
+                    <Box as="span" fontSize="9px" flexShrink={0} color="$nodeTextDim">
                       {model.fields.length}
                     </Box>
                   </Flex>
@@ -1127,7 +1127,7 @@ export default function OrmEditor({ state, setState }: Props) {
                       px="10px"
                       gap="6px"
                       borderBottom={fi < model.fields.length - 1
-                        ? '1px solid var(--node-field-divider)' : 'none'}
+                        ? '1px solid $nodeFieldDivider' : 'none'}
                     >
                       {f.isPrimary ? (
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
@@ -1155,7 +1155,7 @@ export default function OrmEditor({ state, setState }: Props) {
                         textOverflow="ellipsis"
                         whiteSpace="nowrap"
                         fontWeight={f.isPrimary ? 600 : 400}
-                        color="var(--node-text)"
+                        color="$nodeText"
                       >
                         {f.name}
                       </Box>
@@ -1165,7 +1165,7 @@ export default function OrmEditor({ state, setState }: Props) {
                         fontSize="10px"
                         flexShrink={0}
                         fontFamily="$editorFont"
-                        color={f.isPrimary ? '#f59e0b' : f.isRelation ? color : 'var(--node-text-dim)'}
+                        color={f.isPrimary ? '#f59e0b' : f.isRelation ? color : '$nodeTextDim'}
                       >
                         {f.type}
                       </Box>
@@ -1212,7 +1212,7 @@ export default function OrmEditor({ state, setState }: Props) {
                       w="var(--ss)"
                       h="var(--ss)"
                       borderRadius="50%"
-                      bg={isNearest ? '#818cf8' : 'var(--node-bg)'}
+                      bg={isNearest ? '#818cf8' : '$nodeBg'}
                       border={`${isNearest ? 2 : 1.5}px solid ${isNearest ? '#818cf8' : 'rgba(129,140,248,0.65)'}`}
                       boxShadow={isNearest ? '0 0 0 4px rgba(129,140,248,0.22)' : 'none'}
                       transition="all 0.08s ease"
@@ -1245,8 +1245,8 @@ export default function OrmEditor({ state, setState }: Props) {
             gap="2px"
             py="4px"
             px="8px"
-            bg="var(--navbar-bg)"
-            border="1px solid var(--navbar-border)"
+            bg="$navbarBg"
+            border="1px solid $navbarBorder"
             borderRadius="9px"
             boxShadow="0 4px 16px rgba(0,0,0,0.25)"
             backdropFilter="blur(8px)"
@@ -1317,8 +1317,8 @@ export default function OrmEditor({ state, setState }: Props) {
                   bottom="calc(100% + 8px)"
                   left="50%"
                   transform="translateX(-50%)"
-                  bg="var(--navbar-bg)"
-                  border="1px solid var(--navbar-border)"
+                  bg="$navbarBg"
+                  border="1px solid $navbarBorder"
                   borderRadius="7px"
                   boxShadow="0 4px 16px rgba(0,0,0,0.3)"
                   overflow="hidden"
@@ -1346,7 +1346,7 @@ export default function OrmEditor({ state, setState }: Props) {
                       textAlign="left"
                       cursor="pointer"
                       borderBottom={type !== 'compact'
-                        ? '1px solid var(--navbar-border)' : 'none'}
+                        ? '1px solid $navbarBorder' : 'none'}
                     >{label}</Box>
                   ))}
                 </Box>
@@ -1389,7 +1389,7 @@ export default function OrmEditor({ state, setState }: Props) {
                 >
                   <Flex alignItems="center" gap="8px" minW={0}>
                     <Box w="10px" h="10px" borderRadius="50%" bg={modelColor(selected.name)} flexShrink={0} />
-                    <Box as="span" fontWeight={700} fontSize="13px" overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap" color="var(--node-text)">
+                    <Box as="span" fontWeight={700} fontSize="13px" overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap" color="$nodeText">
                       {selected.name}
                     </Box>
                     <Box
@@ -1410,7 +1410,7 @@ export default function OrmEditor({ state, setState }: Props) {
                     onClick={(e: React.MouseEvent) => { e.stopPropagation(); setSelected(null); }}
                     bg="none"
                     border="none"
-                    color="var(--node-text-dim)"
+                    color="$nodeTextDim"
                     fontSize="14px"
                     cursor="pointer"
                     p="2px"
@@ -1418,13 +1418,13 @@ export default function OrmEditor({ state, setState }: Props) {
                 </Flex>
 
                 {/* Fields */}
-                <Box py="10px" px="14px" flexShrink={0} borderBottom="1px solid var(--node-field-divider)">
+                <Box py="10px" px="14px" flexShrink={0} borderBottom="1px solid $nodeFieldDivider">
                   {selected.fields.map((f) => (
                     <Flex key={f.name} alignItems="baseline" gap="6px" mb="5px">
-                      <Box as="span" fontSize="9px" w="12px" textAlign="center" color="var(--node-text-dim)" flexShrink={0}>
+                      <Box as="span" fontSize="9px" w="12px" textAlign="center" color="$nodeTextDim" flexShrink={0}>
                         {f.isPrimary ? '⬡' : f.isRelation ? '⇢' : '·'}
                       </Box>
-                      <Box as="span" fontSize="12px" flex={1} color="var(--node-text)">{f.name}</Box>
+                      <Box as="span" fontSize="12px" flex={1} color="$nodeText">{f.name}</Box>
                       <Box
                         as="span"
                         fontSize="11px"
@@ -1433,7 +1433,7 @@ export default function OrmEditor({ state, setState }: Props) {
                         fontWeight={500}
                         color={f.isRelation
                           ? modelColor(f.type.replace('[]','').replace('?',''))
-                          : 'var(--node-text)'}
+                          : '$nodeText'}
                       >
                         {f.type}
                       </Box>
@@ -1442,7 +1442,7 @@ export default function OrmEditor({ state, setState }: Props) {
                 </Box>
 
                 {/* Export JSON */}
-                <Box py="8px" px="14px" pb="4px" fontSize="10px" color="var(--node-text-dim)" flexShrink={0} letterSpacing="0.06em">
+                <Box py="8px" px="14px" pb="4px" fontSize="10px" color="$nodeTextDim" flexShrink={0} letterSpacing="0.06em">
                   EXPORT JSON
                 </Box>
                 <Box
@@ -1451,7 +1451,7 @@ export default function OrmEditor({ state, setState }: Props) {
                   fontFamily="$editorFont"
                   fontSize="11px"
                   lineHeight="18px"
-                  color="var(--diff-text)"
+                  color="$diffText"
                   pb="14px"
                 >
                   {JSON.stringify(modelToJson(selected, state.ormType), null, 2).split('\n').map((line, i) => (
@@ -1462,7 +1462,7 @@ export default function OrmEditor({ state, setState }: Props) {
                         flexShrink={0}
                         textAlign="right"
                         pr="8px"
-                        color="var(--diff-linenum)"
+                        color="$diffLinenum"
                         userSelect="none"
                         lineHeight="18px"
                         borderRight="1px solid $border"
@@ -1474,7 +1474,7 @@ export default function OrmEditor({ state, setState }: Props) {
 
                 {/* Add Relation */}
                 {state.ormType === 'prisma' && (
-                  <Box flexShrink={0} borderTop="1px solid var(--node-field-divider)">
+                  <Box flexShrink={0} borderTop="1px solid $nodeFieldDivider">
                     {!addRelForm ? (
                       <Box py="10px" px="14px">
                         <Box
@@ -1515,15 +1515,15 @@ export default function OrmEditor({ state, setState }: Props) {
                   borderBottom="1px solid $border"
                 >
                   <Flex alignItems="center" gap="8px">
-                    <Box as="span" fontSize="10px" color="var(--node-text-dim)">⇢</Box>
-                    <Box as="span" fontWeight={700} fontSize="13px" color="var(--node-text)">Relation</Box>
+                    <Box as="span" fontSize="10px" color="$nodeTextDim">⇢</Box>
+                    <Box as="span" fontWeight={700} fontSize="13px" color="$nodeText">Relation</Box>
                   </Flex>
                   <Box
                     as="button"
                     onClick={(e: React.MouseEvent) => { e.stopPropagation(); setSelectedEdge(null); }}
                     bg="none"
                     border="none"
-                    color="var(--node-text-dim)"
+                    color="$nodeTextDim"
                     fontSize="14px"
                     cursor="pointer"
                     p="2px"
@@ -1543,7 +1543,7 @@ export default function OrmEditor({ state, setState }: Props) {
                     border="1px solid rgba(99,102,241,0.25)"
                   >
                     <Box as="span" fontWeight={700} fontSize="13px" color={modelColor(selectedEdge.from)}>{selectedEdge.from}</Box>
-                    <Box as="span" fontSize="11px" color="var(--node-text-dim)">→</Box>
+                    <Box as="span" fontSize="11px" color="$nodeTextDim">→</Box>
                     <Box as="span" fontWeight={700} fontSize="13px" color={modelColor(selectedEdge.to)}>{selectedEdge.to}</Box>
                     <Box
                       as="span"
@@ -1564,8 +1564,8 @@ export default function OrmEditor({ state, setState }: Props) {
                     { label: 'fk field',       value: selectedEdge.fkField },
                   ].map(({ label, value }) => (
                     <Flex key={label} justifyContent="space-between" mb="8px" fontSize="12px">
-                      <Box as="span" color="var(--node-text-dim)" fontSize="11px">{label}</Box>
-                      <Box as="span" fontFamily="monospace" fontSize="11px" color="var(--node-text)">{value}</Box>
+                      <Box as="span" color="$nodeTextDim" fontSize="11px">{label}</Box>
+                      <Box as="span" fontFamily="monospace" fontSize="11px" color="$nodeText">{value}</Box>
                     </Flex>
                   ))}
                 </Box>
@@ -1573,7 +1573,7 @@ export default function OrmEditor({ state, setState }: Props) {
                 <Box flex={1} />
 
                 {state.ormType === 'prisma' && (
-                  <Box py="10px" px="14px" flexShrink={0} borderTop="1px solid var(--node-field-divider)">
+                  <Box py="10px" px="14px" flexShrink={0} borderTop="1px solid $nodeFieldDivider">
                     <Box
                       as="button"
                       onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleDeleteRelation(); }}
@@ -1610,7 +1610,7 @@ export default function OrmEditor({ state, setState }: Props) {
             flexShrink={0}
             alignItems="center"
             borderBottom="1px solid $border"
-            bg="var(--diff-header-bg)"
+            bg="$diffHeaderBg"
           >
             {ORM_TYPES.map((orm) => (
               <Box
@@ -1623,9 +1623,9 @@ export default function OrmEditor({ state, setState }: Props) {
                 borderRadius="3px"
                 fontSize="10px"
                 cursor="pointer"
-                borderColor={state.ormType === orm ? '$focusBorder' : 'var(--node-text)'}
+                borderColor={state.ormType === orm ? '$focusBorder' : '$nodeText'}
                 bg={state.ormType === orm ? '$btnBg' : 'transparent'}
-                color={state.ormType === orm ? '$btnFg' : 'var(--diff-header-text)'}
+                color={state.ormType === orm ? '$btnFg' : '$diffHeaderText'}
               >{orm}</Box>
             ))}
           </Flex>
@@ -1634,7 +1634,7 @@ export default function OrmEditor({ state, setState }: Props) {
           <Flex
             flex={1}
             overflow="hidden"
-            bg="var(--diff-bg)"
+            bg="$diffBg"
             fontFamily="$editorFont"
             fontSize="12px"
           >
@@ -1647,13 +1647,13 @@ export default function OrmEditor({ state, setState }: Props) {
               flexShrink={0}
               textAlign="right"
               pr="10px"
-              color="var(--diff-linenum)"
+              color="$diffLinenum"
               fontSize="12px"
               lineHeight="20px"
               userSelect="none"
               overflowY="hidden"
               borderRight="1px solid $border"
-              bg="var(--diff-bg)"
+              bg="$diffBg"
             >
               {state.ormSource.split('\n').map((_, i) => (
                 <Box key={i} h="20px">{i + 1}</Box>
@@ -1678,8 +1678,8 @@ export default function OrmEditor({ state, setState }: Props) {
               fontFamily="inherit"
               fontSize="12px"
               lineHeight="20px"
-              color="var(--diff-text)"
-              bg="var(--diff-bg)"
+              color="$diffText"
+              bg="$diffBg"
               overflowY="auto"
             />
           </Flex>
@@ -1699,9 +1699,9 @@ const inputProps = {
   px: '6px',
   borderRadius: '3px',
   fontSize: '11px',
-  bg: 'var(--node-bg)',
-  color: 'var(--node-text)',
-  border: '1px solid var(--node-border)',
+  bg: '$nodeBg',
+  color: '$nodeText',
+  border: '1px solid $nodeBorder',
   outline: 'none',
 };
 
@@ -1742,14 +1742,14 @@ function AddRelFormPanel({
 
   const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
     <Box mb="8px">
-      <Box as="span" fontSize="10px" color="var(--node-text-dim)" mb="2px" display="block">{label}</Box>
+      <Box as="span" fontSize="10px" color="$nodeTextDim" mb="2px" display="block">{label}</Box>
       {children}
     </Box>
   );
 
   return (
     <Box py="10px" px="14px" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-      <Box fontSize="10px" fontWeight={700} color="var(--node-text-dim)" letterSpacing="0.06em" mb="10px">
+      <Box fontSize="10px" fontWeight={700} color="$nodeTextDim" letterSpacing="0.06em" mb="10px">
         NEW RELATION
       </Box>
 
@@ -1771,9 +1771,9 @@ function AddRelFormPanel({
               fontSize="10px"
               borderRadius="3px"
               border="1px solid"
-              borderColor={form.relType === t ? '$focusBorder' : 'var(--node-border)'}
+              borderColor={form.relType === t ? '$focusBorder' : '$nodeBorder'}
               bg={form.relType === t ? 'rgba(99,102,241,0.15)' : 'transparent'}
-              color="var(--node-text)"
+              color="$nodeText"
               cursor="pointer"
             >{t === 'many-to-one' ? `${fromModel} → ${form.target}` : `${fromModel} ← ${form.target}`}</Box>
           ))}
@@ -1808,7 +1808,7 @@ function AddRelFormPanel({
         <Box
           as="label"
           fontSize="10px"
-          color="var(--node-text-dim)"
+          color="$nodeTextDim"
           mb="2px"
           display="flex"
           alignItems="center"
@@ -1823,7 +1823,7 @@ function AddRelFormPanel({
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => onPatch({ addBackRef: e.target.checked })}
             accentColor="#6366f1"
           />
-          <Box as="span" fontSize="10px" color="var(--node-text-dim)">역참조 추가 ({form.target} 모델에)</Box>
+          <Box as="span" fontSize="10px" color="$nodeTextDim">역참조 추가 ({form.target} 모델에)</Box>
         </Box>
         {form.addBackRef && (
           <Box as="input" {...inputProps} mt="4px" value={form.backRef}
@@ -1850,9 +1850,9 @@ function AddRelFormPanel({
           py="5px"
           px="12px"
           borderRadius="3px"
-          border="1px solid var(--node-border)"
+          border="1px solid $nodeBorder"
           bg="transparent"
-          color="var(--node-text)"
+          color="$nodeText"
           fontSize="11px"
           cursor="pointer"
         >취소</Box>

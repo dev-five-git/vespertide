@@ -199,7 +199,7 @@ export default function AIAgentApp() {
       >
         <Flex alignItems="center" gap="6px" px="14px" flexShrink={0}>
           <Box as="span" fontSize="15px">🤖</Box>
-          <Box as="span" fontWeight={700} fontSize="13px" color="var(--node-text)">AI Agent</Box>
+          <Box as="span" fontWeight={700} fontSize="13px" color="$nodeText">AI Agent</Box>
         </Flex>
 
         <Flex flex={1}>
@@ -214,7 +214,7 @@ export default function AIAgentApp() {
               cursor="pointer"
               bg="transparent"
               borderBottom={view === v ? '2px solid $focusBorder' : '2px solid transparent'}
-              color={view === v ? 'var(--node-text)' : 'var(--node-text-dim)'}
+              color={view === v ? '$nodeText' : '$nodeTextDim'}
               fontSize="12px"
               fontWeight={view === v ? 600 : 400}
             >
@@ -228,7 +228,7 @@ export default function AIAgentApp() {
                   py="1px"
                   borderRadius="8px"
                   bg="rgba(74,222,128,0.18)"
-                  color="var(--diff-add-sign)"
+                  color="$diffAddSign"
                 >{connectedAIs.length}</Box>
               )}
             </Box>
@@ -248,8 +248,8 @@ export default function AIAgentApp() {
                 fontSize="11px"
                 cursor="pointer"
                 bg={activeAI === ai.service ? 'rgba(99,102,241,0.28)' : 'transparent'}
-                border={`1px solid ${activeAI === ai.service ? 'rgba(99,102,241,0.6)' : 'var(--node-border)'}`}
-                color={activeAI === ai.service ? '#818cf8' : 'var(--node-text-dim)'}
+                border={`1px solid ${activeAI === ai.service ? 'rgba(99,102,241,0.6)' : 'var(--nodeBorder)'}`}
+                color={activeAI === ai.service ? '#818cf8' : '$nodeTextDim'}
               >
                 {ai.icon} {ai.label}
               </Box>
@@ -266,7 +266,7 @@ export default function AIAgentApp() {
           border="none"
           borderBottom="2px solid transparent"
           bg="transparent"
-          color="var(--node-text-dim)"
+          color="$nodeTextDim"
           cursor="pointer"
           display="flex"
           alignItems="center"
@@ -284,12 +284,12 @@ export default function AIAgentApp() {
         <VStack flex={1} overflow="hidden">
           <Box flex={1} overflow="auto" px="20px" py="16px">
             {messages.length === 0 && (
-              <VStack alignItems="center" color="var(--node-text-dim)" fontSize="13px" textAlign="center" mt="60px" lineHeight={1.9}>
+              <VStack alignItems="center" color="$nodeTextDim" fontSize="13px" textAlign="center" mt="60px" lineHeight={1.9}>
                 <Box fontSize="36px" mb="10px">🤖</Box>
-                <Box fontWeight={600} color="var(--node-text)">Vespertide AI Agent</Box>
+                <Box fontWeight={600} color="$nodeText">Vespertide AI Agent</Box>
                 {connectedAIs.length === 0 ? (
                   <Box mt="12px" fontSize="12px">
-                    <Box as="span" color="var(--node-text-dim)">AI가 연결되지 않았습니다.</Box>
+                    <Box as="span" color="$nodeTextDim">AI가 연결되지 않았습니다.</Box>
                     <br />
                     <Box
                       as="button"
@@ -308,7 +308,7 @@ export default function AIAgentApp() {
                     </Box>
                   </Box>
                 ) : (
-                  <Box mt="8px" fontSize="12px" color="var(--node-text-dim)">
+                  <Box mt="8px" fontSize="12px" color="$nodeTextDim">
                     &quot;Post 테이블에 인덱스를 추가하면 좋을까?&quot;<br />
                     &quot;이 스키마의 정규화 수준을 검토해줘&quot;<br />
                     &quot;N+1 쿼리를 피하려면 어떻게 설계해야 할까?&quot;
@@ -322,7 +322,7 @@ export default function AIAgentApp() {
               return (
                 <Flex key={i} justifyContent={isUser ? 'flex-end' : 'flex-start'} mb="12px">
                   {!isUser && (
-                    <Box as="span" fontSize="16px" mr="8px" alignSelf="flex-start" mt="4px" color="var(--node-text-dim)">🤖</Box>
+                    <Box as="span" fontSize="16px" mr="8px" alignSelf="flex-start" mt="4px" color="$nodeTextDim">🤖</Box>
                   )}
                   <Box
                     maxWidth="72%"
@@ -330,10 +330,10 @@ export default function AIAgentApp() {
                     px="14px"
                     borderRadius={isUser ? '14px 14px 3px 14px' : '14px 14px 14px 3px'}
                     bg={theme === 'light' ? '#ffffff' : isUser ? 'rgba(99,102,241,0.15)' : '$widgetBg'}
-                    border={theme === 'light' ? '1px solid rgba(0,0,0,0.18)' : `1px solid ${isUser ? 'rgba(99,102,241,0.4)' : 'var(--node-border)'}`}
+                    border={theme === 'light' ? '1px solid rgba(0,0,0,0.18)' : `1px solid ${isUser ? 'rgba(99,102,241,0.4)' : 'var(--nodeBorder)'}`}
                     fontSize="13px"
                     lineHeight={1.7}
-                    color="var(--node-text)"
+                    color="$nodeText"
                     whiteSpace="pre-wrap"
                     wordBreak="break-word"
                   >
@@ -345,8 +345,8 @@ export default function AIAgentApp() {
 
             {loading && (
               <Flex gap="8px" py="8px" alignItems="center">
-                <Box as="span" fontSize="16px" color="var(--node-text-dim)">🤖</Box>
-                <Box as="span" fontSize="12px" color="var(--node-text-dim)">
+                <Box as="span" fontSize="16px" color="$nodeTextDim">🤖</Box>
+                <Box as="span" fontSize="12px" color="$nodeTextDim">
                   {toolActivity ? `🔧 ${toolActivity.detail}` : '응답 생성 중...'}
                 </Box>
               </Flex>
@@ -378,7 +378,7 @@ export default function AIAgentApp() {
               fontSize="12px"
               bg={theme === 'light' ? '#ffffff' : '$inputBg'}
               border={`1px solid ${theme === 'light' ? 'rgba(0,0,0,0.2)' : 'var(--inputBorder)'}`}
-              color="var(--node-text)"
+              color="$nodeText"
               outline="none"
               resize="none"
               lineHeight={1.6}
@@ -398,7 +398,7 @@ export default function AIAgentApp() {
               fontSize="12px"
               fontWeight={600}
               bg={loading ? 'rgba(239,68,68,0.15)' : !input.trim() ? 'rgba(99,102,241,0.15)' : '$btnBg'}
-              color={loading ? 'var(--diff-rm-sign)' : !input.trim() ? 'var(--node-text-dim)' : '$btnFg'}
+              color={loading ? '$diffRmSign' : !input.trim() ? '$nodeTextDim' : '$btnFg'}
             >{loading ? '취소' : '전송'}</Box>
           </Flex>
         </VStack>
@@ -473,7 +473,7 @@ function SectionLabel({ label, mt }: { label: string; mt?: string }) {
       fontSize="10px"
       fontWeight={700}
       letterSpacing="0.08em"
-      color="var(--node-text-dim)"
+      color="$nodeTextDim"
       mt={mt}
     >
       {label}
@@ -497,7 +497,7 @@ function ConnectorItem({
 }) {
   const isOllama = meta.service === 'ollama';
   return (
-    <Box borderBottom="1px solid var(--node-field-divider)">
+    <Box borderBottom="1px solid $nodeFieldDivider">
       <Flex
         alignItems="center"
         gap="12px"
@@ -511,7 +511,7 @@ function ConnectorItem({
           borderRadius="8px"
           flexShrink={0}
           bg="$widgetBg"
-          border="1px solid var(--node-border)"
+          border="1px solid $nodeBorder"
           alignItems="center"
           justifyContent="center"
           fontSize="18px"
@@ -519,7 +519,7 @@ function ConnectorItem({
 
         <Box flex={1} minWidth={0}>
           <Flex alignItems="center" gap="6px">
-            <Box as="span" fontWeight={600} fontSize="13px" color="var(--node-text)">{meta.label}</Box>
+            <Box as="span" fontWeight={600} fontSize="13px" color="$nodeText">{meta.label}</Box>
             {isActive && (
               <Box
                 as="span"
@@ -536,8 +536,8 @@ function ConnectorItem({
           </Flex>
           <Box fontSize="11px" mt="1px">
             {connected
-              ? <Box as="span" color="var(--diff-add-sign)">● 연결됨</Box>
-              : <Box as="span" color="var(--node-text-dim)">{meta.subtitle}</Box>
+              ? <Box as="span" color="$diffAddSign">● 연결됨</Box>
+              : <Box as="span" color="$nodeTextDim">{meta.subtitle}</Box>
             }
           </Box>
         </Box>
@@ -563,7 +563,7 @@ function ConnectorItem({
           py="16px"
           px="18px"
           bg="$sidebarBg"
-          borderTop="1px solid var(--node-field-divider)"
+          borderTop="1px solid $nodeFieldDivider"
         >
           <Box
             mt="12px"
@@ -572,15 +572,15 @@ function ConnectorItem({
             px="12px"
             borderRadius="6px"
             bg={theme === 'light' ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.04)'}
-            border="1px solid var(--node-field-divider)"
+            border="1px solid $nodeFieldDivider"
           >
-            <Box fontSize="11px" fontWeight={600} color="var(--node-text-dim)" mb="6px">
+            <Box fontSize="11px" fontWeight={600} color="$nodeTextDim" mb="6px">
               키 발급 방법
             </Box>
             {meta.steps.map((step, i) => (
               <Flex key={i} gap="8px" mb={i < meta.steps.length - 1 ? '4px' : '0'}>
                 <Box as="span" fontSize="10px" fontWeight={700} color="#818cf8" minWidth="16px" mt="1px">{i + 1}.</Box>
-                <Box as="span" fontSize="11px" color="var(--node-text)" lineHeight={1.5} whiteSpace="pre-wrap">{step}</Box>
+                <Box as="span" fontSize="11px" color="$nodeText" lineHeight={1.5} whiteSpace="pre-wrap">{step}</Box>
               </Flex>
             ))}
             <Flex
@@ -607,7 +607,7 @@ function ConnectorItem({
             <OllamaConfigPanel status={ollamaStatus} checking={ollamaChecking} selected={keyValue} onSelect={onKeyChange} />
           ) : (
             <>
-              <Box as="label" fontSize="11px" color="var(--node-text-dim)" display="block" mb="5px">
+              <Box as="label" fontSize="11px" color="$nodeTextDim" display="block" mb="5px">
                 {meta.keyLabel}
               </Box>
 
@@ -626,7 +626,7 @@ function ConnectorItem({
                   fontSize="12px"
                   bg={theme === 'light' ? '#ffffff' : '$inputBg'}
                   border={`1px solid ${theme === 'light' ? 'rgba(0,0,0,0.2)' : 'var(--inputBorder)'}`}
-                  color="var(--node-text)"
+                  color="$nodeText"
                   outline="none"
                 />
                 <BtnBox variant="ghost" onClick={onToggleShow} px="8px">
@@ -660,7 +660,7 @@ function OllamaConfigPanel({
 }) {
   if (checking || !status) {
     return (
-      <Box mb="12px" fontSize="12px" color="var(--node-text-dim)">
+      <Box mb="12px" fontSize="12px" color="$nodeTextDim">
         Ollama 상태 확인 중...
       </Box>
     );
@@ -668,7 +668,7 @@ function OllamaConfigPanel({
 
   if (!status.available) {
     return (
-      <Box mb="12px" fontSize="12px" color="var(--node-text-dim)" lineHeight={1.6}>
+      <Box mb="12px" fontSize="12px" color="$nodeTextDim" lineHeight={1.6}>
         Ollama가 설치되어 있지 않거나 실행 중이 아닙니다. 위 안내를 따라 설치·실행한 뒤 다시 열어주세요.
       </Box>
     );
@@ -676,7 +676,7 @@ function OllamaConfigPanel({
 
   if (status.models.length === 0) {
     return (
-      <Box mb="12px" fontSize="12px" color="var(--node-text-dim)" lineHeight={1.6}>
+      <Box mb="12px" fontSize="12px" color="$nodeTextDim" lineHeight={1.6}>
         Ollama는 실행 중이지만 pull된 모델이 없습니다.<br />
         터미널에서 예: <Box as="code" bg="rgba(255,255,255,0.08)" px="4px" borderRadius="3px">ollama pull qwen2.5-coder</Box> 실행 후 다시 열어주세요.
       </Box>
@@ -685,7 +685,7 @@ function OllamaConfigPanel({
 
   return (
     <Box mb="12px">
-      <Box as="label" fontSize="11px" color="var(--node-text-dim)" display="block" mb="6px">
+      <Box as="label" fontSize="11px" color="$nodeTextDim" display="block" mb="6px">
         사용할 모델
       </Box>
       <VStack gap="4px">
@@ -702,8 +702,8 @@ function OllamaConfigPanel({
             cursor="pointer"
             fontFamily="inherit"
             bg={selected === m ? 'rgba(99,102,241,0.2)' : 'transparent'}
-            border={`1px solid ${selected === m ? 'rgba(99,102,241,0.5)' : 'var(--node-border)'}`}
-            color="var(--node-text)"
+            border={`1px solid ${selected === m ? 'rgba(99,102,241,0.5)' : 'var(--nodeBorder)'}`}
+            color="$nodeText"
           >
             {m}
           </Box>
@@ -724,9 +724,9 @@ function BtnBox({
 }) {
   const styles = {
     primary: { bg: '$btnBg', color: '$btnFg', border: 'none' },
-    ghost:   { bg: 'transparent', color: 'var(--node-text)', border: '1px solid var(--node-border)' },
+    ghost:   { bg: 'transparent', color: '$nodeText', border: '1px solid $nodeBorder' },
     active:  { bg: 'rgba(99,102,241,0.2)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.4)' },
-    danger:  { bg: 'rgba(239,68,68,0.12)', color: 'var(--diff-rm-sign)', border: '1px solid rgba(239,68,68,0.2)' },
+    danger:  { bg: 'rgba(239,68,68,0.12)', color: '$diffRmSign', border: '1px solid rgba(239,68,68,0.2)' },
   }[variant];
 
   return (
