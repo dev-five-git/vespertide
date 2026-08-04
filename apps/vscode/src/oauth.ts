@@ -6,14 +6,14 @@ import * as vscode from 'vscode';
 
 // ── OAuth 설정 ────────────────────────────────────────────────────────────────
 
-type OAuthDef = {
+interface OAuthDef {
   authUrl: string;
   tokenUrl: string;
   scopes: string[];
   pkce: boolean;
   extraAuthParams?: Record<string, string>;
   extractToken: (body: Record<string, unknown>) => string;
-};
+}
 
 const OAUTH_DEFS: Record<string, OAuthDef> = {
   slack: {

@@ -4,10 +4,10 @@ import { postMessage } from '../vscode';
 import type { OrmType } from '../vscode';
 import type { AppState } from '../App';
 
-type Props = {
+interface Props {
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
-};
+}
 
 const ORM_LABELS: Record<OrmType, string> = {
   prisma:     'Prisma',
@@ -59,19 +59,19 @@ export default function OrmConverter({ state, setState }: Props) {
                 px="14px"
                 border="1px solid"
                 borderColor={
-                  isCurrent ? 'var(--focusBorder)'
-                  : isTarget ? 'var(--chartsGreen)'
-                  : 'var(--inputBorder)'
+                  isCurrent ? '$focusBorder'
+                  : isTarget ? '$chartsGreen'
+                  : '$inputBorder'
                 }
                 borderRadius="4px"
                 bg={
-                  isCurrent ? 'var(--btnBg)'
+                  isCurrent ? '$btnBg'
                   : isTarget ? 'rgba(76,175,80,0.15)'
                   : 'transparent'
                 }
                 color={
-                  isCurrent ? 'var(--btnFg)'
-                  : 'var(--fg)'
+                  isCurrent ? '$btnFg'
+                  : '$fg'
                 }
                 fontSize="12px"
                 opacity={isCurrent ? 1 : 0.9}
@@ -95,7 +95,7 @@ export default function OrmConverter({ state, setState }: Props) {
           px="16px"
           borderRadius="4px"
           bg="$widgetBg"
-          border="1px solid var(--border)"
+          border="1px solid $border"
           alignItems="center"
           justifyContent="space-between"
           gap="12px"
@@ -113,8 +113,8 @@ export default function OrmConverter({ state, setState }: Props) {
             py="6px"
             px="18px"
             bg={canConvert
-              ? 'var(--btnBg)'
-              : 'var(--btnSecBg)'}
+              ? '$btnBg'
+              : '$btnSecBg'}
             color="$btnFg"
             border="none"
             borderRadius="3px"

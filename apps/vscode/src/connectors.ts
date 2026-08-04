@@ -5,6 +5,7 @@ import type { ConnectorService, ConnectorStatus, ChatMessage } from './messages'
 import { resolveWorkspaceContext, runTool, SCHEMA_TOOLS, type WorkspaceCtx } from './schema-tools';
 
 const KEY_PREFIX = 'vespertide.connector.';
+const ALL_SERVICES: ConnectorService[] = ['claude', 'openai', 'gemini', 'ollama', 'slack', 'notion', 'jira'];
 
 // ── SecretStorage helpers ──────────────────────────────────────────────────────
 
@@ -26,9 +27,8 @@ export async function deleteConnector(
 export async function loadConnectors(
   ctx: vscode.ExtensionContext,
 ): Promise<ConnectorStatus[]> {
-  const services: ConnectorService[] = ['claude', 'openai', 'gemini', 'ollama', 'slack', 'notion', 'jira'];
   return Promise.all(
-    services.map(async (service) => ({
+    ALL_SERVICES.map(async (service) => ({
       service,
       connected: !!(await ctx.secrets.get(`${KEY_PREFIX}${service}`)),
     })),
@@ -195,13 +195,13 @@ type ClaudeContentBlock =
   | { type: 'tool_result'; tool_use_id: string; content: string }
   | { type: string; [k: string]: unknown };
 
-type ClaudeMessage = { role: 'user' | 'assistant'; content: string | ClaudeContentBlock[] };
+interface ClaudeMessage { role: 'user' | 'assistant'; content: string | ClaudeContentBlock[] }
 
-type ClaudeResponse = {
+interface ClaudeResponse {
   content?: ClaudeContentBlock[];
   stop_reason?: string;
   error?: { message: string };
-};
+}
 
 async function callClaude(
   apiKey: string,
@@ -286,14 +286,14 @@ async function callClaude(
 
 // ── OpenAI-compatible (OpenAI + Ollama share this wire format) ────────────────
 
-type OaiToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } };
+interface OaiToolCall { id: string; type: 'function'; function: { name: string; arguments: string } }
 
 type OaiMessage =
   | { role: 'system' | 'user' | 'assistant'; content: string }
   | { role: 'assistant'; content: string | null; tool_calls: OaiToolCall[] }
   | { role: 'tool'; tool_call_id: string; content: string };
 
-type OaiResponse = {
+interface OaiResponse {
   choices?: Array<{
     message?: {
       content?: string | null;
@@ -301,7 +301,7 @@ type OaiResponse = {
     };
   }>;
   error?: { message: string } | string;
-};
+}
 
 async function callOpenAiCompatible(
   url: string,
@@ -418,12 +418,12 @@ type GeminiPart =
   | { functionCall: { name: string; args?: unknown } }
   | { functionResponse: { name: string; response: unknown } };
 
-type GeminiContent = { role: 'user' | 'model'; parts: GeminiPart[] };
+interface GeminiContent { role: 'user' | 'model'; parts: GeminiPart[] }
 
-type GeminiResponse = {
+interface GeminiResponse {
   candidates?: Array<{ content?: GeminiContent }>;
   error?: { message: string };
-};
+}
 
 async function callGemini(
   apiKey: string,

@@ -21,6 +21,7 @@ import {
   createNotionPage,
   createJiraIssue,
 } from './connectors';
+import { injectWebviewSecurity } from './webview-html';
 
 export class VespertideWebviewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'vespertide.mainPanel';
@@ -188,35 +189,12 @@ export class VespertideWebviewProvider implements vscode.WebviewViewProvider {
     const indexPath = path.join(this._extensionUri.fsPath, 'dist', 'webview', 'index.html');
 
     if (fs.existsSync(indexPath)) {
-      const nonce = randomNonce();
-      let html = fs.readFileSync(indexPath, 'utf-8');
-
-      html = html.replace(/(src|href)="(\.\/[^"]+|\/[^"]+)"/g, (_m, attr, val) => {
-        const relative = val.replace(/^\//, '').replace(/^\.\//, '');
-        const uri = webview.asWebviewUri(vscode.Uri.joinPath(webviewDist, relative));
-        return `${attr}="${uri}"`;
-      });
-
-      const csp = [
-        `default-src 'none'`,
-        `script-src 'nonce-${nonce}' 'unsafe-eval' ${webview.cspSource}`,
-        `style-src ${webview.cspSource} 'unsafe-inline'`,
-        `img-src ${webview.cspSource} data:`,
-        `font-src ${webview.cspSource}`,
-      ].join('; ');
-
-      html = html.replace('<head>', `<head><meta http-equiv="Content-Security-Policy" content="${csp}">`);
-      html = html.replace(/<script(?!.*nonce)/g, `<script nonce="${nonce}"`);
-      return html;
+      const html = fs.readFileSync(indexPath, 'utf-8');
+      return injectWebviewSecurity(html, webview, webviewDist);
     }
 
     return buildFallbackHtml();
   }
-}
-
-function randomNonce(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  return Array.from({ length: 32 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
 
 function buildFallbackHtml(): string {

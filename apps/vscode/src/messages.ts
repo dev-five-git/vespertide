@@ -1,8 +1,8 @@
 export type OrmType = 'prisma' | 'typeorm' | 'drizzle' | 'jpa' | 'sqlalchemy' | 'gorm';
 export type DbDialect = 'postgres' | 'mysql' | 'sqlite';
 export type ConnectorService = 'claude' | 'openai' | 'gemini' | 'ollama' | 'slack' | 'notion' | 'jira';
-export type ConnectorStatus = { service: ConnectorService; connected: boolean };
-export type ChatMessage = { role: 'user' | 'assistant'; content: string };
+export interface ConnectorStatus { service: ConnectorService; connected: boolean }
+export interface ChatMessage { role: 'user' | 'assistant'; content: string }
 
 /** Opaque schema object — passed between host and webview */
 export type Schema = Record<string, unknown>;

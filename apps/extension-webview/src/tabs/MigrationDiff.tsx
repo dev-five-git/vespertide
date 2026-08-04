@@ -336,9 +336,9 @@ function kindBadge(kind: FileKind) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-type Props = { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>> };
+interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>> }
 
-export default function MigrationDiff({ state, setState: _setState }: Props) {
+export default function MigrationDiff({ state }: Props) {
   const lastSchemaRef = useRef<string>('');
   const [requested,  setRequested]  = useState(false);
   const [dialect,    setDialect]    = useState<Dialect>('postgres');
@@ -382,9 +382,9 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
       <VStack
         w="224px"
         flexShrink={0}
-        borderRight="1px solid var(--border)"
-        bg="var(--diff-sidebar-bg, #252526)"
-        color="var(--diff-sidebar-text, #cccccc)"
+        borderRight="1px solid $border"
+        bg="var(--diff-sidebar-bg)"
+        color="var(--diff-sidebar-text)"
       >
         {/* Header */}
         <Flex
@@ -394,7 +394,7 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
           flexShrink={0}
           alignItems="center"
           justifyContent="space-between"
-          borderBottom="1px solid var(--border)"
+          borderBottom="1px solid $border"
         >
           <Box as="span" fontSize="10px" fontWeight={700} letterSpacing="0.08em" color="var(--node-text-dim)">
             CHANGES
@@ -419,7 +419,7 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
                 cursor="pointer"
                 fontSize="10px"
                 fontWeight={600}
-                bg={dialect === d ? 'var(--btnBg)' : 'transparent'}
+                bg={dialect === d ? '$btnBg' : 'transparent'}
                 color={dialect === d ? '#fff' : 'var(--node-text-dim)'}
                 transition="background 0.1s"
               >{DIALECT_LABELS[d]}</Box>
@@ -462,7 +462,7 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
                 px="10px"
                 cursor="pointer"
                 bg={isSel ? 'rgba(99,102,241,0.15)' : 'transparent'}
-                borderLeft={isSel ? '2px solid var(--focusBorder)' : '2px solid transparent'}
+                borderLeft={isSel ? '2px solid $focusBorder' : '2px solid transparent'}
               >
                 <Box as="span" fontSize="11px" color="var(--node-text-dim)" flexShrink={0}>
                   {f.kind === 'index' ? '⊞' : '≡'}
@@ -492,9 +492,9 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
             py="5px"
             px="12px"
             flexShrink={0}
-            borderBottom="1px solid var(--border)"
-            bg="var(--diff-header-bg, #2d2d2d)"
-            color="var(--diff-header-text, #cccccc)"
+            borderBottom="1px solid $border"
+            bg="var(--diff-header-bg)"
+            color="var(--diff-header-text)"
             fontSize="12px"
           >
             <Box as="span" color="var(--node-text-dim)">{selected.kind === 'index' ? '⊞' : '≡'}</Box>
@@ -505,7 +505,7 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
             {selected.removes > 0 && <Box as="span" fontSize="11px" color="var(--diff-rm-sign)"  fontWeight={600}>−{selected.removes}</Box>}
             <Box
               as="button"
-              onClick={() => navigator.clipboard.writeText(selected.sql).catch(console.error)}
+              onClick={() => navigator.clipboard.writeText(selected.sql)}
               bg="transparent"
               cursor="pointer"
               border="1px solid var(--node-border)"
@@ -522,7 +522,7 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
         <Box
           flex={1}
           overflow="auto"
-          bg="var(--diff-bg, #1e1e1e)"
+          bg="var(--diff-bg)"
           fontFamily="$editorFont"
           fontSize="12px"
           lineHeight="20px"
@@ -563,7 +563,7 @@ export default function MigrationDiff({ state, setState: _setState }: Props) {
                 lineHeight="20px"
                 userSelect="none"
                 color="var(--diff-linenum)"
-                borderRight="1px solid var(--border)"
+                borderRight="1px solid $border"
                 mr="4px"
               >{line.newNum ?? ''}</Box>
               {/* +/- sign */}

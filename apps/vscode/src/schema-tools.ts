@@ -10,13 +10,13 @@ const MAX_FILES = 300;
 const MAX_LIST_BYTES = 20_000;
 const MAX_READ_BYTES = 48 * 1024;
 
-export type WorkspaceCtx = {
+export interface WorkspaceCtx {
   rootReal: string;
   modelsDirReal: string;
   migrationsDirReal: string;
-};
+}
 
-type SchemaFileEntry = { relPath: string; realPath: string };
+interface SchemaFileEntry { relPath: string; realPath: string }
 
 function isContained(childReal: string, parentReal: string): boolean {
   const rel = path.relative(parentReal, childReal);
@@ -31,7 +31,7 @@ async function realpathOrNull(p: string): Promise<string | null> {
   }
 }
 
-type VespertideJson = { modelsDir?: string; migrationsDir?: string };
+interface VespertideJson { modelsDir?: string; migrationsDir?: string }
 
 /**
  * Picks the workspace folder the schema tools should operate on:

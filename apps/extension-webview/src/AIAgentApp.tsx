@@ -3,7 +3,7 @@ import { Box, Flex, VStack } from '@devup-ui/react';
 import { postMessage, onMessage } from './vscode';
 import type { ConnectorService, ConnectorStatus, ChatMessage } from './vscode';
 
-type ConnectorMeta = {
+interface ConnectorMeta {
   service: ConnectorService;
   label: string;
   icon: string;
@@ -14,7 +14,7 @@ type ConnectorMeta = {
   getKeyUrl: string;
   getKeyLabel: string;
   steps: string[];
-};
+}
 
 const CONNECTORS: ConnectorMeta[] = [
   {
@@ -194,7 +194,7 @@ export default function AIAgentApp() {
       <Flex
         alignItems="stretch"
         flexShrink={0}
-        borderBottom="1px solid var(--border)"
+        borderBottom="1px solid $border"
         bg="$tabsBg"
       >
         <Flex alignItems="center" gap="6px" px="14px" flexShrink={0}>
@@ -213,7 +213,7 @@ export default function AIAgentApp() {
               border="none"
               cursor="pointer"
               bg="transparent"
-              borderBottom={view === v ? '2px solid var(--focusBorder)' : '2px solid transparent'}
+              borderBottom={view === v ? '2px solid $focusBorder' : '2px solid transparent'}
               color={view === v ? 'var(--node-text)' : 'var(--node-text-dim)'}
               fontSize="12px"
               fontWeight={view === v ? 600 : 400}
@@ -329,7 +329,7 @@ export default function AIAgentApp() {
                     py="10px"
                     px="14px"
                     borderRadius={isUser ? '14px 14px 3px 14px' : '14px 14px 14px 3px'}
-                    bg={theme === 'light' ? '#ffffff' : isUser ? 'rgba(99,102,241,0.15)' : 'var(--widgetBg)'}
+                    bg={theme === 'light' ? '#ffffff' : isUser ? 'rgba(99,102,241,0.15)' : '$widgetBg'}
                     border={theme === 'light' ? '1px solid rgba(0,0,0,0.18)' : `1px solid ${isUser ? 'rgba(99,102,241,0.4)' : 'var(--node-border)'}`}
                     fontSize="13px"
                     lineHeight={1.7}
@@ -358,7 +358,7 @@ export default function AIAgentApp() {
             py="10px"
             px="16px"
             flexShrink={0}
-            borderTop="1px solid var(--border)"
+            borderTop="1px solid $border"
             bg="$sidebarBg"
             gap="8px"
             alignItems="flex-end"

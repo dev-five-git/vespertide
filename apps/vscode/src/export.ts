@@ -34,16 +34,17 @@ export async function exportSql(content: string, dialect: DbDialect): Promise<st
 
 // ── Schema / ORM source ────────────────────────────────────────────────────────
 
+const ORM_FILE_EXT: Record<OrmType, string> = {
+  prisma:     'prisma',
+  drizzle:    'ts',
+  typeorm:    'ts',
+  gorm:       'go',
+  jpa:        'java',
+  sqlalchemy: 'py',
+};
+
 export async function exportSchema(content: string, ormType: OrmType): Promise<string | undefined> {
-  const extMap: Record<OrmType, string> = {
-    prisma:     'prisma',
-    drizzle:    'ts',
-    typeorm:    'ts',
-    gorm:       'go',
-    jpa:        'java',
-    sqlalchemy: 'py',
-  };
-  const ext = extMap[ormType] ?? 'txt';
+  const ext = ORM_FILE_EXT[ormType] ?? 'txt';
   const uri = await vscode.window.showSaveDialog({
     defaultUri: defaultSaveUri(`schema.${ext}`),
     filters: {},

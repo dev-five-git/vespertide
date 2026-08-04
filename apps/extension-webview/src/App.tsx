@@ -140,7 +140,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'export',    label: 'Export' },
 ];
 
-export type AppState = {
+export interface AppState {
   ormSource: string;
   ormType: OrmType;
   svg: string;
@@ -150,7 +150,7 @@ export type AppState = {
   sqlite: string;
   error: string | null;
   theme: 'dark' | 'light';
-};
+}
 
 const INITIAL: AppState = {
   ormSource: DEFAULT_SCHEMAS.prisma,
@@ -192,7 +192,7 @@ export default function App() {
       <Flex
         role="tablist"
         alignItems="stretch"
-        borderBottom="1px solid var(--border)"
+        borderBottom="1px solid $border"
         bg="$tabsBg"
         flexShrink={0}
       >
@@ -207,7 +207,7 @@ export default function App() {
             py="8px"
             px="4px"
             border="none"
-            borderBottom={tab === id ? '2px solid var(--focusBorder)' : '2px solid transparent'}
+            borderBottom={tab === id ? '2px solid $focusBorder' : '2px solid transparent'}
             bg="transparent"
             color={tab === id ? '$fg' : '$inactiveFg'}
             fontSize="11px"

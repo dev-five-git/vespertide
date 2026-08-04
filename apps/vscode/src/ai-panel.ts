@@ -13,6 +13,7 @@ import {
   createJiraIssue,
   checkOllama,
 } from './connectors';
+import { injectWebviewSecurity } from './webview-html';
 
 export class AIAgentPanel {
   public static readonly viewType = 'vespertide.aiAgent';
@@ -153,26 +154,8 @@ export class AIAgentPanel {
     const htmlPath = path.join(this._extensionUri.fsPath, 'dist', 'webview', 'ai-agent.html');
 
     if (fs.existsSync(htmlPath)) {
-      const nonce = randomNonce();
-      let html = fs.readFileSync(htmlPath, 'utf-8');
-
-      html = html.replace(/(src|href)="(\.\/[^"]+|\/[^"]+)"/g, (_m: string, attr: string, val: string) => {
-        const relative = val.replace(/^\//, '').replace(/^\.\//, '');
-        const uri = webview.asWebviewUri(vscode.Uri.joinPath(webviewDist, relative));
-        return `${attr}="${uri}"`;
-      });
-
-      const csp = [
-        `default-src 'none'`,
-        `script-src 'nonce-${nonce}' 'unsafe-eval' ${webview.cspSource}`,
-        `style-src ${webview.cspSource} 'unsafe-inline'`,
-        `img-src ${webview.cspSource} data:`,
-        `font-src ${webview.cspSource}`,
-      ].join('; ');
-
-      html = html.replace('<head>', `<head><meta http-equiv="Content-Security-Policy" content="${csp}">`);
-      html = html.replace(/<script(?!.*nonce)/g, `<script nonce="${nonce}"`);
-      return html;
+      const html = fs.readFileSync(htmlPath, 'utf-8');
+      return injectWebviewSecurity(html, webview, webviewDist);
     }
 
     return `<!DOCTYPE html><html><body style="font-family:sans-serif;color:#ccc;padding:24px">
@@ -188,9 +171,4 @@ export class AIAgentPanel {
     for (const d of this._disposables) d.dispose();
     this._disposables = [];
   }
-}
-
-function randomNonce(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  return Array.from({ length: 32 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
