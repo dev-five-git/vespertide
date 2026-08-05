@@ -276,7 +276,7 @@ function SectionHead({
       >
         {title}
         {emphasis && (
-          <Text as="span" color="$vespertidePrimary" fontStyle="italic">
+          <Text color="$vespertidePrimary" fontStyle="italic">
             {emphasis}
           </Text>
         )}
@@ -306,12 +306,12 @@ function HeroSection({ codeHtml }: { codeHtml: string }) {
         pos="absolute"
       />
       <Box maxW="1240px" mx="auto" pb={['60px', null, null, '80px']} pos="relative">
-        <Flex
+        <VStack
           alignItems="center"
-          flexDir={['column', null, null, 'row']}
+          flexDir={[null, null, null, 'row']}
           gap={['40px', null, null, '60px']}
         >
-          <VStack alignItems="flex-start" flex="1.1" w="100%">
+          <VStack flex="1.1" w="100%">
             <Flex
               alignItems="center"
               bg="$vespertideBg"
@@ -321,6 +321,7 @@ function HeroSection({ codeHtml }: { codeHtml: string }) {
               mb="24px"
               px="12px"
               py="5px"
+              w="fit-content"
             >
               <Box
                 bg="$vespertidePrimary"
@@ -340,16 +341,18 @@ function HeroSection({ codeHtml }: { codeHtml: string }) {
             >
               Define schemas.
               <br />
-              <Text as="span" color="$vespertidePrimary" fontStyle="italic">
+              <Text color="$vespertidePrimary" fontStyle="italic">
                 Forget migrations.
               </Text>
             </Text>
 
-            <Text color="$textSub" maxW="520px" mb="32px" typography="bodyLg">
-              Vespertide is a declarative database schema manager for Rust. Write
-              your tables in JSON, and let it diff, plan, and emit type-safe
-              migrations to Postgres, MySQL, and SQLite — automatically.
-            </Text>
+            <Box mb="32px">
+              <Text color="$textSub" maxW="520px" typography="bodyLg">
+                Vespertide is a declarative database schema manager for Rust. Write
+                your tables in JSON, and let it diff, plan, and emit type-safe
+                migrations to Postgres, MySQL, and SQLite — automatically.
+              </Text>
+            </Box>
 
             <Flex flexWrap="wrap" gap="12px" mb="28px">
               <Link href="#quickstart">
@@ -386,7 +389,6 @@ function HeroSection({ codeHtml }: { codeHtml: string }) {
               gap={['20px', null, null, '40px']}
               mt="32px"
               pt="24px"
-              w="100%"
             >
               {[
                 { num: `v${VERSION}`, lbl: 'Version' },
@@ -417,7 +419,7 @@ function HeroSection({ codeHtml }: { codeHtml: string }) {
               <HighlightedCode html={codeHtml} />
             </CodeWindow>
           </Box>
-        </Flex>
+        </VStack>
       </Box>
     </Box>
   )
