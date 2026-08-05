@@ -5,7 +5,7 @@ import type { ComponentProps } from 'react'
 
 import { Button } from '@/components/button'
 
-import { CodeTabs, type CodeExample } from './_components/code-tabs'
+import { CodeTabs, type CodeExampleQuad } from './_components/code-tabs'
 import { CodeWindow, HighlightedCode } from './_components/code-window'
 import { CopyInstall } from './_components/copy-install'
 import { highlight } from './_lib/highlight'
@@ -550,7 +550,7 @@ function PipelineSection() {
   )
 }
 
-function ExamplesSection({ examples }: { examples: CodeExample[] }) {
+function ExamplesSection({ examples }: { examples: CodeExampleQuad }) {
   return (
     <Box
       as="section"
@@ -954,7 +954,7 @@ export default async function HomePage() {
       highlight(EXAMPLE_EXPORT, 'shell'),
     ])
 
-  const examples: CodeExample[] = [
+  const examples: CodeExampleQuad = [
     { key: 'model', label: 'Model', file: 'models/post.json', html: modelHtml },
     { key: 'cli', label: 'CLI', file: '~/projects/blog', html: cliHtml },
     { key: 'runtime', label: 'Runtime', file: 'src/main.rs', html: runtimeHtml },

@@ -25,10 +25,10 @@ export function CodeWindow({
   children,
   ...props
 }: {
-  title: string
+  title: ReactNode
   tabs?: ReactNode
   children: ReactNode
-} & ComponentProps<typeof Box<'div'>>) {
+} & Omit<ComponentProps<typeof Box<'div'>>, 'title'>) {
   return (
     <Box
       bg="$cardBase"
