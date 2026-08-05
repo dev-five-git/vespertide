@@ -269,15 +269,18 @@ function SectionHead({
       >
         — {eyebrow}
       </Text>
-      <Text color="$title" typography="h2">
+      <Text
+        color="$title"
+        display="inline-flex"
+        flexWrap="wrap"
+        gap="0.3em"
+        typography="h2"
+      >
         {title}
         {emphasis && (
-          <>
-            {' '}
-            <Text as="span" color="$vespertidePrimary" fontStyle="italic">
-              {emphasis}
-            </Text>
-          </>
+          <Text as="span" color="$vespertidePrimary" fontStyle="italic">
+            {emphasis}
+          </Text>
         )}
       </Text>
       {lede && (
