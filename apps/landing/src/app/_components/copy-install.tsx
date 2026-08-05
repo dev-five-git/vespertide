@@ -31,10 +31,10 @@ export function CopyInstall({
       transition="border-color .15s"
       w="fit-content"
     >
-      <Text color="$caption" fontFamily="D2Coding" fontSize="13px">
+      <Text color="$caption" typography="code">
         $
       </Text>
-      <Text color="$title" fontFamily="D2Coding" fontSize="13px">
+      <Text color="$title" typography="code">
         {command}
       </Text>
       <Box
