@@ -262,10 +262,8 @@ function SectionHead({
     <VStack alignItems="flex-start" gap="16px" maxW="720px">
       <Text
         color="$vespertidePrimary"
-        fontFamily="D2Coding"
-        fontSize="11px"
-        letterSpacing="0.14em"
         textTransform="uppercase"
+        typography="eyebrow"
       >
         — {eyebrow}
       </Text>
@@ -313,12 +311,12 @@ function HeroSection({ codeHtml }: { codeHtml: string }) {
           flexDir={['column', null, null, 'row']}
           gap={['40px', null, null, '60px']}
         >
-          <VStack alignItems="flex-start" flex="1.1" gap="0" w="100%">
+          <VStack alignItems="flex-start" flex="1.1" w="100%">
             <Flex
               alignItems="center"
               bg="$vespertideBg"
               border="1px solid $border"
-              borderRadius="999px"
+              borderRadius="50%"
               gap="8px"
               mb="24px"
               px="12px"
@@ -457,7 +455,6 @@ function FeaturesSection() {
               _hover={{ bg: '$containerBackground' }}
               alignItems="flex-start"
               bg="$vespertideBg"
-              gap="0"
               key={f.title}
               px="28px"
               py="32px"
@@ -517,7 +514,6 @@ function PipelineSection() {
               bg="$vespertideBg"
               border="1px solid $border"
               borderRadius="$borderRadiusRadius08"
-              gap="0"
               key={s.title}
               px="22px"
               py="24px"
@@ -569,7 +565,7 @@ function ExamplesSection({ examples }: { examples: CodeExampleQuad }) {
           flexDir={['column', null, null, 'row']}
           gap={['40px', null, null, '60px']}
         >
-          <VStack alignItems="flex-start" flex="1.1" gap="0" w="100%">
+          <VStack alignItems="flex-start" flex="1.1" w="100%">
             <Text
               color="$vespertidePrimary"
               fontFamily="D2Coding"
@@ -738,7 +734,7 @@ function CompatibilitySection() {
                 alignItems="center"
                 bg="$vespertideBg"
                 border="1px solid $border"
-                borderRadius="999px"
+                borderRadius="50%"
                 color="$textSub"
                 fontFamily="D2Coding"
                 fontSize="12px"
@@ -843,7 +839,7 @@ function CommunitySection() {
             p={['40px 28px', null, null, '64px 48px']}
             pos="relative"
           >
-            <VStack alignItems="flex-start" flex="1.4" gap="0" w="100%">
+            <VStack alignItems="flex-start" flex="1.4" w="100%">
               <Text
                 color="$vespertidePrimary"
                 fontFamily="D2Coding"
