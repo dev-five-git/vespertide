@@ -458,8 +458,8 @@ function FeaturesSection() {
               alignItems="flex-start"
               bg="$vespertideBg"
               key={f.title}
-              px="28px"
-              py="32px"
+              px={['20px', null, null, '28px']}
+              py={['24px', null, null, '32px']}
               transition="background .15s"
             >
               <MaskIcon
@@ -562,9 +562,9 @@ function ExamplesSection({ examples }: { examples: CodeExampleQuad }) {
       py={['64px', null, null, '100px']}
     >
       <Box maxW="1240px" mx="auto">
-        <Flex
+        <VStack
           alignItems="flex-start"
-          flexDir={['column', null, null, 'row']}
+          flexDir={[null, null, null, 'row']}
           gap={['40px', null, null, '60px']}
         >
           <VStack alignItems="flex-start" flex="1.1" w="100%">
@@ -616,10 +616,16 @@ function ExamplesSection({ examples }: { examples: CodeExampleQuad }) {
                   >
                     →
                   </Text>
-                  <Text color="$textSub" typography="body">
+                  <Text
+                    color="$textSub"
+                    display="inline-flex"
+                    flexWrap="wrap"
+                    gap="0.3em"
+                    typography="body"
+                  >
                     <Text as="span" color="$title" fontWeight="600">
                       {it.k}
-                    </Text>{' '}
+                    </Text>
                     {it.v}
                   </Text>
                 </Flex>
@@ -629,7 +635,7 @@ function ExamplesSection({ examples }: { examples: CodeExampleQuad }) {
           <Box flex="1" w="100%">
             <CodeTabs examples={examples} />
           </Box>
-        </Flex>
+        </VStack>
       </Box>
     </Box>
   )
@@ -712,11 +718,9 @@ function CompatibilitySection() {
         <Box mt="60px">
           <Text
             color="$vespertidePrimary"
-            fontFamily="D2Coding"
-            fontSize="11px"
-            letterSpacing="0.14em"
             mb="8px"
             textTransform="uppercase"
+            typography="eyebrow"
           >
             — ORM export
           </Text>
