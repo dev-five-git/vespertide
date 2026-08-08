@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Box, Flex, VStack } from '@devup-ui/react';
+import { Box, Flex, VStack, setTheme as setDevupTheme } from '@devup-ui/react';
 import { postMessage, onMessage } from './vscode';
 import type { ConnectorService, ConnectorStatus, ChatMessage } from './vscode';
 
@@ -128,6 +128,8 @@ export default function AIAgentApp() {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => { setDevupTheme(theme); }, [theme]);
+
   // 현재 activeAI가 연결되어 있지 않으면 연결된 첫 AI로 자동 전환한다.
   useEffect(() => {
     if (connectors.length === 0) return;
@@ -184,11 +186,13 @@ export default function AIAgentApp() {
 
   return (
     <VStack
-      data-theme={theme}
       h="100vh"
       bg="$editorBg"
       color="$fg"
       fontFamily="$appFont"
+      fontSize="var(--vscode-font-size, 13px)"
+      fontWeight="var(--vscode-font-weight, normal)"
+      overflow="hidden"
     >
       {/* ── Header / Tab bar ── */}
       <Flex
@@ -212,6 +216,7 @@ export default function AIAgentApp() {
               px="16px"
               border="none"
               cursor="pointer"
+              fontFamily="inherit"
               bg="transparent"
               borderBottom={view === v ? '2px solid $focusBorder' : '2px solid transparent'}
               color={view === v ? '$nodeText' : '$nodeTextDim'}
@@ -247,6 +252,7 @@ export default function AIAgentApp() {
                 borderRadius="10px"
                 fontSize="11px"
                 cursor="pointer"
+                fontFamily="inherit"
                 bg={activeAI === ai.service ? 'rgba(99,102,241,0.28)' : 'transparent'}
                 border={`1px solid ${activeAI === ai.service ? 'rgba(99,102,241,0.6)' : 'var(--nodeBorder)'}`}
                 color={activeAI === ai.service ? '#818cf8' : '$nodeTextDim'}
@@ -268,6 +274,7 @@ export default function AIAgentApp() {
           bg="transparent"
           color="$nodeTextDim"
           cursor="pointer"
+          fontFamily="inherit"
           display="flex"
           alignItems="center"
           justifyContent="center"
@@ -299,6 +306,7 @@ export default function AIAgentApp() {
                       px="14px"
                       borderRadius="6px"
                       border="none"
+                      fontFamily="inherit"
                       bg="rgba(99,102,241,0.2)"
                       color="#818cf8"
                       cursor="pointer"
@@ -395,6 +403,7 @@ export default function AIAgentApp() {
               borderRadius="6px"
               border="none"
               cursor="pointer"
+              fontFamily="inherit"
               fontSize="12px"
               fontWeight={600}
               bg={loading ? 'rgba(239,68,68,0.15)' : !input.trim() ? 'rgba(99,102,241,0.15)' : '$btnBg'}
@@ -624,6 +633,7 @@ function ConnectorItem({
                   px="10px"
                   borderRadius="4px"
                   fontSize="12px"
+                  fontFamily="inherit"
                   bg={theme === 'light' ? '#ffffff' : '$inputBg'}
                   border={`1px solid ${theme === 'light' ? 'rgba(0,0,0,0.2)' : 'var(--inputBorder)'}`}
                   color="$nodeText"

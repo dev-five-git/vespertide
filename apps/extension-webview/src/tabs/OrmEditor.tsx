@@ -4,6 +4,7 @@ import { postMessage } from '../vscode';
 import type { OrmType } from '../vscode';
 import type { AppState } from '../App';
 import { DEFAULT_SCHEMAS } from '../App';
+import { slideInRight, slideInUp } from '../theme';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -471,6 +472,8 @@ const navBtnProps = (active = false) => ({
   border: 'none' as const,
   borderRadius: '5px',
   cursor: 'pointer' as const,
+  fontFamily: 'inherit',
+  fontSize: 'inherit',
   bg: active ? 'rgba(99,102,241,0.18)' : 'transparent',
   color: active ? '#a5b4fc' : '$fg',
   opacity: active ? 1 : 0.7,
@@ -852,6 +855,7 @@ export default function OrmEditor({ state, setState }: Props) {
           color="$fg"
           fontSize="11px"
           cursor="pointer"
+          fontFamily="inherit"
           onClick={() => setShowCode((v) => !v)}
         >{'</>'} Code</Box>
       </Flex>
@@ -1345,6 +1349,7 @@ export default function OrmEditor({ state, setState }: Props) {
                       fontSize="11px"
                       textAlign="left"
                       cursor="pointer"
+                      fontFamily="inherit"
                       borderBottom={type !== 'compact'
                         ? '1px solid $navbarBorder' : 'none'}
                     >{label}</Box>
@@ -1374,7 +1379,7 @@ export default function OrmEditor({ state, setState }: Props) {
             flexShrink={0}
             borderLeft="1px solid $border"
             bg="$sidebarBg"
-            animation="slideInRight 0.15s ease-out"
+            animation={`${slideInRight} 0.15s ease-out`}
           >
             {selected ? (
               <>
@@ -1413,6 +1418,7 @@ export default function OrmEditor({ state, setState }: Props) {
                     color="$nodeTextDim"
                     fontSize="14px"
                     cursor="pointer"
+                    fontFamily="inherit"
                     p="2px"
                   >✕</Box>
                 </Flex>
@@ -1488,6 +1494,7 @@ export default function OrmEditor({ state, setState }: Props) {
                           color="$focusBorder"
                           fontSize="11px"
                           cursor="pointer"
+                          fontFamily="inherit"
                         >+ Relation 추가</Box>
                       </Box>
                     ) : (
@@ -1526,6 +1533,7 @@ export default function OrmEditor({ state, setState }: Props) {
                     color="$nodeTextDim"
                     fontSize="14px"
                     cursor="pointer"
+                    fontFamily="inherit"
                     p="2px"
                   >✕</Box>
                 </Flex>
@@ -1585,6 +1593,7 @@ export default function OrmEditor({ state, setState }: Props) {
                       color="#f87171"
                       fontSize="11px"
                       cursor="pointer"
+                      fontFamily="inherit"
                     >Relation 삭제</Box>
                   </Box>
                 )}
@@ -1600,7 +1609,7 @@ export default function OrmEditor({ state, setState }: Props) {
           h="220px"
           flexShrink={0}
           borderTop="1px solid $border"
-          animation="slideInUp 0.15s ease-out"
+          animation={`${slideInUp} 0.15s ease-out`}
         >
           {/* ORM type tabs */}
           <Flex
@@ -1623,6 +1632,7 @@ export default function OrmEditor({ state, setState }: Props) {
                 borderRadius="3px"
                 fontSize="10px"
                 cursor="pointer"
+                fontFamily="inherit"
                 borderColor={state.ormType === orm ? '$focusBorder' : '$nodeText'}
                 bg={state.ormType === orm ? '$btnBg' : 'transparent'}
                 color={state.ormType === orm ? '$btnFg' : '$diffHeaderText'}
@@ -1699,6 +1709,7 @@ const inputProps = {
   px: '6px',
   borderRadius: '3px',
   fontSize: '11px',
+  fontFamily: 'inherit',
   bg: '$nodeBg',
   color: '$nodeText',
   border: '1px solid $nodeBorder',
@@ -1775,6 +1786,7 @@ function AddRelFormPanel({
               bg={form.relType === t ? 'rgba(99,102,241,0.15)' : 'transparent'}
               color="$nodeText"
               cursor="pointer"
+              fontFamily="inherit"
             >{t === 'many-to-one' ? `${fromModel} → ${form.target}` : `${fromModel} ← ${form.target}`}</Box>
           ))}
         </Flex>
@@ -1843,6 +1855,7 @@ function AddRelFormPanel({
           color="$btnFg"
           fontSize="11px"
           cursor="pointer"
+          fontFamily="inherit"
         >추가</Box>
         <Box
           as="button"
@@ -1855,6 +1868,7 @@ function AddRelFormPanel({
           color="$nodeText"
           fontSize="11px"
           cursor="pointer"
+          fontFamily="inherit"
         >취소</Box>
       </Flex>
     </Box>

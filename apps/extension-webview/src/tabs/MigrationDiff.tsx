@@ -417,6 +417,7 @@ export default function MigrationDiff({ state }: Props) {
                 border="none"
                 borderRadius="4px"
                 cursor="pointer"
+                fontFamily="inherit"
                 fontSize="10px"
                 fontWeight={600}
                 bg={dialect === d ? '$btnBg' : 'transparent'}
@@ -514,6 +515,7 @@ export default function MigrationDiff({ state }: Props) {
               py="2px"
               px="8px"
               fontSize="10px"
+              fontFamily="inherit"
             >복사</Box>
           </Flex>
         )}

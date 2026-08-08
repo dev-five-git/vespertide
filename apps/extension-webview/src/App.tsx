@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Flex, VStack } from '@devup-ui/react';
+import { Box, Flex, VStack, setTheme } from '@devup-ui/react';
 import { onMessage } from './vscode';
 import type { HostMessage, OrmType, Schema } from './vscode';
 import OrmEditor from './tabs/OrmEditor';
@@ -64,8 +64,18 @@ export default function App() {
     });
   }, []);
 
+  useEffect(() => { setTheme(state.theme); }, [state.theme]);
+
   return (
-    <VStack data-theme={state.theme} h="100vh">
+    <VStack
+      h="100vh"
+      bg="$sidebarBg"
+      color="$fg"
+      fontFamily="$appFont"
+      fontSize="var(--vscode-font-size, 13px)"
+      fontWeight="var(--vscode-font-weight, normal)"
+      overflow="hidden"
+    >
       <Flex
         role="tablist"
         alignItems="stretch"
@@ -90,6 +100,7 @@ export default function App() {
             fontSize="11px"
             fontWeight={tab === id ? 600 : 400}
             cursor="pointer"
+            fontFamily="inherit"
             transition="color 0.1s, border-color 0.1s"
           >
             {label}
@@ -108,6 +119,7 @@ export default function App() {
           bg="transparent"
           color="$inactiveFg"
           cursor="pointer"
+          fontFamily="inherit"
           display="flex"
           alignItems="center"
           justifyContent="center"

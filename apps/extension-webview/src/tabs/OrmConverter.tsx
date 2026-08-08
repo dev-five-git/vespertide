@@ -76,6 +76,7 @@ export default function OrmConverter({ state, setState }: Props) {
                 fontSize="12px"
                 opacity={isCurrent ? 1 : 0.9}
                 cursor={isCurrent ? 'not-allowed' : 'pointer'}
+                fontFamily="inherit"
                 transition="all 0.1s"
               >
                 {ORM_LABELS[orm]}
@@ -121,6 +122,7 @@ export default function OrmConverter({ state, setState }: Props) {
             fontSize="12px"
             cursor={canConvert ? 'pointer' : 'not-allowed'}
             opacity={canConvert ? 1 : 0.5}
+            fontFamily="inherit"
             whiteSpace="nowrap"
           >
             변환
