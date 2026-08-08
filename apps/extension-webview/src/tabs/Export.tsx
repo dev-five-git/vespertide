@@ -16,6 +16,9 @@ interface ExportFile {
   isDummy: boolean;
 }
 
+// 실제 마이그레이션/ERD가 아직 없을 때 Export 탭이 빈 화면으로 보이지 않도록 쓰는
+// 프리뷰용 더미 데이터 (files 배열의 isDummy 플래그로 PREVIEW 배지와 함께 표시됨).
+// 의도적으로 유지 — 제거 대상 아님.
 const DUMMY_SQL_PG = `-- PostgreSQL migration (preview)\n\nCREATE TABLE "users" (\n  "id" SERIAL NOT NULL,\n  "email" TEXT NOT NULL,\n  "name" TEXT,\n  "created_at" TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),\n  CONSTRAINT "pk_users" PRIMARY KEY ("id"),\n  CONSTRAINT "uq_users__email" UNIQUE ("email")\n);\n\nCREATE TABLE "posts" (\n  "id" SERIAL NOT NULL,\n  "title" TEXT NOT NULL,\n  "content" TEXT,\n  "published" BOOLEAN NOT NULL DEFAULT false,\n  "author_id" INTEGER NOT NULL,\n  CONSTRAINT "pk_posts" PRIMARY KEY ("id"),\n  CONSTRAINT "fk_posts__author_id" FOREIGN KEY ("author_id") REFERENCES "users" ("id")\n);\n\nCREATE INDEX "ix_posts__author_id" ON "posts" ("author_id");`;
 
 const DUMMY_SQL_MY = `-- MySQL migration (preview)\n\nCREATE TABLE \`users\` (\n  \`id\` INT NOT NULL AUTO_INCREMENT,\n  \`email\` VARCHAR(191) NOT NULL,\n  \`name\` VARCHAR(191),\n  PRIMARY KEY (\`id\`),\n  CONSTRAINT \`uq_users__email\` UNIQUE (\`email\`)\n) ENGINE=InnoDB;\n\nCREATE TABLE \`posts\` (\n  \`id\` INT NOT NULL AUTO_INCREMENT,\n  \`title\` VARCHAR(191) NOT NULL,\n  \`author_id\` INT NOT NULL,\n  PRIMARY KEY (\`id\`),\n  CONSTRAINT \`fk_posts__author_id\` FOREIGN KEY (\`author_id\`) REFERENCES \`users\` (\`id\`)\n) ENGINE=InnoDB;`;
@@ -26,19 +29,21 @@ const DUMMY_SVG = `<!-- ERD Diagram (preview) -->\n<svg xmlns="http://www.w3.org
 
 // ── Export actions ────────────────────────────────────────────────────────────
 
-const EXPORT_ACTIONS: Record<string, (file: ExportFile, ormType: OrmType) => WebviewMessage> = {
-  'sql-pg':      (file) => ({ type: 'export_sql', content: file.content, dialect: 'postgres' }),
-  'sql-my':      (file) => ({ type: 'export_sql', content: file.content, dialect: 'mysql' }),
-  'sql-sq':      (file) => ({ type: 'export_sql', content: file.content, dialect: 'sqlite' }),
-  'orm-src':     (file, ormType) => ({ type: 'export_schema', content: file.content, ormType }),
-  'schema-json': (file) => ({ type: 'export_schema', content: file.content, ormType: 'prisma' }),
-  'erd-svg':     () => ({ type: 'export_svg' }),
-  'erd-pdf':     () => ({ type: 'export_pdf' }),
-};
+const EXPORT_ACTIONS = {
+  'sql-pg':      (file: ExportFile) => ({ type: 'export_sql', content: file.content, dialect: 'postgres' }) as WebviewMessage,
+  'sql-my':      (file: ExportFile) => ({ type: 'export_sql', content: file.content, dialect: 'mysql' }) as WebviewMessage,
+  'sql-sq':      (file: ExportFile) => ({ type: 'export_sql', content: file.content, dialect: 'sqlite' }) as WebviewMessage,
+  'orm-src':     (file: ExportFile, ormType: OrmType) => ({ type: 'export_schema', content: file.content, ormType }) as WebviewMessage,
+  'schema-json': (file: ExportFile) => ({ type: 'export_schema', content: file.content, ormType: 'prisma' }) as WebviewMessage,
+  'erd-svg':     () => ({ type: 'export_svg' }) as WebviewMessage,
+  'erd-pdf':     () => ({ type: 'export_pdf' }) as WebviewMessage,
+} as const;
 
 function saveFile(file: ExportFile | undefined, ormType: OrmType) {
   if (!file) return;
-  const buildMessage = EXPORT_ACTIONS[file.id];
+  const buildMessage = EXPORT_ACTIONS[file.id as keyof typeof EXPORT_ACTIONS] as
+    | ((file: ExportFile, ormType: OrmType) => WebviewMessage)
+    | undefined;
   if (buildMessage) postMessage(buildMessage(file, ormType));
 }
 
