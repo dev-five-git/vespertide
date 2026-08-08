@@ -401,7 +401,7 @@ export default function MigrationDiff({ state }: Props) {
           </Box>
           {/* Dialect toggle */}
           <Flex
-            gap="1px"
+            gap="2px"
             p="2px"
             bg="$widgetBg"
             borderRadius="5px"
@@ -413,7 +413,7 @@ export default function MigrationDiff({ state }: Props) {
                 as="button"
                 onClick={() => setDialect(d)}
                 py="2px"
-                px="7px"
+                px="8px"
                 border="none"
                 borderRadius="4px"
                 cursor="pointer"
@@ -437,8 +437,8 @@ export default function MigrationDiff({ state }: Props) {
               as="span"
               ml="auto"
               fontSize="9px"
-              py="1px"
-              px="5px"
+              py="2px"
+              px="6px"
               borderRadius="3px"
               bg="rgba(251,191,36,0.15)"
               color="#fbbf24"
@@ -458,7 +458,7 @@ export default function MigrationDiff({ state }: Props) {
                 onClick={() => setSelectedId(f.id)}
                 alignItems="center"
                 gap="6px"
-                py="5px"
+                py="6px"
                 px="10px"
                 cursor="pointer"
                 bg={isSel ? 'rgba(99,102,241,0.15)' : 'transparent'}
@@ -489,7 +489,7 @@ export default function MigrationDiff({ state }: Props) {
           <Flex
             alignItems="center"
             gap="8px"
-            py="5px"
+            py="6px"
             px="12px"
             flexShrink={0}
             borderBottom="1px solid $border"
@@ -511,7 +511,7 @@ export default function MigrationDiff({ state }: Props) {
               border="1px solid $nodeBorder"
               borderRadius="3px"
               color="$diffHeaderText"
-              py="1px"
+              py="2px"
               px="8px"
               fontSize="10px"
             >복사</Box>

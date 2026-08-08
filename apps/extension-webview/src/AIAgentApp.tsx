@@ -224,8 +224,8 @@ export default function AIAgentApp() {
                   as="span"
                   ml="6px"
                   fontSize="10px"
-                  px="5px"
-                  py="1px"
+                  px="6px"
+                  py="2px"
                   borderRadius="8px"
                   bg="rgba(74,222,128,0.18)"
                   color="$diffAddSign"
@@ -242,7 +242,7 @@ export default function AIAgentApp() {
                 key={ai.service}
                 as="button"
                 onClick={() => setActiveAI(ai.service)}
-                py="3px"
+                py="4px"
                 px="10px"
                 borderRadius="10px"
                 fontSize="11px"
@@ -524,7 +524,7 @@ function ConnectorItem({
               <Box
                 as="span"
                 fontSize="9px"
-                py="1px"
+                py="2px"
                 px="6px"
                 borderRadius="6px"
                 fontWeight={700}
@@ -607,7 +607,7 @@ function ConnectorItem({
             <OllamaConfigPanel status={ollamaStatus} checking={ollamaChecking} selected={keyValue} onSelect={onKeyChange} />
           ) : (
             <>
-              <Box as="label" fontSize="11px" color="$nodeTextDim" display="block" mb="5px">
+              <Box as="label" fontSize="11px" color="$nodeTextDim" display="block" mb="6px">
                 {meta.keyLabel}
               </Box>
 
@@ -620,7 +620,7 @@ function ConnectorItem({
                   placeholder={meta.keyPlaceholder}
                   onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && onSave()}
                   flex={1}
-                  py="7px"
+                  py="8px"
                   px="10px"
                   borderRadius="4px"
                   fontSize="12px"

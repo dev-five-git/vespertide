@@ -27,6 +27,20 @@ const DUMMY_SQL_SQ = `-- SQLite migration (preview)\n\nCREATE TABLE "users" (\n 
 
 const DUMMY_SVG = `<!-- ERD Diagram (preview) -->\n<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" viewBox="0 0 400 200">\n  <rect x="20" y="20" width="160" height="80" rx="8"\n    fill="#1e1e2e" stroke="#6366f1" stroke-width="1.5"/>\n  <text x="100" y="65" font-family="sans-serif" font-size="13"\n    fill="#a5b4fc" text-anchor="middle">users</text>\n  <rect x="220" y="20" width="160" height="80" rx="8"\n    fill="#1e1e2e" stroke="#8b5cf6" stroke-width="1.5"/>\n  <text x="300" y="65" font-family="sans-serif" font-size="13"\n    fill="#c4b5fd" text-anchor="middle">posts</text>\n  <path d="M180 60 C200 60, 200 60, 220 60"\n    fill="none" stroke="rgba(99,102,241,0.6)" stroke-width="1.5"\n    stroke-dasharray="5 3"/>\n</svg>`;
 
+// state.svg처럼 dangerouslySetInnerHTML로 주입하지 않고 JSX로 직접 렌더링되는 ERD 프리뷰.
+// DUMMY_SVG(위)는 복사/저장/소스보기용 문자열로 별도 유지.
+function DummyErdSvg() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" viewBox="0 0 400 200">
+      <rect x="20" y="20" width="160" height="80" rx="8" fill="#1e1e2e" stroke="#6366f1" strokeWidth="1.5" />
+      <text x="100" y="65" fontFamily="sans-serif" fontSize="13" fill="#a5b4fc" textAnchor="middle">users</text>
+      <rect x="220" y="20" width="160" height="80" rx="8" fill="#1e1e2e" stroke="#8b5cf6" strokeWidth="1.5" />
+      <text x="300" y="65" fontFamily="sans-serif" fontSize="13" fill="#c4b5fd" textAnchor="middle">posts</text>
+      <path d="M180 60 C200 60, 200 60, 220 60" fill="none" stroke="rgba(99,102,241,0.6)" strokeWidth="1.5" strokeDasharray="5 3" />
+    </svg>
+  );
+}
+
 // ── Export actions ────────────────────────────────────────────────────────────
 
 const EXPORT_ACTIONS = {
@@ -179,19 +193,19 @@ function FileHeader({ file, copied, onCopy, onSave }: {
     <Flex
       alignItems="center"
       gap="8px"
-      py="5px"
+      py="6px"
       px="12px"
       flexShrink={0}
       borderBottom="1px solid $border"
       bg="$tabsBg"
       fontSize="12px"
     >
-      <Box as="span" fontWeight={600}>{file.label}</Box>
-      <Box as="span" color="$nodeTextDim">{file.ext}</Box>
+      <Text as="span" fontWeight={600}>{file.label}</Text>
+      <Text as="span" color="$nodeTextDim">{file.ext}</Text>
       <Box
         as="span"
         fontSize="9px"
-        py="1px"
+        py="2px"
         px="6px"
         borderRadius="3px"
         bg="rgba(99,102,241,0.15)"
@@ -203,7 +217,7 @@ function FileHeader({ file, copied, onCopy, onSave }: {
         <Box
           as="span"
           fontSize="9px"
-          py="1px"
+          py="2px"
           px="6px"
           borderRadius="3px"
           bg="rgba(251,191,36,0.12)"
@@ -242,10 +256,12 @@ function FilePreviewBody({ file }: { file: ExportFile }) {
     );
   }
 
-  if (file.id === 'erd-svg' && file.content.startsWith('<svg')) {
+  if (file.id === 'erd-svg' && (file.isDummy || file.content.startsWith('<svg'))) {
     return (
       <Box flex={1} overflow="auto" p="24px" bg="$editorBg">
-        <Box dangerouslySetInnerHTML={{ __html: file.content }} maxWidth="100%" />
+        {file.isDummy
+          ? <DummyErdSvg />
+          : <Box dangerouslySetInnerHTML={{ __html: file.content }} maxWidth="100%" />}
         <Box mt="16px" fontSize="11px" opacity={0.4}>SVG 소스:</Box>
         <Box
           as="pre"

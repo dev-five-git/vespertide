@@ -478,7 +478,7 @@ const navBtnProps = (active = false) => ({
 });
 
 const NavDivider = () => (
-  <Box w="1px" h="16px" bg="$border" mx="3px" flexShrink={0} />
+  <Box w="1px" h="16px" bg="$border" mx="4px" flexShrink={0} />
 );
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -835,7 +835,7 @@ export default function OrmEditor({ state, setState }: Props) {
       {/* ── Toolbar ── */}
       <Flex
         alignItems="center"
-        py="5px"
+        py="6px"
         px="10px"
         flexShrink={0}
         bg="$widgetBg"
@@ -1088,7 +1088,7 @@ export default function OrmEditor({ state, setState }: Props) {
                     alignItems="center"
                     py={0}
                     px="10px"
-                    gap="7px"
+                    gap="8px"
                     bg={`${color}10`}
                     borderBottom="1px solid $nodeFieldDivider"
                   >
@@ -1336,7 +1336,7 @@ export default function OrmEditor({ state, setState }: Props) {
                       onClick={() => applyLayout(type)}
                       display="block"
                       w="100%"
-                      py="7px"
+                      py="8px"
                       px="14px"
                       border="none"
                       bg="transparent"
@@ -1395,8 +1395,8 @@ export default function OrmEditor({ state, setState }: Props) {
                     <Box
                       as="span"
                       fontSize="10px"
-                      py="1px"
-                      px="7px"
+                      py="2px"
+                      px="8px"
                       borderRadius="10px"
                       flexShrink={0}
                       bg="rgba(99,102,241,0.15)"
@@ -1420,7 +1420,7 @@ export default function OrmEditor({ state, setState }: Props) {
                 {/* Fields */}
                 <Box py="10px" px="14px" flexShrink={0} borderBottom="1px solid $nodeFieldDivider">
                   {selected.fields.map((f) => (
-                    <Flex key={f.name} alignItems="baseline" gap="6px" mb="5px">
+                    <Flex key={f.name} alignItems="baseline" gap="6px" mb="6px">
                       <Box as="span" fontSize="9px" w="12px" textAlign="center" color="$nodeTextDim" flexShrink={0}>
                         {f.isPrimary ? '⬡' : f.isRelation ? '⇢' : '·'}
                       </Box>
@@ -1481,7 +1481,7 @@ export default function OrmEditor({ state, setState }: Props) {
                           as="button"
                           onClick={(e: React.MouseEvent) => { e.stopPropagation(); openAddRelForm(selected.name); }}
                           w="100%"
-                          py="5px"
+                          py="6px"
                           border="1px dashed $focusBorder"
                           borderRadius="5px"
                           bg="transparent"
@@ -1549,7 +1549,7 @@ export default function OrmEditor({ state, setState }: Props) {
                       as="span"
                       ml="auto"
                       fontSize="9px"
-                      py="1px"
+                      py="2px"
                       px="6px"
                       borderRadius="10px"
                       bg="rgba(99,102,241,0.15)"
@@ -1605,7 +1605,7 @@ export default function OrmEditor({ state, setState }: Props) {
           {/* ORM type tabs */}
           <Flex
             gap="4px"
-            py="5px"
+            py="6px"
             px="10px"
             flexShrink={0}
             alignItems="center"
@@ -1767,7 +1767,7 @@ function AddRelFormPanel({
               as="button"
               onClick={() => handleRelTypeChange(t)}
               flex={1}
-              py="3px"
+              py="4px"
               fontSize="10px"
               borderRadius="3px"
               border="1px solid"
@@ -1836,7 +1836,7 @@ function AddRelFormPanel({
           as="button"
           onClick={onConfirm}
           flex={1}
-          py="5px"
+          py="6px"
           borderRadius="3px"
           border="none"
           bg="$btnBg"
@@ -1847,7 +1847,7 @@ function AddRelFormPanel({
         <Box
           as="button"
           onClick={onCancel}
-          py="5px"
+          py="6px"
           px="12px"
           borderRadius="3px"
           border="1px solid $nodeBorder"
