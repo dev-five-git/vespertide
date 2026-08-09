@@ -36,7 +36,7 @@ vespertide-exporter = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
-serial_test = "3"
+serial_test = "4"
 rstest = "0.26"
 assert_cmd = "2"
 predicates = "3"

@@ -22,7 +22,7 @@ criterion = { version = "0.8", features = ["html_reports"] }
 rstest = "0.26"
 insta = "1.47"
 proptest = "1"
-serial_test = "3.5"
+serial_test = "4.0"
 vespertide-core = { workspace = true }
 
 [[bench]]

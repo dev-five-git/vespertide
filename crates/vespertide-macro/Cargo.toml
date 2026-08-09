@@ -34,7 +34,7 @@ trybuild = { version = "1.0.116", features = ["diff"] }
 # cargo's parallel test threads race on the env var and tests intermittently
 # observe a missing/wrong path — surfaced by the `Parallelism (RAYON_NUM_THREADS=1)`
 # CI job because rayon=1 changes the timing window enough to expose the race.
-serial_test = "3.5"
+serial_test = "4.0"
 
 [lints]
 workspace = true
