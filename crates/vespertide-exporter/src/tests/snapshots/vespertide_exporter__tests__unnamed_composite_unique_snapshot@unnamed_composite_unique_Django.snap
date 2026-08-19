@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 201
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class UnnamedUnique(models.Model):
+    id = models.IntegerField(primary_key=True)
+    col_a = models.IntegerField()
+    col_b = models.IntegerField()
+
+    class Meta:
+        db_table = "unnamed_unique"
+        constraints = [
+            models.UniqueConstraint(fields=["col_a", "col_b"]),
+        ]

@@ -1,0 +1,18 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 393
+expression: rendered
+---
+package models
+
+import (
+    "github.com/google/uuid"
+)
+
+type Session struct {
+    ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid" json:"id"`
+    Username string `gorm:"column:username;not null;type:text" json:"username"`
+    UsernameUser User `gorm:"foreignKey:Username" json:"-"`
+}
+
+func (Session) TableName() string { return "session" }

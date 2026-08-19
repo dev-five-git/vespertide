@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 231
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class Child(models.Model):
+    # References parent table
+    parent = models.ForeignKey("Parent", on_delete=models.RESTRICT, related_name="+")
+    value = models.TextField()
+
+    class Meta:
+        db_table = "child"

@@ -1,0 +1,13 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 393
+expression: rendered
+---
+package models
+
+type Parent struct {
+    ID1 int32 `gorm:"column:id1;primaryKey" json:"id1"`
+    ID2 int32 `gorm:"column:id2;primaryKey" json:"id2"`
+}
+
+func (Parent) TableName() string { return "parent" }

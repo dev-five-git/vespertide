@@ -1,0 +1,18 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 155
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class JsonStruct(models.Model):
+    id = models.IntegerField()
+    json_data = models.JSONField()
+    jsonb_data = models.TextField()
+    jsonb_nullable = models.TextField(null=True, blank=True)
+
+    class Meta:
+        db_table = "json_struct"

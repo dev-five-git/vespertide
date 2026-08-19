@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 393
+expression: rendered
+---
+package models
+
+import (
+    "github.com/google/uuid"
+)
+
+type Post struct {
+    ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid" json:"id"`
+    CreatorUserID uuid.UUID `gorm:"column:creator_user_id;not null;type:uuid" json:"creator_user_id"`
+    CreatorUser User `gorm:"foreignKey:CreatorUserID" json:"-"`
+    UsedByUserID uuid.UUID `gorm:"column:used_by_user_id;not null;type:uuid" json:"used_by_user_id"`
+    UsedByUser User `gorm:"foreignKey:UsedByUserID" json:"-"`
+}
+
+func (Post) TableName() string { return "post" }

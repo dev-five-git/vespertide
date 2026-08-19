@@ -1,0 +1,19 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 161
+expression: rendered
+---
+from __future__ import annotations
+
+from django.utils import timezone
+from django.db import models
+
+
+class WithDefaults(models.Model):
+    id = models.IntegerField(primary_key=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    status = models.TextField(default="active")
+    count = models.IntegerField(default=0)
+
+    class Meta:
+        db_table = "with_defaults"

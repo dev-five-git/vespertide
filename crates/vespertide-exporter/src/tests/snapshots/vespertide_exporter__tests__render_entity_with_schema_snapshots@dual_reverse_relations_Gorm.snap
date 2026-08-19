@@ -1,0 +1,14 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 393
+expression: rendered
+---
+package models
+
+type Dual struct {
+    Username string `gorm:"column:username;primaryKey;type:text" json:"username"`
+    DualRelsByUsername []DualRel `gorm:"foreignKey:Username" json:"-"`
+    DualRelsByCheckerUsername []DualRel `gorm:"foreignKey:CheckerUsername" json:"-"`
+}
+
+func (Dual) TableName() string { return "dual" }

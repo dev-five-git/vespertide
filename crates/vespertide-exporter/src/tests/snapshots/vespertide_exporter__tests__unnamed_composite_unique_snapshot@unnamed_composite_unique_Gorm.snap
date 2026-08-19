@@ -1,0 +1,14 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 201
+expression: rendered
+---
+package models
+
+type UnnamedUnique struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    ColA int32 `gorm:"column:col_a;not null;uniqueIndex:uq_col_a_col_b" json:"col_a"`
+    ColB int32 `gorm:"column:col_b;not null;uniqueIndex:uq_col_a_col_b" json:"col_b"`
+}
+
+func (UnnamedUnique) TableName() string { return "unnamed_unique" }

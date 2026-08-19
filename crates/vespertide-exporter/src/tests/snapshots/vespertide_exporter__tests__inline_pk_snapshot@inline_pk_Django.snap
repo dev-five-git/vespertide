@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 93
+expression: rendered
+---
+from __future__ import annotations
+
+import uuid
+from django.db import models
+
+
+class Users(models.Model):
+    id = models.UUIDField(default=uuid.uuid4)
+    email = models.TextField()
+
+    class Meta:
+        db_table = "users"

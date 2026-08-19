@@ -1,0 +1,13 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 393
+expression: rendered
+---
+package models
+
+type Article struct {
+    ID int64 `gorm:"column:id;primaryKey" json:"id"`
+    ArticleUsers []ArticleUser `gorm:"foreignKey:ArticleID" json:"-"`
+}
+
+func (Article) TableName() string { return "article" }

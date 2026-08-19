@@ -1,0 +1,14 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 181
+expression: rendered
+---
+package models
+
+type CompositeUnique struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    TenantID int32 `gorm:"column:tenant_id;not null;uniqueIndex:uq_tenant_name" json:"tenant_id"`
+    Name string `gorm:"column:name;not null;type:text;uniqueIndex:uq_tenant_name" json:"name"`
+}
+
+func (CompositeUnique) TableName() string { return "composite_unique" }

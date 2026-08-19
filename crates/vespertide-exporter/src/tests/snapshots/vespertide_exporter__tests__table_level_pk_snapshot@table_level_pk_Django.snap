@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 140
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class Orders(models.Model):
+    id = models.UUIDField(primary_key=True)
+    customer_id = models.UUIDField()
+    total = models.FloatField()
+
+    class Meta:
+        db_table = "orders"

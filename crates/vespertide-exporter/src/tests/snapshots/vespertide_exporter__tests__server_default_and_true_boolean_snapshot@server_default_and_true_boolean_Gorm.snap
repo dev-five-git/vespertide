@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 166
+expression: rendered
+---
+package models
+
+import (
+    "time"
+)
+
+type Logs struct {
+    ID int32 `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+    Active bool `gorm:"column:active;not null;default:true" json:"active"`
+    CreatedAt time.Time `gorm:"column:created_at;not null" json:"created_at"`
+    Score float32 `gorm:"column:score;not null;default:1.5" json:"score"`
+    Tag string `gorm:"column:tag;not null;type:text;default:UNKNOWN_EXPR" json:"tag"`
+}
+
+func (Logs) TableName() string { return "logs" }

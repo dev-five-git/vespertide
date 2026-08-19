@@ -1,0 +1,14 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 241
+expression: rendered
+---
+package models
+
+type Employees struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    ManagerID *int32 `gorm:"column:manager_id" json:"manager_id"`
+    Manager *Employees `gorm:"foreignKey:ManagerID;constraint:OnDelete:SET NULL" json:"-"`
+}
+
+func (Employees) TableName() string { return "employees" }

@@ -1,0 +1,26 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 94
+expression: rendered
+---
+from __future__ import annotations
+
+from django.utils import timezone
+from django.db import models
+
+
+class ArticleUser(models.Model):
+    pk = models.CompositePrimaryKey("article_id", "user_id")
+    article = models.ForeignKey("Article", on_delete=models.CASCADE, related_name="+")
+    user = models.ForeignKey("User", on_delete=models.CASCADE, related_name="+")
+    author_order = models.IntegerField(default=1)
+    role = models.CharField(max_length=20, default="contributor")
+    is_lead = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "article_user"
+        indexes = [
+            models.Index(fields=["article_id"]),
+            models.Index(fields=["user_id"]),
+        ]

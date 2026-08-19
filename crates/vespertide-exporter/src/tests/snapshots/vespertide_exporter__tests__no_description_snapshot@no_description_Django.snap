@@ -1,0 +1,15 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 206
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class NoDesc(models.Model):
+    id = models.IntegerField(primary_key=True)
+
+    class Meta:
+        db_table = "no_desc"

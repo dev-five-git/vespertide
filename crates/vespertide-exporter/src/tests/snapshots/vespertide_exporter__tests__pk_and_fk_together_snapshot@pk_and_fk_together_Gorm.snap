@@ -1,0 +1,25 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 94
+expression: rendered
+---
+package models
+
+import (
+    "time"
+
+    "github.com/google/uuid"
+)
+
+type ArticleUser struct {
+    ArticleID uuid.UUID `gorm:"column:article_id;primaryKey;type:uuid;index" json:"article_id"`
+    Article Article `gorm:"foreignKey:ArticleID;constraint:OnDelete:CASCADE" json:"-"`
+    UserID uuid.UUID `gorm:"column:user_id;primaryKey;type:uuid;index" json:"user_id"`
+    User User `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"-"`
+    AuthorOrder int32 `gorm:"column:author_order;not null;default:1" json:"author_order"`
+    Role string `gorm:"column:role;not null;size:20;default:'contributor'" json:"role"`
+    IsLead bool `gorm:"column:is_lead;not null;default:false" json:"is_lead"`
+    CreatedAt time.Time `gorm:"column:created_at;not null" json:"created_at"`
+}
+
+func (ArticleUser) TableName() string { return "article_user" }

@@ -7,6 +7,16 @@
     "columnNamingCase": {
       "$ref": "#/$defs/NameCase"
     },
+    "django": {
+      "description": "Django-specific export configuration.",
+      "$ref": "#/$defs/DjangoConfig",
+      "default": {}
+    },
+    "gorm": {
+      "description": "GORM-specific export configuration.",
+      "$ref": "#/$defs/GormConfig",
+      "default": {}
+    },
     "lockTimeoutMs": {
       "description": "Maximum time (milliseconds) to wait acquiring a lock during a runtime\nmigration before failing. When set, the `vespertide_migration!` macro\nemits a backend-appropriate session/connection timeout at the start of\nthe migration (`PostgreSQL` `lock_timeout`, `MySQL`\n`innodb_lock_wait_timeout`, `SQLite` `PRAGMA busy_timeout`). `None`\n(default) leaves backend defaults untouched. Absent from serialized\nJSON when `None` (wire-compatible).",
       "type": [
@@ -76,6 +86,19 @@
     "columnNamingCase"
   ],
   "$defs": {
+    "DjangoConfig": {
+      "description": "Django-specific export configuration.",
+      "type": "object",
+      "properties": {
+        "appLabel": {
+          "description": "Explicit `app_label` written into every generated model's `Meta`\nclass. Needed when generated models don't live inside a standard\nDjango app package layout, where Django would otherwise infer the\nlabel from the containing package. `None` (default) omits\n`app_label` and leaves Django's normal inference in place.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
     "FileFormat": {
       "description": "Supported file formats for generated artifacts.",
       "type": "string",
@@ -84,6 +107,19 @@
         "yaml",
         "yml"
       ]
+    },
+    "GormConfig": {
+      "description": "GORM-specific export configuration.",
+      "type": "object",
+      "properties": {
+        "packageName": {
+          "description": "Go package name emitted at the top of every generated file\n(`package <name>`). `None` (default) infers the name from the\nexport directory's final path segment (sanitized to a valid Go\nidentifier), falling back to `\"models\"` when that segment isn't\nusable. See [`VespertideConfig::gorm_package_name`].",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
     },
     "NameCase": {
       "description": "Supported naming cases.",

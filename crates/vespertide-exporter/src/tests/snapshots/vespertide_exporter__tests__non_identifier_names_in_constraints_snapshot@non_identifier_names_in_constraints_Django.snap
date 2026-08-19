@@ -1,0 +1,24 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class Membership(models.Model):
+    pk = models.CompositePrimaryKey("1tenant_id", "2user_id")
+    _1tenant_id = models.IntegerField(db_column="1tenant_id")
+    _2user_id = models.IntegerField(db_column="2user_id")
+    user_email = models.TextField(db_column="user-email")
+    _3created = models.TextField(db_column="3created")
+
+    class Meta:
+        db_table = "membership"
+        indexes = [
+            models.Index(fields=["3created"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=["user-email", "1tenant_id"]),
+        ]

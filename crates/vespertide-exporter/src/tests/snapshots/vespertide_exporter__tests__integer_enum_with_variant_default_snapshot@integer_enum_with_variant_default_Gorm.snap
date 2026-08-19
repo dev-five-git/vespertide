@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 282
+expression: rendered
+---
+package models
+
+type TaskRunStatus int
+
+const (
+    TaskRunStatusPending TaskRunStatus = 0
+    TaskRunStatusCompleted TaskRunStatus = 100
+)
+
+type TaskRuns struct {
+    ID int32 `gorm:"column:id;not null" json:"id"`
+    Status TaskRunStatus `gorm:"column:status;not null;default:Completed" json:"status"`
+}
+
+func (TaskRuns) TableName() string { return "task_runs" }

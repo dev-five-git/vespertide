@@ -1,0 +1,23 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 125
+expression: rendered
+---
+package models
+
+type TaskStatus string
+
+const (
+    TaskStatusPending TaskStatus = "pending"
+    TaskStatusInProgress TaskStatus = "in_progress"
+    TaskStatusCompleted TaskStatus = "completed"
+)
+
+type Tasks struct {
+    ID int32 `gorm:"column:id;not null" json:"id"`
+    Status TaskStatus `gorm:"column:status;not null;default:'pending'" json:"status"`
+    Priority int32 `gorm:"column:priority;not null;default:0" json:"priority"`
+    IsArchived bool `gorm:"column:is_archived;not null;default:false" json:"is_archived"`
+}
+
+func (Tasks) TableName() string { return "tasks" }

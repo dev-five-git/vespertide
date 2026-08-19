@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 68
+expression: rendered
+---
+package models
+
+// User accounts table
+type Users struct {
+    // Primary key
+    ID int32 `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+    // User email address
+    Email string `gorm:"column:email;not null;unique;type:text" json:"email"`
+    Name *string `gorm:"column:name;type:text" json:"name"`
+}
+
+func (Users) TableName() string { return "users" }

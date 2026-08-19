@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 78
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class Accounts(models.Model):
+    pk = models.CompositePrimaryKey("id", "tenant_id")
+    id = models.IntegerField()
+    tenant_id = models.BigIntegerField()
+
+    class Meta:
+        db_table = "accounts"

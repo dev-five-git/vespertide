@@ -1,0 +1,21 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 99
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class OrderStatus(models.TextChoices):
+    PENDING = "pending", "pending"
+    SHIPPED = "shipped", "shipped"
+    DELIVERED = "delivered", "delivered"
+
+class Orders(models.Model):
+    id = models.IntegerField()
+    status = models.CharField(max_length=9, choices=OrderStatus.choices)
+
+    class Meta:
+        db_table = "orders"

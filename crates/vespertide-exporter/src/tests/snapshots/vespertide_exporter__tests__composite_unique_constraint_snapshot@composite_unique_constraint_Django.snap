@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 256
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class AccountAliases(models.Model):
+    id = models.IntegerField(primary_key=True)
+    tenant_id = models.IntegerField()
+    slug = models.TextField()
+
+    class Meta:
+        db_table = "account_aliases"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant_id", "slug"], name="uq_account_aliases__tenant_slug"),
+        ]

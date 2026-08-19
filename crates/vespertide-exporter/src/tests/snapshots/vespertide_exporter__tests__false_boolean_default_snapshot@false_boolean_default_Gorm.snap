@@ -1,0 +1,13 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 216
+expression: rendered
+---
+package models
+
+type BoolDefaults struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    IsDeleted bool `gorm:"column:is_deleted;not null;default:false" json:"is_deleted"`
+}
+
+func (BoolDefaults) TableName() string { return "bool_defaults" }

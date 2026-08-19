@@ -1,0 +1,18 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 191
+expression: rendered
+---
+package models
+
+import (
+    "time"
+)
+
+type Events struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    VenueID int32 `gorm:"column:venue_id;not null;index;uniqueIndex:uq_venue_id_date" json:"venue_id"`
+    Date time.Time `gorm:"column:date;not null;type:date;index;uniqueIndex:uq_venue_id_date" json:"date"`
+}
+
+func (Events) TableName() string { return "events" }

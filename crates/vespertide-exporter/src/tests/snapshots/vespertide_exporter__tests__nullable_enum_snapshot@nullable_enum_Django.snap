@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 109
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class StatusType(models.TextChoices):
+    ACTIVE = "active", "active"
+    INACTIVE = "inactive", "inactive"
+
+class NullableEnum(models.Model):
+    id = models.IntegerField(primary_key=True)
+    status = models.CharField(max_length=8, choices=StatusType.choices, null=True, blank=True)
+
+    class Meta:
+        db_table = "nullable_enum"

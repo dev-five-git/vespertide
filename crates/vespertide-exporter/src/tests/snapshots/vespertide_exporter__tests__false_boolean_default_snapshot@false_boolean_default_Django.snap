@@ -1,0 +1,16 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 216
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class BoolDefaults(models.Model):
+    id = models.IntegerField(primary_key=True)
+    is_deleted = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "bool_defaults"

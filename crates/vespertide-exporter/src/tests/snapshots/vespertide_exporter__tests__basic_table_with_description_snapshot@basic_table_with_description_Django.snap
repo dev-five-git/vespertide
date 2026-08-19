@@ -1,0 +1,21 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 68
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class Users(models.Model):
+    """User accounts table"""
+
+    # Primary key
+    id = models.AutoField(primary_key=True)
+    # User email address
+    email = models.TextField(unique=True)
+    name = models.TextField(null=True, blank=True)
+
+    class Meta:
+        db_table = "users"

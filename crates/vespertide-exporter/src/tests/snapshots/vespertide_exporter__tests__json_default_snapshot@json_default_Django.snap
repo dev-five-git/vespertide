@@ -1,0 +1,16 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 236
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class Configs(models.Model):
+    id = models.IntegerField(primary_key=True)
+    data = models.JSONField()
+
+    class Meta:
+        db_table = "configs"

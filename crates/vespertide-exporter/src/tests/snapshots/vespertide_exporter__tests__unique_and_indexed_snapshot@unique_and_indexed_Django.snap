@@ -1,0 +1,22 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 130
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class Users(models.Model):
+    id = models.IntegerField()
+    email = models.TextField(unique=True)
+    username = models.TextField(unique=True)
+    department = models.TextField(null=True, blank=True)
+    status = models.TextField(default="active")
+
+    class Meta:
+        db_table = "users"
+        indexes = [
+            models.Index(fields=["department"], name="idx_department"),
+        ]

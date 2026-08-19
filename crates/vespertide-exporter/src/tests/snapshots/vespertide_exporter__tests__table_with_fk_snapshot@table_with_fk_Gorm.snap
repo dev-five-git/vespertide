@@ -1,0 +1,15 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 83
+expression: rendered
+---
+package models
+
+type Posts struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    UserID int32 `gorm:"column:user_id;not null" json:"user_id"`
+    User Users `gorm:"foreignKey:UserID" json:"-"`
+    Title string `gorm:"column:title;not null;type:text" json:"title"`
+}
+
+func (Posts) TableName() string { return "posts" }

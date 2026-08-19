@@ -1,0 +1,23 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 125
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class TaskStatus(models.TextChoices):
+    PENDING = "pending", "pending"
+    IN_PROGRESS = "in_progress", "in_progress"
+    COMPLETED = "completed", "completed"
+
+class Tasks(models.Model):
+    id = models.IntegerField()
+    status = models.CharField(max_length=11, choices=TaskStatus.choices, default="pending")
+    priority = models.IntegerField(default=0)
+    is_archived = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "tasks"

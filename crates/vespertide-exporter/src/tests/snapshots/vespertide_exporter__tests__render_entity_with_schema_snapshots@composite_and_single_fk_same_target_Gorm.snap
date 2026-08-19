@@ -1,0 +1,16 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+package models
+
+type Src struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    AID int32 `gorm:"column:a_id;not null" json:"a_id"`
+    BID int32 `gorm:"column:b_id;not null" json:"b_id"`
+    Solo int32 `gorm:"column:solo;not null" json:"solo"`
+    SoloTarget Target `gorm:"foreignKey:Solo" json:"-"`
+    Target Target `gorm:"foreignKey:AID,BID;references:A,B" json:"-"`
+}
+
+func (Src) TableName() string { return "src" }

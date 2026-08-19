@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 246
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class Order(models.Model):
+    id = models.IntegerField(primary_key=True)
+    user = models.TextField()
+    select = models.IntegerField()
+
+    class Meta:
+        db_table = "order"

@@ -627,3 +627,23 @@ fn normalize_tables_preserves_tables_and_normalizes() {
         post.constraints
     );
 }
+
+// `normalize_tables` propagates each table's `.normalize()` error via `?`,
+// wrapped with a "normalize table '<name>'" context. An inline FK reference
+// missing the required "table.column" dot format fails normalize's FK
+// parsing, exercising that error path.
+#[test]
+fn normalize_tables_propagates_normalize_error_with_context() {
+    let raw = vec![table(
+        "dup",
+        vec![
+            primary_key("id", integer()),
+            foreign_key("owner_id", "noformat"),
+        ],
+    )];
+    let err = normalize_tables(raw).expect_err("malformed inline FK reference must fail normalize");
+    assert!(
+        format!("{err:#}").contains("normalize table 'dup'"),
+        "error must be wrapped with table context: {err:#}"
+    );
+}

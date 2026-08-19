@@ -1,0 +1,16 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 393
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class Session(models.Model):
+    id = models.UUIDField(primary_key=True)
+    username = models.ForeignKey("User", on_delete=models.RESTRICT, db_column="username", related_name="+")
+
+    class Meta:
+        db_table = "session"

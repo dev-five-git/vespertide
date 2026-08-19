@@ -1,0 +1,24 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 297
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class Users(models.Model):
+    id = models.IntegerField(primary_key=True)
+    display_name = models.TextField(null=True, blank=True)
+
+    class Meta:
+        db_table = "users"
+
+class Posts(models.Model):
+    id = models.IntegerField(primary_key=True)
+    user = models.ForeignKey("Users", on_delete=models.RESTRICT, related_name="+")
+    title = models.TextField()
+
+    class Meta:
+        db_table = "posts"

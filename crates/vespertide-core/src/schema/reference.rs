@@ -44,6 +44,41 @@ impl ReferenceAction {
     }
 }
 
+/// Closed, exhaustive mirror of [`ReferenceAction`] for downstream crates that need to
+/// `match` on it without a wildcard arm.
+///
+/// [`ReferenceAction`] is `#[non_exhaustive]`, so every match on it made *outside*
+/// `vespertide-core` must carry a `_` arm even when every current variant is already
+/// handled — that arm is genuinely unreachable and shows up as a permanent 0-hit line
+/// under coverage instrumentation. This type is deliberately **not** `#[non_exhaustive]`:
+/// the conversion below is written inside the crate that owns `ReferenceAction`, where
+/// the non-exhaustiveness restriction doesn't apply, so it can be matched exhaustively
+/// with no wildcard, here and in every downstream crate. If `ReferenceAction` ever gains
+/// a variant, `From<&ReferenceAction> for ReferenceActionKind` below fails to compile
+/// until a matching variant is added here — a compile-time forcing function that
+/// replaces the old pattern of a runtime `unreachable!()` guard that only a test could
+/// catch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReferenceActionKind {
+    Cascade,
+    Restrict,
+    SetNull,
+    SetDefault,
+    NoAction,
+}
+
+impl From<&ReferenceAction> for ReferenceActionKind {
+    fn from(action: &ReferenceAction) -> Self {
+        match action {
+            ReferenceAction::Cascade => Self::Cascade,
+            ReferenceAction::Restrict => Self::Restrict,
+            ReferenceAction::SetNull => Self::SetNull,
+            ReferenceAction::SetDefault => Self::SetDefault,
+            ReferenceAction::NoAction => Self::NoAction,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     //! Coverage-closure tests for `ReferenceAction::to_sql_keyword`.
@@ -66,5 +101,18 @@ mod tests {
         // SetNull/SetDefault/NoAction cases cover the previously-uncovered
         // lines 40, 41, 42.
         assert_eq!(action.to_sql_keyword(), expected);
+    }
+
+    #[rstest]
+    #[case::cascade(ReferenceAction::Cascade, ReferenceActionKind::Cascade)]
+    #[case::restrict(ReferenceAction::Restrict, ReferenceActionKind::Restrict)]
+    #[case::set_null(ReferenceAction::SetNull, ReferenceActionKind::SetNull)]
+    #[case::set_default(ReferenceAction::SetDefault, ReferenceActionKind::SetDefault)]
+    #[case::no_action(ReferenceAction::NoAction, ReferenceActionKind::NoAction)]
+    fn reference_action_kind_from_matches_variant(
+        #[case] action: ReferenceAction,
+        #[case] expected: ReferenceActionKind,
+    ) {
+        assert_eq!(ReferenceActionKind::from(&action), expected);
     }
 }

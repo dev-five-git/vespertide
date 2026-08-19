@@ -1,0 +1,16 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 176
+expression: rendered
+---
+package models
+
+type OrderItems struct {
+    OrderID int32 `gorm:"column:order_id;primaryKey;index:ix_order_items__order_id;uniqueIndex:uq_order_items__order_product" json:"order_id"`
+    Order Orders `gorm:"foreignKey:OrderID" json:"-"`
+    ProductID int32 `gorm:"column:product_id;primaryKey;uniqueIndex:uq_order_items__order_product" json:"product_id"`
+    Product Products `gorm:"foreignKey:ProductID" json:"-"`
+    Quantity int32 `gorm:"column:quantity;not null" json:"quantity"`
+}
+
+func (OrderItems) TableName() string { return "order_items" }

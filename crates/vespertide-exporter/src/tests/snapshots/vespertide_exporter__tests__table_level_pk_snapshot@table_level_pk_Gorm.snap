@@ -1,0 +1,18 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 140
+expression: rendered
+---
+package models
+
+import (
+    "github.com/google/uuid"
+)
+
+type Orders struct {
+    ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid" json:"id"`
+    CustomerID uuid.UUID `gorm:"column:customer_id;not null;type:uuid" json:"customer_id"`
+    Total float32 `gorm:"column:total;not null" json:"total"`
+}
+
+func (Orders) TableName() string { return "orders" }

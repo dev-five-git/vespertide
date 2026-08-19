@@ -1,0 +1,22 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 120
+expression: rendered
+---
+package models
+
+type EventSeverity string
+
+const (
+    EventSeverityInfo-level EventSeverity = "info-level"
+    EventSeverityWarningLevel EventSeverity = "warning_level"
+    EventSeverityERRORLEVEL EventSeverity = "ERROR_LEVEL"
+    EventSeverity1critical EventSeverity = "1critical"
+)
+
+type Events struct {
+    ID int32 `gorm:"column:id;not null" json:"id"`
+    Severity EventSeverity `gorm:"column:severity;not null" json:"severity"`
+}
+
+func (Events) TableName() string { return "events" }
