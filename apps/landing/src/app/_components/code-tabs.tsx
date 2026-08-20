@@ -75,11 +75,9 @@ export function CodeTabs({ examples: [a, b, c, d] }: { examples: CodeExampleQuad
               borderRadius="4px"
               color="$caption"
               cursor="pointer"
-              fontFamily="D2Coding"
-              fontSize="11px"
               htmlFor="code-tab-0"
               px="12px"
-              py="5px"
+              py="6px"
               selectors={{
                 '#code-tab-0:checked ~ * &': {
                   bg: '$containerBackground',
@@ -91,6 +89,7 @@ export function CodeTabs({ examples: [a, b, c, d] }: { examples: CodeExampleQuad
                 },
               }}
               transition="color .15s, background .15s"
+              typography="eyebrow"
             >
               {a.label}
             </Box>
@@ -100,11 +99,9 @@ export function CodeTabs({ examples: [a, b, c, d] }: { examples: CodeExampleQuad
               borderRadius="4px"
               color="$caption"
               cursor="pointer"
-              fontFamily="D2Coding"
-              fontSize="11px"
               htmlFor="code-tab-1"
               px="12px"
-              py="5px"
+              py="6px"
               selectors={{
                 '#code-tab-1:checked ~ * &': {
                   bg: '$containerBackground',
@@ -116,6 +113,7 @@ export function CodeTabs({ examples: [a, b, c, d] }: { examples: CodeExampleQuad
                 },
               }}
               transition="color .15s, background .15s"
+              typography="eyebrow"
             >
               {b.label}
             </Box>
@@ -125,11 +123,9 @@ export function CodeTabs({ examples: [a, b, c, d] }: { examples: CodeExampleQuad
               borderRadius="4px"
               color="$caption"
               cursor="pointer"
-              fontFamily="D2Coding"
-              fontSize="11px"
               htmlFor="code-tab-2"
               px="12px"
-              py="5px"
+              py="6px"
               selectors={{
                 '#code-tab-2:checked ~ * &': {
                   bg: '$containerBackground',
@@ -141,6 +137,7 @@ export function CodeTabs({ examples: [a, b, c, d] }: { examples: CodeExampleQuad
                 },
               }}
               transition="color .15s, background .15s"
+              typography="eyebrow"
             >
               {c.label}
             </Box>
@@ -150,11 +147,9 @@ export function CodeTabs({ examples: [a, b, c, d] }: { examples: CodeExampleQuad
               borderRadius="4px"
               color="$caption"
               cursor="pointer"
-              fontFamily="D2Coding"
-              fontSize="11px"
               htmlFor="code-tab-3"
               px="12px"
-              py="5px"
+              py="6px"
               selectors={{
                 '#code-tab-3:checked ~ * &': {
                   bg: '$containerBackground',
@@ -166,6 +161,7 @@ export function CodeTabs({ examples: [a, b, c, d] }: { examples: CodeExampleQuad
                 },
               }}
               transition="color .15s, background .15s"
+              typography="eyebrow"
             >
               {d.label}
             </Box>

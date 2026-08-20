@@ -44,8 +44,6 @@ export function CopyInstall({
         borderRadius="4px"
         color="$textSub"
         cursor="pointer"
-        fontFamily="D2Coding"
-        fontSize="11px"
         onClick={(e) => {
           e.stopPropagation()
           copy()
@@ -53,6 +51,7 @@ export function CopyInstall({
         px="9px"
         py="5px"
         transition="color .15s, border-color .15s"
+        typography="eyebrow"
       >
         {copied ? 'copied' : 'copy'}
       </Box>

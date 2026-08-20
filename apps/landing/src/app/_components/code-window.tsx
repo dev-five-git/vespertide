@@ -36,7 +36,6 @@ export function CodeWindow({
       borderRadius="$borderRadiusRadius12"
       boxShadow="0 30px 60px -30px rgba(0,0,0,.25)"
       overflow="hidden"
-      w="100%"
       {...props}
     >
       <Flex
@@ -48,7 +47,7 @@ export function CodeWindow({
         py="10px"
       >
         <Flex gap="6px">
-          {[0, 1, 2].map((i) => (
+          {Array.from({ length: 3 }, (_, i) => (
             <Box
               key={i}
               bg="$caption"
