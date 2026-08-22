@@ -88,6 +88,42 @@ pub(crate) fn unquote(s: &str) -> &str {
     s
 }
 
+/// Claim a relation field name, recording it in `taken` so later fields
+/// avoid it. Seed `taken` with the table's column field names first — relation
+/// names are derived from column/table names, so a relation must not take a
+/// column's name (nor an earlier relation's).
+pub(crate) fn claim_field_name(
+    preferred: String,
+    taken: &mut std::collections::HashSet<String>,
+) -> String {
+    let chosen = first_unused(preferred, taken);
+    taken.insert(chosen.clone());
+    chosen
+}
+
+/// `preferred` if free, then `{preferred}_rel`, then numbered variants. `_rel`
+/// comes before the numbers so the names already emitted for FK fields that
+/// clash with their own column stay unchanged.
+fn first_unused(preferred: String, taken: &std::collections::HashSet<String>) -> String {
+    if !taken.contains(&preferred) {
+        return preferred;
+    }
+
+    let suffixed = format!("{preferred}_rel");
+    if !taken.contains(&suffixed) {
+        return suffixed;
+    }
+
+    let mut index = 2;
+    loop {
+        let candidate = format!("{preferred}_rel{index}");
+        if !taken.contains(&candidate) {
+            return candidate;
+        }
+        index += 1;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use rstest::rstest;

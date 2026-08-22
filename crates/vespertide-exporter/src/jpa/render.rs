@@ -9,7 +9,7 @@ use vespertide_core::{ColumnDef, TableDef};
 
 use crate::jpa::types::{UsedImports, java_type_for_column};
 use crate::utils::common::{push_attr, unquote};
-use vespertide_naming::{IdentifierStart, sanitize_identifier};
+use vespertide_naming::{IdentifierStart, infer_relation_field_name, sanitize_identifier};
 
 pub(super) fn render_entity_inner(table: &TableDef) -> String {
     let mut lines: Vec<String> = Vec::new();
@@ -470,12 +470,13 @@ fn build_default_initializer(col: &ColumnDef) -> Option<String> {
 
 pub(super) use crate::python_naming::to_pascal_case;
 
+/// Not `vespertide_naming::to_camel_case`: that one builds on the naming
+/// crate's PascalCase (splits on `-` too, ASCII-only uppercasing), while JPA
+/// shares `python_naming`'s semantics (`_`-only split, Unicode-aware) with the
+/// Python backends — see `to_pascal_case_shared_semantics` in the cross-ORM
+/// tests for the documented divergence.
 pub(super) fn to_camel_case(s: &str) -> String {
     let mut pascal = to_pascal_case(s);
-    // Lowercase only the leading character in place, preserving the exact
-    // `char::to_lowercase()` semantics of the previous implementation (Unicode
-    // multi-char lowercase mappings included) without the extra
-    // `chars.collect::<String>()` + `format!` allocations.
     let Some(first) = pascal.chars().next() else {
         return pascal;
     };
@@ -489,6 +490,5 @@ pub(super) fn to_camel_case(s: &str) -> String {
 }
 
 pub(super) fn infer_fk_field_name(column_name: &str) -> String {
-    let base = column_name.strip_suffix("_id").unwrap_or(column_name);
-    to_camel_case(base)
+    to_camel_case(infer_relation_field_name(column_name))
 }

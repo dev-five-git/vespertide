@@ -2,6 +2,7 @@
 //! such as `SeaORM`, `SQLAlchemy`, `SQLModel`, JPA, and Prisma.
 
 mod constraint_scan;
+mod enum_scan;
 pub mod jpa;
 pub mod orm;
 mod parallel_config;
