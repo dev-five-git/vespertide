@@ -170,6 +170,53 @@ pub fn to_pascal_case(s: &str) -> String {
     result
 }
 
+/// Convert a database name into `camelCase`.
+///
+/// Same word-splitting rule as [`to_pascal_case`] — `_` and `-` both separate —
+/// with the first character lowered. TypeScript exporters use it for the
+/// `const` bindings and object keys they generate.
+///
+/// Case conversion only: the result can still be an invalid identifier (`1st`
+/// keeps its leading digit, and a reserved word stays reserved). Pass it
+/// through [`sanitize_identifier`] before emitting it.
+///
+/// # Examples
+/// ```
+/// use vespertide_naming::to_camel_case;
+///
+/// assert_eq!(to_camel_case("user_profiles"), "userProfiles");
+/// assert_eq!(to_camel_case("order-status"), "orderStatus");
+/// assert_eq!(to_camel_case("id"), "id");
+/// assert_eq!(to_camel_case("1st_place"), "1stPlace");
+/// ```
+pub fn to_camel_case(s: &str) -> String {
+    let mut pascal = to_pascal_case(s);
+    if let Some(first) = pascal.chars().next() {
+        let lowered: String = first.to_lowercase().collect();
+        pascal.replace_range(..first.len_utf8(), &lowered);
+    }
+    pascal
+}
+
+/// Infer a relation field's base name from its foreign-key column.
+///
+/// Strips one trailing `_id`, the conventional FK-column suffix — `user_id`
+/// names its relation `user`. A column without the suffix passes through
+/// unchanged; the caller decides how to disambiguate it from the column's own
+/// field (each ORM exporter has its own collision rule).
+///
+/// # Examples
+/// ```
+/// use vespertide_naming::infer_relation_field_name;
+///
+/// assert_eq!(infer_relation_field_name("user_id"), "user");
+/// assert_eq!(infer_relation_field_name("owner"), "owner");
+/// assert_eq!(infer_relation_field_name("id"), "id");
+/// ```
+pub fn infer_relation_field_name(fk_col: &str) -> &str {
+    fk_col.strip_suffix("_id").unwrap_or(fk_col)
+}
+
 /// Convert an arbitrary schema value into `SCREAMING_SNAKE_CASE`.
 ///
 /// Word boundaries are detected on the lower→upper transition rather than on
@@ -701,6 +748,22 @@ mod tests {
         assert_eq!(pluralize("user"), "users");
         assert_eq!(pluralize("status"), "status");
         assert_eq!(pluralize("address"), "address");
+    }
+
+    /// `to_camel_case` splits on the same separators as `to_pascal_case` and
+    /// lowers only the first character, so an already-camel or all-caps name
+    /// keeps its interior casing.
+    #[rstest]
+    #[case::snake("user_profiles", "userProfiles")]
+    #[case::hyphen("order-status", "orderStatus")]
+    #[case::single_word("id", "id")]
+    #[case::already_camel("orderStatus", "orderStatus")]
+    #[case::leading_digit("1st_place", "1stPlace")]
+    #[case::empty("", "")]
+    #[case::trailing_separator("status_", "status")]
+    #[case::unicode("café_category", "caféCategory")]
+    fn to_camel_case_lowers_first_character(#[case] input: &str, #[case] expected: &str) {
+        assert_eq!(to_camel_case(input), expected);
     }
 
     // ========================================================================
