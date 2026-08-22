@@ -136,6 +136,8 @@ mod tests {
     #[case::double_quote("say \"hi\"", r#""say \"hi\"""#)]
     #[case::backslash("back\\slash", r#""back\\slash""#)]
     #[case::newline("two\nlines", r#""two\nlines""#)]
+    #[case::carriage_return("a\rb", r#""a\rb""#)]
+    #[case::tab("a\tb", r#""a\tb""#)]
     #[case::empty("", r#""""#)]
     fn ts_string_escapes_literal_terminators(#[case] input: &str, #[case] expected: &str) {
         assert_eq!(ts_string(input), expected);

@@ -1,12 +1,12 @@
 ---
 source: crates/vespertide-exporter/src/drizzle/mod.rs
-assertion_line: 285
+assertion_line: 316
 expression: rendered
 ---
-import { pgTable, pgEnum, primaryKey, foreignKey, unique, index, check, bigint, integer, text } from "drizzle-orm/pg-core";
+import { pgTable, pgEnum, primaryKey, foreignKey, uniqueIndex, index, check, bigint, integer, text } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 
-export const docStatus = pgEnum("doc_status", ["draft", "published", "archived"]);
+export const documentsDocStatus = pgEnum("documents_doc_status", ["draft", "published", "archived"]);
 
 export const users = pgTable("users", {
   id: integer("id").primaryKey(),
@@ -23,15 +23,15 @@ export const posts = pgTable("posts", {
 
 export const documents = pgTable("documents", {
   id: integer("id").notNull(),
-  status: docStatus("status").notNull(),
-  reviewStatus: docStatus("review_status"),
+  status: documentsDocStatus("status").notNull(),
+  reviewStatus: documentsDocStatus("review_status"),
 });
 
 export const accounts = pgTable("accounts", {
   id: integer("id").notNull(),
   tenantId: bigint("tenant_id", { mode: "number" }).notNull(),
 }, (t) => [
-  primaryKey({ columns: [t.id, t.tenantId] }),
+  primaryKey({ name: "accounts_pkey", columns: [t.id, t.tenantId] }),
 ]);
 
 export const compositeUnique = pgTable("composite_unique", {
@@ -39,16 +39,18 @@ export const compositeUnique = pgTable("composite_unique", {
   tenantId: integer("tenant_id").notNull(),
   name: text("name").notNull(),
 }, (t) => [
-  unique("uq_composite_unique__uq_tenant_name").on(t.tenantId, t.name),
+  uniqueIndex("uq_composite_unique__uq_tenant_name").on(t.tenantId, t.name),
 ]);
 
 export const users = pgTable("users", {
   id: integer("id").notNull(),
-  email: text("email").notNull().unique("uq_users__email"),
-  username: text("username").notNull().unique("uq_users__uq_username"),
+  email: text("email").notNull(),
+  username: text("username").notNull(),
   department: text("department"),
   status: text("status").notNull().default("active"),
 }, (t) => [
+  uniqueIndex("uq_users__email").on(t.email),
+  uniqueIndex("uq_users__uq_username").on(t.username),
   index("ix_users__idx_department").on(t.department),
 ]);
 
@@ -58,6 +60,11 @@ export const products = pgTable("products", {
 }, (t) => [
   check("chk_products_price", sql`price >= 0`),
 ]);
+
+export const tasks = pgTable("tasks", {
+  id: integer("id").primaryKey(),
+  priority: integer("priority").notNull(),
+});
 
 export const usersRelations = relations(users, ({ one, many }) => ({
   posts: many(posts),

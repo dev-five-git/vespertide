@@ -1,13 +1,13 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 305
+assertion_line: 310
 expression: rendered
 ---
 export const orders = pgTable("orders", {
   id: integer("id").notNull(),
   version: integer("version").notNull(),
 }, (t) => [
-  primaryKey({ columns: [t.id, t.version] }),
+  primaryKey({ name: "orders_pkey", columns: [t.id, t.version] }),
 ]);
 
 export const ordersRelations = relations(orders, ({ one, many }) => ({

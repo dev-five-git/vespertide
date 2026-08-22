@@ -1,6 +1,6 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 247
+assertion_line: 252
 expression: rendered
 ---
 export const membership = pgTable("membership", {
@@ -8,5 +8,5 @@ export const membership = pgTable("membership", {
   userId: integer("user_id").notNull(),
   role: text("role").notNull(),
 }, (t) => [
-  primaryKey({ columns: [t.tenantId, t.userId] }),
+  primaryKey({ name: "membership_pkey", columns: [t.tenantId, t.userId] }),
 ]);

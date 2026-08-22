@@ -304,3 +304,150 @@ pub fn export(schema: &[TableDef]) -> Result<String, String> {
         .collect::<Vec<_>>()
         .join("\n\n"))
 }
+
+#[cfg(test)]
+mod tests {
+    use insta::{assert_snapshot, with_settings};
+    use rstest::rstest;
+
+    use super::*;
+    use crate::tests::fixtures::{
+        binding_collisions, composite_pk, composite_unique, enum_shared, small_multi_schema,
+        table_with_check, table_with_integer_enum, unique_and_indexed,
+    };
+
+    /// The complete per-dialect file: import header (rank-ordered), enum
+    /// declarations (PostgreSQL only), table declarations, relations. One
+    /// schema, three files — this is the dialect fork the cross-ORM harness
+    /// cannot see, since the trait path renders PostgreSQL only.
+    #[rstest]
+    #[case::pg(DrizzleDialect::Pg)]
+    #[case::mysql(DrizzleDialect::Mysql)]
+    #[case::sqlite(DrizzleDialect::Sqlite)]
+    fn render_schema_full_file_per_dialect(#[case] dialect: DrizzleDialect) {
+        // Every constraint family is present so the import header exercises
+        // its full rank ordering — primaryKey (composite), foreignKey,
+        // unique, index, check — plus the `sql` import the check forces.
+        let mut tables = small_multi_schema();
+        tables.push(enum_shared());
+        tables.push(composite_pk());
+        tables.push(composite_unique());
+        tables.push(unique_and_indexed());
+        tables.push(table_with_check());
+        // An integer enum stays a plain integer column and must not add a
+        // `pgEnum` declaration.
+        tables.push(table_with_integer_enum());
+        let rendered = render_schema(&tables, dialect);
+        with_settings!(
+            { snapshot_path => "../tests/snapshots", snapshot_suffix => dialect.file_suffix() },
+            { assert_snapshot!(rendered); }
+        );
+    }
+
+    /// The import header lists the table function first, the type and
+    /// constraint helpers next, and column constructors last (alphabetical
+    /// within the tail rank).
+    #[rstest]
+    #[case::table_fn("pgTable", 0)]
+    #[case::pg_enum("pgEnum", 1)]
+    #[case::custom_type("customType", 2)]
+    #[case::primary_key("primaryKey", 3)]
+    #[case::foreign_key("foreignKey", 4)]
+    #[case::unique_index("uniqueIndex", 5)]
+    #[case::index("index", 6)]
+    #[case::check("check", 7)]
+    #[case::constructor("integer", 8)]
+    fn symbol_rank_orders_helpers_before_constructors(
+        #[case] symbol: &str,
+        #[case] expected: usize,
+    ) {
+        assert_eq!(symbol_rank(symbol, "pgTable"), expected);
+    }
+
+    /// The SQL layer's `CREATE TYPE` is table-prefixed for every enum, so two
+    /// tables sharing an enum name — same values or not — own two database
+    /// types and two `pgEnum` consts.
+    #[test]
+    fn render_schema_table_prefixes_every_enum_type() {
+        let orders = table_with_enum("orders", "status", &["new", "paid"]);
+        let tickets = table_with_enum("tickets", "status", &["new", "paid"]);
+        let rendered = render_schema(&[orders, tickets], DrizzleDialect::Pg);
+        assert!(
+            rendered.contains(
+                r#"export const ordersStatus = pgEnum("orders_status", ["new", "paid"]);"#
+            )
+        );
+        assert!(rendered.contains(
+            r#"export const ticketsStatus = pgEnum("tickets_status", ["new", "paid"]);"#
+        ));
+        assert!(rendered.contains(r#"st: ordersStatus("st")"#));
+    }
+
+    fn table_with_enum(name: &str, enum_name: &str, values: &[&str]) -> TableDef {
+        use vespertide_core::schema::column::{ColumnType, ComplexColumnType, EnumValues};
+        use vespertide_core::schema::primary_key::PrimaryKeySyntax;
+        use vespertide_core::{ColumnDef, SimpleColumnType};
+
+        TableDef {
+            name: name.into(),
+            description: None,
+            columns: vec![
+                ColumnDef::new("id", ColumnType::Simple(SimpleColumnType::Integer), false)
+                    .primary_key(PrimaryKeySyntax::Bool(true)),
+                ColumnDef::new(
+                    "st",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: enum_name.into(),
+                        values: EnumValues::String(
+                            values.iter().copied().map(Into::into).collect(),
+                        ),
+                    }),
+                    false,
+                ),
+            ],
+            constraints: vec![],
+        }
+        .normalize()
+        .expect("fixture table normalizes")
+    }
+
+    /// File-scope bindings suffix their way around collisions: a table
+    /// claiming another table's would-be `relations` const, a table named
+    /// after an import, and a custom type named after a column constructor —
+    /// and every reference follows the suffixed name.
+    #[test]
+    fn render_schema_suffixes_colliding_bindings() {
+        let rendered = render_schema(&binding_collisions(), DrizzleDialect::Pg);
+        assert!(rendered.contains(
+            r#"const integer2 = customType<{ data: string }>({ dataType() { return "integer"; } });"#
+        ));
+        assert!(rendered.contains(r#"export const userRelations = pgTable("user_relations""#));
+        assert!(rendered.contains(r#"export const sql2 = pgTable("sql""#));
+        assert!(rendered.contains("export const userRelations2 = relations(user, "));
+        assert!(rendered.contains(r#"kind: integer2("kind")"#));
+        assert!(rendered.contains("foreignColumns: [user.id]"));
+    }
+
+    /// A model-level shared enum still becomes one database type per table —
+    /// mirroring the per-table `CREATE TYPE` the SQL layer emits.
+    #[test]
+    fn render_schema_declares_one_enum_type_per_table() {
+        let t1 = enum_shared();
+        let mut t2 = enum_shared();
+        t2.name = "archived_documents".into();
+        let rendered = render_schema(&[t1, t2], DrizzleDialect::Pg);
+        assert_eq!(rendered.matches("pgEnum(").count(), 2);
+    }
+
+    /// MySQL and SQLite never declare enum types — the variants live inline on
+    /// the column — so their files must not import or call `pgEnum`.
+    #[rstest]
+    #[case::mysql(DrizzleDialect::Mysql)]
+    #[case::sqlite(DrizzleDialect::Sqlite)]
+    fn non_postgres_dialects_have_no_enum_declarations(#[case] dialect: DrizzleDialect) {
+        let rendered = render_schema(&[enum_shared()], DrizzleDialect::Pg);
+        assert!(rendered.contains("pgEnum("));
+        let rendered = render_schema(&[enum_shared()], dialect);
+        assert!(!rendered.contains("pgEnum"));
+    }
+}

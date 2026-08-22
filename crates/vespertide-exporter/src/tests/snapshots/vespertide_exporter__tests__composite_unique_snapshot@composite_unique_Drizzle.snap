@@ -1,6 +1,6 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 177
+assertion_line: 182
 expression: rendered
 ---
 export const compositeUnique = pgTable("composite_unique", {
@@ -8,5 +8,5 @@ export const compositeUnique = pgTable("composite_unique", {
   tenantId: integer("tenant_id").notNull(),
   name: text("name").notNull(),
 }, (t) => [
-  unique("uq_composite_unique__uq_tenant_name").on(t.tenantId, t.name),
+  uniqueIndex("uq_composite_unique__uq_tenant_name").on(t.tenantId, t.name),
 ]);

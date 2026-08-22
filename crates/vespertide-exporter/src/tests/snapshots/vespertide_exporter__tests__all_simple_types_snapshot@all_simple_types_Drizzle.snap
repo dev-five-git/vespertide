@@ -1,8 +1,12 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 141
+assertion_line: 146
 expression: rendered
 ---
+const bytea = customType<{ data: Uint8Array }>({ dataType() { return "bytea"; } });
+
+const xml = customType<{ data: string }>({ dataType() { return "xml"; } });
+
 export const allTypes = pgTable("all_types", {
   id: integer("id").primaryKey(),
   small: smallint("small").notNull(),
@@ -16,11 +20,11 @@ export const allTypes = pgTable("all_types", {
   tsCol: timestamp("ts_col").notNull(),
   tstzCol: timestamp("tstz_col", { withTimezone: true }).notNull(),
   intervalCol: interval("interval_col").notNull(),
-  byteaCol: text("bytea_col") /* bytea */.notNull(),
+  byteaCol: bytea("bytea_col").notNull(),
   uuidCol: uuid("uuid_col").notNull(),
   jsonCol: json("json_col").notNull(),
   inetCol: inet("inet_col").notNull(),
   cidrCol: cidr("cidr_col").notNull(),
   macaddrCol: macaddr("macaddr_col").notNull(),
-  xmlCol: text("xml_col") /* xml */.notNull(),
+  xmlCol: xml("xml_col").notNull(),
 });

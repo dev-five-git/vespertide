@@ -1,10 +1,10 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 156
+assertion_line: 161
 expression: rendered
 ---
 export const articles = pgTable("articles", {
-  id: serial("id").primaryKey(),
+  id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
   published: boolean("published").notNull().default(false),
   viewCount: integer("view_count").notNull().default(0),
   status: text("status").notNull().default("draft"),

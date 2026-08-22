@@ -1,10 +1,10 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 167
+assertion_line: 172
 expression: rendered
 ---
 export const profiles = pgTable("profiles", {
-  id: serial("id").primaryKey(),
+  id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
   bio: text("bio"),
   avatarUrl: varchar("avatar_url", { length: 500 }),
 });

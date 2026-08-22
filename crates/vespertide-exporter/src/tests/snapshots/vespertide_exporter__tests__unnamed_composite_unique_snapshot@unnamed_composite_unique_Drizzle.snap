@@ -1,6 +1,6 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 197
+assertion_line: 202
 expression: rendered
 ---
 export const unnamedUnique = pgTable("unnamed_unique", {
@@ -8,5 +8,5 @@ export const unnamedUnique = pgTable("unnamed_unique", {
   colA: integer("col_a").notNull(),
   colB: integer("col_b").notNull(),
 }, (t) => [
-  unique("uq_unnamed_unique__col_a_col_b").on(t.colA, t.colB),
+  uniqueIndex("uq_unnamed_unique__col_a_col_b").on(t.colA, t.colB),
 ]);

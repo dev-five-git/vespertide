@@ -1,9 +1,9 @@
 ---
 source: crates/vespertide-exporter/src/drizzle/mod.rs
-assertion_line: 285
+assertion_line: 316
 expression: rendered
 ---
-import { mysqlTable, primaryKey, foreignKey, unique, index, check, bigint, int, mysqlEnum, text } from "drizzle-orm/mysql-core";
+import { mysqlTable, primaryKey, foreignKey, uniqueIndex, index, check, bigint, int, mysqlEnum, text } from "drizzle-orm/mysql-core";
 import { relations, sql } from "drizzle-orm";
 
 export const users = mysqlTable("users", {
@@ -29,7 +29,7 @@ export const accounts = mysqlTable("accounts", {
   id: int("id").notNull(),
   tenantId: bigint("tenant_id", { mode: "number" }).notNull(),
 }, (t) => [
-  primaryKey({ columns: [t.id, t.tenantId] }),
+  primaryKey({ name: "accounts_id_tenant_id", columns: [t.id, t.tenantId] }),
 ]);
 
 export const compositeUnique = mysqlTable("composite_unique", {
@@ -37,16 +37,18 @@ export const compositeUnique = mysqlTable("composite_unique", {
   tenantId: int("tenant_id").notNull(),
   name: text("name").notNull(),
 }, (t) => [
-  unique("uq_composite_unique__uq_tenant_name").on(t.tenantId, t.name),
+  uniqueIndex("uq_composite_unique__uq_tenant_name").on(t.tenantId, t.name),
 ]);
 
 export const users = mysqlTable("users", {
   id: int("id").notNull(),
-  email: text("email").notNull().unique("uq_users__email"),
-  username: text("username").notNull().unique("uq_users__uq_username"),
+  email: text("email").notNull(),
+  username: text("username").notNull(),
   department: text("department"),
   status: text("status").notNull().default("active"),
 }, (t) => [
+  uniqueIndex("uq_users__email").on(t.email),
+  uniqueIndex("uq_users__uq_username").on(t.username),
   index("ix_users__idx_department").on(t.department),
 ]);
 
@@ -56,6 +58,11 @@ export const products = mysqlTable("products", {
 }, (t) => [
   check("chk_products_price", sql`price >= 0`),
 ]);
+
+export const tasks = mysqlTable("tasks", {
+  id: int("id").primaryKey(),
+  priority: int("priority").notNull(),
+});
 
 export const usersRelations = relations(users, ({ one, many }) => ({
   posts: many(posts),

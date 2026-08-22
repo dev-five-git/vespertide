@@ -1,9 +1,9 @@
 ---
 source: crates/vespertide-exporter/src/drizzle/mod.rs
-assertion_line: 285
+assertion_line: 316
 expression: rendered
 ---
-import { sqliteTable, primaryKey, foreignKey, unique, index, check, integer, text } from "drizzle-orm/sqlite-core";
+import { sqliteTable, primaryKey, foreignKey, uniqueIndex, index, check, integer, text } from "drizzle-orm/sqlite-core";
 import { relations, sql } from "drizzle-orm";
 
 export const users = sqliteTable("users", {
@@ -37,16 +37,18 @@ export const compositeUnique = sqliteTable("composite_unique", {
   tenantId: integer("tenant_id").notNull(),
   name: text("name").notNull(),
 }, (t) => [
-  unique("uq_composite_unique__uq_tenant_name").on(t.tenantId, t.name),
+  uniqueIndex("uq_composite_unique__uq_tenant_name").on(t.tenantId, t.name),
 ]);
 
 export const users = sqliteTable("users", {
   id: integer("id").notNull(),
-  email: text("email").notNull().unique("uq_users__email"),
-  username: text("username").notNull().unique("uq_users__uq_username"),
+  email: text("email").notNull(),
+  username: text("username").notNull(),
   department: text("department"),
   status: text("status").notNull().default("active"),
 }, (t) => [
+  uniqueIndex("uq_users__email").on(t.email),
+  uniqueIndex("uq_users__uq_username").on(t.username),
   index("ix_users__idx_department").on(t.department),
 ]);
 
@@ -56,6 +58,11 @@ export const products = sqliteTable("products", {
 }, (t) => [
   check("chk_products_price", sql`price >= 0`),
 ]);
+
+export const tasks = sqliteTable("tasks", {
+  id: integer("id").primaryKey(),
+  priority: integer("priority").notNull(),
+});
 
 export const usersRelations = relations(users, ({ one, many }) => ({
   posts: many(posts),

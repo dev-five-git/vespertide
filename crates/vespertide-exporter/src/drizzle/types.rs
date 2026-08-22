@@ -341,3 +341,255 @@ fn complex_ctor(
         _ => unreachable!("ComplexColumnType is #[non_exhaustive]; all variants are matched above"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+    use vespertide_core::schema::column::NumValue;
+
+    use super::*;
+    use crate::drizzle::DrizzleDialect::{Mysql, Pg, Sqlite};
+
+    fn simple(s: SimpleColumnType) -> ColumnType {
+        ColumnType::Simple(s)
+    }
+
+    /// Bindings over an empty schema: every lookup falls back to the
+    /// natural name, which is exactly what these mappings assert.
+    fn empty_bindings() -> FileBindings {
+        FileBindings::collect(&[], Pg)
+    }
+
+    fn call(ty: &ColumnType, dialect: DrizzleDialect) -> String {
+        column_ctor(ty, dialect, "orders", &empty_bindings()).call("col")
+    }
+
+    #[rstest]
+    // ── integers ──
+    #[case::small_pg(SimpleColumnType::SmallInt, Pg, r#"smallint("col")"#)]
+    #[case::small_mysql(SimpleColumnType::SmallInt, Mysql, r#"smallint("col")"#)]
+    #[case::small_sqlite(SimpleColumnType::SmallInt, Sqlite, r#"integer("col")"#)]
+    #[case::int_pg(SimpleColumnType::Integer, Pg, r#"integer("col")"#)]
+    #[case::int_mysql(SimpleColumnType::Integer, Mysql, r#"int("col")"#)]
+    #[case::int_sqlite(SimpleColumnType::Integer, Sqlite, r#"integer("col")"#)]
+    #[case::big_pg(SimpleColumnType::BigInt, Pg, r#"bigint("col", { mode: "number" })"#)]
+    #[case::big_mysql(
+        SimpleColumnType::BigInt,
+        Mysql,
+        r#"bigint("col", { mode: "number" })"#
+    )]
+    #[case::big_sqlite(SimpleColumnType::BigInt, Sqlite, r#"integer("col")"#)]
+    // ── floats ──
+    #[case::real_pg(SimpleColumnType::Real, Pg, r#"real("col")"#)]
+    #[case::real_mysql(SimpleColumnType::Real, Mysql, r#"float("col")"#)]
+    #[case::real_sqlite(SimpleColumnType::Real, Sqlite, r#"real("col")"#)]
+    #[case::double_pg(SimpleColumnType::DoublePrecision, Pg, r#"doublePrecision("col")"#)]
+    #[case::double_mysql(SimpleColumnType::DoublePrecision, Mysql, r#"double("col")"#)]
+    #[case::double_sqlite(SimpleColumnType::DoublePrecision, Sqlite, r#"real("col")"#)]
+    // ── text / boolean ──
+    #[case::text_pg(SimpleColumnType::Text, Pg, r#"text("col")"#)]
+    #[case::text_mysql(SimpleColumnType::Text, Mysql, r#"text("col")"#)]
+    #[case::text_sqlite(SimpleColumnType::Text, Sqlite, r#"text("col")"#)]
+    #[case::bool_pg(SimpleColumnType::Boolean, Pg, r#"boolean("col")"#)]
+    #[case::bool_mysql(SimpleColumnType::Boolean, Mysql, r#"boolean("col")"#)]
+    #[case::bool_sqlite(
+        SimpleColumnType::Boolean,
+        Sqlite,
+        r#"integer("col", { mode: "boolean" })"#
+    )]
+    // ── date / time ──
+    #[case::date_pg(SimpleColumnType::Date, Pg, r#"date("col")"#)]
+    #[case::date_mysql(SimpleColumnType::Date, Mysql, r#"date("col")"#)]
+    #[case::date_sqlite(SimpleColumnType::Date, Sqlite, r#"text("col") /* date */"#)]
+    #[case::time_pg(SimpleColumnType::Time, Pg, r#"time("col")"#)]
+    #[case::time_mysql(SimpleColumnType::Time, Mysql, r#"time("col")"#)]
+    #[case::time_sqlite(SimpleColumnType::Time, Sqlite, r#"text("col") /* time */"#)]
+    #[case::ts_pg(SimpleColumnType::Timestamp, Pg, r#"timestamp("col")"#)]
+    #[case::ts_mysql(SimpleColumnType::Timestamp, Mysql, r#"timestamp("col")"#)]
+    #[case::ts_sqlite(SimpleColumnType::Timestamp, Sqlite, r#"text("col") /* timestamp */"#)]
+    #[case::tstz_pg(
+        SimpleColumnType::Timestamptz,
+        Pg,
+        r#"timestamp("col", { withTimezone: true })"#
+    )]
+    #[case::tstz_mysql(SimpleColumnType::Timestamptz, Mysql, r#"timestamp("col")"#)]
+    #[case::tstz_sqlite(
+        SimpleColumnType::Timestamptz,
+        Sqlite,
+        r#"text("col") /* timestamptz */"#
+    )]
+    // ── uuid / json — the SQL layer creates pg `json`, mysql `binary(16)` ──
+    #[case::uuid_pg(SimpleColumnType::Uuid, Pg, r#"uuid("col")"#)]
+    #[case::uuid_mysql(
+        SimpleColumnType::Uuid,
+        Mysql,
+        r#"binary("col", { length: 16 }) /* uuid */"#
+    )]
+    #[case::uuid_sqlite(SimpleColumnType::Uuid, Sqlite, r#"text("col") /* uuid */"#)]
+    #[case::json_pg(SimpleColumnType::Json, Pg, r#"json("col")"#)]
+    #[case::json_mysql(SimpleColumnType::Json, Mysql, r#"json("col")"#)]
+    #[case::json_sqlite(SimpleColumnType::Json, Sqlite, r#"text("col", { mode: "json" })"#)]
+    // ── PostgreSQL-specific types ──
+    #[case::interval_pg(SimpleColumnType::Interval, Pg, r#"interval("col")"#)]
+    #[case::interval_mysql(SimpleColumnType::Interval, Mysql, r#"text("col") /* interval */"#)]
+    #[case::interval_sqlite(SimpleColumnType::Interval, Sqlite, r#"text("col") /* interval */"#)]
+    #[case::bytea_pg(SimpleColumnType::Bytea, Pg, r#"bytea("col")"#)]
+    #[case::bytea_mysql(
+        SimpleColumnType::Bytea,
+        Mysql,
+        r#"binary("col", { length: 1 }) /* bytea */"#
+    )]
+    #[case::bytea_sqlite(SimpleColumnType::Bytea, Sqlite, r#"blob("col") /* bytea */"#)]
+    #[case::inet_pg(SimpleColumnType::Inet, Pg, r#"inet("col")"#)]
+    #[case::inet_mysql(SimpleColumnType::Inet, Mysql, r#"text("col") /* inet */"#)]
+    #[case::inet_sqlite(SimpleColumnType::Inet, Sqlite, r#"text("col") /* inet */"#)]
+    #[case::cidr_pg(SimpleColumnType::Cidr, Pg, r#"cidr("col")"#)]
+    #[case::cidr_mysql(SimpleColumnType::Cidr, Mysql, r#"text("col") /* cidr */"#)]
+    #[case::cidr_sqlite(SimpleColumnType::Cidr, Sqlite, r#"text("col") /* cidr */"#)]
+    #[case::macaddr_pg(SimpleColumnType::Macaddr, Pg, r#"macaddr("col")"#)]
+    #[case::macaddr_mysql(SimpleColumnType::Macaddr, Mysql, r#"text("col") /* macaddr */"#)]
+    #[case::macaddr_sqlite(SimpleColumnType::Macaddr, Sqlite, r#"text("col") /* macaddr */"#)]
+    #[case::xml_pg(SimpleColumnType::Xml, Pg, r#"xml("col")"#)]
+    #[case::xml_mysql(SimpleColumnType::Xml, Mysql, r#"text("col") /* xml */"#)]
+    #[case::xml_sqlite(SimpleColumnType::Xml, Sqlite, r#"text("col") /* xml */"#)]
+    fn simple_types_map_per_dialect(
+        #[case] ty: SimpleColumnType,
+        #[case] dialect: DrizzleDialect,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(call(&simple(ty), dialect), expected);
+    }
+
+    /// The two `pg-core` gaps declare a `customType` helper; on MySQL and
+    /// SQLite the same types map onto real constructors and declare nothing.
+    #[rstest]
+    #[case::bytea_pg(SimpleColumnType::Bytea, Pg, true)]
+    #[case::xml_pg(SimpleColumnType::Xml, Pg, true)]
+    #[case::bytea_mysql(SimpleColumnType::Bytea, Mysql, false)]
+    #[case::xml_mysql(SimpleColumnType::Xml, Mysql, false)]
+    #[case::bytea_sqlite(SimpleColumnType::Bytea, Sqlite, false)]
+    #[case::xml_sqlite(SimpleColumnType::Xml, Sqlite, false)]
+    fn custom_column_flags_only_the_pg_core_gaps(
+        #[case] ty: SimpleColumnType,
+        #[case] dialect: DrizzleDialect,
+        #[case] declares: bool,
+    ) {
+        assert_eq!(custom_column(&simple(ty), dialect).is_some(), declares);
+    }
+
+    /// `bytea` keeps `Uint8Array` (the `pg` driver's `Buffer` is one, and the
+    /// file compiles without `@types/node`); everything else carries `string`.
+    #[rstest]
+    #[case::bytea(
+        ColumnType::Simple(SimpleColumnType::Bytea),
+        "const bytea = customType<{ data: Uint8Array }>({ dataType() { return \"bytea\"; } });"
+    )]
+    #[case::xml(
+        ColumnType::Simple(SimpleColumnType::Xml),
+        "const xml = customType<{ data: string }>({ dataType() { return \"xml\"; } });"
+    )]
+    fn custom_type_decls_render_the_helper_const(#[case] ty: ColumnType, #[case] expected: &str) {
+        let decl = custom_column(&ty, Pg).expect("declares a customType");
+        assert_eq!(render_custom_type_decl(&decl, &decl.const_name), expected);
+    }
+
+    #[rstest]
+    #[case::varchar_pg(Pg, r#"varchar("col", { length: 255 })"#)]
+    #[case::varchar_mysql(Mysql, r#"varchar("col", { length: 255 })"#)]
+    #[case::varchar_sqlite(Sqlite, r#"text("col", { length: 255 })"#)]
+    fn varchar_maps_per_dialect(#[case] dialect: DrizzleDialect, #[case] expected: &str) {
+        let ty = ColumnType::Complex(ComplexColumnType::Varchar { length: 255 });
+        assert_eq!(call(&ty, dialect), expected);
+    }
+
+    #[rstest]
+    #[case::char_pg(Pg, r#"char("col", { length: 3 })"#)]
+    #[case::char_mysql(Mysql, r#"char("col", { length: 3 })"#)]
+    #[case::char_sqlite(Sqlite, r#"text("col", { length: 3 }) /* char */"#)]
+    fn char_maps_per_dialect(#[case] dialect: DrizzleDialect, #[case] expected: &str) {
+        let ty = ColumnType::Complex(ComplexColumnType::Char { length: 3 });
+        assert_eq!(call(&ty, dialect), expected);
+    }
+
+    /// SQLite's `numeric` takes no precision or scale.
+    #[rstest]
+    #[case::numeric_pg(Pg, r#"numeric("col", { precision: 10, scale: 2 })"#)]
+    #[case::numeric_mysql(Mysql, r#"decimal("col", { precision: 10, scale: 2 })"#)]
+    #[case::numeric_sqlite(Sqlite, r#"numeric("col")"#)]
+    fn numeric_maps_per_dialect(#[case] dialect: DrizzleDialect, #[case] expected: &str) {
+        let ty = ColumnType::Complex(ComplexColumnType::Numeric {
+            precision: 10,
+            scale: 2,
+        });
+        assert_eq!(call(&ty, dialect), expected);
+    }
+
+    /// The SQL layer hands a `Custom` type's name to every backend verbatim,
+    /// so every dialect's column calls a local `customType` helper of that
+    /// name.
+    #[rstest]
+    #[case::custom_pg(Pg)]
+    #[case::custom_mysql(Mysql)]
+    #[case::custom_sqlite(Sqlite)]
+    fn custom_types_call_a_local_customtype_helper(#[case] dialect: DrizzleDialect) {
+        let ty = ColumnType::Complex(ComplexColumnType::Custom {
+            custom_type: "tsvector".to_string(),
+        });
+        let ctor = column_ctor(&ty, dialect, "orders", &empty_bindings());
+        assert!(ctor.local);
+        assert_eq!(ctor.call("col"), r#"tsvector("col")"#);
+        let decl = custom_column(&ty, dialect).expect("declares a customType");
+        assert_eq!(
+            render_custom_type_decl(&decl, &decl.const_name),
+            "const tsvector = customType<{ data: string }>({ dataType() { return \"tsvector\"; } });"
+        );
+    }
+
+    fn string_enum() -> ColumnType {
+        ColumnType::Complex(ComplexColumnType::Enum {
+            name: "order_status".to_string(),
+            values: EnumValues::String(vec!["draft".to_string(), "sent".to_string()]),
+        })
+    }
+
+    /// PostgreSQL calls a locally declared `pgEnum` const — the ctor is
+    /// `local`, so the import collector must skip it.
+    #[test]
+    fn pg_string_enum_calls_the_table_qualified_const() {
+        let ctor = column_ctor(&string_enum(), Pg, "orders", &empty_bindings());
+        assert!(ctor.local);
+        assert_eq!(ctor.symbol, "ordersOrderStatus");
+        assert_eq!(ctor.call("col"), r#"ordersOrderStatus("col")"#);
+    }
+
+    /// MySQL and SQLite inline the variant list; the ctor is a plain import.
+    #[rstest]
+    #[case::mysql(Mysql, r#"mysqlEnum("col", ["draft", "sent"])"#)]
+    #[case::sqlite(Sqlite, r#"text("col", { enum: ["draft", "sent"] })"#)]
+    fn inline_string_enums_carry_the_variant_list(
+        #[case] dialect: DrizzleDialect,
+        #[case] expected: &str,
+    ) {
+        let ctor = column_ctor(&string_enum(), dialect, "orders", &empty_bindings());
+        assert!(!ctor.local);
+        assert_eq!(ctor.call("col"), expected);
+    }
+
+    #[rstest]
+    #[case::pg(Pg, r#"integer("col")"#)]
+    #[case::mysql(Mysql, r#"int("col")"#)]
+    #[case::sqlite(Sqlite, r#"integer("col")"#)]
+    fn integer_enums_are_plain_integer_columns(
+        #[case] dialect: DrizzleDialect,
+        #[case] expected: &str,
+    ) {
+        let ty = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "prio".to_string(),
+            values: EnumValues::Integer(vec![NumValue {
+                name: "low".to_string(),
+                value: 1,
+            }]),
+        });
+        assert_eq!(call(&ty, dialect), expected);
+    }
+}

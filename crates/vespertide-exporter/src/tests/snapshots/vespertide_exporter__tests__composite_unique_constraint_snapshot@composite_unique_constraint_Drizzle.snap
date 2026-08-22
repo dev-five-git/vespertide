@@ -1,6 +1,6 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 252
+assertion_line: 257
 expression: rendered
 ---
 export const accountAliases = pgTable("account_aliases", {
@@ -8,5 +8,5 @@ export const accountAliases = pgTable("account_aliases", {
   tenantId: integer("tenant_id").notNull(),
   slug: text("slug").notNull(),
 }, (t) => [
-  unique("uq_account_aliases__uq_account_aliases__tenant_slug").on(t.tenantId, t.slug),
+  uniqueIndex("uq_account_aliases__uq_account_aliases__tenant_slug").on(t.tenantId, t.slug),
 ]);

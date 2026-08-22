@@ -1,0 +1,34 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 358
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlalchemy import ForeignKey, Integer
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class UserRelations(DeclarativeBase):
+    __tablename__ = "user_relations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column("integer", nullable=False)
+
+class User(DeclarativeBase):
+    __tablename__ = "user"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+class Sql(DeclarativeBase):
+    __tablename__ = "sql"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+
+class Posts(DeclarativeBase):
+    __tablename__ = "posts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("user.id"), nullable=False)

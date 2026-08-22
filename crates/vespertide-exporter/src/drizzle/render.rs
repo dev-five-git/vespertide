@@ -587,3 +587,293 @@ fn reference_action_to_drizzle(action: &ReferenceAction) -> &'static str {
         _ => "no action",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+    use vespertide_core::schema::column::NumValue;
+
+    use super::*;
+    use crate::drizzle::DrizzleDialect::{Mysql, Pg, Sqlite};
+
+    fn text_type() -> ColumnType {
+        ColumnType::Simple(SimpleColumnType::Text)
+    }
+
+    // ── default_chain ────────────────────────────────────────────────────────
+
+    #[rstest]
+    #[case::bool_true("true", ".default(true)")]
+    #[case::bool_false("false", ".default(false)")]
+    #[case::number("42", ".default(42)")]
+    #[case::float("1.5", ".default(1.5)")]
+    #[case::quoted_string("'draft'", r#".default("draft")"#)]
+    // SQL doubles quotes inside a single-quoted literal; the TS string wants
+    // the actual value back.
+    #[case::undoubled_quote("'it''s'", r#".default("it's")"#)]
+    #[case::double_quoted("\"draft\"", r#".default("draft")"#)]
+    fn literal_defaults_stay_literals(
+        #[case] input: &str,
+        #[case] expected: &str,
+        #[values(Pg, Mysql, Sqlite)] dialect: DrizzleDialect,
+    ) {
+        let chain = default_chain(input, &text_type(), dialect);
+        assert_eq!(chain.text, expected);
+        assert!(!chain.needs_sql);
+    }
+
+    /// Both timestamp spellings collapse to each dialect's one drift-free
+    /// spelling (measured on live round-trips): PostgreSQL deparses
+    /// `CURRENT_TIMESTAMP` as itself, MySQL introspects to `defaultNow()`'s
+    /// own `(now())`, SQLite needs the parenthesized expression.
+    #[rstest]
+    #[case::now_pg("now()", Pg, ".default(sql`CURRENT_TIMESTAMP`)", true)]
+    #[case::now_mysql("now()", Mysql, ".defaultNow()", false)]
+    #[case::now_sqlite("now()", Sqlite, ".default(sql`(CURRENT_TIMESTAMP)`)", true)]
+    #[case::ct_pg("CURRENT_TIMESTAMP", Pg, ".default(sql`CURRENT_TIMESTAMP`)", true)]
+    #[case::ct_mysql("CURRENT_TIMESTAMP", Mysql, ".defaultNow()", false)]
+    #[case::ct_sqlite(
+        "CURRENT_TIMESTAMP",
+        Sqlite,
+        ".default(sql`(CURRENT_TIMESTAMP)`)",
+        true
+    )]
+    fn timestamp_defaults_fork_per_dialect(
+        #[case] input: &str,
+        #[case] dialect: DrizzleDialect,
+        #[case] expected: &str,
+        #[case] needs_sql: bool,
+    ) {
+        let chain = default_chain(input, &text_type(), dialect);
+        assert_eq!(chain.text, expected);
+        assert_eq!(chain.needs_sql, needs_sql);
+    }
+
+    /// `defaultRandom()` is a `pg-core` column method; the other dialects pass
+    /// the generator expression through.
+    #[rstest]
+    #[case::pg(Pg, ".defaultRandom()", false)]
+    #[case::mysql(Mysql, ".default(sql`(uuid())`)", true)]
+    #[case::sqlite(Sqlite, ".default(sql`(lower(hex(randomblob(16))))`)", true)]
+    fn uuid_defaults_fork_on_postgres(
+        #[case] dialect: DrizzleDialect,
+        #[case] expected: &str,
+        #[case] needs_sql: bool,
+    ) {
+        let chain = default_chain("gen_random_uuid()", &text_type(), dialect);
+        assert_eq!(chain.text, expected);
+        assert_eq!(chain.needs_sql, needs_sql);
+    }
+
+    /// The SQL layer only normalizes `gen_random_uuid()`; other generator
+    /// spellings reach every backend verbatim, and so does the model —
+    /// `defaultRandom()` here would put `gen_random_uuid()` on a column whose
+    /// database default is `uuid_generate_v4()`.
+    #[rstest]
+    #[case::pg(Pg)]
+    #[case::mysql(Mysql)]
+    #[case::sqlite(Sqlite)]
+    fn other_uuid_generators_pass_through_verbatim(#[case] dialect: DrizzleDialect) {
+        let chain = default_chain("uuid_generate_v4()", &text_type(), dialect);
+        assert_eq!(chain.text, ".default(sql`uuid_generate_v4()`)");
+        assert!(chain.needs_sql);
+    }
+
+    /// A JSON literal reaches the database as a JSON literal — `::json` on
+    /// PostgreSQL because that is the type the SQL layer creates.
+    #[rstest]
+    #[case::pg(Pg, ".default(sql`'{\"a\": 1}'::json`)")]
+    #[case::mysql(Mysql, ".default(sql`'{\"a\": 1}'`)")]
+    fn json_literal_defaults_are_tagged(#[case] dialect: DrizzleDialect, #[case] expected: &str) {
+        let ty = ColumnType::Simple(SimpleColumnType::Json);
+        let chain = default_chain("{\"a\": 1}", &ty, dialect);
+        assert_eq!(chain.text, expected);
+        assert!(chain.needs_sql);
+    }
+
+    #[test]
+    fn unknown_function_passes_through_the_sql_tag() {
+        let chain = default_chain("gen_code()", &text_type(), Pg);
+        assert_eq!(chain.text, ".default(sql`gen_code()`)");
+        assert!(chain.needs_sql);
+    }
+
+    #[test]
+    fn bare_keyword_passes_through_the_sql_tag() {
+        let chain = default_chain("CURRENT_USER", &text_type(), Pg);
+        assert_eq!(chain.text, ".default(sql`CURRENT_USER`)");
+        assert!(chain.needs_sql);
+    }
+
+    /// Drizzle types a numeric/decimal default as a string — arbitrary
+    /// precision exceeds a JS number.
+    #[test]
+    fn numeric_column_defaults_keep_the_literal_quoted() {
+        let ty = ColumnType::Complex(ComplexColumnType::Numeric {
+            precision: 10,
+            scale: 2,
+        });
+        assert_eq!(default_chain("0.00", &ty, Pg).text, r#".default("0.00")"#);
+    }
+
+    /// An integer enum's default names a variant; the column stores its value.
+    #[test]
+    fn integer_enum_variant_default_resolves_to_its_value() {
+        let ty = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "prio".to_string(),
+            values: EnumValues::Integer(vec![NumValue {
+                name: "low".to_string(),
+                value: 7,
+            }]),
+        });
+        assert_eq!(default_chain("low", &ty, Pg).text, ".default(7)");
+    }
+
+    #[test]
+    fn escape_backtick_guards_template_syntax() {
+        assert_eq!(escape_backtick("a`b${c}\\d"), "a\\`b\\${c}\\\\d");
+    }
+
+    // ── constraint entries ──────────────────────────────────────────────────
+
+    #[rstest]
+    #[case::pg_plain(Pg, false, ".primaryKey()")]
+    #[case::pg_auto(Pg, true, ".primaryKey().generatedByDefaultAsIdentity()")]
+    #[case::mysql_plain(Mysql, false, ".primaryKey()")]
+    #[case::mysql_auto(Mysql, true, ".autoincrement().primaryKey()")]
+    #[case::sqlite_plain(Sqlite, false, ".primaryKey()")]
+    #[case::sqlite_auto(Sqlite, true, ".primaryKey({ autoIncrement: true })")]
+    fn primary_key_chain_forks_per_dialect(
+        #[case] dialect: DrizzleDialect,
+        #[case] auto_inc: bool,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(primary_key_chain(dialect, auto_inc), expected);
+    }
+
+    #[test]
+    fn table_level_entry_names_the_builder_call() {
+        let columns: Vec<ColumnName> = vec!["a_col".into(), "b".into()];
+        assert_eq!(
+            table_level_entry("uniqueIndex", "uq_t__a_col_b", &columns),
+            r#"  uniqueIndex("uq_t__a_col_b").on(t.aCol, t.b),"#
+        );
+    }
+
+    /// Bindings over an empty schema: every lookup falls back to the natural
+    /// name, which is exactly what these entries assert.
+    fn empty_bindings() -> FileBindings {
+        FileBindings::collect(&[], Pg)
+    }
+
+    fn fk_entry_for(
+        columns: &[&str],
+        ref_table: &str,
+        ref_columns: &[&str],
+        on_delete: Option<&ReferenceAction>,
+        on_update: Option<&ReferenceAction>,
+    ) -> String {
+        let columns: Vec<ColumnName> = columns.iter().map(|c| (*c).into()).collect();
+        let ref_columns: Vec<ColumnName> = ref_columns.iter().map(|c| (*c).into()).collect();
+        foreign_key_entry(
+            Some("fk_posts__x"),
+            &columns,
+            ref_table,
+            &ref_columns,
+            on_delete,
+            on_update,
+            "posts",
+            &empty_bindings(),
+        )
+    }
+
+    /// SQLite stores no FK constraint names, so its entries omit the field.
+    #[test]
+    fn unnamed_foreign_key_entry_omits_the_name_field() {
+        let columns: Vec<ColumnName> = vec!["user_id".into()];
+        let entry = foreign_key_entry(
+            None,
+            &columns,
+            "users",
+            &[],
+            None,
+            None,
+            "posts",
+            &empty_bindings(),
+        );
+        assert_eq!(
+            entry,
+            r"  foreignKey({ columns: [t.userId], foreignColumns: [users.id] }),"
+        );
+    }
+
+    #[test]
+    fn foreign_key_entry_spells_the_operator_form() {
+        assert_eq!(
+            fk_entry_for(&["user_id"], "users", &["id"], None, None),
+            r#"  foreignKey({ columns: [t.userId], foreignColumns: [users.id], name: "fk_posts__x" }),"#
+        );
+    }
+
+    #[test]
+    fn composite_foreign_key_lists_every_column_in_order() {
+        assert_eq!(
+            fk_entry_for(&["a", "b"], "pair", &["x", "y"], None, None),
+            r#"  foreignKey({ columns: [t.a, t.b], foreignColumns: [pair.x, pair.y], name: "fk_posts__x" }),"#
+        );
+    }
+
+    /// A self-referential key takes its foreign columns from the callback's
+    /// `t`, which keeps the table const out of its own initializer.
+    #[test]
+    fn self_referential_foreign_key_uses_the_callback_columns() {
+        assert_eq!(
+            fk_entry_for(&["parent_id"], "posts", &["id"], None, None),
+            r#"  foreignKey({ columns: [t.parentId], foreignColumns: [t.id], name: "fk_posts__x" }),"#
+        );
+    }
+
+    /// A foreign key with no explicit target column references the parent's
+    /// primary key, which vespertide names `id` by convention.
+    #[test]
+    fn empty_ref_columns_fall_back_to_id() {
+        assert_eq!(
+            fk_entry_for(&["user_id"], "users", &[], None, None),
+            r#"  foreignKey({ columns: [t.userId], foreignColumns: [users.id], name: "fk_posts__x" }),"#
+        );
+    }
+
+    #[test]
+    fn referential_actions_chain_after_the_operator() {
+        assert_eq!(
+            fk_entry_for(
+                &["user_id"],
+                "users",
+                &["id"],
+                Some(&ReferenceAction::Cascade),
+                Some(&ReferenceAction::Restrict),
+            ),
+            r#"  foreignKey({ columns: [t.userId], foreignColumns: [users.id], name: "fk_posts__x" }).onDelete("cascade").onUpdate("restrict"),"#
+        );
+    }
+
+    #[rstest]
+    #[case::cascade(ReferenceAction::Cascade, "cascade")]
+    #[case::restrict(ReferenceAction::Restrict, "restrict")]
+    #[case::set_null(ReferenceAction::SetNull, "set null")]
+    #[case::set_default(ReferenceAction::SetDefault, "set default")]
+    #[case::no_action(ReferenceAction::NoAction, "no action")]
+    fn reference_actions_map_to_drizzle_keywords(
+        #[case] action: ReferenceAction,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(reference_action_to_drizzle(&action), expected);
+    }
+
+    #[test]
+    fn js_name_escapes_digits_and_reserved_words() {
+        assert_eq!(js_name("user_id"), "userId");
+        assert_eq!(js_name("1st_place"), "x1stPlace");
+        assert_eq!(js_name("default"), "default_");
+    }
+}

@@ -6,8 +6,10 @@ expression: rendered
 // User accounts table
 export const users = pgTable("users", {
   // Primary key
-  id: serial("id").primaryKey(),
+  id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
   // User email address
-  email: text("email").notNull().unique("uq_users__email"),
+  email: text("email").notNull(),
   name: text("name"),
-});
+}, (t) => [
+  uniqueIndex("uq_users__email").on(t.email),
+]);

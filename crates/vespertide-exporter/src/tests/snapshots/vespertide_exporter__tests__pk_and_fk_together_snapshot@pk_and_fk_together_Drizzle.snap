@@ -1,6 +1,6 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 90
+assertion_line: 95
 expression: rendered
 ---
 export const articleUser = pgTable("article_user", {
@@ -9,9 +9,9 @@ export const articleUser = pgTable("article_user", {
   authorOrder: integer("author_order").notNull().default(1),
   role: varchar("role", { length: 20 }).notNull().default("contributor"),
   isLead: boolean("is_lead").notNull().default(false),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (t) => [
-  primaryKey({ columns: [t.articleId, t.userId] }),
+  primaryKey({ name: "article_user_pkey", columns: [t.articleId, t.userId] }),
   foreignKey({ columns: [t.articleId], foreignColumns: [article.id], name: "fk_article_user__article_id" }).onDelete("cascade"),
   foreignKey({ columns: [t.userId], foreignColumns: [user.id], name: "fk_article_user__user_id" }).onDelete("cascade"),
   index("ix_article_user__article_id").on(t.articleId),

@@ -1,6 +1,6 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 187
+assertion_line: 192
 expression: rendered
 ---
 export const events = pgTable("events", {
@@ -9,5 +9,5 @@ export const events = pgTable("events", {
   date: date("date").notNull(),
 }, (t) => [
   index("ix_events__date_venue_id").on(t.venueId, t.date),
-  unique("uq_events__date_venue_id").on(t.venueId, t.date),
+  uniqueIndex("uq_events__date_venue_id").on(t.venueId, t.date),
 ]);

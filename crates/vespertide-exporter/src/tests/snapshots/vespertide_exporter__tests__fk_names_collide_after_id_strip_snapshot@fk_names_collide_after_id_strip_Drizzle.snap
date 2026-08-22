@@ -1,12 +1,14 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 313
+assertion_line: 318
 expression: rendered
 ---
 export const target = pgTable("target", {
   id: integer("id").primaryKey(),
-  alt: integer("alt").notNull().unique("uq_target__alt"),
-});
+  alt: integer("alt").notNull(),
+}, (t) => [
+  uniqueIndex("uq_target__alt").on(t.alt),
+]);
 
 export const targetRelations = relations(target, ({ one, many }) => ({
   aSrc: many(src, { relationName: "SrcA" }),

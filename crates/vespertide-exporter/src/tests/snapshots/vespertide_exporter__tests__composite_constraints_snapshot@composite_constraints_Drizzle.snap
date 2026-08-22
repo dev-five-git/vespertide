@@ -1,6 +1,6 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 172
+assertion_line: 177
 expression: rendered
 ---
 export const orderItems = pgTable("order_items", {
@@ -8,10 +8,10 @@ export const orderItems = pgTable("order_items", {
   productId: integer("product_id").notNull(),
   quantity: integer("quantity").notNull(),
 }, (t) => [
-  primaryKey({ columns: [t.orderId, t.productId] }),
+  primaryKey({ name: "order_items_pkey", columns: [t.orderId, t.productId] }),
   foreignKey({ columns: [t.orderId], foreignColumns: [orders.id], name: "fk_order_items__order_id" }),
   foreignKey({ columns: [t.productId], foreignColumns: [products.id], name: "fk_order_items__product_id" }),
-  unique("uq_order_items__uq_order_items__order_product").on(t.orderId, t.productId),
+  uniqueIndex("uq_order_items__uq_order_items__order_product").on(t.orderId, t.productId),
   index("ix_order_items__ix_order_items__order_id").on(t.orderId),
 ]);
 

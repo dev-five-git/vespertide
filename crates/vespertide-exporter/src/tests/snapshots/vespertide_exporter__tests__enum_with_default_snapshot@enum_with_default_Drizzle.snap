@@ -1,13 +1,13 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 121
+assertion_line: 126
 expression: rendered
 ---
-export const taskStatus = pgEnum("task_status", ["pending", "in_progress", "completed"]);
+export const tasksTaskStatus = pgEnum("tasks_task_status", ["pending", "in_progress", "completed"]);
 
 export const tasks = pgTable("tasks", {
   id: integer("id").notNull(),
-  status: taskStatus("status").notNull().default("pending"),
+  status: tasksTaskStatus("status").notNull().default("pending"),
   priority: integer("priority").notNull().default(0),
   isArchived: boolean("is_archived").notNull().default(false),
 });
