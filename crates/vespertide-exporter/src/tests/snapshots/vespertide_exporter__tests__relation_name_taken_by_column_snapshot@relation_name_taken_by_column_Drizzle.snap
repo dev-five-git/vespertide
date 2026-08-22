@@ -1,0 +1,23 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 322
+expression: rendered
+---
+export const users = pgTable("users", {
+  id: integer("id").primaryKey(),
+});
+
+export const usersRelations = relations(users, ({ one, many }) => ({
+  items: many(items),
+}));
+
+export const items = pgTable("items", {
+  id: integer("id").primaryKey(),
+  owner: integer("owner"),
+}, (t) => [
+  foreignKey({ columns: [t.owner], foreignColumns: [users.id], name: "fk_items__owner" }),
+]);
+
+export const itemsRelations = relations(items, ({ one, many }) => ({
+  ownerUsers: one(users, { fields: [items.owner], references: [users.id] }),
+}));

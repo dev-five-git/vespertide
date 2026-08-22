@@ -1,0 +1,11 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 74
+expression: rendered
+---
+model Products {
+  id Int @id
+  price Int
+
+  @@map("products")
+}

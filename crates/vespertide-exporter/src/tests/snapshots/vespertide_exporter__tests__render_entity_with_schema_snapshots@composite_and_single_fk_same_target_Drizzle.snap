@@ -1,0 +1,19 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 440
+expression: rendered
+---
+export const src = pgTable("src", {
+  id: integer("id").primaryKey(),
+  aId: integer("a_id").notNull(),
+  bId: integer("b_id").notNull(),
+  solo: integer("solo").notNull(),
+}, (t) => [
+  foreignKey({ columns: [t.aId, t.bId], foreignColumns: [target.a, target.b], name: "fk_src__a_id_b_id" }),
+  foreignKey({ columns: [t.solo], foreignColumns: [target.u], name: "fk_src__solo" }),
+]);
+
+export const srcRelations = relations(src, ({ one, many }) => ({
+  aB: one(target, { fields: [src.aId, src.bId], references: [target.a, target.b], relationName: "SrcAB" }),
+  soloTarget: one(target, { fields: [src.solo], references: [target.u], relationName: "SrcSolo" }),
+}));

@@ -1,0 +1,11 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 74
+expression: rendered
+---
+export const products = pgTable("products", {
+  id: integer("id").primaryKey(),
+  price: integer("price").notNull(),
+}, (t) => [
+  check("chk_products_price", sql`price >= 0`),
+]);

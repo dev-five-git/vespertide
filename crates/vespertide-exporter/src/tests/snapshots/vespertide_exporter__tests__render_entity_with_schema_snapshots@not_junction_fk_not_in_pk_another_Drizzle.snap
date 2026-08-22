@@ -1,0 +1,12 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 440
+expression: rendered
+---
+export const another = pgTable("another", {
+  id: integer("id").primaryKey(),
+});
+
+export const anotherRelations = relations(another, ({ one, many }) => ({
+  notJunction: many(notJunction),
+}));

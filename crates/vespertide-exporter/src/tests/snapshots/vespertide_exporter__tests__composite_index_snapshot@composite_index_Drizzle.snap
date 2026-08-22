@@ -1,0 +1,12 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 182
+expression: rendered
+---
+export const compositeIndex = pgTable("composite_index", {
+  id: integer("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull(),
+  name: text("name").notNull(),
+}, (t) => [
+  index("ix_composite_index__idx_tenant_name").on(t.tenantId, t.name),
+]);

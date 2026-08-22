@@ -1,0 +1,11 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 116
+expression: rendered
+---
+export const eventSeverity = pgEnum("event_severity", ["info-level", "warning_level", "ERROR_LEVEL", "1critical"]);
+
+export const events = pgTable("events", {
+  id: integer("id").notNull(),
+  severity: eventSeverity("severity").notNull(),
+});

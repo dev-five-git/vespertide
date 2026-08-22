@@ -8,7 +8,7 @@ use tokio::fs;
 use vespertide_config::VespertideConfig;
 use vespertide_core::TableDef;
 use vespertide_exporter::{
-    Orm, prisma, python_naming::to_pascal_case, render_entity_with_schema,
+    Orm, drizzle, prisma, python_naming::to_pascal_case, render_entity_with_schema,
     seaorm::SeaOrmExporterWithConfig,
 };
 use vespertide_naming::{IdentifierStart, sanitize_identifier, seaorm_module_name};
@@ -35,9 +35,12 @@ pub async fn cmd_export(orm: Orm, export_dir: Option<PathBuf>) -> Result<()> {
 
     let target_root = resolve_export_dir(export_dir, &config);
 
-    // Prisma uses a single-file output strategy
+    // Prisma and Drizzle use a single-file output strategy
     if matches!(orm, Orm::Prisma) {
         return cmd_export_prisma(normalized_models, target_root).await;
+    }
+    if matches!(orm, Orm::Drizzle) {
+        return cmd_export_drizzle(normalized_models, target_root).await;
     }
 
     // Clean the export directory before regenerating
@@ -421,6 +424,43 @@ async fn cmd_export_prisma(
         normalized_models.len(),
         out_path.display()
     );
+
+    Ok(())
+}
+
+/// Drizzle has no backend-neutral output — the table constructors fork at the
+/// `import` line — so one export writes one file per dialect:
+/// `models.pg.ts` / `models.mysql.ts` / `models.sqlite.ts`. Not `schema.ts`:
+/// that name belongs to the user's own schema entry file.
+async fn cmd_export_drizzle(
+    normalized_models: Vec<(TableDef, PathBuf)>,
+    target_root: PathBuf,
+) -> Result<()> {
+    let all_tables: Vec<TableDef> = normalized_models.iter().map(|(t, _)| t.clone()).collect();
+
+    // No `prepare_export_dir`: its extension sweep would take every `.ts`
+    // under the root — the user's own source files included — and Drizzle
+    // writes exactly three fixed names, so `fs::write` overwriting them below
+    // is all the cleaning a re-export needs.
+    if !target_root.exists() {
+        fs::create_dir_all(&target_root)
+            .await
+            .with_context(|| format!("create export dir {}", target_root.display()))?;
+    }
+
+    for dialect in drizzle::DrizzleDialect::ALL {
+        let content = drizzle::render_schema(&all_tables, dialect);
+        let out_path = target_root.join(format!("models.{}.ts", dialect.file_suffix()));
+        fs::write(&out_path, &content)
+            .await
+            .with_context(|| format!("write {}", out_path.display()))?;
+
+        println!(
+            "Exported {} model(s) -> {}",
+            normalized_models.len(),
+            out_path.display()
+        );
+    }
 
     Ok(())
 }

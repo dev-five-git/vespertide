@@ -38,6 +38,7 @@ fn render_schema(orm: Orm, schema: &[TableDef]) -> Result<String, String> {
             vespertide_exporter::jpa::render_entities(schema).map(|entities| entities.join("\n"))
         }
         Orm::Prisma => vespertide_exporter::prisma::export(schema),
+        Orm::Drizzle => vespertide_exporter::drizzle::export(schema),
     }
 }
 

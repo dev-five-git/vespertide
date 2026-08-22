@@ -1,0 +1,9 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 267
+expression: rendered
+---
+export const tasks = pgTable("tasks", {
+  id: integer("id").notNull(),
+  status: integer("status").notNull().default(1),
+});

@@ -1,0 +1,11 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 74
+expression: rendered
+---
+export const accounts = pgTable("accounts", {
+  id: integer("id").notNull(),
+  tenantId: bigint("tenant_id", { mode: "number" }).notNull(),
+}, (t) => [
+  primaryKey({ columns: [t.id, t.tenantId] }),
+]);

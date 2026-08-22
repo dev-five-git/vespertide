@@ -1,0 +1,13 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 440
+expression: rendered
+---
+export const user = pgTable("user", {
+  id: uuid("id").primaryKey(),
+});
+
+export const userRelations = relations(user, ({ one, many }) => ({
+  preferredUserProfile: many(profile, { relationName: "ProfilePreferredUser" }),
+  backupUserProfile: many(profile, { relationName: "ProfileBackupUser" }),
+}));

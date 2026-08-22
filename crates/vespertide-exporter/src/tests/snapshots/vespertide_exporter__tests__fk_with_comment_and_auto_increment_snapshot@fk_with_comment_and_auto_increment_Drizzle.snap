@@ -1,0 +1,16 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 227
+expression: rendered
+---
+export const child = pgTable("child", {
+  // References parent table
+  parentId: serial("parent_id").primaryKey(),
+  value: text("value").notNull(),
+}, (t) => [
+  foreignKey({ columns: [t.parentId], foreignColumns: [parent.id], name: "fk_child__parent_id" }),
+]);
+
+export const childRelations = relations(child, ({ one, many }) => ({
+  parent: one(parent, { fields: [child.parentId], references: [parent.id] }),
+}));

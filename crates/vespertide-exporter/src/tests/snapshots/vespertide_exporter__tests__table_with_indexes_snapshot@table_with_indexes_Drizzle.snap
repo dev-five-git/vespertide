@@ -1,0 +1,13 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 131
+expression: rendered
+---
+export const articles = pgTable("articles", {
+  id: integer("id").primaryKey(),
+  title: text("title").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+}, (t) => [
+  index("ix_articles__idx_articles_created_at").on(t.createdAt),
+  index("ix_articles__title").on(t.title),
+]);

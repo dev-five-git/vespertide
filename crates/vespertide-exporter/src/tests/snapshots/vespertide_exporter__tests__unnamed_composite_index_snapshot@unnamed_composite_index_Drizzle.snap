@@ -1,0 +1,12 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 192
+expression: rendered
+---
+export const unnamedIndex = pgTable("unnamed_index", {
+  id: integer("id").primaryKey(),
+  colA: integer("col_a").notNull(),
+  colB: integer("col_b").notNull(),
+}, (t) => [
+  index("ix_unnamed_index__col_a_col_b").on(t.colA, t.colB),
+]);

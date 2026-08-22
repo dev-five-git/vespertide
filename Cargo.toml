@@ -92,7 +92,7 @@ vespertide-macro = { path = "crates/vespertide-macro", version = "=0.3.0" }
 vespertide-naming = { path = "crates/vespertide-naming", version = "=0.3.0" }
 vespertide-planner = { path = "crates/vespertide-planner", version = "=0.3.0" }
 vespertide-query = { path = "crates/vespertide-query", version = "=0.3.0" }
-vespertide-exporter = { path = "crates/vespertide-exporter", version = "=0.3.0" }
+vespertide-exporter = { path = "crates/vespertide-exporter", version = "=0.4.0" }
 vespertide-lsp = { path = "crates/vespertide-lsp", version = "=0.3.0" }
 
 [profile.dev]

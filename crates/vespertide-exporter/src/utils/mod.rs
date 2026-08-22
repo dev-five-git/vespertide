@@ -11,7 +11,7 @@
 
 pub(crate) mod common;
 pub(crate) mod python;
+pub(crate) mod typescript;
 // Add future language helpers as siblings, e.g.
 // pub(crate) mod rust;
-// pub(crate) mod typescript;
 // pub(crate) mod java;

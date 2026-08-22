@@ -101,6 +101,27 @@ pub(crate) fn claim_field_name(
     chosen
 }
 
+/// Claim a file-scope binding name, recording it in `taken`. Unlike
+/// [`claim_field_name`], a collision takes a bare numeric suffix (`name2`,
+/// `name3`, …) — the `_rel` step is a relation-field convention that would
+/// mislead on a table or type binding.
+pub(crate) fn claim_binding(
+    preferred: String,
+    taken: &mut std::collections::HashSet<String>,
+) -> String {
+    if taken.insert(preferred.clone()) {
+        return preferred;
+    }
+    let mut n = 2usize;
+    loop {
+        let candidate = format!("{preferred}{n}");
+        if taken.insert(candidate.clone()) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
 /// `preferred` if free, then `{preferred}_rel`, then numbered variants. `_rel`
 /// comes before the numbers so the names already emitted for FK fields that
 /// clash with their own column stay unchanged.
@@ -182,6 +203,16 @@ mod tests {
         let mut buf = String::new();
         push_attr(&mut buf, "String");
         assert_eq!(buf, "String");
+    }
+
+    /// Bindings suffix numerically — no `_rel` step — and each claim records
+    /// itself, so a third claimant walks past the second's suffix.
+    #[test]
+    fn claim_binding_suffixes_numerically() {
+        let mut taken = std::collections::HashSet::new();
+        assert_eq!(claim_binding("user".to_string(), &mut taken), "user");
+        assert_eq!(claim_binding("user".to_string(), &mut taken), "user2");
+        assert_eq!(claim_binding("user".to_string(), &mut taken), "user3");
     }
 
     #[rstest]

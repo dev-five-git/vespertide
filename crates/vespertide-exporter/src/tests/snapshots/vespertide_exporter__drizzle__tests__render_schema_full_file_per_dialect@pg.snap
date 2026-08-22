@@ -1,0 +1,72 @@
+---
+source: crates/vespertide-exporter/src/drizzle/mod.rs
+assertion_line: 285
+expression: rendered
+---
+import { pgTable, pgEnum, primaryKey, foreignKey, unique, index, check, bigint, integer, text } from "drizzle-orm/pg-core";
+import { relations, sql } from "drizzle-orm";
+
+export const docStatus = pgEnum("doc_status", ["draft", "published", "archived"]);
+
+export const users = pgTable("users", {
+  id: integer("id").primaryKey(),
+  displayName: text("display_name"),
+});
+
+export const posts = pgTable("posts", {
+  id: integer("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  title: text("title").notNull(),
+}, (t) => [
+  foreignKey({ columns: [t.userId], foreignColumns: [users.id], name: "fk_posts__user_id" }),
+]);
+
+export const documents = pgTable("documents", {
+  id: integer("id").notNull(),
+  status: docStatus("status").notNull(),
+  reviewStatus: docStatus("review_status"),
+});
+
+export const accounts = pgTable("accounts", {
+  id: integer("id").notNull(),
+  tenantId: bigint("tenant_id", { mode: "number" }).notNull(),
+}, (t) => [
+  primaryKey({ columns: [t.id, t.tenantId] }),
+]);
+
+export const compositeUnique = pgTable("composite_unique", {
+  id: integer("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull(),
+  name: text("name").notNull(),
+}, (t) => [
+  unique("uq_composite_unique__uq_tenant_name").on(t.tenantId, t.name),
+]);
+
+export const users = pgTable("users", {
+  id: integer("id").notNull(),
+  email: text("email").notNull().unique("uq_users__email"),
+  username: text("username").notNull().unique("uq_users__uq_username"),
+  department: text("department"),
+  status: text("status").notNull().default("active"),
+}, (t) => [
+  index("ix_users__idx_department").on(t.department),
+]);
+
+export const products = pgTable("products", {
+  id: integer("id").primaryKey(),
+  price: integer("price").notNull(),
+}, (t) => [
+  check("chk_products_price", sql`price >= 0`),
+]);
+
+export const usersRelations = relations(users, ({ one, many }) => ({
+  posts: many(posts),
+}));
+
+export const postsRelations = relations(posts, ({ one, many }) => ({
+  user: one(users, { fields: [posts.userId], references: [users.id] }),
+}));
+
+export const usersRelations = relations(users, ({ one, many }) => ({
+  posts: many(posts),
+}));

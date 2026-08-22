@@ -1,0 +1,28 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 296
+expression: rendered
+---
+export const x1users = pgTable("1users", {
+  x1id: integer("1id").primaryKey(),
+  email: text("email").notNull(),
+});
+
+export const x1usersRelations = relations(x1users, ({ one, many }) => ({
+  x1stOwnerPosts: many(posts, { relationName: "Posts1stOwner" }),
+  x2ndOwnerPosts: many(posts, { relationName: "Posts2ndOwner" }),
+}));
+
+export const posts = pgTable("posts", {
+  id: integer("id").primaryKey(),
+  x1stOwnerId: integer("1st_owner_id"),
+  x2ndOwnerId: integer("2nd_owner_id"),
+}, (t) => [
+  foreignKey({ columns: [t.x1stOwnerId], foreignColumns: [x1users.x1id], name: "fk_posts__1st_owner_id" }),
+  foreignKey({ columns: [t.x2ndOwnerId], foreignColumns: [x1users.x1id], name: "fk_posts__2nd_owner_id" }),
+]);
+
+export const postsRelations = relations(posts, ({ one, many }) => ({
+  x1stOwner: one(x1users, { fields: [posts.x1stOwnerId], references: [x1users.x1id], relationName: "Posts1stOwner" }),
+  x2ndOwner: one(x1users, { fields: [posts.x2ndOwnerId], references: [x1users.x1id], relationName: "Posts2ndOwner" }),
+}));

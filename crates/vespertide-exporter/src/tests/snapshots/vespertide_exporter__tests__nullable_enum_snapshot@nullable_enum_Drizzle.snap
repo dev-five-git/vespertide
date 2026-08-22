@@ -1,0 +1,11 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 105
+expression: rendered
+---
+export const statusType = pgEnum("status_type", ["active", "inactive"]);
+
+export const nullableEnum = pgTable("nullable_enum", {
+  id: integer("id").primaryKey(),
+  status: statusType("status"),
+});

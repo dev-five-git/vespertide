@@ -1,0 +1,12 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 247
+expression: rendered
+---
+export const membership = pgTable("membership", {
+  tenantId: integer("tenant_id").notNull(),
+  userId: integer("user_id").notNull(),
+  role: text("role").notNull(),
+}, (t) => [
+  primaryKey({ columns: [t.tenantId, t.userId] }),
+]);

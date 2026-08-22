@@ -1,0 +1,9 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 262
+expression: rendered
+---
+export const products = pgTable("products", {
+  id: integer("id").notNull(),
+  price: numeric("price", { precision: 10, scale: 2 }).notNull().default("0"),
+});

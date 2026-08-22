@@ -1,0 +1,13 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 187
+expression: rendered
+---
+export const events = pgTable("events", {
+  id: integer("id").primaryKey(),
+  venueId: integer("venue_id").notNull(),
+  date: date("date").notNull(),
+}, (t) => [
+  index("ix_events__date_venue_id").on(t.venueId, t.date),
+  unique("uq_events__date_venue_id").on(t.venueId, t.date),
+]);

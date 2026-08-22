@@ -1,0 +1,12 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 162
+expression: rendered
+---
+export const logs = pgTable("logs", {
+  id: serial("id").primaryKey(),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  score: real("score").notNull().default(1.5),
+  tag: text("tag").notNull().default(sql`UNKNOWN_EXPR`),
+});

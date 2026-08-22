@@ -1,0 +1,14 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 110
+expression: rendered
+---
+export const productCategory = pgEnum("product_category", ["electronics", "clothing", "food"]);
+
+export const availabilityStatus = pgEnum("availability_status", ["in_stock", "out_of_stock", "pre_order"]);
+
+export const products = pgTable("products", {
+  id: integer("id").notNull(),
+  category: productCategory("category").notNull(),
+  availability: availabilityStatus("availability").notNull(),
+});

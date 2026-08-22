@@ -1,0 +1,10 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 242
+expression: rendered
+---
+export const order = pgTable("order", {
+  id: integer("id").primaryKey(),
+  user: text("user").notNull(),
+  select: integer("select").notNull(),
+});

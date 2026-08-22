@@ -1,0 +1,13 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 440
+expression: rendered
+---
+export const dual = pgTable("dual", {
+  username: text("username").primaryKey(),
+});
+
+export const dualRelations = relations(dual, ({ one, many }) => ({
+  usernameDualRel: many(dualRel, { relationName: "DualRelUsername" }),
+  checkerUsernameDualRel: many(dualRel, { relationName: "DualRelCheckerUsername" }),
+}));

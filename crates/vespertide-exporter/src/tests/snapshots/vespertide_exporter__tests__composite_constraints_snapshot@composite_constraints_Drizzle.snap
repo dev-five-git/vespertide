@@ -1,0 +1,21 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 172
+expression: rendered
+---
+export const orderItems = pgTable("order_items", {
+  orderId: integer("order_id").notNull(),
+  productId: integer("product_id").notNull(),
+  quantity: integer("quantity").notNull(),
+}, (t) => [
+  primaryKey({ columns: [t.orderId, t.productId] }),
+  foreignKey({ columns: [t.orderId], foreignColumns: [orders.id], name: "fk_order_items__order_id" }),
+  foreignKey({ columns: [t.productId], foreignColumns: [products.id], name: "fk_order_items__product_id" }),
+  unique("uq_order_items__uq_order_items__order_product").on(t.orderId, t.productId),
+  index("ix_order_items__ix_order_items__order_id").on(t.orderId),
+]);
+
+export const orderItemsRelations = relations(orderItems, ({ one, many }) => ({
+  order: one(orders, { fields: [orderItems.orderId], references: [orders.id] }),
+  product: one(products, { fields: [orderItems.productId], references: [products.id] }),
+}));
