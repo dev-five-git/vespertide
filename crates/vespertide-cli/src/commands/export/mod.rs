@@ -41,13 +41,7 @@ pub async fn cmd_export(orm: Orm, export_dir: Option<PathBuf>) -> Result<()> {
     }
 
     // Clean the export directory before regenerating
-    clean_export_dir(&target_root, orm).await?;
-
-    if !target_root.exists() {
-        fs::create_dir_all(&target_root)
-            .await
-            .with_context(|| format!("create export dir {}", target_root.display()))?;
-    }
+    prepare_export_dir(&target_root, orm).await?;
 
     // Extract all tables for schema context (used for FK chain resolution)
     let all_tables: Vec<TableDef> = normalized_models.iter().map(|(t, _)| t.clone()).collect();
@@ -213,6 +207,19 @@ fn resolve_export_dir(export_dir: Option<PathBuf>, config: &VespertideConfig) ->
     }
     // Prefer explicit model_export_dir from config, fallback to default inside config.
     config.model_export_dir().to_path_buf()
+}
+
+/// Clean stale output for `orm` and make sure the directory exists — the
+/// shared preamble of every export path.
+async fn prepare_export_dir(root: &Path, orm: Orm) -> Result<()> {
+    clean_export_dir(root, orm).await?;
+
+    if !root.exists() {
+        fs::create_dir_all(root)
+            .await
+            .with_context(|| format!("create export dir {}", root.display()))?;
+    }
+    Ok(())
 }
 
 /// Clean the export directory by removing all generated files.
@@ -400,13 +407,7 @@ async fn cmd_export_prisma(
     let all_tables: Vec<TableDef> = normalized_models.iter().map(|(t, _)| t.clone()).collect();
     let content = prisma::render_schema(&all_tables);
 
-    clean_export_dir(&target_root, Orm::Prisma).await?;
-
-    if !target_root.exists() {
-        fs::create_dir_all(&target_root)
-            .await
-            .with_context(|| format!("create export dir {}", target_root.display()))?;
-    }
+    prepare_export_dir(&target_root, Orm::Prisma).await?;
 
     // Not `schema.prisma`: that name belongs to the user's own file holding the
     // datasource/generator blocks.
