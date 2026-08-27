@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class _1users(models.Model):
+    id = models.IntegerField(primary_key=True)
+    _1st_place = models.IntegerField(db_column="1st_place", null=True, blank=True)
+    user_id = models.TextField(db_column="user-id", null=True, blank=True)
+    _1st_owner = models.ForeignKey("_1users", on_delete=models.RESTRICT, db_column="1st_owner_id", related_name="+", null=True, blank=True)
+
+    class Meta:
+        db_table = "1users"

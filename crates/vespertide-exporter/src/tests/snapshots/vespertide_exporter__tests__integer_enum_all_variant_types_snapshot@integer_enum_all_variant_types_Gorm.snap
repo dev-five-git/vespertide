@@ -1,0 +1,22 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 261
+expression: rendered
+---
+package models
+
+type EdgeState int
+
+const (
+    EdgeStateUnknown EdgeState = -1
+    EdgeStateNotStarted EdgeState = 0
+    EdgeStateInProgress EdgeState = 10
+    EdgeStateHTTP500 EdgeState = 500
+)
+
+type WorkflowRuns struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    State EdgeState `gorm:"column:state;not null" json:"state"`
+}
+
+func (WorkflowRuns) TableName() string { return "workflow_runs" }

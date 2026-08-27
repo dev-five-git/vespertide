@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 150
+expression: rendered
+---
+package models
+
+import (
+    "github.com/shopspring/decimal"
+)
+
+type ComplexTypes struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    VarcharCol string `gorm:"column:varchar_col;not null;size:100" json:"varchar_col"`
+    CharCol string `gorm:"column:char_col;not null;size:10;type:char" json:"char_col"`
+    NumericCol decimal.Decimal `gorm:"column:numeric_col;not null;type:numeric(10,2)" json:"numeric_col"`
+    CustomCol string `gorm:"column:custom_col;not null;type:CUSTOM_TYPE" json:"custom_col"`
+}
+
+func (ComplexTypes) TableName() string { return "complex_types" }

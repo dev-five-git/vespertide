@@ -602,3 +602,80 @@ fn build_output_path_jpa_strips_vespertide_suffix() {
 fn test_to_pascal_case(#[case] input: &str, #[case] expected: &str) {
     assert_eq!(to_pascal_case(input), expected);
 }
+
+#[test]
+fn build_output_path_gorm_go_extension() {
+    let root = Path::new("src/models");
+    let out = build_output_path(root, Path::new("user.json"), Orm::Gorm);
+    assert_eq!(out, Path::new("src/models/user.go"));
+}
+
+#[tokio::test]
+async fn clean_export_dir_removes_go_files_for_gorm() {
+    let tmp = tempdir().unwrap();
+    let root = tmp.path().join("export_dir");
+    std_fs::create_dir_all(&root).unwrap();
+
+    std_fs::write(root.join("model.go"), "// go file").unwrap();
+    std_fs::write(root.join("keep.rs"), "// keep this").unwrap();
+
+    clean_export_dir(&root, Orm::Gorm).await.unwrap();
+
+    assert!(!root.join("model.go").exists());
+    assert!(root.join("keep.rs").exists());
+}
+
+#[tokio::test]
+async fn clean_export_dir_removes_py_files_for_django() {
+    let tmp = tempdir().unwrap();
+    let root = tmp.path().join("export_dir");
+    std_fs::create_dir_all(&root).unwrap();
+
+    // Create some .py files that should be cleaned
+    std_fs::write(root.join("old_model.py"), "# old python file").unwrap();
+    // Create a .rs file that should NOT be cleaned
+    std_fs::write(root.join("keep.rs"), "// keep this").unwrap();
+
+    clean_export_dir(&root, Orm::Django).await.unwrap();
+
+    // .py files should be gone
+    assert!(!root.join("old_model.py").exists());
+    // .rs file should remain
+    assert!(root.join("keep.rs").exists());
+}
+
+#[tokio::test]
+#[serial]
+async fn export_writes_gorm_files_with_go_extension() {
+    let tmp = tempdir().unwrap();
+    let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+    write_config();
+
+    let model = sample_table("widgets");
+    write_model(Path::new("models/widgets.json"), &model);
+
+    cmd_export(Orm::Gorm, None).await.unwrap();
+
+    let out = PathBuf::from("src/models/widgets.go");
+    assert!(out.exists());
+    let content = std_fs::read_to_string(out).unwrap();
+    assert!(content.contains("widgets"));
+}
+
+#[tokio::test]
+#[serial]
+async fn export_writes_django_files_with_py_extension() {
+    let tmp = tempdir().unwrap();
+    let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+    write_config();
+
+    let model = sample_table("gadgets");
+    write_model(Path::new("models/gadgets.json"), &model);
+
+    cmd_export(Orm::Django, None).await.unwrap();
+
+    let out = PathBuf::from("src/models/gadgets.py");
+    assert!(out.exists());
+    let content = std_fs::read_to_string(out).unwrap();
+    assert!(content.contains("gadgets"));
+}

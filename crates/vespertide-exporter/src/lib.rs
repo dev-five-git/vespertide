@@ -1,7 +1,9 @@
 //! Helpers to convert `TableDef` models into ORM-specific representations
-//! such as `SeaORM`, `SQLAlchemy`, `SQLModel`, JPA, and Prisma.
+//! such as `SeaORM`, `SQLAlchemy`, `SQLModel`, JPA, GORM, Django, and Prisma.
 
 mod constraint_scan;
+pub mod django;
+pub mod gorm;
 pub mod jpa;
 pub mod orm;
 mod parallel_config;
@@ -14,6 +16,8 @@ pub mod sqlmodel;
 mod tests;
 mod utils;
 
+pub use django::DjangoExporter;
+pub use gorm::GormExporter;
 pub use jpa::JpaExporter;
 pub use orm::{Orm, OrmExporter, render_entity, render_entity_with_schema};
 pub use prisma::PrismaExporter;

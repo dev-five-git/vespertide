@@ -1,0 +1,30 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 114
+expression: rendered
+---
+package models
+
+type ProductCategory string
+
+const (
+    ProductCategoryElectronics ProductCategory = "electronics"
+    ProductCategoryClothing ProductCategory = "clothing"
+    ProductCategoryFood ProductCategory = "food"
+)
+
+type AvailabilityStatus string
+
+const (
+    AvailabilityStatusInStock AvailabilityStatus = "in_stock"
+    AvailabilityStatusOutOfStock AvailabilityStatus = "out_of_stock"
+    AvailabilityStatusPreOrder AvailabilityStatus = "pre_order"
+)
+
+type Products struct {
+    ID int32 `gorm:"column:id;not null" json:"id"`
+    Category ProductCategory `gorm:"column:category;not null" json:"category"`
+    Availability AvailabilityStatus `gorm:"column:availability;not null" json:"availability"`
+}
+
+func (Products) TableName() string { return "products" }

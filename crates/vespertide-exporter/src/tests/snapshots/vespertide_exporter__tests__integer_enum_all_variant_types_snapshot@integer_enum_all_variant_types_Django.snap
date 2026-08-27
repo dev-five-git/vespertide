@@ -1,0 +1,22 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 261
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class EdgeState(models.IntegerChoices):
+    UNKNOWN = -1, "unknown"
+    NOT_STARTED = 0, "not_started"
+    IN_PROGRESS = 10, "InProgress"
+    HTTP_500 = 500, "HTTP_500"
+
+class WorkflowRuns(models.Model):
+    id = models.IntegerField(primary_key=True)
+    state = models.IntegerField(choices=EdgeState.choices)
+
+    class Meta:
+        db_table = "workflow_runs"

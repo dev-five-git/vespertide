@@ -1,0 +1,21 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 135
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class Articles(models.Model):
+    id = models.IntegerField(primary_key=True)
+    title = models.TextField()
+    created_at = models.DateTimeField()
+
+    class Meta:
+        db_table = "articles"
+        indexes = [
+            models.Index(fields=["created_at"], name="idx_articles_created_at"),
+            models.Index(fields=["title"]),
+        ]

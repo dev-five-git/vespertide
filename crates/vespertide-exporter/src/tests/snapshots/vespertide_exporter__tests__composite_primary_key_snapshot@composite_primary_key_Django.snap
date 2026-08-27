@@ -1,0 +1,18 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 251
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class Membership(models.Model):
+    pk = models.CompositePrimaryKey("tenant_id", "user_id")
+    tenant_id = models.IntegerField()
+    user_id = models.IntegerField()
+    role = models.TextField()
+
+    class Meta:
+        db_table = "membership"

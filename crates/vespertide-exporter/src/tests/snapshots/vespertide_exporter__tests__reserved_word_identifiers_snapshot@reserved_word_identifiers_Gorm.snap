@@ -1,0 +1,14 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 246
+expression: rendered
+---
+package models
+
+type Order struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    User string `gorm:"column:user;not null;type:text" json:"user"`
+    Select int32 `gorm:"column:select;not null" json:"select"`
+}
+
+func (Order) TableName() string { return "order" }

@@ -1,0 +1,21 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 104
+expression: rendered
+---
+package models
+
+type PriorityLevel int
+
+const (
+    PriorityLevelLow PriorityLevel = 0
+    PriorityLevelMedium PriorityLevel = 10
+    PriorityLevelHigh PriorityLevel = 20
+)
+
+type Tasks struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    Priority PriorityLevel `gorm:"column:priority;not null" json:"priority"`
+}
+
+func (Tasks) TableName() string { return "tasks" }

@@ -1,0 +1,16 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 393
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class Article(models.Model):
+    id = models.BigIntegerField(primary_key=True)
+    users = models.ManyToManyField("User", through="ArticleUser", related_name="+")
+
+    class Meta:
+        db_table = "article"

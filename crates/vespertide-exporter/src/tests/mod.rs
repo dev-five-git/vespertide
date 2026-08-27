@@ -17,6 +17,12 @@ fn render_schema(orm: Orm, schema: &[TableDef]) -> Result<String, String> {
         Orm::SqlAlchemy => crate::sqlalchemy::export(schema),
         Orm::SqlModel => crate::sqlmodel::render_entities(schema),
         Orm::Jpa => crate::jpa::render_entities(schema).map(|entities| entities.join("\n")),
+        Orm::Gorm => schema
+            .iter()
+            .map(crate::gorm::render_entity)
+            .collect::<Result<Vec<_>, _>>()
+            .map(|v| v.join("\n\n")),
+        Orm::Django => crate::django::export(schema),
         Orm::Prisma => crate::prisma::export(schema),
     }
 }
@@ -30,6 +36,8 @@ macro_rules! orm_cases {
         #[case::sqlalchemy(Orm::SqlAlchemy)]
         #[case::sqlmodel(Orm::SqlModel)]
         #[case::jpa(Orm::Jpa)]
+        #[case::gorm(Orm::Gorm)]
+        #[case::django(Orm::Django)]
         #[case::prisma(Orm::Prisma)]
         fn $test_name(#[case] orm: Orm) {
             let table = $fixture();
@@ -47,6 +55,8 @@ macro_rules! orm_cases {
         #[case::sqlalchemy(Orm::SqlAlchemy)]
         #[case::sqlmodel(Orm::SqlModel)]
         #[case::jpa(Orm::Jpa)]
+        #[case::gorm(Orm::Gorm)]
+        #[case::django(Orm::Django)]
         #[case::prisma(Orm::Prisma)]
         fn $test_name(#[case] orm: Orm) {
             let schema: Vec<TableDef> = $fixture();
@@ -359,17 +369,19 @@ fn to_pascal_case_for(orm: Orm, s: &str) -> String {
         Orm::SqlAlchemy => crate::sqlalchemy::to_pascal_case_for_tests(s),
         Orm::SqlModel => crate::sqlmodel::to_pascal_case_for_tests(s),
         Orm::Jpa => crate::jpa::to_pascal_case_for_tests(s),
+        Orm::Gorm => crate::gorm::to_pascal_case_for_tests(s),
+        Orm::Django => crate::django::to_pascal_case_for_tests(s),
         Orm::Prisma => vespertide_naming::to_pascal_case(s),
     }
 }
 
 /// Cross-ORM `to_pascal_case` consolidation. Inputs in this matrix are
 /// restricted to ASCII with `_` as the only separator — the subset where all
-/// five ORM implementations agree.
+/// seven ORM implementations agree.
 ///
 /// Divergences intentionally NOT covered here:
 /// * `-` as separator: `SeaORM` and Prisma treat it as a separator (Prisma via
-///   `vespertide_naming::to_pascal_case`), the other three ORMs leave it
+///   `vespertide_naming::to_pascal_case`), the other five ORMs leave it
 ///   intact (their splits operate on `_` only).
 /// * Non-ASCII characters: `SeaORM` and Prisma use `to_ascii_uppercase`, the
 ///   others use `to_uppercase` (Unicode-aware).
@@ -380,6 +392,8 @@ fn to_pascal_case_for(orm: Orm, s: &str) -> String {
 #[case::sqlalchemy(Orm::SqlAlchemy)]
 #[case::sqlmodel(Orm::SqlModel)]
 #[case::jpa(Orm::Jpa)]
+#[case::gorm(Orm::Gorm)]
+#[case::django(Orm::Django)]
 #[case::prisma(Orm::Prisma)]
 fn to_pascal_case_shared_semantics(
     #[values(
@@ -407,6 +421,8 @@ fn to_pascal_case_shared_semantics(
 #[case::sqlalchemy(Orm::SqlAlchemy)]
 #[case::sqlmodel(Orm::SqlModel)]
 #[case::jpa(Orm::Jpa)]
+#[case::gorm(Orm::Gorm)]
+#[case::django(Orm::Django)]
 #[case::prisma(Orm::Prisma)]
 fn render_entity_with_schema_snapshots(
     #[values(
@@ -434,4 +450,10 @@ fn render_entity_with_schema_snapshots(
     with_settings!({ snapshot_suffix => format!("{}_{:?}", scenario, orm) }, {
         assert_snapshot!(rendered);
     });
+}
+
+#[test]
+#[should_panic(expected = "unknown schema scenario nonexistent_scenario")]
+fn schema_scenario_panics_on_unknown_name() {
+    fixtures::schema_scenario("nonexistent_scenario");
 }

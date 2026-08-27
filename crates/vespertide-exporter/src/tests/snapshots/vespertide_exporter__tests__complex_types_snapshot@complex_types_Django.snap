@@ -1,0 +1,19 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 150
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class ComplexTypes(models.Model):
+    id = models.IntegerField(primary_key=True)
+    varchar_col = models.CharField(max_length=100)
+    char_col = models.CharField(max_length=10)
+    numeric_col = models.DecimalField(max_digits=10, decimal_places=2)
+    custom_col = models.TextField()
+
+    class Meta:
+        db_table = "complex_types"

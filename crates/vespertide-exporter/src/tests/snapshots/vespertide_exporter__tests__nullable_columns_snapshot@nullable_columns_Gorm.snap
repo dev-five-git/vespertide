@@ -1,0 +1,14 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 171
+expression: rendered
+---
+package models
+
+type Profiles struct {
+    ID int32 `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+    Bio *string `gorm:"column:bio;type:text" json:"bio"`
+    AvatarUrl *string `gorm:"column:avatar_url;size:500" json:"avatar_url"`
+}
+
+func (Profiles) TableName() string { return "profiles" }

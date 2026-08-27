@@ -1,0 +1,19 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 88
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class LineItems(models.Model):
+    id = models.IntegerField(primary_key=True)
+    order_id = models.IntegerField()
+    order_version = models.IntegerField()
+    sku = models.TextField()
+    # composite foreign key: (order_id, order_version) -> orders(id, version)
+
+    class Meta:
+        db_table = "line_items"

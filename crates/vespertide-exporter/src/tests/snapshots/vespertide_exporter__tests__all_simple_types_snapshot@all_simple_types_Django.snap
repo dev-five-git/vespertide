@@ -1,0 +1,33 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 145
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class AllTypes(models.Model):
+    id = models.IntegerField(primary_key=True)
+    small = models.SmallIntegerField()
+    big = models.BigIntegerField()
+    real_num = models.FloatField()
+    double_num = models.FloatField()
+    text_col = models.TextField()
+    bool_col = models.BooleanField()
+    date_col = models.DateField()
+    time_col = models.TimeField()
+    ts_col = models.DateTimeField()
+    tstz_col = models.DateTimeField()
+    interval_col = models.DurationField()
+    bytea_col = models.BinaryField()
+    uuid_col = models.UUIDField()
+    json_col = models.JSONField()
+    inet_col = models.GenericIPAddressField()
+    cidr_col = models.GenericIPAddressField()
+    macaddr_col = models.CharField(max_length=17)
+    xml_col = models.TextField()
+
+    class Meta:
+        db_table = "all_types"

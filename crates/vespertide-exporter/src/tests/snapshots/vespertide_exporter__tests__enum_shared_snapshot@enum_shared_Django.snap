@@ -1,0 +1,22 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 119
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class DocStatus(models.TextChoices):
+    DRAFT = "draft", "draft"
+    PUBLISHED = "published", "published"
+    ARCHIVED = "archived", "archived"
+
+class Documents(models.Model):
+    id = models.IntegerField()
+    status = models.CharField(max_length=9, choices=DocStatus.choices)
+    review_status = models.CharField(max_length=9, choices=DocStatus.choices, null=True, blank=True)
+
+    class Meta:
+        db_table = "documents"

@@ -1,0 +1,13 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 221
+expression: rendered
+---
+package models
+
+type UnknownDefaults struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    Code string `gorm:"column:code;not null;type:text" json:"code"`
+}
+
+func (UnknownDefaults) TableName() string { return "unknown_defaults" }

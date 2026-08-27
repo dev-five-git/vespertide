@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -78,6 +79,105 @@ impl SeaOrmConfig {
     }
 }
 
+/// Django-specific export configuration.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct DjangoConfig {
+    /// Explicit `app_label` written into every generated model's `Meta`
+    /// class. Needed when generated models don't live inside a standard
+    /// Django app package layout, where Django would otherwise infer the
+    /// label from the containing package. `None` (default) omits
+    /// `app_label` and leaves Django's normal inference in place.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_label: Option<String>,
+}
+
+impl DjangoConfig {
+    /// Explicit `app_label` to emit in every model's `Meta` class, if set.
+    pub fn app_label(&self) -> Option<&str> {
+        self.app_label.as_deref()
+    }
+}
+
+/// GORM-specific export configuration.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct GormConfig {
+    /// Go package name emitted at the top of every generated file
+    /// (`package <name>`). `None` (default) infers the name from the
+    /// export directory's final path segment (sanitized to a valid Go
+    /// identifier), falling back to `"models"` when that segment isn't
+    /// usable. See [`VespertideConfig::gorm_package_name`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_name: Option<String>,
+}
+
+impl GormConfig {
+    /// Explicit Go package name from config, if set. Prefer
+    /// [`VespertideConfig::gorm_package_name`] to resolve the effective
+    /// name (this accessor doesn't apply the folder-based inference).
+    pub fn package_name(&self) -> Option<&str> {
+        self.package_name.as_deref()
+    }
+}
+
+/// Fallback Go package name used when neither an explicit `gorm.package_name`
+/// nor a usable export directory name is available.
+pub const DEFAULT_GORM_PACKAGE_NAME: &str = "models";
+
+/// Go reserved words, which can't be used as a package name.
+const GO_RESERVED_WORDS: &[&str] = &[
+    "break",
+    "default",
+    "func",
+    "interface",
+    "select",
+    "case",
+    "defer",
+    "go",
+    "map",
+    "struct",
+    "chan",
+    "else",
+    "goto",
+    "package",
+    "switch",
+    "const",
+    "fallthrough",
+    "if",
+    "range",
+    "type",
+    "continue",
+    "for",
+    "import",
+    "return",
+    "var",
+];
+
+/// Sanitize a candidate string into a valid, idiomatic Go package identifier:
+/// lowercase ASCII letters/digits only, must not start with a digit, must
+/// not collide with a Go reserved word. Returns `None` when nothing usable
+/// remains (e.g. an all-Unicode or empty candidate).
+fn sanitize_go_package_name(candidate: &str) -> Option<String> {
+    let cleaned: String = candidate
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .map(|c| c.to_ascii_lowercase())
+        .collect();
+
+    if cleaned.is_empty() || cleaned.starts_with(|c: char| c.is_ascii_digit()) {
+        return None;
+    }
+    if GO_RESERVED_WORDS.contains(&cleaned.as_str()) {
+        return None;
+    }
+    Some(cleaned)
+}
+
 /// Top-level vespertide configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -100,6 +200,12 @@ pub struct VespertideConfig {
     /// SeaORM-specific export configuration.
     #[serde(default)]
     pub seaorm: SeaOrmConfig,
+    /// Django-specific export configuration.
+    #[serde(default)]
+    pub django: DjangoConfig,
+    /// GORM-specific export configuration.
+    #[serde(default)]
+    pub gorm: GormConfig,
     /// Prefix to add to all table names (including migration version table).
     /// Default: "" (no prefix)
     #[serde(default)]
@@ -138,6 +244,8 @@ impl Default for VespertideConfig {
             migration_filename_pattern: default_migration_filename_pattern(),
             model_export_dir: default_model_export_dir(),
             seaorm: SeaOrmConfig::default(),
+            django: DjangoConfig::default(),
+            gorm: GormConfig::default(),
             prefix: String::new(),
             lock_timeout_ms: None,
             statement_timeout_ms: None,
@@ -189,6 +297,38 @@ impl VespertideConfig {
     /// SeaORM-specific export configuration.
     pub fn seaorm(&self) -> &SeaOrmConfig {
         &self.seaorm
+    }
+
+    /// Django-specific export configuration.
+    pub fn django(&self) -> &DjangoConfig {
+        &self.django
+    }
+
+    /// GORM-specific export configuration.
+    pub fn gorm(&self) -> &GormConfig {
+        &self.gorm
+    }
+
+    /// Effective Go package name for GORM export: an explicit
+    /// `gorm.package_name` always wins; otherwise it's inferred from
+    /// `export_dir`'s final path segment (sanitized to a valid Go
+    /// identifier), falling back to [`DEFAULT_GORM_PACKAGE_NAME`] when that
+    /// segment isn't usable (e.g. empty, digit-led, or non-ASCII).
+    ///
+    /// `export_dir` is the *actual* directory the `.go` files will be
+    /// written to — normally `model_export_dir`, but callers must pass
+    /// whatever directory wins after resolving CLI overrides (e.g.
+    /// `vespertide export --export-dir <dir>`), since Go requires the
+    /// `package` declaration to match the directory the files live in.
+    pub fn gorm_package_name(&self, export_dir: &Path) -> Cow<'_, str> {
+        if let Some(name) = &self.gorm.package_name {
+            return Cow::Borrowed(name);
+        }
+        let inferred = export_dir
+            .file_name()
+            .and_then(|s| s.to_str())
+            .and_then(sanitize_go_package_name);
+        Cow::Owned(inferred.unwrap_or_else(|| DEFAULT_GORM_PACKAGE_NAME.to_string()))
     }
 
     /// Prefix to add to all table names.

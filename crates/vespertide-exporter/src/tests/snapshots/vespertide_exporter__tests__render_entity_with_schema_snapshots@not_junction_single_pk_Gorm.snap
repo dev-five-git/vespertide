@@ -1,0 +1,13 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 393
+expression: rendered
+---
+package models
+
+type Other struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    Regulars []Regular `gorm:"foreignKey:OtherID" json:"-"`
+}
+
+func (Other) TableName() string { return "other" }

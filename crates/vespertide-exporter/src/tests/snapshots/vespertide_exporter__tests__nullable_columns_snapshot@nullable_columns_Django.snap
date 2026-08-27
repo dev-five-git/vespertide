@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 171
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class Profiles(models.Model):
+    id = models.AutoField(primary_key=True)
+    bio = models.TextField(null=True, blank=True)
+    avatar_url = models.CharField(max_length=500, null=True, blank=True)
+
+    class Meta:
+        db_table = "profiles"

@@ -1,0 +1,36 @@
+---
+source: crates/vespertide-exporter/src/gorm/mod.rs
+expression: result
+---
+package models
+
+import (
+    "time"
+
+    "gorm.io/datatypes"
+    "github.com/google/uuid"
+)
+
+type TypeTest struct {
+    ColSmallint int16 `gorm:"column:col_smallint;not null" json:"col_smallint"`
+    ColInteger int32 `gorm:"column:col_integer;primaryKey" json:"col_integer"`
+    ColBigint int64 `gorm:"column:col_bigint;not null" json:"col_bigint"`
+    ColReal float32 `gorm:"column:col_real;not null" json:"col_real"`
+    ColDouble float64 `gorm:"column:col_double;not null" json:"col_double"`
+    ColText string `gorm:"column:col_text;not null;type:text" json:"col_text"`
+    ColBoolean bool `gorm:"column:col_boolean;not null" json:"col_boolean"`
+    ColDate time.Time `gorm:"column:col_date;not null;type:date" json:"col_date"`
+    ColTime time.Time `gorm:"column:col_time;not null;type:time" json:"col_time"`
+    ColTimestamp time.Time `gorm:"column:col_timestamp;not null" json:"col_timestamp"`
+    ColTimestamptz time.Time `gorm:"column:col_timestamptz;not null" json:"col_timestamptz"`
+    ColInterval string `gorm:"column:col_interval;not null;type:interval" json:"col_interval"`
+    ColBytea []byte `gorm:"column:col_bytea;not null" json:"col_bytea"`
+    ColUuid uuid.UUID `gorm:"column:col_uuid;not null;type:uuid" json:"col_uuid"`
+    ColJson datatypes.JSON `gorm:"column:col_json;not null" json:"col_json"`
+    ColInet string `gorm:"column:col_inet;not null" json:"col_inet"`
+    ColCidr string `gorm:"column:col_cidr;not null" json:"col_cidr"`
+    ColMacaddr string `gorm:"column:col_macaddr;not null" json:"col_macaddr"`
+    ColXml string `gorm:"column:col_xml;not null;type:xml" json:"col_xml"`
+}
+
+func (TypeTest) TableName() string { return "type_test" }

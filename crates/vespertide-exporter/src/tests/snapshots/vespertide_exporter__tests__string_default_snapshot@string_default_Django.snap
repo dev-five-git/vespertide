@@ -1,0 +1,16 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 211
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class StringDefaults(models.Model):
+    id = models.IntegerField(primary_key=True)
+    status = models.TextField(default="active")
+
+    class Meta:
+        db_table = "string_defaults"

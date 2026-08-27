@@ -1,0 +1,37 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 145
+expression: rendered
+---
+package models
+
+import (
+    "time"
+
+    "gorm.io/datatypes"
+    "github.com/google/uuid"
+)
+
+type AllTypes struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    Small int16 `gorm:"column:small;not null" json:"small"`
+    Big int64 `gorm:"column:big;not null" json:"big"`
+    RealNum float32 `gorm:"column:real_num;not null" json:"real_num"`
+    DoubleNum float64 `gorm:"column:double_num;not null" json:"double_num"`
+    TextCol string `gorm:"column:text_col;not null;type:text" json:"text_col"`
+    BoolCol bool `gorm:"column:bool_col;not null" json:"bool_col"`
+    DateCol time.Time `gorm:"column:date_col;not null;type:date" json:"date_col"`
+    TimeCol time.Time `gorm:"column:time_col;not null;type:time" json:"time_col"`
+    TsCol time.Time `gorm:"column:ts_col;not null" json:"ts_col"`
+    TstzCol time.Time `gorm:"column:tstz_col;not null" json:"tstz_col"`
+    IntervalCol string `gorm:"column:interval_col;not null;type:interval" json:"interval_col"`
+    ByteaCol []byte `gorm:"column:bytea_col;not null" json:"bytea_col"`
+    UuidCol uuid.UUID `gorm:"column:uuid_col;not null;type:uuid" json:"uuid_col"`
+    JsonCol datatypes.JSON `gorm:"column:json_col;not null" json:"json_col"`
+    InetCol string `gorm:"column:inet_col;not null" json:"inet_col"`
+    CidrCol string `gorm:"column:cidr_col;not null" json:"cidr_col"`
+    MacaddrCol string `gorm:"column:macaddr_col;not null" json:"macaddr_col"`
+    XmlCol string `gorm:"column:xml_col;not null;type:xml" json:"xml_col"`
+}
+
+func (AllTypes) TableName() string { return "all_types" }

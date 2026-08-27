@@ -1,0 +1,14 @@
+---
+source: crates/vespertide-exporter/src/gorm/mod.rs
+expression: result
+---
+package models
+
+type Posts struct {
+    ID int32 `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+    AuthorID int32 `gorm:"column:author_id;not null;index:ix_posts__author_id" json:"author_id"`
+    Author Users `gorm:"foreignKey:AuthorID;constraint:OnDelete:CASCADE" json:"-"`
+    Title string `gorm:"column:title;not null;type:text" json:"title"`
+}
+
+func (Posts) TableName() string { return "posts" }

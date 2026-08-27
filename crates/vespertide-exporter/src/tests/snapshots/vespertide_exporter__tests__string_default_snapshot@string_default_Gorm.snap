@@ -1,0 +1,13 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 211
+expression: rendered
+---
+package models
+
+type StringDefaults struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    Status string `gorm:"column:status;not null;type:text;default:'active'" json:"status"`
+}
+
+func (StringDefaults) TableName() string { return "string_defaults" }

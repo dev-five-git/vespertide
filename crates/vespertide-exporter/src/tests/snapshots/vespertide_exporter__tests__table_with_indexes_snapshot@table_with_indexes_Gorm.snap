@@ -1,0 +1,18 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 135
+expression: rendered
+---
+package models
+
+import (
+    "time"
+)
+
+type Articles struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    Title string `gorm:"column:title;not null;type:text;index" json:"title"`
+    CreatedAt time.Time `gorm:"column:created_at;not null;index:idx_articles_created_at" json:"created_at"`
+}
+
+func (Articles) TableName() string { return "articles" }

@@ -1,0 +1,13 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 393
+expression: rendered
+---
+package models
+
+type Another struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    NotJunctions []NotJunction `gorm:"foreignKey:AnotherID" json:"-"`
+}
+
+func (Another) TableName() string { return "another" }

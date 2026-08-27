@@ -492,7 +492,21 @@
                 },
                 null,
                 null
-            ]
+            ],
+            "code": {
+                "fontFamily": "D2Coding",
+                "fontWeight": 400,
+                "fontSize": "13px",
+                "lineHeight": 1.5,
+                "letterSpacing": "0em"
+            },
+            "eyebrow": {
+                "fontFamily": "D2Coding",
+                "fontWeight": 400,
+                "fontSize": "11px",
+                "lineHeight": 1.4,
+                "letterSpacing": "0.14em"
+            }
         }
     }
 }

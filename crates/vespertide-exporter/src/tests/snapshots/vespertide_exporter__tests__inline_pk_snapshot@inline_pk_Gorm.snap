@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 93
+expression: rendered
+---
+package models
+
+import (
+    "github.com/google/uuid"
+)
+
+type Users struct {
+    ID uuid.UUID `gorm:"column:id;not null;type:uuid" json:"id"`
+    Email string `gorm:"column:email;not null;type:text" json:"email"`
+}
+
+func (Users) TableName() string { return "users" }

@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 186
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class CompositeIndex(models.Model):
+    id = models.IntegerField(primary_key=True)
+    tenant_id = models.IntegerField()
+    name = models.TextField()
+
+    class Meta:
+        db_table = "composite_index"
+        indexes = [
+            models.Index(fields=["tenant_id", "name"], name="idx_tenant_name"),
+        ]

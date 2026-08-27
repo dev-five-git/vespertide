@@ -1,0 +1,25 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+package models
+
+type Orders struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    Version int32 `gorm:"column:version;primaryKey" json:"version"`
+}
+
+func (Orders) TableName() string { return "orders" }
+
+
+package models
+
+type LineItems struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    OrderID int32 `gorm:"column:order_id;not null" json:"order_id"`
+    OrderVersion int32 `gorm:"column:order_version;not null" json:"order_version"`
+    Sku string `gorm:"column:sku;not null;type:text" json:"sku"`
+    Orders Orders `gorm:"foreignKey:OrderID,OrderVersion;references:ID,Version" json:"-"`
+}
+
+func (LineItems) TableName() string { return "line_items" }

@@ -1,0 +1,19 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 161
+expression: rendered
+---
+package models
+
+import (
+    "time"
+)
+
+type WithDefaults struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    CreatedAt time.Time `gorm:"column:created_at;not null" json:"created_at"`
+    Status string `gorm:"column:status;not null;type:text;default:'active'" json:"status"`
+    Count int32 `gorm:"column:count;not null;default:0" json:"count"`
+}
+
+func (WithDefaults) TableName() string { return "with_defaults" }

@@ -1,0 +1,16 @@
+---
+source: crates/vespertide-exporter/src/gorm/mod.rs
+expression: result
+---
+package models
+
+// User accounts
+type Users struct {
+    // Primary key
+    ID int32 `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+    Email string `gorm:"column:email;not null;unique;size:255" json:"email"`
+    Name *string `gorm:"column:name;type:text" json:"name"`
+    Active bool `gorm:"column:active;not null;default:true" json:"active"`
+}
+
+func (Users) TableName() string { return "users" }

@@ -1,0 +1,19 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 155
+expression: rendered
+---
+package models
+
+import (
+    "gorm.io/datatypes"
+)
+
+type JsonStruct struct {
+    ID int32 `gorm:"column:id;not null" json:"id"`
+    JsonData datatypes.JSON `gorm:"column:json_data;not null" json:"json_data"`
+    JsonbData datatypes.JSON `gorm:"column:jsonb_data;not null;type:JSONB" json:"jsonb_data"`
+    JsonbNullable *datatypes.JSON `gorm:"column:jsonb_nullable;type:jsonb" json:"jsonb_nullable"`
+}
+
+func (JsonStruct) TableName() string { return "json_struct" }

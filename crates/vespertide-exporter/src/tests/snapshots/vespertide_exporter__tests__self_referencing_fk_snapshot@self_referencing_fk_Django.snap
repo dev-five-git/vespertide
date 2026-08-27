@@ -1,0 +1,16 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 241
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class Employees(models.Model):
+    id = models.IntegerField(primary_key=True)
+    manager = models.ForeignKey("Employees", on_delete=models.SET_NULL, related_name="+", null=True, blank=True)
+
+    class Meta:
+        db_table = "employees"

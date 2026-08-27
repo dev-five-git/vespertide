@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 166
+expression: rendered
+---
+from __future__ import annotations
+
+from django.utils import timezone
+from django.db import models
+
+
+class Logs(models.Model):
+    id = models.AutoField(primary_key=True)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    score = models.FloatField(default=1.5)
+    tag = models.TextField()
+
+    class Meta:
+        db_table = "logs"

@@ -1,0 +1,15 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 160
+expression: rendered
+---
+package models
+
+type Articles struct {
+    ID int32 `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+    Published bool `gorm:"column:published;not null;default:false" json:"published"`
+    ViewCount int32 `gorm:"column:view_count;not null;default:0" json:"view_count"`
+    Status string `gorm:"column:status;not null;type:text;default:'draft'" json:"status"`
+}
+
+func (Articles) TableName() string { return "articles" }

@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 393
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class User(models.Model):
+    id = models.UUIDField(primary_key=True)
+    medias_via_user_media_role = models.ManyToManyField("Media", through="UserMediaRole", related_name="+")
+    medias_via_user_media_favorite = models.ManyToManyField("Media", through="UserMediaFavorite", related_name="+")
+
+    class Meta:
+        db_table = "user"

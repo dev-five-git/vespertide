@@ -1,0 +1,15 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 231
+expression: rendered
+---
+package models
+
+type Child struct {
+    // References parent table
+    ParentID int32 `gorm:"column:parent_id;primaryKey;autoIncrement" json:"parent_id"`
+    Parent Parent `gorm:"foreignKey:ParentID" json:"-"`
+    Value string `gorm:"column:value;not null;type:text" json:"value"`
+}
+
+func (Child) TableName() string { return "child" }

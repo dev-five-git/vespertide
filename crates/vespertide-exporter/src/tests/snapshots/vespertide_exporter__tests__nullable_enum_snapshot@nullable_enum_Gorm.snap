@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 109
+expression: rendered
+---
+package models
+
+type StatusType string
+
+const (
+    StatusTypeActive StatusType = "active"
+    StatusTypeInactive StatusType = "inactive"
+)
+
+type NullableEnum struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    Status *StatusType `gorm:"column:status" json:"status"`
+}
+
+func (NullableEnum) TableName() string { return "nullable_enum" }

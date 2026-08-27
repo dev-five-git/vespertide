@@ -1,0 +1,14 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 256
+expression: rendered
+---
+package models
+
+type AccountAliases struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    TenantID int32 `gorm:"column:tenant_id;not null;uniqueIndex:uq_account_aliases__tenant_slug" json:"tenant_id"`
+    Slug string `gorm:"column:slug;not null;type:text;uniqueIndex:uq_account_aliases__tenant_slug" json:"slug"`
+}
+
+func (AccountAliases) TableName() string { return "account_aliases" }

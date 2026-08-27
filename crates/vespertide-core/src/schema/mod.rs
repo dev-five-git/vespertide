@@ -14,7 +14,8 @@ pub mod unique_strategy;
 
 pub use check_violation_strategy::CheckViolationStrategy;
 pub use column::{
-    ColumnDef, ColumnType, ComplexColumnType, EnumValues, NumValue, SimpleColumnType,
+    ColumnDef, ColumnType, ComplexColumnType, EnumValues, NumValue, SimpleColumnKind,
+    SimpleColumnType,
 };
 pub use constraint::{ConstraintKind, TableConstraint};
 pub use fk_orphan_strategy::ForeignKeyOrphanStrategy;
@@ -22,7 +23,7 @@ pub use index::IndexDef;
 pub use names::{ColumnName, IndexName, TableName};
 pub use pk_addition_strategy::PrimaryKeyAdditionStrategy;
 pub use primary_key::PrimaryKeyDef;
-pub use reference::ReferenceAction;
+pub use reference::{ReferenceAction, ReferenceActionKind};
 pub use str_or_bool::{DefaultValue, StrOrBoolOrArray, StringOrBool};
 pub use table::{TableDef, TableValidationError};
 pub use unique_strategy::{KeepPolicy, UniqueConstraintStrategy};
@@ -870,6 +871,33 @@ mod tests {
                 values: EnumValues::Integer(vec![]),
             });
             assert_eq!(ty.enum_variant_names(), Some(vec![]));
+        }
+
+        #[rstest]
+        #[case(SimpleColumnType::SmallInt, SimpleColumnKind::SmallInt)]
+        #[case(SimpleColumnType::Integer, SimpleColumnKind::Integer)]
+        #[case(SimpleColumnType::BigInt, SimpleColumnKind::BigInt)]
+        #[case(SimpleColumnType::Real, SimpleColumnKind::Real)]
+        #[case(SimpleColumnType::DoublePrecision, SimpleColumnKind::DoublePrecision)]
+        #[case(SimpleColumnType::Text, SimpleColumnKind::Text)]
+        #[case(SimpleColumnType::Boolean, SimpleColumnKind::Boolean)]
+        #[case(SimpleColumnType::Date, SimpleColumnKind::Date)]
+        #[case(SimpleColumnType::Time, SimpleColumnKind::Time)]
+        #[case(SimpleColumnType::Timestamp, SimpleColumnKind::Timestamp)]
+        #[case(SimpleColumnType::Timestamptz, SimpleColumnKind::Timestamptz)]
+        #[case(SimpleColumnType::Interval, SimpleColumnKind::Interval)]
+        #[case(SimpleColumnType::Bytea, SimpleColumnKind::Bytea)]
+        #[case(SimpleColumnType::Uuid, SimpleColumnKind::Uuid)]
+        #[case(SimpleColumnType::Json, SimpleColumnKind::Json)]
+        #[case(SimpleColumnType::Inet, SimpleColumnKind::Inet)]
+        #[case(SimpleColumnType::Cidr, SimpleColumnKind::Cidr)]
+        #[case(SimpleColumnType::Macaddr, SimpleColumnKind::Macaddr)]
+        #[case(SimpleColumnType::Xml, SimpleColumnKind::Xml)]
+        fn test_simple_column_kind_from_matches_variant(
+            #[case] ty: SimpleColumnType,
+            #[case] expected: SimpleColumnKind,
+        ) {
+            assert_eq!(SimpleColumnKind::from(ty), expected);
         }
     }
 }

@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 236
+expression: rendered
+---
+package models
+
+import (
+    "gorm.io/datatypes"
+)
+
+type Configs struct {
+    ID int32 `gorm:"column:id;primaryKey" json:"id"`
+    Data datatypes.JSON `gorm:"column:data;not null;default:{"hello": "world"}" json:"data"`
+}
+
+func (Configs) TableName() string { return "configs" }
