@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/gorm/mod.rs
+expression: result
+---
+package models
+
+import (
+    "time"
+)
+
+type Events struct {
+    ID int32 `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+    CreatedAt time.Time `gorm:"column:created_at;not null" json:"created_at"`
+    Count int32 `gorm:"column:count;not null;default:0" json:"count"`
+}
+
+func (Events) TableName() string { return "events" }

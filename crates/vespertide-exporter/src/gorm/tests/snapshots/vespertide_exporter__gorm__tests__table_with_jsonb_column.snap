@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/gorm/mod.rs
+expression: result
+---
+package models
+
+import (
+    "gorm.io/datatypes"
+)
+
+type Documents struct {
+    ID int32 `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+    Data datatypes.JSON `gorm:"column:data;not null;type:JSONB" json:"data"`
+    Meta datatypes.JSON `gorm:"column:meta;not null" json:"meta"`
+}
+
+func (Documents) TableName() string { return "documents" }

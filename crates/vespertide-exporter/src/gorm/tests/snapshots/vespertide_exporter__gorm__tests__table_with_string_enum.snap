@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/gorm/mod.rs
+expression: result
+---
+package models
+
+type OrderStatus string
+
+const (
+    OrderStatusPending OrderStatus = "pending"
+    OrderStatusShipped OrderStatus = "shipped"
+    OrderStatusDelivered OrderStatus = "delivered"
+)
+
+type Orders struct {
+    ID int32 `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+    Status OrderStatus `gorm:"column:status;not null;default:'pending'" json:"status"`
+}
+
+func (Orders) TableName() string { return "orders" }
