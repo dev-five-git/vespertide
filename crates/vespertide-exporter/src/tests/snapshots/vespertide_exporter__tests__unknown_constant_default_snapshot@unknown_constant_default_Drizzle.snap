@@ -1,6 +1,5 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 222
 expression: rendered
 ---
 export const unknownDefault = pgTable("unknown_default", {

@@ -1,6 +1,5 @@
 ---
 source: crates/vespertide-cli/src/commands/export/tests/drizzle.rs
-assertion_line: 26
 expression: written
 ---
 import { sqliteTable, integer } from "drizzle-orm/sqlite-core";

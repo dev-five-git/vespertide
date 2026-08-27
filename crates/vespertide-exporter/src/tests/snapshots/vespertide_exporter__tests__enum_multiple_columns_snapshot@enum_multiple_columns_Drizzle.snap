@@ -1,6 +1,5 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 115
 expression: rendered
 ---
 export const productsProductCategory = pgEnum("products_product_category", ["electronics", "clothing", "food"]);

@@ -1,6 +1,5 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 358
 expression: rendered
 ---
 const integer2 = customType<{ data: string }>({ dataType() { return "integer"; } });

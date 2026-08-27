@@ -1,6 +1,5 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 121
 expression: rendered
 ---
 export const eventsEventSeverity = pgEnum("events_event_severity", ["info-level", "warning_level", "ERROR_LEVEL", "1critical"]);

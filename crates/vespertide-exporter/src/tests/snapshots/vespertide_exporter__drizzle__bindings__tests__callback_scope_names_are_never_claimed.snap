@@ -1,6 +1,5 @@
 ---
 source: crates/vespertide-exporter/src/drizzle/bindings.rs
-assertion_line: 424
 expression: rendered
 ---
 import { pgTable, foreignKey, integer } from "drizzle-orm/pg-core";

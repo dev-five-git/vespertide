@@ -1,6 +1,5 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 277
 expression: rendered
 ---
 export const x1users = pgTable("1users", {

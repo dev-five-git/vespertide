@@ -1,6 +1,5 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 358
 expression: rendered
 ---
 use sea_orm::entity::prelude::*;

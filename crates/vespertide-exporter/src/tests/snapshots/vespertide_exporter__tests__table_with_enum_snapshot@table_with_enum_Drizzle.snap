@@ -1,6 +1,5 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 100
 expression: rendered
 ---
 export const ordersOrderStatus = pgEnum("orders_order_status", ["pending", "shipped", "delivered"]);

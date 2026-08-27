@@ -1,6 +1,5 @@
 ---
 source: crates/vespertide-exporter/src/drizzle/mod.rs
-assertion_line: 316
 expression: rendered
 ---
 import { sqliteTable, primaryKey, foreignKey, uniqueIndex, index, check, integer, text } from "drizzle-orm/sqlite-core";

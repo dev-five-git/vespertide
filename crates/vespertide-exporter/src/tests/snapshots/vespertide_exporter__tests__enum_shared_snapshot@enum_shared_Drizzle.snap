@@ -1,6 +1,5 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 120
 expression: rendered
 ---
 export const documentsDocStatus = pgEnum("documents_doc_status", ["draft", "published", "archived"]);

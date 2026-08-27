@@ -1,6 +1,5 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 182
 expression: rendered
 ---
 export const compositeUnique = pgTable("composite_unique", {

@@ -1,6 +1,5 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 212
 expression: rendered
 ---
 export const boolDefaults = pgTable("bool_defaults", {

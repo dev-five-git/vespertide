@@ -1,6 +1,5 @@
 ---
 source: crates/vespertide-exporter/src/drizzle/mod.rs
-assertion_line: 427
 expression: rendered
 ---
 import { mysqlTable, customType, foreignKey, check, int } from "drizzle-orm/mysql-core";

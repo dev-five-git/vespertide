@@ -1,6 +1,5 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 440
 expression: rendered
 ---
 export const session = pgTable("session", {

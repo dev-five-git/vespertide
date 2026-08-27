@@ -1,6 +1,5 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 110
 expression: rendered
 ---
 export const nullableEnumStatusType = pgEnum("nullable_enum_status_type", ["active", "inactive"]);

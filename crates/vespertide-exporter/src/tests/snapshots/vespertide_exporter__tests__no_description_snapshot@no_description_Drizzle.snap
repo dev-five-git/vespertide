@@ -1,6 +1,5 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 202
 expression: rendered
 ---
 export const noDesc = pgTable("no_desc", {

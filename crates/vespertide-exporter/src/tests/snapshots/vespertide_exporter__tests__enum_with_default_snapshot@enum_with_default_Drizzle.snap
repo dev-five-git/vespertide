@@ -1,6 +1,5 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 126
 expression: rendered
 ---
 export const tasksTaskStatus = pgEnum("tasks_task_status", ["pending", "in_progress", "completed"]);

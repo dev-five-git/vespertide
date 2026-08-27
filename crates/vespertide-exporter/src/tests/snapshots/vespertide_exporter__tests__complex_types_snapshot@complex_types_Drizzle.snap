@@ -1,6 +1,5 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 151
 expression: rendered
 ---
 const cUSTOMTYPE = customType<{ data: string }>({ dataType() { return "CUSTOM_TYPE"; } });

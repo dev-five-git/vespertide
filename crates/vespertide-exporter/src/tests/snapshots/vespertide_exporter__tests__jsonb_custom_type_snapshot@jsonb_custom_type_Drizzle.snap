@@ -1,6 +1,5 @@
 ---
 source: crates/vespertide-exporter/src/tests/mod.rs
-assertion_line: 156
 expression: rendered
 ---
 const jSONB = customType<{ data: string }>({ dataType() { return "JSONB"; } });
