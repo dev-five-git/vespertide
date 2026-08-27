@@ -1,0 +1,18 @@
+---
+source: crates/vespertide-exporter/src/django/mod.rs
+assertion_line: 238
+expression: render_entity(&table).unwrap()
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class OrderItems(models.Model):
+    pk = models.CompositePrimaryKey("order_id", "product_id")
+    order_id = models.IntegerField()
+    product_id = models.IntegerField()
+    quantity = models.IntegerField()
+
+    class Meta:
+        db_table = "order_items"

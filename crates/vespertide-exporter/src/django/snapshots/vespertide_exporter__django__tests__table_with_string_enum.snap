@@ -1,0 +1,21 @@
+---
+source: crates/vespertide-exporter/src/django/mod.rs
+assertion_line: 157
+expression: render_entity(&table).unwrap()
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class OrderStatus(models.TextChoices):
+    PENDING = "pending", "pending"
+    SHIPPED = "shipped", "shipped"
+    DELIVERED = "delivered", "delivered"
+
+class Orders(models.Model):
+    id = models.AutoField(primary_key=True)
+    status = models.CharField(max_length=9, choices=OrderStatus.choices, default="pending")
+
+    class Meta:
+        db_table = "orders"
