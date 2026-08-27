@@ -364,23 +364,22 @@ mod tests {
         assert_eq!(symbol_rank(symbol, "pgTable"), expected);
     }
 
-    /// The SQL layer's `CREATE TYPE` is table-prefixed for every enum, so two
-    /// tables sharing an enum name — same values or not — own two database
-    /// types and two `pgEnum` consts.
-    #[test]
-    fn render_schema_table_prefixes_every_enum_type() {
+    /// Two tables declaring the same enum name. PostgreSQL gives each its own
+    /// table-prefixed type — that is the `CREATE TYPE` the SQL layer emits —
+    /// while MySQL and SQLite declare nothing and inline the variants on the
+    /// column instead.
+    #[rstest]
+    #[case::pg(DrizzleDialect::Pg)]
+    #[case::mysql(DrizzleDialect::Mysql)]
+    #[case::sqlite(DrizzleDialect::Sqlite)]
+    fn render_schema_enum_declarations_per_dialect(#[case] dialect: DrizzleDialect) {
         let orders = table_with_enum("orders", "status", &["new", "paid"]);
         let tickets = table_with_enum("tickets", "status", &["new", "paid"]);
-        let rendered = render_schema(&[orders, tickets], DrizzleDialect::Pg);
-        assert!(
-            rendered.contains(
-                r#"export const ordersStatus = pgEnum("orders_status", ["new", "paid"]);"#
-            )
+        let rendered = render_schema(&[orders, tickets], dialect);
+        with_settings!(
+            { snapshot_path => "../tests/snapshots", snapshot_suffix => dialect.file_suffix() },
+            { assert_snapshot!(rendered); }
         );
-        assert!(rendered.contains(
-            r#"export const ticketsStatus = pgEnum("tickets_status", ["new", "paid"]);"#
-        ));
-        assert!(rendered.contains(r#"st: ordersStatus("st")"#));
     }
 
     fn table_with_enum(name: &str, enum_name: &str, values: &[&str]) -> TableDef {
@@ -414,18 +413,19 @@ mod tests {
     /// File-scope bindings suffix their way around collisions: a table
     /// claiming another table's would-be `relations` const, a table named
     /// after an import, and a custom type named after a column constructor —
-    /// and every reference follows the suffixed name.
-    #[test]
-    fn render_schema_suffixes_colliding_bindings() {
-        let rendered = render_schema(&binding_collisions(), DrizzleDialect::Pg);
-        assert!(rendered.contains(
-            r#"const integer2 = customType<{ data: string }>({ dataType() { return "integer"; } });"#
-        ));
-        assert!(rendered.contains(r#"export const userRelations = pgTable("user_relations""#));
-        assert!(rendered.contains(r#"export const sql2 = pgTable("sql""#));
-        assert!(rendered.contains("export const userRelations2 = relations(user, "));
-        assert!(rendered.contains(r#"kind: integer2("kind")"#));
-        assert!(rendered.contains("foreignColumns: [user.id]"));
+    /// and every reference follows the suffixed name. Per dialect, because
+    /// the import vocabulary a binding can collide with differs (MySQL has no
+    /// `integer` constructor, so that custom type keeps its natural name).
+    #[rstest]
+    #[case::pg(DrizzleDialect::Pg)]
+    #[case::mysql(DrizzleDialect::Mysql)]
+    #[case::sqlite(DrizzleDialect::Sqlite)]
+    fn render_schema_suffixes_colliding_bindings(#[case] dialect: DrizzleDialect) {
+        let rendered = render_schema(&binding_collisions(), dialect);
+        with_settings!(
+            { snapshot_path => "../tests/snapshots", snapshot_suffix => dialect.file_suffix() },
+            { assert_snapshot!(rendered); }
+        );
     }
 
     /// A model-level shared enum still becomes one database type per table —
@@ -437,17 +437,5 @@ mod tests {
         t2.name = "archived_documents".into();
         let rendered = render_schema(&[t1, t2], DrizzleDialect::Pg);
         assert_eq!(rendered.matches("pgEnum(").count(), 2);
-    }
-
-    /// MySQL and SQLite never declare enum types — the variants live inline on
-    /// the column — so their files must not import or call `pgEnum`.
-    #[rstest]
-    #[case::mysql(DrizzleDialect::Mysql)]
-    #[case::sqlite(DrizzleDialect::Sqlite)]
-    fn non_postgres_dialects_have_no_enum_declarations(#[case] dialect: DrizzleDialect) {
-        let rendered = render_schema(&[enum_shared()], DrizzleDialect::Pg);
-        assert!(rendered.contains("pgEnum("));
-        let rendered = render_schema(&[enum_shared()], dialect);
-        assert!(!rendered.contains("pgEnum"));
     }
 }

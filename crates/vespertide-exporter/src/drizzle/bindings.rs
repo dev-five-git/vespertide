@@ -230,6 +230,7 @@ impl FileBindings {
 
 #[cfg(test)]
 mod tests {
+    use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
     use vespertide_core::schema::column::ColumnType;
     use vespertide_core::schema::constraint::TableConstraint;
@@ -351,7 +352,7 @@ mod tests {
     fn vocabulary_covers_every_import(#[case] dialect: DrizzleDialect) {
         let rendered = render_schema(&vocab_schema(), dialect);
         let vocabulary = import_vocabulary(dialect);
-        let mut checked = 0usize;
+        let mut seen: Vec<&str> = Vec::new();
         for line in rendered.lines().filter(|l| l.starts_with("import {")) {
             let inner = line
                 .trim_start_matches("import {")
@@ -363,16 +364,22 @@ mod tests {
                     vocabulary.contains(&symbol),
                     "import `{symbol}` missing from the {dialect:?} vocabulary"
                 );
-                checked += 1;
+                seen.push(symbol);
             }
         }
-        assert!(checked > 10, "expected a populated import header");
+        // Without this the test would pass vacuously on a header the parse
+        // failed to read: the fixture forces both of these into every
+        // dialect's import line.
+        assert!(seen.contains(&dialect.table_fn()), "no table function seen");
+        assert!(seen.contains(&"foreignKey"), "no constraint helper seen");
     }
 
     /// A table named after a callback parameter must not shadow it: `t` is
     /// the table-callback parameter every FK entry dereferences, and `one` /
-    /// `many` are the relations builders. All three claims suffix away, and
-    /// the references follow.
+    /// `many` are the relations builders. The snapshot shows all three
+    /// claiming suffixed consts with every reference following — while the
+    /// relation *field* names, being object keys rather than bindings, keep
+    /// their natural spelling.
     #[test]
     fn callback_scope_names_are_never_claimed() {
         use vespertide_core::TableDef;
@@ -397,24 +404,26 @@ mod tests {
                 simple("id", vespertide_core::SimpleColumnType::Integer),
                 simple("t_id", vespertide_core::SimpleColumnType::Integer),
                 simple("one_id", vespertide_core::SimpleColumnType::Integer),
+                simple("many_id", vespertide_core::SimpleColumnType::Integer),
             ],
             constraints: vec![
                 pk(&["id"]),
                 fk(&["t_id"], "t", &["id"]),
                 fk(&["one_id"], "one", &["id"]),
+                fk(&["many_id"], "many", &["id"]),
             ],
         }
         .normalize()
         .expect("refs normalizes");
 
-        let rendered = render_schema(&[scoped("t"), scoped("one"), refs], Pg);
-        assert!(rendered.contains(r#"export const t2 = pgTable("t""#));
-        assert!(rendered.contains(r#"export const one2 = pgTable("one""#));
-        assert!(rendered.contains("foreignColumns: [t2.id]"));
-        // Relation *field* names are object keys — table scope, no claim —
-        // so the field stays `one` while the target follows the suffix.
-        assert!(rendered.contains("one: one(one2, "));
-        assert!(rendered.contains("t: one(t2, "));
+        // One dialect is enough: the three names are outside every dialect's
+        // import vocabulary, so each claim resolves the same way whichever
+        // file is being written.
+        let rendered = render_schema(&[scoped("t"), scoped("one"), scoped("many"), refs], Pg);
+        with_settings!(
+            { snapshot_path => "../tests/snapshots" },
+            { assert_snapshot!(rendered); }
+        );
     }
 
     /// Identity-keyed misses fall back to natural names — the live case is a
