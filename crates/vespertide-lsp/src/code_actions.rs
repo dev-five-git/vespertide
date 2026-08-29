@@ -515,23 +515,18 @@ fn remove_pair_edit(
     let trim_before = before.trim_end_matches(|c: char| c.is_whitespace());
     let trim_after = after.trim_start_matches(|c: char| c.is_whitespace());
 
-    let removed_start;
-    let removed_end;
-    if trim_before.ends_with(',') {
+    let (removed_start, removed_end) = if trim_before.ends_with(',') {
         // Eat the leading comma + any whitespace between it and the pair.
         let comma_offset = trim_before.len() - 1;
-        removed_start = object_start + comma_offset;
-        removed_end = object_start + pair_end;
+        (object_start + comma_offset, object_start + pair_end)
     } else if trim_after.starts_with(',') {
         // The pair is at the front; eat the comma that follows it.
         let comma_offset = pair_end + (after.len() - trim_after.len()) + 1;
-        removed_start = object_start + pair_start;
-        removed_end = object_start + comma_offset;
+        (object_start + pair_start, object_start + comma_offset)
     } else {
         // Single pair object — just drop it.
-        removed_start = object_start + pair_start;
-        removed_end = object_start + pair_end;
-    }
+        (object_start + pair_start, object_start + pair_end)
+    };
 
     Some(DomainTextEdit {
         byte_range: removed_start..removed_end,
