@@ -3,29 +3,24 @@
 //! Only PostgreSQL declares an enum type of its own. MySQL inlines the variant
 //! list into `mysqlEnum(…)` and SQLite has no enum at all, so both spell the
 //! variants directly on the column — see `types::complex_ctor`.
+//!
+//! Every type name here comes from [`build_enum_type_name`], the same builder
+//! the SQL layer uses: its `CREATE TYPE` is table-prefixed even when no other
+//! table declares the same enum, so the model must be too or `drizzle-kit`
+//! sees a type the database never had. Two tables sharing an enum declaration
+//! in the model therefore own two database types, and the file declares one
+//! `pgEnum` per table accordingly.
 
 use vespertide_naming::build_enum_type_name;
 
 use crate::utils::typescript::ts_string;
 
-/// The enum type's database name: `{table}_{enum}`.
-///
-/// The SQL layer runs **every** PostgreSQL enum through
-/// [`build_enum_type_name`] — the `CREATE TYPE` is table-prefixed even when no
-/// other table declares the same enum — so the model does too, or `drizzle-kit`
-/// sees a type the database never had. This also means two tables sharing an
-/// enum declaration in the model own two separate database types, and the file
-/// declares one `pgEnum` per table accordingly.
-pub(super) fn enum_db_name(table: &str, enum_name: &str) -> String {
-    build_enum_type_name(table, enum_name)
-}
-
-/// The natural `const` binding for an enum declaration, derived from the
-/// database type name so the two stay recognisably paired. The final binding
-/// comes from `FileBindings`, which suffixes this name on a file-scope
-/// collision.
+/// The natural `const` binding an enum declaration and its columns share,
+/// derived from the database type name so the two stay recognisably paired.
+/// The final binding comes from `FileBindings`, which suffixes this name on a
+/// file-scope collision.
 pub(super) fn enum_const_name(table: &str, enum_name: &str) -> String {
-    super::js_name(&enum_db_name(table, enum_name))
+    super::js_name(&build_enum_type_name(table, enum_name))
 }
 
 /// Render a `pgEnum` declaration:

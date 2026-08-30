@@ -19,10 +19,10 @@ use vespertide_core::schema::column::EnumValues;
 use crate::orm::OrmExporter;
 use crate::utils::typescript::ts_binding;
 use bindings::FileBindings;
-use enums::{enum_db_name, render_enum_decl};
+use enums::render_enum_decl;
 use render::{render_relations_block, render_table};
 use types::{custom_column, render_custom_type_decl};
-use vespertide_naming::to_camel_case;
+use vespertide_naming::{build_enum_type_name, to_camel_case};
 
 /// A database name as a TypeScript binding or object key.
 ///
@@ -286,7 +286,7 @@ fn table_enum_decls(table: &TableDef, bindings: &FileBindings) -> Vec<String> {
         let EnumValues::String(vals) = values else {
             continue;
         };
-        let db_name = enum_db_name(table.name.as_str(), name);
+        let db_name = build_enum_type_name(table.name.as_str(), name);
         let const_name = bindings.enum_const(table.name.as_str(), name);
         decls.push(render_enum_decl(&const_name, &db_name, vals));
     }
