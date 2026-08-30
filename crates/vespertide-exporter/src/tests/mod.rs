@@ -6,6 +6,22 @@ use crate::orm::{Orm, render_entity, render_entity_with_schema};
 
 pub(crate) mod fixtures;
 
+/// The ORM's snapshot label.
+///
+/// Drizzle has no backend-neutral output, so the single-`String` trait path
+/// the cross-ORM harness calls renders one dialect of the three. The label
+/// says which — the other two live in `drizzle`'s own per-dialect snapshots
+/// (`render_schema_full_file_per_dialect@{pg,mysql,sqlite}`).
+fn orm_label(orm: Orm) -> String {
+    match orm {
+        Orm::Drizzle => format!(
+            "Drizzle_{}",
+            crate::drizzle::DrizzleDialect::Pg.file_suffix()
+        ),
+        other => format!("{other:?}"),
+    }
+}
+
 /// Dispatch the per-ORM **multi-table** entry point so the cross-ORM
 /// `orm_cases!(multi ...)` arm renders a `Vec<TableDef>` schema for all six
 /// ORMs through a single call. JPA's `render_entities` returns `Vec<String>`
@@ -36,7 +52,7 @@ macro_rules! orm_cases {
         fn $test_name(#[case] orm: Orm) {
             let table = $fixture();
             let rendered = render_entity(orm, &table).unwrap();
-            with_settings!({ snapshot_suffix => format!("{}_{:?}", $scenario, orm) }, {
+            with_settings!({ snapshot_suffix => format!("{}_{}", $scenario, orm_label(orm)) }, {
                 assert_snapshot!(rendered);
             });
         }
@@ -54,7 +70,7 @@ macro_rules! orm_cases {
         fn $test_name(#[case] orm: Orm) {
             let schema: Vec<TableDef> = $fixture();
             let rendered = render_schema(orm, &schema).unwrap();
-            with_settings!({ snapshot_suffix => format!("{}_{:?}", $scenario, orm) }, {
+            with_settings!({ snapshot_suffix => format!("{}_{}", $scenario, orm_label(orm)) }, {
                 assert_snapshot!(rendered);
             });
         }
@@ -446,7 +462,7 @@ fn render_entity_with_schema_snapshots(
 ) {
     let (table, schema) = fixtures::schema_scenario(scenario);
     let rendered = render_entity_with_schema(orm, &table, &schema).unwrap();
-    with_settings!({ snapshot_suffix => format!("{}_{:?}", scenario, orm) }, {
+    with_settings!({ snapshot_suffix => format!("{}_{}", scenario, orm_label(orm)) }, {
         assert_snapshot!(rendered);
     });
 }

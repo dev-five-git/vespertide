@@ -106,6 +106,7 @@ cargo insta accept
 
 - Snapshot testing with `insta` crate (YAML format)
 - `rstest` for parameterized tests across all ORM backends
+- Drizzle's cross-ORM snapshots carry the dialect the trait path renders (`…_Drizzle_pg.snap`); the other two dialects live in the module's own `render_schema_full_file_per_dialect@{pg,mysql,sqlite}` snapshots
 - 428 snapshot files, all in the single shared `src/tests/snapshots/` directory; every export scenario goes through the shared `orm_cases!` macro in `src/tests/mod.rs`, producing one snapshot per ORM (all six) — a scenario snapshotted for only one ORM is a defect
 
 ## NOTES
