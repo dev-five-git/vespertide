@@ -18,7 +18,7 @@ vespertide/
 │   ├── vespertide-planner/   # Schema diffing, baseline reconstruction, validation
 │   ├── vespertide-query/     # SQL generation (Postgres/MySQL/SQLite)
 │   ├── vespertide-cli/       # CLI commands: init, diff, sql, revision, export
-│   ├── vespertide-exporter/  # ORM codegen: SeaORM, SQLAlchemy, SQLModel, JPA, Prisma
+│   ├── vespertide-exporter/  # ORM codegen: SeaORM, SQLAlchemy, SQLModel, JPA, Prisma, Drizzle
 │   ├── vespertide-loader/    # Filesystem loading of models/migrations
 │   ├── vespertide-config/    # vespertide.json configuration
 │   ├── vespertide-lsp/       # Language server: 13 LSP capabilities + HS-7~11 caching
@@ -47,7 +47,7 @@ vespertide/
 | Schema diffing | `vespertide-planner/src/diff/` | topological sort for FK deps |
 | SQL generation | `vespertide-query/src/sql/` | One file per action type |
 | CLI commands | `vespertide-cli/src/commands/` | `cmd_*` functions |
-| ORM export | `vespertide-exporter/src/{seaorm,sqlalchemy,sqlmodel,jpa,prisma}/` | Backend-specific generators |
+| ORM export | `vespertide-exporter/src/{seaorm,sqlalchemy,sqlmodel,jpa,prisma,drizzle}/` | Backend-specific generators |
 | Compile-time macro | `vespertide-macro/src/lib.rs` | `vespertide_migration!` proc macro |
 | **LSP RingCache (HS-7~11)** | `vespertide-lsp/src/cache.rs` | Generic ring-buffer LRU shared across symbols/diagnostics/drift/semantic-token caches |
 | **LSP drift cache** | `vespertide-lsp/src/drift/cache.rs` | HS-10 drift cache implementation |
@@ -169,7 +169,7 @@ See `docs/clippy-allow-audit.md` for the full audit history.
 | `QueryError::Other(...)` in new code | Emits deprecation warning. Use `SchemaError` / `InvalidColumnType` / `BackendError` / `UnsupportedAction` |
 | Exhaustive struct literal for `MigrationOptions` / `VespertideConfig` | `#[non_exhaustive]` — use `..Default::default()` |
 | Comparing newtype with `String::eq(&name.to_string(), "user")` | `TableName: PartialEq<&str>` — use `name == "user"` directly |
-| Per-ORM exporter snapshot test (single ORM) | Use the 5-ORM `orm_cases!` macro; snapshots must cross-compare all ORMs |
+| Per-ORM exporter snapshot test (single ORM) | Use the 6-ORM `orm_cases!` macro; snapshots must cross-compare all ORMs |
 
 ## COMMANDS
 
@@ -234,7 +234,7 @@ Files near the ceiling (next split candidates — line counts as of the
 | `query/src/sql/delete_column/mod.rs` | 1138 | prod+inline-tests (≤1200) | DROP COLUMN with SQLite rebuild |
 | `query/src/sql/add_constraint/mod.rs` | 1138 | prod+inline-tests (≤1200) | ADD CONSTRAINT |
 | `core/src/schema/table/tests/mod.rs` | 1137 | test-file (≤1200) | Table normalization tests |
-| `exporter/src/tests/fixtures/mod.rs` | 1126 | test-file (≤1200) | Shared 5-ORM fixture schemas |
+| `exporter/src/tests/fixtures/mod.rs` | 1146 | test-file (≤1200) | Shared 6-ORM fixture schemas |
 | `planner/src/validate/check_strengthening.rs` | 1121 | prod+inline-tests (≤1200) | CHECK strengthening analysis |
 | `query/src/sql/helpers.rs` | 1109 | prod+inline-tests (≤1200) | Identifier quoting / type-cast helpers |
 | `lsp/src/code_actions.rs` | 1107 | prod+inline-tests (≤1200) | LSP code actions (incl. CHECK BETWEEN-swap) |
@@ -280,10 +280,9 @@ Verify line policy (canonical, same as CI): `sh scripts/check-line-budget.sh`
 
 ## TESTING
 
-- `rstest` for parameterized tests — **default choice for any test with ≥ 2 input variants** (multi-backend, multi-ORM, multi-format). Plain `#[test]` is reserved for single-case unit tests.
-- When writing new tests or improving existing ones, PREFER `rstest` parametric `#[case::name(...)]` cases over duplicated `#[test]` functions. Plain `#[test]` is reserved for genuinely single-input unit tests. Multi-variant logic (multi-backend, multi-ORM, multi-format, multiple inputs) MUST use `rstest`.
+- `rstest` for parameterized tests — **default choice for any test with ≥ 2 input variants** (multi-backend, multi-ORM, multi-format). Plain `#[test]` is reserved for single-case unit tests. See **Snapshot vs assertion, one case vs many** below for which form a given test takes.
 - `serial_test::serial` for filesystem tests
-- `insta` for snapshot testing (exporter crate)
+- `insta` for snapshot testing (exporter, query, planner, lsp, CLI)
 - `proptest` for property-based testing (`vespertide-planner` diff + `vespertide-query` SQL)
 - Helper functions: `col()`, `table()` reduce boilerplate
 - **4234 tests across ~383 `.rs` files, 0 failed, 3 documented `#[ignore]`** (offline trybuild + 2 `///` doctest blocks)
@@ -350,8 +349,34 @@ both **forbidden** — owner directive: "no magic test wiring."
 modules`, `rustdoc`, and any tooling that walks `mod` declarations. The
 `pub(super)` + explicit `use` pattern is fully transparent and self-documenting.
 
-### `rstest` is the default for parametric tests
-For backend / ORM / format / configuration matrices, use `rstest` with explicit case names so each case appears as its own `cargo test` row and produces its own snapshot.
+### Snapshot vs assertion, one case vs many
+
+Two independent decisions. Getting them right is what keeps a test readable
+*and* regression-proof.
+
+**What the test asserts:**
+
+| The subject is | Use | Why |
+|---|---|---|
+| Generated text — rendered ORM code, SQL, a file the command wrote | `insta` snapshot | The whole output is the contract; `contains("…")` pins a fragment and lets the rest rot silently |
+| A behavioural or structural fact — a file survived / was deleted, a derived path, a count invariant, "every emitted symbol is in this set" | `assert!` / `assert_eq!` | There is no text to pin; the fact *is* the assertion |
+
+A negative check on generated text (`assert!(!out.contains("pgEnum"))`) is a
+snapshot in disguise — snapshot the case instead, where the absence is visible
+alongside what the dialect emits *in place of* the missing construct.
+
+**How many cases:**
+
+Where the axis has a documented matrix — `vespertide-query`'s
+`{PG, MySQL, SQLite}` triple and the exporter's six-ORM `orm_cases!` — fan out
+**always**, even when every case renders the same bytes: identity across the
+matrix is itself the assertion (`uniform_sql_is_emitted_byte_for_byte`), and a
+lone single-backend snapshot is a fault (`vespertide-query/AGENTS.md`).
+
+On an axis with no such mandate — the Drizzle dialect inside a module test —
+split when the variant actually changes the output, each case owning its own
+snapshot; use one canonical case (PostgreSQL) when the fixture carries nothing
+that can fork, where three identical snapshots would only be noise.
 
 ```rust
 use rstest::rstest;
@@ -370,14 +395,17 @@ fn create_table_snapshot(#[case] backend: DatabaseBackend) {
 }
 ```
 
-This is the same pattern used by `vespertide-query` (3 backends, 357 snapshots) and `vespertide-exporter` (5 ORMs via `Orm` enum, 335 cross-ORM snapshots). When adding a new backend / ORM / format, the change is **one `#[case::name(Value)]` line**.
+This is the same pattern used by `vespertide-query` (3 backends, 564 snapshots)
+and `vespertide-exporter` (6 ORMs via `Orm` enum, 414 cross-ORM snapshots). When
+adding a new backend / ORM / format, the change is **one `#[case::name(Value)]`
+line**.
 
 ### Exporter snapshots MUST cover ALL ORMs (no per-ORM snapshots)
-Every `vespertide-exporter` snapshot test MUST be written through the shared `orm_cases!` rstest macro in `crates/vespertide-exporter/src/tests/mod.rs`, which renders each fixture for **all five ORMs** (`Orm::SeaOrm`, `Orm::SqlAlchemy`, `Orm::SqlModel`, `Orm::Jpa`, `Orm::Prisma`). A new export scenario = ONE fixture + ONE `orm_cases!(...)` line, producing exactly five snapshots (one per ORM) in the single shared `crates/vespertide-exporter/src/tests/snapshots/` directory.
+Every `vespertide-exporter` snapshot test MUST be written through the shared `orm_cases!` rstest macro in `crates/vespertide-exporter/src/tests/mod.rs`, which renders each fixture for **all six ORMs** (`Orm::SeaOrm`, `Orm::SqlAlchemy`, `Orm::SqlModel`, `Orm::Jpa`, `Orm::Prisma`, `Orm::Drizzle`). A new export scenario = ONE fixture + ONE `orm_cases!(...)` line, producing exactly six snapshots (one per ORM) in the single shared `crates/vespertide-exporter/src/tests/snapshots/` directory.
 
-FORBIDDEN: per-ORM `#[test]` snapshot functions inside `src/seaorm/`, `src/sqlalchemy/`, `src/sqlmodel/`, `src/jpa/`, `src/prisma/`, or any `snapshots/` directory other than `src/tests/snapshots/`. A scenario snapshotted for only one ORM is a defect — ORM output must always be cross-compared across all five. When adding a new ORM the change is a single `#[case::<orm>(Orm::<Variant>)]` line in the macro, never a new per-ORM test.
+FORBIDDEN: per-ORM `#[test]` snapshot functions inside `src/seaorm/`, `src/sqlalchemy/`, `src/sqlmodel/`, `src/jpa/`, `src/prisma/`, `src/drizzle/`, or any `snapshots/` directory other than `src/tests/snapshots/`. A scenario snapshotted for only one ORM is a defect — ORM output must always be cross-compared across all six. When adding a new ORM the change is a single `#[case::<orm>(Orm::<Variant>)]` line in the macro, never a new per-ORM test.
 
-Exception: an entry point that exists in only one backend (e.g. Prisma's single-file `render_schema`, which deduplicates enums globally) is not a cross-ORM scenario, so its snapshot tests live as inline tests of that module — with the snapshot files still written to the shared `src/tests/snapshots/` via `with_settings!(snapshot_path => ...)`.
+Exception: an entry point that exists in only one backend (Prisma's single-file `render_schema`, which deduplicates enums globally; Drizzle's dialect-aware `render_schema`, whose axis is the SQL dialect rather than the ORM) is not a cross-ORM scenario, so its snapshot tests live as inline tests of that module — with the snapshot files still written to the shared `src/tests/snapshots/` via `with_settings!(snapshot_path => ...)`.
 
 ### `#[cfg(test)]` test-oracle pattern
 When a function exists solely as an oracle for a regression test (e.g. comparing

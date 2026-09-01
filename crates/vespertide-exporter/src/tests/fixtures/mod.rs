@@ -8,6 +8,9 @@ use vespertide_core::{
     SimpleColumnType, StrOrBoolOrArray, TableConstraint, TableDef,
 };
 
+mod collisions;
+pub(crate) use collisions::binding_collisions;
+
 pub(crate) fn col(name: &str, ty: ColumnType) -> ColumnDef {
     ColumnDef::new(name, ty, false)
 }
@@ -16,7 +19,7 @@ fn nullable_col(name: &str, ty: ColumnType) -> ColumnDef {
     ColumnDef::new(name, ty, true)
 }
 
-pub(super) fn simple(name: &str, ty: SimpleColumnType) -> ColumnDef {
+pub(crate) fn simple(name: &str, ty: SimpleColumnType) -> ColumnDef {
     col(name, ColumnType::Simple(ty))
 }
 
@@ -37,7 +40,7 @@ pub(super) fn table(
     }
 }
 
-pub(super) fn pk(columns: &[&str]) -> TableConstraint {
+pub(crate) fn pk(columns: &[&str]) -> TableConstraint {
     TableConstraint::PrimaryKey {
         auto_increment: false,
         columns: columns.iter().copied().map(Into::into).collect(),
@@ -53,7 +56,7 @@ fn auto_pk(columns: &[&str]) -> TableConstraint {
     }
 }
 
-pub(super) fn fk(columns: &[&str], ref_table: &str, ref_columns: &[&str]) -> TableConstraint {
+pub(crate) fn fk(columns: &[&str], ref_table: &str, ref_columns: &[&str]) -> TableConstraint {
     TableConstraint::ForeignKey {
         name: None,
         columns: columns.iter().copied().map(Into::into).collect(),
@@ -1073,6 +1076,26 @@ pub(crate) fn integer_enum_with_variant_default() -> TableDef {
         ],
         vec![],
     )
+}
+
+/// A CHECK constraint the SQL layer enforces on every write. Drizzle renders
+/// it through its `check` builder; the other backends have no schema-level
+/// CHECK syntax and drop it — the cross-ORM snapshots document that split.
+pub(crate) fn table_with_check() -> TableDef {
+    let raw = TableDef {
+        name: "products".into(),
+        description: None,
+        columns: vec![
+            simple("id", SimpleColumnType::Integer).primary_key(PrimaryKeySyntax::Bool(true)),
+            simple("price", SimpleColumnType::Integer),
+        ],
+        constraints: vec![TableConstraint::Check {
+            name: "chk_products_price".into(),
+            expr: "price >= 0".into(),
+            strategy: vespertide_core::CheckViolationStrategy::default(),
+        }],
+    };
+    raw.normalize().expect("table_with_check normalizes")
 }
 
 /// Small (< 50-table) multi-table schema for exercising the **sequential**

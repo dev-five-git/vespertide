@@ -1,0 +1,14 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+const jSONB = customType<{ data: string }>({ dataType() { return "JSONB"; } });
+
+const jsonb = customType<{ data: string }>({ dataType() { return "jsonb"; } });
+
+export const jsonStruct = pgTable("json_struct", {
+  id: integer("id").notNull(),
+  jsonData: json("json_data").notNull(),
+  jsonbData: jSONB("jsonb_data").notNull(),
+  jsonbNullable: jsonb("jsonb_nullable"),
+});

@@ -1,0 +1,9 @@
+---
+source: crates/vespertide-cli/src/commands/export/tests/drizzle.rs
+expression: written
+---
+import { sqliteTable, integer } from "drizzle-orm/sqlite-core";
+
+export const events = sqliteTable("events", {
+  id: integer("id").primaryKey(),
+});

@@ -1,0 +1,9 @@
+---
+source: crates/vespertide-cli/src/commands/export/tests/drizzle.rs
+expression: written
+---
+import { mysqlTable, int } from "drizzle-orm/mysql-core";
+
+export const events = mysqlTable("events", {
+  id: int("id").primaryKey(),
+});

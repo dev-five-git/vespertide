@@ -1,0 +1,29 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const target = pgTable("target", {
+  id: integer("id").primaryKey(),
+  alt: integer("alt").notNull(),
+}, (t) => [
+  uniqueIndex("uq_target__alt").on(t.alt),
+]);
+
+export const targetRelations = relations(target, ({ one, many }) => ({
+  aSrc: many(src, { relationName: "SrcA" }),
+  aSrc_rel: many(src, { relationName: "SrcA2" }),
+}));
+
+export const src = pgTable("src", {
+  pk: integer("pk").primaryKey(),
+  aId: integer("a_id"),
+  a: integer("a"),
+}, (t) => [
+  foreignKey({ columns: [t.aId], foreignColumns: [target.id], name: "fk_src__a_id" }),
+  foreignKey({ columns: [t.a], foreignColumns: [target.alt], name: "fk_src__a" }),
+]);
+
+export const srcRelations = relations(src, ({ one, many }) => ({
+  aTarget: one(target, { fields: [src.aId], references: [target.id], relationName: "SrcA" }),
+  aTarget_rel: one(target, { fields: [src.a], references: [target.alt], relationName: "SrcA2" }),
+}));

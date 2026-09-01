@@ -1,0 +1,11 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const article = pgTable("article", {
+  id: bigint("id", { mode: "number" }).primaryKey(),
+});
+
+export const articleRelations = relations(article, ({ one, many }) => ({
+  articleUser: many(articleUser),
+}));

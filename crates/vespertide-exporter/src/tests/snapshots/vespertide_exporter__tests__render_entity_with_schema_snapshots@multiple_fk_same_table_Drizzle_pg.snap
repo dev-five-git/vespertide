@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const post = pgTable("post", {
+  id: uuid("id").primaryKey(),
+  creatorUserId: uuid("creator_user_id").notNull(),
+  usedByUserId: uuid("used_by_user_id").notNull(),
+}, (t) => [
+  foreignKey({ columns: [t.creatorUserId], foreignColumns: [user.id], name: "fk_post__creator_user_id" }),
+  foreignKey({ columns: [t.usedByUserId], foreignColumns: [user.id], name: "fk_post__used_by_user_id" }),
+]);
+
+export const postRelations = relations(post, ({ one, many }) => ({
+  creatorUser: one(user, { fields: [post.creatorUserId], references: [user.id], relationName: "PostCreatorUser" }),
+  usedByUser: one(user, { fields: [post.usedByUserId], references: [user.id], relationName: "PostUsedByUser" }),
+}));

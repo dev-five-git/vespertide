@@ -1,7 +1,3 @@
-#![expect(
-    clippy::doc_markdown,
-    reason = "narrative prose: SQL terms (Compare, IsNull, Between) appear as plain words intentionally"
-)]
 //! Fault **F-novel-1** - CHECK self-contradiction detection.
 //!
 //! A CHECK constraint whose top-level `AND` conjuncts contain a

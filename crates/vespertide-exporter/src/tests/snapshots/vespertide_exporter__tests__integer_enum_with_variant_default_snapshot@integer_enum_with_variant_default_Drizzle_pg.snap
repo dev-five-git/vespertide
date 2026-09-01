@@ -1,0 +1,8 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const taskRuns = pgTable("task_runs", {
+  id: integer("id").notNull(),
+  status: integer("status").notNull().default(100),
+});

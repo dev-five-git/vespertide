@@ -1,0 +1,39 @@
+---
+source: crates/vespertide-exporter/src/drizzle/mod.rs
+expression: rendered
+---
+import { mysqlTable, customType, foreignKey, check, int } from "drizzle-orm/mysql-core";
+import { relations, sql } from "drizzle-orm";
+
+const integer = customType<{ data: string }>({ dataType() { return "integer"; } });
+
+export const userRelations = mysqlTable("user_relations", {
+  id: int("id").primaryKey(),
+  kind: integer("kind").notNull(),
+});
+
+export const user = mysqlTable("user", {
+  id: int("id").primaryKey(),
+});
+
+export const sql2 = mysqlTable("sql", {
+  id: int("id").primaryKey(),
+  amount: int("amount").notNull(),
+}, (t) => [
+  check("chk_sql_amount", sql`amount > 0`),
+]);
+
+export const posts = mysqlTable("posts", {
+  id: int("id").primaryKey(),
+  userId: int("user_id").notNull(),
+}, (t) => [
+  foreignKey({ columns: [t.userId], foreignColumns: [user.id], name: "fk_posts__user_id" }),
+]);
+
+export const userRelations2 = relations(user, ({ one, many }) => ({
+  posts: many(posts),
+}));
+
+export const postsRelations = relations(posts, ({ one, many }) => ({
+  user: one(user, { fields: [posts.userId], references: [user.id] }),
+}));

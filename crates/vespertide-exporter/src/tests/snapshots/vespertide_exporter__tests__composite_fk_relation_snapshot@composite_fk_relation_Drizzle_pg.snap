@@ -1,0 +1,27 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const orders = pgTable("orders", {
+  id: integer("id").notNull(),
+  version: integer("version").notNull(),
+}, (t) => [
+  primaryKey({ name: "orders_pkey", columns: [t.id, t.version] }),
+]);
+
+export const ordersRelations = relations(orders, ({ one, many }) => ({
+  lineItems: many(lineItems),
+}));
+
+export const lineItems = pgTable("line_items", {
+  id: integer("id").primaryKey(),
+  orderId: integer("order_id").notNull(),
+  orderVersion: integer("order_version").notNull(),
+  sku: text("sku").notNull(),
+}, (t) => [
+  foreignKey({ columns: [t.orderId, t.orderVersion], foreignColumns: [orders.id, orders.version], name: "fk_line_items__order_id_order_version" }),
+]);
+
+export const lineItemsRelations = relations(lineItems, ({ one, many }) => ({
+  orderOrderVersion: one(orders, { fields: [lineItems.orderId, lineItems.orderVersion], references: [orders.id, orders.version] }),
+}));

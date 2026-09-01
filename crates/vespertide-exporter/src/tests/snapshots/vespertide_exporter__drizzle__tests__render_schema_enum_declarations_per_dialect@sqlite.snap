@@ -1,0 +1,15 @@
+---
+source: crates/vespertide-exporter/src/drizzle/mod.rs
+expression: rendered
+---
+import { sqliteTable, integer, text } from "drizzle-orm/sqlite-core";
+
+export const orders = sqliteTable("orders", {
+  id: integer("id").primaryKey(),
+  st: text("st", { enum: ["new", "paid"] }).notNull(),
+});
+
+export const tickets = sqliteTable("tickets", {
+  id: integer("id").primaryKey(),
+  st: text("st", { enum: ["new", "paid"] }).notNull(),
+});

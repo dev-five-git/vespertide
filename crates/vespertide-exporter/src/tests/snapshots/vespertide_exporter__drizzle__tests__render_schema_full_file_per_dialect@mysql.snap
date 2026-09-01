@@ -1,0 +1,76 @@
+---
+source: crates/vespertide-exporter/src/drizzle/mod.rs
+expression: rendered
+---
+import { mysqlTable, primaryKey, foreignKey, uniqueIndex, index, check, bigint, int, mysqlEnum, text } from "drizzle-orm/mysql-core";
+import { relations, sql } from "drizzle-orm";
+
+export const users = mysqlTable("users", {
+  id: int("id").primaryKey(),
+  displayName: text("display_name"),
+});
+
+export const posts = mysqlTable("posts", {
+  id: int("id").primaryKey(),
+  userId: int("user_id").notNull(),
+  title: text("title").notNull(),
+}, (t) => [
+  foreignKey({ columns: [t.userId], foreignColumns: [users.id], name: "fk_posts__user_id" }),
+]);
+
+export const documents = mysqlTable("documents", {
+  id: int("id").notNull(),
+  status: mysqlEnum("status", ["draft", "published", "archived"]).notNull(),
+  reviewStatus: mysqlEnum("review_status", ["draft", "published", "archived"]),
+});
+
+export const accounts = mysqlTable("accounts", {
+  id: int("id").notNull(),
+  tenantId: bigint("tenant_id", { mode: "number" }).notNull(),
+}, (t) => [
+  primaryKey({ name: "accounts_id_tenant_id", columns: [t.id, t.tenantId] }),
+]);
+
+export const compositeUnique = mysqlTable("composite_unique", {
+  id: int("id").primaryKey(),
+  tenantId: int("tenant_id").notNull(),
+  name: text("name").notNull(),
+}, (t) => [
+  uniqueIndex("uq_composite_unique__uq_tenant_name").on(t.tenantId, t.name),
+]);
+
+export const users = mysqlTable("users", {
+  id: int("id").notNull(),
+  email: text("email").notNull(),
+  username: text("username").notNull(),
+  department: text("department"),
+  status: text("status").notNull().default("active"),
+}, (t) => [
+  uniqueIndex("uq_users__email").on(t.email),
+  uniqueIndex("uq_users__uq_username").on(t.username),
+  index("ix_users__idx_department").on(t.department),
+]);
+
+export const products = mysqlTable("products", {
+  id: int("id").primaryKey(),
+  price: int("price").notNull(),
+}, (t) => [
+  check("chk_products_price", sql`price >= 0`),
+]);
+
+export const tasks = mysqlTable("tasks", {
+  id: int("id").primaryKey(),
+  priority: int("priority").notNull(),
+});
+
+export const usersRelations = relations(users, ({ one, many }) => ({
+  posts: many(posts),
+}));
+
+export const postsRelations = relations(posts, ({ one, many }) => ({
+  user: one(users, { fields: [posts.userId], references: [users.id] }),
+}));
+
+export const usersRelations = relations(users, ({ one, many }) => ({
+  posts: many(posts),
+}));

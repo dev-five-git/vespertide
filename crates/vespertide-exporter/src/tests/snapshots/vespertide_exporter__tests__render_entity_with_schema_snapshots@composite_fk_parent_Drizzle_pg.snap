@@ -1,0 +1,15 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const parent = pgTable("parent", {
+  id1: integer("id1").notNull(),
+  id2: integer("id2").notNull(),
+}, (t) => [
+  primaryKey({ name: "parent_pkey", columns: [t.id1, t.id2] }),
+]);
+
+export const parentRelations = relations(parent, ({ one, many }) => ({
+  childOne: one(childOne),
+  childMany: many(childMany),
+}));

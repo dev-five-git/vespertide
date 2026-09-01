@@ -1,0 +1,76 @@
+---
+source: crates/vespertide-exporter/src/drizzle/mod.rs
+expression: rendered
+---
+import { sqliteTable, primaryKey, foreignKey, uniqueIndex, index, check, integer, text } from "drizzle-orm/sqlite-core";
+import { relations, sql } from "drizzle-orm";
+
+export const users = sqliteTable("users", {
+  id: integer("id").primaryKey(),
+  displayName: text("display_name"),
+});
+
+export const posts = sqliteTable("posts", {
+  id: integer("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  title: text("title").notNull(),
+}, (t) => [
+  foreignKey({ columns: [t.userId], foreignColumns: [users.id] }),
+]);
+
+export const documents = sqliteTable("documents", {
+  id: integer("id").notNull(),
+  status: text("status", { enum: ["draft", "published", "archived"] }).notNull(),
+  reviewStatus: text("review_status", { enum: ["draft", "published", "archived"] }),
+});
+
+export const accounts = sqliteTable("accounts", {
+  id: integer("id").notNull(),
+  tenantId: integer("tenant_id").notNull(),
+}, (t) => [
+  primaryKey({ columns: [t.id, t.tenantId] }),
+]);
+
+export const compositeUnique = sqliteTable("composite_unique", {
+  id: integer("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull(),
+  name: text("name").notNull(),
+}, (t) => [
+  uniqueIndex("uq_composite_unique__uq_tenant_name").on(t.tenantId, t.name),
+]);
+
+export const users = sqliteTable("users", {
+  id: integer("id").notNull(),
+  email: text("email").notNull(),
+  username: text("username").notNull(),
+  department: text("department"),
+  status: text("status").notNull().default("active"),
+}, (t) => [
+  uniqueIndex("uq_users__email").on(t.email),
+  uniqueIndex("uq_users__uq_username").on(t.username),
+  index("ix_users__idx_department").on(t.department),
+]);
+
+export const products = sqliteTable("products", {
+  id: integer("id").primaryKey(),
+  price: integer("price").notNull(),
+}, (t) => [
+  check("chk_products_price", sql`price >= 0`),
+]);
+
+export const tasks = sqliteTable("tasks", {
+  id: integer("id").primaryKey(),
+  priority: integer("priority").notNull(),
+});
+
+export const usersRelations = relations(users, ({ one, many }) => ({
+  posts: many(posts),
+}));
+
+export const postsRelations = relations(posts, ({ one, many }) => ({
+  user: one(users, { fields: [posts.userId], references: [users.id] }),
+}));
+
+export const usersRelations = relations(users, ({ one, many }) => ({
+  posts: many(posts),
+}));

@@ -6,6 +6,7 @@ pub(super) use std::fs as std_fs;
 pub(super) use tempfile::tempdir;
 pub(super) use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType, TableConstraint};
 
+mod drizzle;
 mod prisma;
 
 fn write_config() {

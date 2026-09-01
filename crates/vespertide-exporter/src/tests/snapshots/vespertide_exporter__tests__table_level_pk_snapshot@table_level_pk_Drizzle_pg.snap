@@ -1,0 +1,9 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const orders = pgTable("orders", {
+  id: uuid("id").primaryKey(),
+  customerId: uuid("customer_id").notNull(),
+  total: real("total").notNull(),
+});

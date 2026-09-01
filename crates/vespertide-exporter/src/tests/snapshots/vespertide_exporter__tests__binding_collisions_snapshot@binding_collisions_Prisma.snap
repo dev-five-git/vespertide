@@ -1,0 +1,32 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model UserRelations {
+  id Int @id
+  kind Unsupported("integer")
+
+  @@map("user_relations")
+}
+
+model User {
+  id Int @id
+  posts Posts[]
+
+  @@map("user")
+}
+
+model Sql {
+  id Int @id
+  amount Int
+
+  @@map("sql")
+}
+
+model Posts {
+  id Int @id
+  user_id Int
+  user User @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("posts")
+}

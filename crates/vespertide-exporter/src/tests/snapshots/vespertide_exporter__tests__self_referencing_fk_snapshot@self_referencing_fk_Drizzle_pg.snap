@@ -1,0 +1,15 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const employees = pgTable("employees", {
+  id: integer("id").primaryKey(),
+  managerId: integer("manager_id"),
+}, (t) => [
+  foreignKey({ columns: [t.managerId], foreignColumns: [t.id], name: "fk_employees__manager_id" }).onDelete("set null"),
+]);
+
+export const employeesRelations = relations(employees, ({ one, many }) => ({
+  manager: one(employees, { fields: [employees.managerId], references: [employees.id], relationName: "EmployeesManager" }),
+  managerEmployees: many(employees, { relationName: "EmployeesManager" }),
+}));
