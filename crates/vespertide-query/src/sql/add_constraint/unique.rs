@@ -1,8 +1,8 @@
 use sea_query::{Alias, Index};
 
-use vespertide_core::{KeepPolicy, TableConstraint, TableDef, UniqueConstraintStrategy};
+use vespertide_core::{KeepPolicy, TableDef, UniqueConstraintStrategy};
 
-use super::super::helpers::{build_unique_constraint_name, quote_ident};
+use super::super::helpers::{build_unique_constraint_name, quote_ident, quote_idents};
 use super::super::types::{BuiltQuery, DatabaseBackend, RawSql};
 use crate::error::QueryError;
 
@@ -60,7 +60,8 @@ fn build_pre_cleanup_delete<T: AsRef<str>>(
     // pre-cleanup `DELETE` and let the database decide. Production schemas
     // are guaranteed to have a single-column PK by F12 Scenario E, so this
     // path is reached only by test fixtures or hand-edited migrations.
-    let Some(pk_column) = try_resolve_single_pk_column(table, current_schema, columns) else {
+    let Some(pk_column) = super::try_resolve_single_pk_column(table, current_schema, columns)
+    else {
         return Ok(vec![]);
     };
     let agg = match keep {
@@ -69,67 +70,12 @@ fn build_pre_cleanup_delete<T: AsRef<str>>(
     };
     let quoted_table = quote_ident(table, backend);
     let quoted_pk = quote_ident(&pk_column, backend);
-    let quoted_unique_cols: Vec<String> = columns
-        .iter()
-        .map(|c| quote_ident(c.as_ref(), backend))
-        .collect();
-    let group_by = quoted_unique_cols.join(", ");
+    let group_by = quote_idents(columns, backend);
     let sql = format!(
         "DELETE FROM {quoted_table} WHERE {quoted_pk} NOT IN (\
          SELECT {agg}({quoted_pk}) FROM {quoted_table} GROUP BY {group_by})",
     );
     Ok(vec![BuiltQuery::Raw(RawSql::uniform(sql))])
-}
-
-/// Locate the single-column PRIMARY KEY for `table` in `current_schema`,
-/// returning `None` for tables without a usable PK (missing, composite,
-/// or PK column inside the unique set — the last would make
-/// `NOT IN (SELECT MIN(pk) ... GROUP BY pk)` a tautology).
-///
-/// The caller skips pre-cleanup when this returns `None`. Production
-/// schemas reach the cleanup path only when F12 Scenario E has confirmed
-/// a single-column PK; non-production fixtures degrade to v0.1.x
-/// behaviour (no DELETE, DB-side rejection).
-fn try_resolve_single_pk_column<T: AsRef<str>>(
-    table: &str,
-    current_schema: &[TableDef],
-    unique_columns: &[T],
-) -> Option<String> {
-    let table_def = current_schema.iter().find(|t| t.name.as_str() == table)?;
-
-    let pk_columns: Vec<String> = table_def
-        .constraints
-        .iter()
-        .find_map(|c| {
-            if let TableConstraint::PrimaryKey { columns, .. } = c {
-                Some(columns.iter().map(ToString::to_string).collect())
-            } else {
-                None
-            }
-        })
-        .or_else(|| {
-            let inline: Vec<String> = table_def
-                .columns
-                .iter()
-                .filter(|col| col.primary_key.is_some())
-                .map(|col| col.name.to_string())
-                .collect();
-            if inline.is_empty() {
-                None
-            } else {
-                Some(inline)
-            }
-        })?;
-
-    if pk_columns.len() != 1 {
-        return None;
-    }
-    let pk_column = pk_columns.into_iter().next().expect("len == 1");
-    let unique_set: Vec<&str> = unique_columns.iter().map(AsRef::as_ref).collect();
-    if unique_set.iter().any(|c| *c == pk_column) {
-        return None;
-    }
-    Some(pk_column)
 }
 
 fn build_unique_index<T: AsRef<str>>(table: &str, name: Option<&str>, columns: &[T]) -> BuiltQuery {
@@ -147,9 +93,10 @@ fn build_unique_index<T: AsRef<str>>(table: &str, name: Option<&str>, columns: &
 
 #[cfg(test)]
 mod tests {
+    use super::super::try_resolve_single_pk_column;
     use super::*;
     use rstest::rstest;
-    use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
+    use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType, TableConstraint};
 
     fn schema_with_single_pk() -> Vec<TableDef> {
         let mut id_col = ColumnDef::new("id", ColumnType::Simple(SimpleColumnType::Integer), false);

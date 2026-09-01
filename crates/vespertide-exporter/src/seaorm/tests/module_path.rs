@@ -37,19 +37,20 @@ fn absolute_module_path_deep_nesting() {
 }
 
 #[test]
-fn resolve_entity_module_path_with_crate_prefix() {
+fn resolve_relation_entity_module_path_with_crate_prefix() {
     let mut module_paths = HashMap::new();
     module_paths.insert(
         "estimate".into(),
         vec!["estimate".into(), "estimate".into()],
     );
     module_paths.insert("admin".into(), vec!["admin".into(), "admin".into()]);
-    let result = resolve_entity_module_path("estimate", "admin", &module_paths, "crate::models");
+    let result =
+        resolve_relation_entity_module_path("estimate", "admin", &module_paths, "crate::models");
     assert_eq!(result, "crate::models::admin::admin");
 }
 
 #[test]
-fn resolve_entity_module_path_prefers_super_for_siblings() {
+fn resolve_relation_entity_module_path_prefers_super_for_siblings() {
     let mut module_paths = HashMap::new();
     module_paths.insert("admin".into(), vec!["admin".into(), "admin".into()]);
     module_paths.insert(
@@ -57,22 +58,16 @@ fn resolve_entity_module_path_prefers_super_for_siblings() {
         vec!["admin".into(), "admin_stamp".into()],
     );
 
-    let result = resolve_entity_module_path("admin_stamp", "admin", &module_paths, "crate::models");
+    let result =
+        resolve_relation_entity_module_path("admin_stamp", "admin", &module_paths, "crate::models");
     assert_eq!(result, "super::admin");
 }
 
 #[test]
-fn resolve_entity_module_path_fallback_when_no_mapping() {
-    let module_paths = HashMap::new();
-    let result = resolve_entity_module_path("post", "user", &module_paths, "crate::models");
-    assert_eq!(result, "super::user");
-}
-
-#[test]
-fn resolve_entity_module_path_fallback_when_empty_prefix() {
+fn resolve_relation_entity_module_path_fallback_when_empty_prefix() {
     let mut module_paths = HashMap::new();
     module_paths.insert("admin".into(), vec!["admin".into(), "admin".into()]);
-    let result = resolve_entity_module_path("user", "admin", &module_paths, "");
+    let result = resolve_relation_entity_module_path("user", "admin", &module_paths, "");
     assert_eq!(result, "super::admin");
 }
 

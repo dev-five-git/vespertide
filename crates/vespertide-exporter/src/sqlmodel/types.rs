@@ -1,7 +1,11 @@
 use std::collections::BTreeSet;
 
-use super::enums::to_pascal_case;
 use vespertide_core::schema::column::{ColumnType, ComplexColumnType, SimpleColumnType};
+
+// Shared verbatim with the SQLAlchemy backend — both Python ORMs map a
+// `ColumnType` to an identical Python type annotation, so the single
+// implementation lives in `crate::utils::python`.
+pub(super) use crate::utils::python::column_type_to_python;
 
 /// Track which types are actually used to generate minimal imports
 #[derive(Default)]
@@ -59,54 +63,5 @@ impl UsedTypes<'_> {
                 }
             }
         }
-    }
-}
-
-pub(super) fn column_type_to_python(col_type: &ColumnType, nullable: bool) -> String {
-    let base = match col_type {
-        ColumnType::Simple(ty) => match ty {
-            SimpleColumnType::SmallInt | SimpleColumnType::Integer | SimpleColumnType::BigInt => {
-                "int"
-            }
-            SimpleColumnType::Real | SimpleColumnType::DoublePrecision => "float",
-            SimpleColumnType::Text
-            | SimpleColumnType::Interval
-            | SimpleColumnType::Inet
-            | SimpleColumnType::Cidr
-            | SimpleColumnType::Macaddr
-            | SimpleColumnType::Xml => "str",
-            SimpleColumnType::Boolean => "bool",
-            SimpleColumnType::Date => "date",
-            SimpleColumnType::Time => "time",
-            SimpleColumnType::Timestamp | SimpleColumnType::Timestamptz => "datetime",
-            SimpleColumnType::Bytea => "bytes",
-            SimpleColumnType::Uuid => "UUID",
-            SimpleColumnType::Json => "dict",
-            _ => unreachable!(
-                "SimpleColumnType is #[non_exhaustive]; all variants are matched above"
-            ),
-        },
-        ColumnType::Complex(ty) => match ty {
-            ComplexColumnType::Numeric { .. } => "Decimal",
-            ComplexColumnType::Varchar { .. }
-            | ComplexColumnType::Char { .. }
-            | ComplexColumnType::Custom { .. } => "str",
-            ComplexColumnType::Enum { name, .. } => {
-                return if nullable {
-                    format!("Optional[{}]", to_pascal_case(name))
-                } else {
-                    to_pascal_case(name)
-                };
-            }
-            _ => unreachable!(
-                "ComplexColumnType is #[non_exhaustive]; all variants are matched above"
-            ),
-        },
-    };
-
-    if nullable {
-        format!("Optional[{base}]")
-    } else {
-        base.to_string()
     }
 }

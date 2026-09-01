@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::Write as _;
 
 use vespertide_core::schema::column::{
@@ -8,12 +8,10 @@ use vespertide_core::schema::constraint::TableConstraint;
 use vespertide_core::{ColumnDef, TableDef};
 
 use crate::jpa::types::{UsedImports, java_type_for_column};
+use crate::utils::common::{push_attr, unquote};
+use vespertide_naming::{IdentifierStart, sanitize_identifier};
 
 pub(super) fn render_entity_inner(table: &TableDef) -> String {
-    render_entity_with_imports(table).0
-}
-
-pub(super) fn render_entity_with_imports(table: &TableDef) -> (String, UsedImports) {
     let mut lines: Vec<String> = Vec::new();
 
     // Collect enums for this table
@@ -66,7 +64,7 @@ pub(super) fn render_entity_with_imports(table: &TableDef) -> (String, UsedImpor
     }
 
     // --- Class definition ---
-    let class_name = to_pascal_case(&table.name);
+    let class_name = sanitize_identifier(&to_pascal_case(&table.name), IdentifierStart::Underscore);
 
     // Javadoc from table description
     if let Some(ref desc) = table.description {
@@ -79,19 +77,7 @@ pub(super) fn render_entity_with_imports(table: &TableDef) -> (String, UsedImpor
     lines.push(String::new());
 
     // Collect primary key columns
-    let pk_columns: HashSet<String> = table
-        .constraints
-        .iter()
-        .filter_map(|c| {
-            if let TableConstraint::PrimaryKey { columns, .. } = c {
-                Some(columns.clone())
-            } else {
-                None
-            }
-        })
-        .flatten()
-        .map(|col| col.to_string())
-        .collect();
+    let pk_columns = crate::constraint_scan::primary_key_columns(&table.constraints);
 
     let auto_increment = table.constraints.iter().any(|c| {
         matches!(
@@ -104,21 +90,7 @@ pub(super) fn render_entity_with_imports(table: &TableDef) -> (String, UsedImpor
     });
 
     // Collect single-column unique constraints
-    let unique_columns: HashSet<String> = table
-        .constraints
-        .iter()
-        .filter_map(|c| {
-            if let TableConstraint::Unique { columns, .. } = c {
-                if columns.len() == 1 {
-                    Some(columns[0].to_string())
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        })
-        .collect();
+    let unique_columns = crate::constraint_scan::single_column_uniques(&table.constraints);
 
     // --- Render fields ---
     for col in &table.columns {
@@ -140,7 +112,7 @@ pub(super) fn render_entity_with_imports(table: &TableDef) -> (String, UsedImpor
     lines.push("}".into());
     lines.push(String::new());
 
-    (lines.join("\n"), used_imports)
+    lines.join("\n")
 }
 
 // ---------------------------------------------------------------------------
@@ -192,7 +164,7 @@ fn render_table_annotation(
         .iter()
         .filter_map(|c| {
             if let TableConstraint::Index { name, columns } = c {
-                Some((name.clone(), columns.clone()))
+                Some((name, columns))
             } else {
                 None
             }
@@ -204,7 +176,7 @@ fn render_table_annotation(
         .filter_map(|c| {
             if let TableConstraint::Unique { name, columns, .. } = c {
                 if columns.len() > 1 {
-                    Some((name.clone(), columns.clone()))
+                    Some((name, columns))
                 } else {
                     None
                 }
@@ -223,7 +195,7 @@ fn render_table_annotation(
 
     if !indexes.is_empty() {
         annotation.push_str(", indexes = {\n");
-        for (i, (name, columns)) in indexes.iter().enumerate() {
+        for (i, &(name, columns)) in indexes.iter().enumerate() {
             let col_list = columns.join(", ");
             let comma = if i < indexes.len() - 1 { "," } else { "" };
             if let Some(idx_name) = name {
@@ -240,12 +212,8 @@ fn render_table_annotation(
 
     if !unique_constraints.is_empty() {
         annotation.push_str(", uniqueConstraints = {\n");
-        for (i, (name, columns)) in unique_constraints.iter().enumerate() {
-            let cols = columns
-                .iter()
-                .map(|c| format!("\"{c}\""))
-                .collect::<Vec<_>>()
-                .join(", ");
+        for (i, &(name, columns)) in unique_constraints.iter().enumerate() {
+            let cols = crate::utils::common::join_quoted(columns);
             let comma = if i < unique_constraints.len() - 1 {
                 ","
             } else {
@@ -323,7 +291,7 @@ fn render_field(
     is_unique: bool,
 ) {
     let java_type = java_type_for_column(col);
-    let field_name = to_camel_case(&col.name);
+    let field_name = sanitize_identifier(&to_camel_case(&col.name), IdentifierStart::Underscore);
 
     // Javadoc comment
     if let Some(ref comment) = col.comment {
@@ -367,8 +335,12 @@ fn render_fk_field(
     auto_increment: bool,
     fk: &FkInfo,
 ) {
-    let entity_type = to_pascal_case(&fk.ref_table);
-    let field_name = infer_fk_field_name(&col.name);
+    // Both are derived from schema names, so they need the same escaping the
+    // class declaration and a plain field get.
+    let entity_type =
+        sanitize_identifier(&to_pascal_case(&fk.ref_table), IdentifierStart::Underscore);
+    let field_name =
+        sanitize_identifier(&infer_fk_field_name(&col.name), IdentifierStart::Underscore);
 
     // Javadoc comment
     if let Some(ref comment) = col.comment {
@@ -386,12 +358,13 @@ fn render_fk_field(
     // @ManyToOne
     lines.push("    @ManyToOne(fetch = FetchType.LAZY)".into());
 
-    // @JoinColumn
-    let mut join_attrs: Vec<String> = vec![format!("name = \"{}\"", col.name)];
+    // @JoinColumn — at most two attrs (`name` always, `nullable` optionally),
+    // built inline into one buffer instead of a throwaway `Vec<String>` + join.
+    let mut join_attrs = format!("name = \"{}\"", col.name);
     if !col.nullable {
-        join_attrs.push("nullable = false".into());
+        join_attrs.push_str(", nullable = false");
     }
-    lines.push(format!("    @JoinColumn({})", join_attrs.join(", ")));
+    lines.push(format!("    @JoinColumn({join_attrs})"));
 
     // Field declaration
     lines.push(format!("    private {entity_type} {field_name};"));
@@ -402,16 +375,20 @@ fn render_fk_field(
 // ---------------------------------------------------------------------------
 
 fn build_column_attrs(col: &ColumnDef, is_pk: bool, is_unique: bool) -> String {
-    let mut attrs: Vec<String> = vec![format!("name = \"{}\"", col.name)];
+    // Build the comma-separated attribute list directly into one buffer
+    // (preserving the exact fragment order) instead of collecting a
+    // `Vec<String>` + `.join(", ")`.
+    let mut attrs = String::new();
+    push_attr(&mut attrs, &format!("name = \"{}\"", col.name));
 
     // nullable (skip for PK — always not-null)
     if !is_pk && !col.nullable {
-        attrs.push("nullable = false".into());
+        push_attr(&mut attrs, "nullable = false");
     }
 
     // unique (skip for PK)
     if is_unique && !is_pk {
-        attrs.push("unique = true".into());
+        push_attr(&mut attrs, "unique = true");
     }
 
     // Type-specific attributes
@@ -419,31 +396,31 @@ fn build_column_attrs(col: &ColumnDef, is_pk: bool, is_unique: bool) -> String {
         ColumnType::Complex(
             ComplexColumnType::Varchar { length } | ComplexColumnType::Char { length },
         ) => {
-            attrs.push(format!("length = {length}"));
+            push_attr(&mut attrs, &format!("length = {length}"));
         }
         ColumnType::Complex(ComplexColumnType::Numeric { precision, scale }) => {
-            attrs.push(format!("precision = {precision}"));
-            attrs.push(format!("scale = {scale}"));
+            push_attr(&mut attrs, &format!("precision = {precision}"));
+            push_attr(&mut attrs, &format!("scale = {scale}"));
         }
         ColumnType::Simple(SimpleColumnType::Text | SimpleColumnType::Xml) => {
-            attrs.push("columnDefinition = \"TEXT\"".into());
+            push_attr(&mut attrs, "columnDefinition = \"TEXT\"");
         }
         ColumnType::Simple(SimpleColumnType::Json) => {
-            attrs.push("columnDefinition = \"JSON\"".into());
+            push_attr(&mut attrs, "columnDefinition = \"JSON\"");
         }
         ColumnType::Simple(SimpleColumnType::Bytea) => {
-            attrs.push("columnDefinition = \"BYTEA\"".into());
+            push_attr(&mut attrs, "columnDefinition = \"BYTEA\"");
         }
         ColumnType::Simple(SimpleColumnType::Interval) => {
-            attrs.push("columnDefinition = \"INTERVAL\"".into());
+            push_attr(&mut attrs, "columnDefinition = \"INTERVAL\"");
         }
         ColumnType::Complex(ComplexColumnType::Custom { custom_type }) => {
-            attrs.push(format!("columnDefinition = \"{custom_type}\""));
+            push_attr(&mut attrs, &format!("columnDefinition = \"{custom_type}\""));
         }
         _ => {}
     }
 
-    attrs.join(", ")
+    attrs
 }
 
 // ---------------------------------------------------------------------------
@@ -469,7 +446,7 @@ fn build_default_initializer(col: &ColumnDef) -> Option<String> {
 
     // String literal defaults
     if default_str.starts_with('\'') || default_str.starts_with('"') {
-        let stripped = default_str.trim_matches(|c| c == '\'' || c == '"');
+        let stripped = unquote(&default_str);
         return Some(format!("\"{}\"", stripped.replace('"', "\\\"")));
     }
 
@@ -484,29 +461,31 @@ fn build_default_initializer(col: &ColumnDef) -> Option<String> {
 // ---------------------------------------------------------------------------
 // Naming utilities
 // ---------------------------------------------------------------------------
+//
+// `to_pascal_case` is shared with the SQLAlchemy and SQLModel backends via
+// `python_naming::to_pascal_case` — JPA's class-name convention happens to
+// match the snake-case-aware PascalCase the Python backends already needed.
+// `seaorm` keeps its own variant (reserved-keyword guards, different
+// allocation pattern), so it is intentionally not in scope here.
 
-pub(super) fn to_pascal_case(s: &str) -> String {
-    s.split('_')
-        .map(|word| {
-            let mut chars = word.chars();
-            match chars.next() {
-                None => String::new(),
-                Some(first) => first.to_uppercase().chain(chars).collect(),
-            }
-        })
-        .collect()
-}
+pub(super) use crate::python_naming::to_pascal_case;
 
 pub(super) fn to_camel_case(s: &str) -> String {
-    let pascal = to_pascal_case(s);
-    let mut chars = pascal.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(first) => {
-            let lower: String = first.to_lowercase().collect();
-            format!("{lower}{}", chars.collect::<String>())
-        }
+    let mut pascal = to_pascal_case(s);
+    // Lowercase only the leading character in place, preserving the exact
+    // `char::to_lowercase()` semantics of the previous implementation (Unicode
+    // multi-char lowercase mappings included) without the extra
+    // `chars.collect::<String>()` + `format!` allocations.
+    let Some(first) = pascal.chars().next() else {
+        return pascal;
+    };
+    let lower: String = first.to_lowercase().collect();
+    // Fast path: single-char, unchanged leading char needs no rebuild.
+    if lower.len() == first.len_utf8() && lower.starts_with(first) {
+        return pascal;
     }
+    pascal.replace_range(0..first.len_utf8(), &lower);
+    pascal
 }
 
 pub(super) fn infer_fk_field_name(column_name: &str) -> String {

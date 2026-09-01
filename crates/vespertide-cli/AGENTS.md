@@ -9,15 +9,20 @@ src/
 ├── main.rs           # Clap CLI definition, command dispatch
 ├── utils.rs          # Re-exports loader functions, migration filename generation
 └── commands/
-    ├── mod.rs        # Public exports: cmd_{init,new,diff,sql,revision,status,log,export}
+    ├── mod.rs        # Public exports: cmd_{init,new,diff,sql,revision,status,log,export} + cmd_erd_with_filters
     ├── init.rs       # Create vespertide.json
     ├── new.rs        # Create model template with $schema reference
-    ├── diff.rs       # Show pending changes (colored action formatting)
+    ├── diff/         # Show pending changes (colored action formatting) — mod.rs + tests/
     ├── sql.rs        # Print SQL for next migration
-    ├── revision.rs   # Persist migration (interactive fill-with prompts)
+    ├── revision/     # Persist migration — mod.rs, parse.rs, emit.rs, write.rs, timezones.rs,
+    │                 #   prompts/ (fill_with, narrowing, timezone, drop_recreate_fk_policy,
+    │                 #   choices_and_apply/), tests/
     ├── status.rs     # Show config and sync status
     ├── log.rs        # List applied migrations with SQL
-    └── export.rs     # Export to ORM code (SeaORM/SQLAlchemy/SQLModel)
+    ├── export/       # Export to ORM code (SeaORM/SQLAlchemy/SQLModel/JPA/Prisma) —
+    │                 #   mod.rs + tests/ (mod.rs, prisma.rs)
+    └── erd/          # ERD diagram export — mod.rs, mermaid.rs, dot.rs, svg/ (style, model,
+                      #   layout, edges, render, util), tests/
 ```
 
 ## COMMANDS
@@ -32,25 +37,27 @@ src/
 | `status` | `cmd_status()` | Display config paths and migration count |
 | `log` | `cmd_log(backend)` | Iterate applied migrations, print SQL |
 | `export --orm` | `cmd_export(orm, dir)` | `render_entity_with_schema()` + mod.rs wiring |
+| `erd -f svg\|mermaid\|dot` | `cmd_erd_with_filters(format, output, include, exclude, depth)` | FK-graph filtered ERD rendering |
 
 ## WHERE TO LOOK
 
 | Task | File | Key Functions |
 |------|------|---------------|
 | Add new CLI command | `main.rs` | Add to `Commands` enum, match in `main()` |
-| Modify action display | `diff.rs` | `format_action()`, `format_constraint_type()` |
-| Change fill-with flow | `revision.rs` | `handle_missing_fill_with()`, `collect_fill_with_values()` |
-| Export logic | `export.rs` | `walk_models()`, `ensure_mod_chain()`, `build_output_path()` |
+| Modify action display | `diff/mod.rs` | `format_action()`, `format_constraint_type()` |
+| Change fill-with flow | `revision/prompts/fill_with.rs` | fill-with prompt + collection helpers |
+| Export logic | `export/mod.rs` | `walk_models()`, `ensure_mod_chain()`, `build_output_path()` |
+| ERD rendering | `erd/` | `cmd_erd_with_filters()`, `svg/render.rs`, `mermaid.rs`, `dot.rs` |
 | Filename patterns | `utils.rs` | `migration_filename_with_format_and_pattern()` |
 
 ## NOTES
 
-- **revision.rs** (3064 lines, scheduled for split per 1000-line rule): Most complex - handles interactive `--fill-with` prompts for NOT NULL columns without defaults
-- **export.rs**: Generates `mod.rs` chain for SeaORM exports; Python ORMs skip this
+- **revision/**: Most complex command — handles interactive `--fill-with` prompts for NOT NULL columns without defaults; long ago split from a single 3064-line file into `revision/{mod,parse,emit,write,timezones}.rs` + `prompts/` + `tests/`
+- **export/**: Generates the `mod.rs` chain for SeaORM exports; Python/Java ORMs skip it. Prisma takes a separate single-file path (`prisma::render_schema` → one `schema.prisma`) rather than one file per model
 - All commands use `load_config()`, `load_models()`, `load_migrations()` from `vespertide_loader`
 - YAML and JSON are both fully supported for models and migrations; `new <name> -f yaml` creates YAML templates.
 - Prefer typed `MigrationAction` enums; `RawSql` exists as a documented emergency escape hatch, but is not recommended for normal use.
 - Tests use `serial_test::serial` with `CwdGuard` for directory isolation
 - Schema URLs default to GitHub raw; override via `VESP_SCHEMA_BASE_URL` env var
-- Every `.rs` file must stay ≤ 1000 lines (CI enforced).
+- Two-tier line policy (CI-enforced via `scripts/check-line-budget.sh`): production-only `.rs` ≤ 1000 lines; files carrying test code (`tests/` dir or inline `#[cfg(test)] mod tests`) ≤ 1200 lines.
 - Workspace lints warn on unsafe code and Clippy all: `unsafe_code = "warn"`, `clippy::all = { level = "warn", priority = -1 }`.

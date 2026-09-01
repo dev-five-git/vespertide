@@ -4,12 +4,12 @@ use vespertide_core::{
     ColumnDef, ColumnType, ComplexColumnType, EnumValues, MigrationAction, TableDef,
 };
 
-pub(super) fn diff_columns(
+pub(super) fn diff_columns<'a>(
     actions: &mut Vec<MigrationAction>,
     table_name: &str,
-    from_tbl: &TableDef,
+    from_tbl: &'a TableDef,
     to_tbl: &TableDef,
-) -> BTreeSet<String> {
+) -> BTreeSet<&'a str> {
     // Columns - use BTreeMap for consistent ordering
     let from_cols: BTreeMap<_, _> = from_tbl
         .columns
@@ -58,8 +58,8 @@ fn diff_integer_enum_remappings(
             continue;
         }
         actions.push(MigrationAction::RemapEnumValues {
-            table: table_name.to_string().into(),
-            column: (*col).to_string().into(),
+            table: table_name.into(),
+            column: (*col).into(),
             mapping,
         });
     }
@@ -87,6 +87,17 @@ fn compute_integer_enum_remapping(from: &ColumnType, to: &ColumnType) -> BTreeMa
     else {
         return BTreeMap::new();
     };
+    // Fast path: identical variant lists can never remap — skip the map build.
+    // This is the overwhelmingly common case (unchanged integer enum).
+    if from_items == to_items {
+        return BTreeMap::new();
+    }
+    // Fast path: a remap pairs a `from` variant with a same-named `to` variant
+    // whose value shifted. If either side is empty there can be no shared name,
+    // so the result is always empty — skip building `to_by_name` entirely.
+    if from_items.is_empty() || to_items.is_empty() {
+        return BTreeMap::new();
+    }
     let to_by_name: BTreeMap<&str, i64> = to_items
         .iter()
         .map(|nv| (nv.name.as_str(), nv.value))
@@ -102,23 +113,25 @@ fn compute_integer_enum_remapping(from: &ColumnType, to: &ColumnType) -> BTreeMa
         .collect()
 }
 
-fn diff_deleted_columns(
+fn diff_deleted_columns<'a>(
     actions: &mut Vec<MigrationAction>,
     table_name: &str,
-    from_cols: &BTreeMap<&str, &ColumnDef>,
+    from_cols: &BTreeMap<&'a str, &ColumnDef>,
     to_cols: &BTreeMap<&str, &ColumnDef>,
-) -> BTreeSet<String> {
-    let deleted_columns: BTreeSet<String> = from_cols
-        .keys()
-        .filter(|col| !to_cols.contains_key(*col))
-        .map(|col| (*col).to_string())
-        .collect();
-
-    for col in &deleted_columns {
+) -> BTreeSet<&'a str> {
+    // `from_cols` is a `BTreeMap`, so its keys are already in sorted order —
+    // iterating them once yields the same order a `BTreeSet` would, letting us
+    // emit each `DeleteColumn` action and populate the returned set in a single
+    // pass. The set borrows the column names straight from the normalized
+    // `TableDef` (they outlive the whole diff), so no `String` allocation per
+    // deleted column is needed — the only consumer looks each name up by `&str`.
+    let mut deleted_columns = BTreeSet::new();
+    for col in from_cols.keys().filter(|col| !to_cols.contains_key(*col)) {
         actions.push(MigrationAction::DeleteColumn {
-            table: table_name.to_string().into(),
-            column: col.clone().into(),
+            table: table_name.into(),
+            column: (*col).into(),
         });
+        deleted_columns.insert(*col);
     }
 
     deleted_columns
@@ -152,8 +165,8 @@ fn diff_column_types(
 
             if needs_type_migration || needs_enum_rename {
                 actions.push(MigrationAction::ModifyColumnType {
-                    table: table_name.to_string().into(),
-                    column: (*col).to_string().into(),
+                    table: table_name.into(),
+                    column: (*col).into(),
                     new_type: to_def.r#type.clone(),
                     fill_with: None,
                     // Set by `cmd_revision` after the user picks a strategy
@@ -179,8 +192,8 @@ fn diff_column_nullability(
             && from_def.nullable != to_def.nullable
         {
             actions.push(MigrationAction::ModifyColumnNullable {
-                table: table_name.to_string().into(),
-                column: (*col).to_string().into(),
+                table: table_name.into(),
+                column: (*col).into(),
                 nullable: to_def.nullable,
                 fill_with: None,
                 delete_null_rows: None,
@@ -197,6 +210,15 @@ fn diff_column_defaults(
 ) {
     for (col, to_def) in to_cols {
         if let Some(from_def) = from_cols.get(col) {
+            // Fast path: byte-identical raw defaults can never differ once
+            // lowered to SQL, so skip the two `to_sql()` allocations for the
+            // overwhelmingly common unchanged-column case. Structurally
+            // distinct defaults still fall through to the SQL-level compare
+            // below, so no `ModifyColumnDefault` is ever spuriously added or
+            // dropped.
+            if from_def.default == to_def.default {
+                continue;
+            }
             let from_default = from_def
                 .default
                 .as_ref()
@@ -207,8 +229,8 @@ fn diff_column_defaults(
                 .map(vespertide_core::DefaultValue::to_sql);
             if from_default != to_default {
                 actions.push(MigrationAction::ModifyColumnDefault {
-                    table: table_name.to_string().into(),
-                    column: (*col).to_string().into(),
+                    table: table_name.into(),
+                    column: (*col).into(),
                     new_default: to_default,
                     backfill: None,
                 });
@@ -228,8 +250,8 @@ fn diff_column_comments(
             && from_def.comment != to_def.comment
         {
             actions.push(MigrationAction::ModifyColumnComment {
-                table: table_name.to_string().into(),
-                column: (*col).to_string().into(),
+                table: table_name.into(),
+                column: (*col).into(),
                 new_comment: to_def.comment.clone(),
             });
         }
@@ -244,13 +266,25 @@ fn diff_added_columns(
 ) {
     for (col, def) in to_cols {
         if !from_cols.contains_key(col) {
-            let mut col_def = (*def).clone();
-            col_def.primary_key = None;
-            col_def.unique = None;
-            col_def.index = None;
-            col_def.foreign_key = None;
+            // Build the stripped column directly instead of cloning the full
+            // `ColumnDef` then clearing the four inline-constraint fields — the
+            // clone would deep-copy those `Option` payloads (usually `Some(..)`
+            // on freshly-authored columns) only to discard them. Emitted payload
+            // is byte-identical. An exhaustive struct literal keeps this in sync
+            // with `ColumnDef` (a new field fails to compile until handled here).
+            let col_def = ColumnDef {
+                name: def.name.clone(),
+                r#type: def.r#type.clone(),
+                nullable: def.nullable,
+                default: def.default.clone(),
+                comment: def.comment.clone(),
+                primary_key: None,
+                unique: None,
+                index: None,
+                foreign_key: None,
+            };
             actions.push(MigrationAction::AddColumn {
-                table: table_name.to_string().into(),
+                table: table_name.into(),
                 column: Box::new(col_def),
                 fill_with: None,
             });

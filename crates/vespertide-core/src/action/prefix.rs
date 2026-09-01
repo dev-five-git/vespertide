@@ -1,5 +1,4 @@
 use super::{MigrationAction, MigrationPlan};
-use crate::schema::TableName;
 
 impl MigrationPlan {
     /// Apply a prefix to all table names in the migration plan.
@@ -37,7 +36,7 @@ fn prefix_migration_action(action: MigrationAction, prefix: &str) -> MigrationAc
             columns,
             constraints,
         } => MigrationAction::CreateTable {
-            table: add_prefix(table, prefix),
+            table: table.with_prefix(prefix),
             columns,
             constraints: constraints
                 .into_iter()
@@ -45,13 +44,16 @@ fn prefix_migration_action(action: MigrationAction, prefix: &str) -> MigrationAc
                 .collect(),
         },
         MigrationAction::DeleteTable { table } => MigrationAction::DeleteTable {
-            table: add_prefix(table, prefix),
+            table: table.with_prefix(prefix),
         },
         MigrationAction::RenameTable { from, to } => MigrationAction::RenameTable {
-            from: add_prefix(from, prefix),
-            to: add_prefix(to, prefix),
+            from: from.with_prefix(prefix),
+            to: to.with_prefix(prefix),
         },
         MigrationAction::RawSql { sql } => MigrationAction::RawSql { sql },
+        MigrationAction::DataMigration { sql, description } => {
+            MigrationAction::DataMigration { sql, description }
+        }
         action => prefix_column_or_constraint_action(action, prefix),
     }
 }
@@ -63,17 +65,17 @@ fn prefix_column_or_constraint_action(action: MigrationAction, prefix: &str) -> 
             column,
             fill_with,
         } => MigrationAction::AddColumn {
-            table: add_prefix(table, prefix),
+            table: table.with_prefix(prefix),
             column,
             fill_with,
         },
         MigrationAction::RenameColumn { table, from, to } => MigrationAction::RenameColumn {
-            table: add_prefix(table, prefix),
+            table: table.with_prefix(prefix),
             from,
             to,
         },
         MigrationAction::DeleteColumn { table, column } => MigrationAction::DeleteColumn {
-            table: add_prefix(table, prefix),
+            table: table.with_prefix(prefix),
             column,
         },
         MigrationAction::ModifyColumnType {
@@ -84,7 +86,7 @@ fn prefix_column_or_constraint_action(action: MigrationAction, prefix: &str) -> 
             narrowing_strategy,
             timezone,
         } => MigrationAction::ModifyColumnType {
-            table: add_prefix(table, prefix),
+            table: table.with_prefix(prefix),
             column,
             new_type,
             fill_with,
@@ -98,7 +100,7 @@ fn prefix_column_or_constraint_action(action: MigrationAction, prefix: &str) -> 
             fill_with,
             delete_null_rows,
         } => MigrationAction::ModifyColumnNullable {
-            table: add_prefix(table, prefix),
+            table: table.with_prefix(prefix),
             column,
             nullable,
             fill_with,
@@ -116,7 +118,7 @@ fn prefix_remaining_action(action: MigrationAction, prefix: &str) -> MigrationAc
             new_default,
             backfill,
         } => MigrationAction::ModifyColumnDefault {
-            table: add_prefix(table, prefix),
+            table: table.with_prefix(prefix),
             column,
             new_default,
             backfill,
@@ -126,35 +128,29 @@ fn prefix_remaining_action(action: MigrationAction, prefix: &str) -> MigrationAc
             column,
             new_comment,
         } => MigrationAction::ModifyColumnComment {
-            table: add_prefix(table, prefix),
+            table: table.with_prefix(prefix),
             column,
             new_comment,
         },
         MigrationAction::AddConstraint { table, constraint } => MigrationAction::AddConstraint {
-            table: format!("{prefix}{table}").into(),
+            table: table.with_prefix(prefix),
             constraint: constraint.with_prefix(prefix),
         },
         MigrationAction::RemoveConstraint { table, constraint } => {
             MigrationAction::RemoveConstraint {
-                table: add_prefix(table, prefix),
+                table: table.with_prefix(prefix),
                 constraint: constraint.with_prefix(prefix),
             }
         }
         MigrationAction::ReplaceConstraint { table, from, to } => {
             MigrationAction::ReplaceConstraint {
-                table: add_prefix(table, prefix),
+                table: table.with_prefix(prefix),
                 from: from.with_prefix(prefix),
                 to: to.with_prefix(prefix),
             }
         }
         other => other,
     }
-}
-
-fn add_prefix(table: TableName, prefix: &str) -> TableName {
-    let mut table = table.into_inner();
-    table.insert_str(0, prefix);
-    table.into()
 }
 
 #[cfg(test)]
@@ -173,6 +169,22 @@ mod tests {
         match prefixed {
             MigrationAction::RawSql { sql } => assert_eq!(sql, "SELECT 1"),
             other => panic!("expected RawSql, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn data_migration_with_prefix_is_a_noop_on_sql_body() {
+        let action = MigrationAction::DataMigration {
+            sql: "UPDATE users SET active = true".into(),
+            description: Some("activate everyone".to_string()),
+        };
+        let prefixed = action.with_prefix("p_");
+        match prefixed {
+            MigrationAction::DataMigration { sql, description } => {
+                assert_eq!(sql.postgres(), "UPDATE users SET active = true");
+                assert_eq!(description.as_deref(), Some("activate everyone"));
+            }
+            other => panic!("expected DataMigration, got {other:?}"),
         }
     }
 

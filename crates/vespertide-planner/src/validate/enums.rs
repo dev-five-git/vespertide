@@ -46,16 +46,10 @@ pub(super) fn validate_enum_value(
         return Ok(());
     };
 
-    let is_valid = match enum_values {
-        EnumValues::String(variants) => variants.iter().any(|v| v == extracted),
-        EnumValues::Integer(variants) => extracted.parse::<i32>().map_or_else(
-            |_| variants.iter().any(|v| v.name == extracted),
-            |n| variants.iter().any(|v| v.value == i64::from(n)),
-        ),
-    };
+    let is_valid = enum_values.contains_value(extracted);
 
     if !is_valid {
-        let allowed = enum_values.variant_names().join(", ");
+        let allowed = enum_values.variant_names_joined(", ");
         return Err(Box::new(InvalidEnumDefaultError {
             enum_name: enum_name.to_string(),
             table_name: table_name.to_string(),

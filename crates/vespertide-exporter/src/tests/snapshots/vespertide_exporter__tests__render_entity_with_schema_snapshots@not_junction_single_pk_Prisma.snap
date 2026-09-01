@@ -1,0 +1,10 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model Other {
+  id Int @id
+  regular Regular[]
+
+  @@map("other")
+}

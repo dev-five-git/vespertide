@@ -1,8 +1,16 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use vespertide_config::VespertideConfig;
+
+/// Read and parse a vespertide.json file that is known to exist.
+fn read_config(path: &Path) -> Result<VespertideConfig> {
+    let content = fs::read_to_string(path).context("read vespertide.json")?;
+    let config: VespertideConfig =
+        serde_json::from_str(&content).context("parse vespertide.json")?;
+    Ok(config)
+}
 
 /// Load vespertide.json config from current directory.
 pub fn load_config() -> Result<VespertideConfig> {
@@ -11,23 +19,17 @@ pub fn load_config() -> Result<VespertideConfig> {
         anyhow::bail!("vespertide.json not found. Run 'vespertide init' first.");
     }
 
-    let content = fs::read_to_string(&path).context("read vespertide.json")?;
-    let config: VespertideConfig =
-        serde_json::from_str(&content).context("parse vespertide.json")?;
-    Ok(config)
+    read_config(&path)
 }
 
 /// Load config from a specific path.
-pub fn load_config_from_path(path: PathBuf) -> Result<VespertideConfig> {
-    let path = path.into_boxed_path();
+pub fn load_config_from_path(path: impl AsRef<Path>) -> Result<VespertideConfig> {
+    let path = path.as_ref();
     if !path.exists() {
         anyhow::bail!("vespertide.json not found at: {}", path.display());
     }
 
-    let content = fs::read_to_string(&path).context("read vespertide.json")?;
-    let config: VespertideConfig =
-        serde_json::from_str(&content).context("parse vespertide.json")?;
-    Ok(config)
+    read_config(path)
 }
 
 /// Load config from project root, with fallback to defaults.
@@ -48,40 +50,16 @@ pub fn load_config_or_default(project_root: Option<PathBuf>) -> Result<Vespertid
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{CwdGuard, write_default_config};
     use serial_test::serial;
-    use std::fs;
     use tempfile::tempdir;
-
-    struct CwdGuard {
-        original: PathBuf,
-    }
-
-    impl CwdGuard {
-        fn new(dir: &PathBuf) -> Self {
-            let original = std::env::current_dir().unwrap();
-            std::env::set_current_dir(dir).unwrap();
-            Self { original }
-        }
-    }
-
-    impl Drop for CwdGuard {
-        fn drop(&mut self) {
-            let _ = std::env::set_current_dir(&self.original);
-        }
-    }
-
-    fn write_config(path: &PathBuf) {
-        let cfg = VespertideConfig::default();
-        let text = serde_json::to_string_pretty(&cfg).unwrap();
-        fs::write(path, text).unwrap();
-    }
 
     #[test]
     #[serial]
     fn test_load_config_from_path_success() {
         let tmp = tempdir().unwrap();
         let config_path = tmp.path().join("vespertide.json");
-        write_config(&config_path);
+        write_default_config(&config_path);
 
         let result = load_config_from_path(config_path);
         assert!(result.is_ok());
@@ -107,7 +85,7 @@ mod tests {
     fn test_load_config_or_default_with_root() {
         let tmp = tempdir().unwrap();
         let config_path = tmp.path().join("vespertide.json");
-        write_config(&config_path);
+        write_default_config(&config_path);
 
         let result = load_config_or_default(Some(tmp.path().to_path_buf()));
         assert!(result.is_ok());
@@ -119,9 +97,9 @@ mod tests {
     #[serial]
     fn test_load_config_or_default_without_root() {
         let tmp = tempdir().unwrap();
-        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        let _guard = CwdGuard::new(tmp.path());
         let config_path = PathBuf::from("vespertide.json");
-        write_config(&config_path);
+        write_default_config(&config_path);
 
         let result = load_config_or_default(None);
         assert!(result.is_ok());
@@ -133,7 +111,7 @@ mod tests {
     #[serial]
     fn test_load_config_or_default_fallback_to_default() {
         let tmp = tempdir().unwrap();
-        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        let _guard = CwdGuard::new(tmp.path());
 
         let result = load_config_or_default(None);
         assert!(result.is_ok());
@@ -145,9 +123,9 @@ mod tests {
     #[serial]
     fn test_load_config_success() {
         let tmp = tempdir().unwrap();
-        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        let _guard = CwdGuard::new(tmp.path());
         let config_path = PathBuf::from("vespertide.json");
-        write_config(&config_path);
+        write_default_config(&config_path);
 
         let result = load_config();
         assert!(result.is_ok());
@@ -159,7 +137,7 @@ mod tests {
     #[serial]
     fn test_load_config_not_found() {
         let tmp = tempdir().unwrap();
-        let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+        let _guard = CwdGuard::new(tmp.path());
 
         let result = load_config();
         assert!(result.is_err());

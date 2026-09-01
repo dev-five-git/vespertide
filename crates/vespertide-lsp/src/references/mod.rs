@@ -20,9 +20,7 @@ use std::ops::Range;
 
 use tower_lsp_server::ls_types::Uri;
 
-use crate::parser::DocumentFormat;
 use crate::store::DocumentStore;
-use crate::workspace_index::WorkspaceIndex;
 use crate::workspace_tables::WorkspaceTables;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,23 +41,16 @@ pub enum ReferenceSymbol {
 
 /// Compute references for the symbol at `byte_offset`.
 #[must_use]
-#[expect(
-    clippy::too_many_arguments,
-    reason = "references compute threads document parse state, workspace stores, cursor, and declaration policy; ReferenceContext is a deferred refactor"
-)]
 pub fn compute(
     source: &str,
-    format: DocumentFormat,
     tree: Option<&tree_sitter::Tree>,
     current_uri: &Uri,
-    index: &WorkspaceIndex,
     docs: &DocumentStore,
     disk_tables: Option<&WorkspaceTables>,
     byte_offset: usize,
     include_declaration: bool,
 ) -> Vec<DomainReference> {
-    let _ = format;
-    let Some(symbol) = resolve_symbol(source, tree, current_uri, byte_offset) else {
+    let Some(symbol) = resolve_symbol(source, tree, byte_offset) else {
         return Vec::new();
     };
 
@@ -68,7 +59,6 @@ pub fn compute(
         current_uri,
         source,
         tree,
-        index,
         docs,
         disk_tables,
         include_declaration,
@@ -80,8 +70,7 @@ pub fn compute(
 pub fn resolve_symbol(
     source: &str,
     tree: Option<&tree_sitter::Tree>,
-    current_uri: &Uri,
     byte_offset: usize,
 ) -> Option<ReferenceSymbol> {
-    resolver::resolve(source, tree, current_uri, byte_offset)
+    resolver::resolve(source, tree, byte_offset)
 }

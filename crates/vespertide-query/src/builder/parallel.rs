@@ -2,7 +2,7 @@ use rayon::prelude::*;
 use vespertide_core::{MigrationAction, MigrationPlan, TableConstraint, TableDef};
 use vespertide_planner::apply_action;
 
-use super::{PlanQueries, action_target_table};
+use super::{PlanQueries, pending_constraints_for_action};
 use crate::DatabaseBackend;
 use crate::error::QueryError;
 use crate::parallel_config::PLAN_QUERY_PAR_ACTION_MIN_LEN;
@@ -44,36 +44,6 @@ fn prepare_actions(plan: &MigrationPlan, current_schema: &[TableDef]) -> Vec<Pre
     prepared_actions
 }
 
-fn pending_constraints_for_action(
-    plan: &MigrationPlan,
-    action_index: usize,
-    action: &MigrationAction,
-) -> Vec<TableConstraint> {
-    let Some(table) = action_target_table(action) else {
-        return vec![];
-    };
-
-    plan.actions[action_index + 1..]
-        .iter()
-        .filter_map(|a| {
-            if let MigrationAction::AddConstraint {
-                table: t,
-                constraint,
-            } = a
-                && t == table
-                && matches!(
-                    constraint,
-                    TableConstraint::Index { .. } | TableConstraint::Unique { .. }
-                )
-            {
-                Some(constraint.clone())
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
 fn build_prepared_action_queries(prepared: &PreparedAction) -> Result<PlanQueries, QueryError> {
     let postgres_queries = build_action_queries_with_pending(
         DatabaseBackend::Postgres,
@@ -108,71 +78,11 @@ fn build_prepared_action_queries(prepared: &PreparedAction) -> Result<PlanQuerie
     reason = "tests that drive the parallel builder path must set/unset VESPERTIDE_PLAN_QUERY_PAR_THRESHOLD via std::env::{set_var, remove_var}; serialized via #[serial] to avoid cross-test races"
 )]
 mod tests {
+    use super::super::test_support::*;
     use super::*;
     use crate::builder::build_plan_queries;
-    use crate::sql::BuiltQuery;
-    use crate::sql::types::DatabaseBackend as _Backend;
     use serial_test::serial;
-    use vespertide_core::{
-        ColumnDef, ColumnType, ForeignKeyOrphanStrategy, ReferenceAction, SimpleColumnType,
-        TableDef,
-    };
-
-    fn nn_col(name: &str, ty: SimpleColumnType) -> ColumnDef {
-        ColumnDef::new(name, ColumnType::Simple(ty), false)
-    }
-
-    fn index(name: Option<&str>, column: &str) -> TableConstraint {
-        TableConstraint::Index {
-            name: name.map(Into::into),
-            columns: vec![column.into()],
-        }
-    }
-
-    fn foreign_key() -> TableConstraint {
-        TableConstraint::ForeignKey {
-            name: Some("fk_u__pk".into()),
-            columns: vec!["pk".into()],
-            ref_table: "other".into(),
-            ref_columns: vec!["id".into()],
-            on_delete: Some(ReferenceAction::Cascade),
-            on_update: None,
-            orphan_strategy: ForeignKeyOrphanStrategy::default(),
-        }
-    }
-
-    fn table(name: &str, constraints: Vec<TableConstraint>) -> TableDef {
-        TableDef {
-            name: name.into(),
-            description: None,
-            columns: vec![nn_col("pk", SimpleColumnType::Integer)],
-            constraints,
-        }
-    }
-
-    fn schema_u_with_constraints(constraints: Vec<TableConstraint>) -> Vec<TableDef> {
-        vec![table("u", constraints)]
-    }
-
-    fn schema_u_and_v_with_u_constraints(constraints: Vec<TableConstraint>) -> Vec<TableDef> {
-        vec![table("u", constraints), table("v", vec![])]
-    }
-
-    fn add_required_column(table: &str, column: &str) -> MigrationAction {
-        MigrationAction::AddColumn {
-            table: table.into(),
-            column: Box::new(nn_col(column, SimpleColumnType::Integer)),
-            fill_with: None,
-        }
-    }
-
-    fn sqlite_sql(queries: &[BuiltQuery]) -> String {
-        queries
-            .iter()
-            .map(|q| q.build(_Backend::Sqlite))
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
+    use vespertide_core::SimpleColumnType;
 
     /// The parallel `build_plan_queries_in_parallel` path activates when the
     /// plan size meets `VESPERTIDE_PLAN_QUERY_PAR_THRESHOLD`. The env override is
@@ -375,8 +285,5 @@ mod tests {
         unsafe {
             std::env::remove_var("VESPERTIDE_PLAN_QUERY_PAR_THRESHOLD");
         }
-
-        // touch the parallel-imported alias to keep the `use` warning-free
-        let _ = _Backend::Postgres;
     }
 }

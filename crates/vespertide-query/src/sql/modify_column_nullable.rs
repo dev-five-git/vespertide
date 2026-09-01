@@ -1,12 +1,10 @@
-use sea_query::{Alias, Query, Table};
+use vespertide_core::TableDef;
 
-use vespertide_core::{ColumnDef, TableDef};
-
+use super::fill_with::convert_fill_with_for_backend;
 use super::helpers::{
-    build_sea_column_def_with_table, build_sqlite_temp_table_create, convert_default_for_backend,
-    normalize_fill_with, quote_ident, recreate_indexes_after_rebuild,
+    build_mysql_modify_column_with, build_pg_alter_column_sql, build_sqlite_modify_column_with,
+    normalize_fill_with, quote_ident,
 };
-use super::rename_table::build_rename_table;
 use super::types::{BuiltQuery, DatabaseBackend, RawSql};
 use crate::error::QueryError;
 
@@ -37,7 +35,7 @@ pub fn build_modify_column_nullable(
     }
     // If changing to NOT NULL, first update existing NULL values if fill_with is provided
     else if !nullable && let Some(fill_value) = normalize_fill_with(fill_with) {
-        let fill_value = convert_default_for_backend(&fill_value, backend);
+        let fill_value = convert_fill_with_for_backend(fill_value, backend);
         let quoted_table = quote_ident(table, backend);
         let quoted_column = quote_ident(column, backend);
         let update_sql = format!(
@@ -49,94 +47,34 @@ pub fn build_modify_column_nullable(
     // Generate ALTER TABLE statement based on backend
     match backend {
         DatabaseBackend::Postgres => {
-            let quoted_table = quote_ident(table, backend);
-            let quoted_column = quote_ident(column, backend);
             let alter_sql = if nullable {
-                format!("ALTER TABLE {quoted_table} ALTER COLUMN {quoted_column} DROP NOT NULL")
+                build_pg_alter_column_sql(table, column, "DROP NOT NULL")
             } else {
-                format!("ALTER TABLE {quoted_table} ALTER COLUMN {quoted_column} SET NOT NULL")
+                build_pg_alter_column_sql(table, column, "SET NOT NULL")
             };
             queries.push(BuiltQuery::Raw(RawSql::uniform(alter_sql)));
         }
         DatabaseBackend::MySql => {
-            // MySQL requires the full column definition in MODIFY COLUMN
-            // We need to get the column type from current schema
-            let table_def = current_schema.iter().find(|t| t.name == table).ok_or_else(|| QueryError::SchemaError(format!("Table '{table}' not found in current schema. MySQL requires current schema information to modify column nullability.")))?;
-
-            let column_def = table_def.columns.iter().find(|c| c.name == column).ok_or_else(|| QueryError::SchemaError(format!("Column '{column}' not found in table '{table}'. MySQL requires column information to modify nullability.")))?;
-
-            // Create a modified column def with the new nullability
-            let modified_col_def = ColumnDef {
-                nullable,
-                ..column_def.clone()
-            };
-
-            // Build sea-query ColumnDef with all properties (type, nullable, default)
-            let sea_col = build_sea_column_def_with_table(backend, table, &modified_col_def);
-
-            let stmt = Table::alter()
-                .table(Alias::new(table))
-                .modify_column(sea_col)
-                .to_owned();
-            queries.push(BuiltQuery::AlterTable(Box::new(stmt)));
+            // MySQL requires the full column definition in MODIFY COLUMN.
+            queries.push(build_mysql_modify_column_with(
+                table,
+                column,
+                current_schema,
+                "MySQL requires current schema information to modify column nullability",
+                |c| c.nullable = nullable,
+            )?);
         }
         DatabaseBackend::Sqlite => {
-            // SQLite doesn't support ALTER COLUMN for nullability changes
-            // Use temporary table approach
-            let table_def = current_schema.iter().find(|t| t.name == table).ok_or_else(|| QueryError::SchemaError(format!("Table '{table}' not found in current schema. SQLite requires current schema information to modify column nullability.")))?;
-
-            // Create modified columns with the new nullability
-            let mut new_columns = table_def.columns.clone();
-            if let Some(col) = new_columns.iter_mut().find(|c| c.name == column) {
-                col.nullable = nullable;
-            }
-
-            // Generate temporary table name
-            let temp_table = format!("{table}_temp");
-
-            // 1. Create temporary table with modified column + CHECK constraints
-            let create_query = build_sqlite_temp_table_create(
-                backend,
-                &temp_table,
+            // SQLite doesn't support ALTER COLUMN for nullability changes;
+            // use the canonical temp-table rebuild with the modified column.
+            queries.extend(build_sqlite_modify_column_with(
                 table,
-                &new_columns,
-                &table_def.constraints,
-            );
-            queries.push(create_query);
-
-            // 2. Copy data (all columns)
-            let column_aliases: Vec<Alias> = table_def
-                .columns
-                .iter()
-                .map(|c| Alias::new(&c.name))
-                .collect();
-            let mut select_query = Query::select();
-            for col_alias in &column_aliases {
-                select_query.column(col_alias.clone());
-            }
-            select_query.from(Alias::new(table));
-
-            let insert_stmt = Query::insert()
-                .into_table(Alias::new(&temp_table))
-                .columns(column_aliases.clone())
-                .select_from(select_query)
-                .unwrap()
-                .to_owned();
-            queries.push(BuiltQuery::Insert(Box::new(insert_stmt)));
-
-            // 3. Drop original table
-            let drop_table = Table::drop().table(Alias::new(table)).to_owned();
-            queries.push(BuiltQuery::DropTable(Box::new(drop_table)));
-
-            // 4. Rename temporary table to original name
-            queries.push(build_rename_table(&temp_table, table));
-
-            // 5. Recreate indexes (both regular and UNIQUE)
-            queries.extend(recreate_indexes_after_rebuild(
-                table,
-                &table_def.constraints,
+                column,
+                current_schema,
                 pending_constraints,
-            ));
+                "SQLite requires current schema information to modify column nullability",
+                |c| c.nullable = nullable,
+            )?);
         }
     }
 
@@ -146,23 +84,10 @@ pub fn build_modify_column_nullable(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::col_n as col;
+    use crate::test_support::{backend_tag, col_n as col, joined_sql, table_def};
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
-    use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType, TableConstraint};
-
-    fn table_def(
-        name: &str,
-        columns: Vec<ColumnDef>,
-        constraints: Vec<TableConstraint>,
-    ) -> TableDef {
-        TableDef {
-            name: name.into(),
-            description: None,
-            columns,
-            constraints,
-        }
-    }
+    use vespertide_core::{ColumnType, SimpleColumnType, TableConstraint};
 
     #[rstest]
     #[case::postgres_set_not_null(DatabaseBackend::Postgres, false, None)]
@@ -204,19 +129,11 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = joined_sql(backend, &queries);
 
         let suffix = format!(
             "{}_{}_users{}",
-            match backend {
-                DatabaseBackend::Postgres => "postgres",
-                DatabaseBackend::MySql => "mysql",
-                DatabaseBackend::Sqlite => "sqlite",
-            },
+            backend_tag(backend),
             if nullable { "nullable" } else { "not_null" },
             if fill_with.is_some() {
                 "_with_fill"
@@ -315,11 +232,7 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = joined_sql(backend, &queries);
 
         // SQLite should recreate the index after table rebuild
         if backend == DatabaseBackend::Sqlite {
@@ -327,21 +240,20 @@ mod tests {
             assert!(sql.contains("idx_email"));
         }
 
-        let suffix = format!(
-            "{}_with_index",
-            match backend {
-                DatabaseBackend::Postgres => "postgres",
-                DatabaseBackend::MySql => "mysql",
-                DatabaseBackend::Sqlite => "sqlite",
-            }
-        );
+        let suffix = format!("{}_with_index", backend_tag(backend));
 
         with_settings!({ snapshot_suffix => suffix }, {
             assert_snapshot!(sql);
         });
     }
 
-    /// Test `fill_with` containing `NOW()` should be converted to `CURRENT_TIMESTAMP` for all backends
+    /// Test `fill_with` containing `NOW()`.
+    ///
+    /// `fill_with` is a raw SQL expression slot, so PostgreSQL — the dialect
+    /// it is authored in — now emits it verbatim. MySQL and SQLite still get
+    /// `CURRENT_TIMESTAMP` because `NOW()` is not a SQLite function; that
+    /// rewrite is safe only because the spelling is matched against the whole
+    /// value, never a fragment of a larger expression.
     #[rstest]
     #[case::postgres_fill_now(DatabaseBackend::Postgres)]
     #[case::mysql_fill_now(DatabaseBackend::MySql)]
@@ -372,30 +284,25 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = joined_sql(backend, &queries);
 
-        // NOW() should be converted to CURRENT_TIMESTAMP for all backends
-        assert!(
-            !sql.contains("NOW()"),
-            "SQL should not contain NOW(), got: {sql}"
-        );
-        assert!(
-            sql.contains("CURRENT_TIMESTAMP"),
-            "SQL should contain CURRENT_TIMESTAMP, got: {sql}"
-        );
+        if backend == DatabaseBackend::Postgres {
+            assert!(
+                sql.contains("NOW()"),
+                "PostgreSQL must emit fill_with verbatim, got: {sql}"
+            );
+        } else {
+            assert!(
+                !sql.contains("NOW()"),
+                "SQL should not contain NOW(), got: {sql}"
+            );
+            assert!(
+                sql.contains("CURRENT_TIMESTAMP"),
+                "SQL should contain CURRENT_TIMESTAMP, got: {sql}"
+            );
+        }
 
-        let suffix = format!(
-            "{}_fill_now",
-            match backend {
-                DatabaseBackend::Postgres => "postgres",
-                DatabaseBackend::MySql => "mysql",
-                DatabaseBackend::Sqlite => "sqlite",
-            }
-        );
+        let suffix = format!("{}_fill_now", backend_tag(backend));
 
         with_settings!({ snapshot_suffix => suffix }, {
             assert_snapshot!(sql);
@@ -432,25 +339,14 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = joined_sql(backend, &queries);
 
         // MySQL and SQLite should include DEFAULT clause
         if backend == DatabaseBackend::MySql || backend == DatabaseBackend::Sqlite {
             assert!(sql.contains("DEFAULT"));
         }
 
-        let suffix = format!(
-            "{}_with_default",
-            match backend {
-                DatabaseBackend::Postgres => "postgres",
-                DatabaseBackend::MySql => "mysql",
-                DatabaseBackend::Sqlite => "sqlite",
-            }
-        );
+        let suffix = format!("{}_with_default", backend_tag(backend));
 
         with_settings!({ snapshot_suffix => suffix }, {
             assert_snapshot!(sql);
@@ -488,11 +384,7 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = joined_sql(backend, &queries);
 
         assert!(
             sql.contains("DELETE FROM"),
@@ -507,14 +399,7 @@ mod tests {
             "Should NOT contain UPDATE, got: {sql}"
         );
 
-        let suffix = format!(
-            "{}_delete_null_rows",
-            match backend {
-                DatabaseBackend::Postgres => "postgres",
-                DatabaseBackend::MySql => "mysql",
-                DatabaseBackend::Sqlite => "sqlite",
-            }
-        );
+        let suffix = format!("{}_delete_null_rows", backend_tag(backend));
 
         with_settings!({ snapshot_suffix => suffix }, {
             assert_snapshot!(sql);
@@ -550,11 +435,7 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = joined_sql(backend, &queries);
 
         assert!(
             !sql.contains("DELETE FROM"),

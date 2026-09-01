@@ -6,13 +6,58 @@ use vespertide_core::{
 
 use crate::error::PlannerError;
 
+/// Kahn's-algorithm core shared by creation and deletion ordering.
+///
+/// `dependencies` maps each name to the set of names it depends on and must
+/// contain an entry for EVERY name to order. Returns names in ready order —
+/// deterministic because the zero-degree seed follows `BTreeMap` key order and
+/// each step collects newly-ready names into a `BTreeSet`. On a cycle the
+/// result is partial (cyclic names are absent); callers decide how to react.
+fn kahn_ready_order<'a>(dependencies: &BTreeMap<&'a str, BTreeSet<&'a str>>) -> Vec<&'a str> {
+    // SEQUENTIAL BY NATURE: Kahn's algorithm requires in-degree state evolution.
+    let mut in_degree: BTreeMap<&'a str, usize> = dependencies
+        .iter()
+        .map(|(name, deps)| (*name, deps.len()))
+        .collect();
+
+    // Start with names that have no dependencies.
+    // BTreeMap iteration is already sorted by key.
+    let mut queue: VecDeque<&'a str> = in_degree
+        .iter()
+        .filter(|(_, deg)| **deg == 0)
+        .map(|(name, _)| *name)
+        .collect();
+
+    let mut order: Vec<&'a str> = Vec::with_capacity(dependencies.len());
+    while let Some(name) = queue.pop_front() {
+        order.push(name);
+
+        // Collect names that become ready (in-degree becomes 0).
+        // Use BTreeSet for consistent ordering.
+        let mut ready: BTreeSet<&'a str> = BTreeSet::new();
+        for (dependent, deps) in dependencies {
+            if deps.contains(&name)
+                && let Some(degree) = in_degree.get_mut(dependent)
+            {
+                *degree -= 1;
+                if *degree == 0 {
+                    ready.insert(dependent);
+                }
+            }
+        }
+        for t in ready {
+            queue.push_back(t);
+        }
+    }
+    order
+}
+
 /// Topologically sort tables based on foreign key dependencies.
 /// Returns tables in order where tables with no FK dependencies come first,
 /// and tables that reference other tables come after their referenced tables.
 pub(super) fn topological_sort_tables<'a>(
     tables: &[&'a TableDef],
 ) -> Result<Vec<&'a TableDef>, PlannerError> {
-    // SEQUENTIAL BY NATURE: Kahn's algorithm requires in-degree state evolution.
     if tables.is_empty() {
         return Ok(vec![]);
     }
@@ -37,66 +82,25 @@ pub(super) fn topological_sort_tables<'a>(
         dependencies.insert(table.name.as_str(), deps_set);
     }
 
-    // Kahn's algorithm for topological sort
-    // Calculate in-degrees (number of tables that depend on each table)
-    // Use BTreeMap for consistent ordering
-    let mut in_degree: BTreeMap<&str, usize> = BTreeMap::new();
-    for table in tables {
-        in_degree.entry(table.name.as_str()).or_insert(0);
-    }
-
-    // For each dependency, increment the in-degree of the dependent table
-    for (table_name, deps) in &dependencies {
-        for _dep in deps {
-            // The table has dependencies, so those referenced tables must come first
-            // We actually want the reverse: tables with dependencies have higher in-degree
-        }
-        // Actually, we need to track: if A depends on B, then A has in-degree from B
-        // So A cannot be processed until B is processed
-        *in_degree.entry(table_name).or_insert(0) += deps.len();
-    }
-
-    // Start with tables that have no dependencies
-    // BTreeMap iteration is already sorted by key
-    let mut queue: VecDeque<&str> = in_degree
-        .iter()
-        .filter(|(_, deg)| **deg == 0)
-        .map(|(name, _)| *name)
-        .collect();
-
-    let mut result: Vec<&TableDef> = Vec::with_capacity(tables.len());
+    // Kahn's algorithm for topological sort (shared core), then map the
+    // ready-ordered names back to their table definitions.
     let table_map: BTreeMap<&str, &TableDef> =
         tables.iter().map(|t| (t.name.as_str(), *t)).collect();
-
-    while let Some(table_name) = queue.pop_front() {
-        if let Some(&table) = table_map.get(table_name) {
-            result.push(table);
-        }
-
-        // Collect tables that become ready (in-degree becomes 0)
-        // Use BTreeSet for consistent ordering
-        let mut ready_tables: BTreeSet<&str> = BTreeSet::new();
-        for (dependent, deps) in &dependencies {
-            if deps.contains(&table_name)
-                && let Some(degree) = in_degree.get_mut(dependent)
-            {
-                *degree -= 1;
-                if *degree == 0 {
-                    ready_tables.insert(dependent);
-                }
-            }
-        }
-        for t in ready_tables {
-            queue.push_back(t);
-        }
-    }
+    let result: Vec<&TableDef> = kahn_ready_order(&dependencies)
+        .into_iter()
+        .filter_map(|name| table_map.get(name).copied())
+        .collect();
 
     // Check for cycles
     if result.len() != tables.len() {
+        // Collect the already-placed table names once so the `remaining` filter
+        // is an O(log n) set lookup instead of a nested `result.iter().any(...)`
+        // rescan per table. Cold error path, so this is a clarity/complexity win.
+        let placed: BTreeSet<&str> = result.iter().map(|t| t.name.as_str()).collect();
         let remaining: Vec<&str> = tables
             .iter()
             .map(|t| t.name.as_str())
-            .filter(|name| !result.iter().any(|t| t.name.as_str() == *name))
+            .filter(|name| !placed.contains(name))
             .collect();
         return Err(PlannerError::TableValidation(format!(
             "Circular foreign key dependency detected among tables: {remaining:?}"
@@ -121,7 +125,6 @@ pub(super) fn sort_delete_tables(
     actions: &mut [MigrationAction],
     all_tables: &BTreeMap<&str, &TableDef>,
 ) {
-    // SEQUENTIAL BY NATURE: Kahn's algorithm requires in-degree state evolution.
     // Collect DeleteTable actions and their indices
     let delete_indices: Vec<usize> = actions
         .iter()
@@ -166,48 +169,9 @@ pub(super) fn sort_delete_tables(
         dependencies.insert(table_name, deps_set);
     }
 
-    // Use Kahn's algorithm for topological sort
-    // in_degree[A] = number of tables A depends on
-    // Use BTreeMap for consistent ordering
-    let mut in_degree: BTreeMap<&str, usize> = BTreeMap::new();
-    for &table_name in &delete_table_names {
-        in_degree.insert(
-            table_name,
-            dependencies
-                .get(table_name)
-                .map_or(0, std::collections::BTreeSet::len),
-        );
-    }
-
-    // Start with tables that have no dependencies (can be deleted last in creation order)
-    // BTreeMap iteration is already sorted
-    let mut queue: VecDeque<&str> = in_degree
-        .iter()
-        .filter(|(_, deg)| **deg == 0)
-        .map(|(name, _)| *name)
-        .collect();
-
-    let mut sorted_tables: Vec<&str> = Vec::with_capacity(delete_table_names.len());
-    while let Some(table_name) = queue.pop_front() {
-        sorted_tables.push(table_name);
-
-        // For each table that has this one as a dependency, decrement its in-degree
-        // Use BTreeSet for consistent ordering of newly ready tables
-        let mut ready_tables: BTreeSet<&str> = BTreeSet::new();
-        for (&dependent, deps) in &dependencies {
-            if deps.contains(&table_name)
-                && let Some(degree) = in_degree.get_mut(dependent)
-            {
-                *degree -= 1;
-                if *degree == 0 {
-                    ready_tables.insert(dependent);
-                }
-            }
-        }
-        for t in ready_tables {
-            queue.push_back(t);
-        }
-    }
+    // Kahn's algorithm for topological sort (shared core): creation order
+    // first, then reversed below into deletion order.
+    let mut sorted_tables = kahn_ready_order(&dependencies);
 
     // Reverse to get deletion order (tables with dependencies should be deleted first)
     sorted_tables.reverse();
@@ -218,22 +182,48 @@ pub(super) fn sort_delete_tables(
         .map(|(idx, &name)| (name, idx))
         .collect();
 
-    // Reorder the DeleteTable actions according to sorted order
-    let mut delete_actions: Vec<MigrationAction> =
-        delete_indices.iter().map(|&i| actions[i].clone()).collect();
-
-    delete_actions.sort_by(|a, b| {
-        let a_name = extract_delete_table_name(a);
-        let b_name = extract_delete_table_name(b);
-
-        let a_pos = sorted_positions.get(a_name).copied().unwrap_or(0);
-        let b_pos = sorted_positions.get(b_name).copied().unwrap_or(0);
-        a_pos.cmp(&b_pos)
+    // Reorder the DeleteTable actions among their existing slots according to
+    // `sorted_positions`, WITHOUT cloning each action.
+    //
+    // Everything below works in RANK space (`0..k` over the delete run) rather
+    // than in raw slot space. `delete_indices` is ascending (it comes from
+    // `.enumerate()`), so rank `r` and slot `delete_indices[r]` are
+    // order-isomorphic — ranks index the bookkeeping arrays directly, with no
+    // `slot - base` translation and no sparse side table spanning the gaps
+    // between delete slots.
+    //
+    // `order[dst]` holds the ORIGINAL rank whose action belongs at rank `dst`;
+    // the stable sort keeps equal-position actions in their original relative
+    // order, matching the previous stable `sort_by` byte-for-byte.
+    let k = delete_indices.len();
+    let mut order: Vec<usize> = (0..k).collect();
+    order.sort_by_key(|&rank| {
+        let name = extract_delete_table_name(&actions[delete_indices[rank]]);
+        sorted_positions.get(name).copied().unwrap_or(0)
     });
 
-    // Put them back
-    for (i, idx) in delete_indices.iter().enumerate() {
-        actions[*idx] = delete_actions[i].clone();
+    // Apply the permutation `order` onto the delete slots via selection-style
+    // swaps, moving each action into its destination with owned moves and no
+    // clone. We keep two mutually-inverse rank arrays and update BOTH in O(1)
+    // per swap, so resolving "which position currently holds the wanted action"
+    // is a direct array read instead of an inner `.position(..)` linear rescan
+    // — making the apply O(k) instead of O(k²):
+    //   * `origin_at[pos]`  — original rank of the action now sitting at `pos`
+    //   * `pos_of[origin]`  — its inverse
+    // The reordered `DeleteTable` payloads stay byte-identical to before.
+    let mut origin_at: Vec<usize> = (0..k).collect();
+    let mut pos_of: Vec<usize> = (0..k).collect();
+    for dst in 0..k {
+        let want = order[dst];
+        let src = pos_of[want];
+        if src != dst {
+            actions.swap(delete_indices[dst], delete_indices[src]);
+            // Swap the two positions' bookkeeping so both arrays stay consistent.
+            let displaced = origin_at[dst];
+            origin_at.swap(dst, src);
+            pos_of[want] = dst;
+            pos_of[displaced] = src;
+        }
     }
 }
 
@@ -309,12 +299,10 @@ pub(super) fn sort_create_before_add_constraint(actions: &mut [MigrationAction])
     actions.sort_by(|a, b| compare_actions_for_create_order(a, b, &created_tables));
 }
 
-/// Get the set of string enum values that were removed (present in `from` but not in `to`).
-/// Returns None if either type is not a string enum.
-fn get_removed_string_enum_values(
-    from_type: &ColumnType,
-    to_type: &ColumnType,
-) -> Option<Vec<String>> {
+/// Returns true when both types are string enums and `needle` is a value the
+/// change removes (present in `from`, absent in `to`). Direct membership test:
+/// `needle ∈ (from \ to)` ⇔ `needle ∈ from ∧ needle ∉ to` — no set or clones.
+fn string_enum_value_removed(from_type: &ColumnType, to_type: &ColumnType, needle: &str) -> bool {
     match (from_type, to_type) {
         (
             ColumnType::Complex(ComplexColumnType::Enum {
@@ -325,20 +313,8 @@ fn get_removed_string_enum_values(
                 values: EnumValues::String(to_values),
                 ..
             }),
-        ) => {
-            let to_set: HashSet<&str> = to_values.iter().map(std::string::String::as_str).collect();
-            let removed: Vec<String> = from_values
-                .iter()
-                .filter(|v| !to_set.contains(v.as_str()))
-                .cloned()
-                .collect();
-            if removed.is_empty() {
-                None
-            } else {
-                Some(removed)
-            }
-        }
-        _ => None,
+        ) => from_values.iter().any(|v| v == needle) && !to_values.iter().any(|v| v == needle),
+        _ => false,
     }
 }
 
@@ -398,8 +374,6 @@ pub(super) fn sort_enum_default_dependencies(
         if let Some(&default_idx) = default_changes.get(&(*table, *column))
             && let Some(from_table) = from_map.get(table)
             && let Some(from_column) = from_table.columns.iter().find(|c| c.name == *column)
-            && let Some(removed_values) =
-                get_removed_string_enum_values(&from_column.r#type, new_type)
             && let Some(ref old_default) = from_column.default
         {
             // Both ModifyColumnType and ModifyColumnDefault exist for same column
@@ -407,7 +381,9 @@ pub(super) fn sort_enum_default_dependencies(
             let old_default_sql = old_default.to_sql();
             let old_default_unquoted = extract_unquoted_default(&old_default_sql);
 
-            if removed_values.iter().any(|v| v == old_default_unquoted) && *type_idx < default_idx {
+            if string_enum_value_removed(&from_column.r#type, new_type, old_default_unquoted)
+                && *type_idx < default_idx
+            {
                 // Old default is being removed - must change default BEFORE type
                 swaps.push((*type_idx, default_idx));
             }

@@ -1,5 +1,5 @@
 use super::*;
-pub(super) use crate::test_support::CwdGuard;
+pub(super) use crate::test_support::{CwdGuard, write_simple_id_model};
 pub(super) use anyhow::Result;
 pub(super) use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -25,33 +25,6 @@ fn write_config_with_format(fmt: Option<FileFormat>) -> VespertideConfig {
     let text = serde_json::to_string_pretty(&cfg).unwrap();
     std_fs::write("vespertide.json", text).unwrap();
     cfg
-}
-
-fn write_model(name: &str) {
-    let models_dir = PathBuf::from("models");
-    std_fs::create_dir_all(&models_dir).unwrap();
-    let table = TableDef {
-        name: name.into(),
-        description: None,
-        columns: vec![ColumnDef {
-            name: "id".into(),
-            r#type: ColumnType::Simple(SimpleColumnType::Integer),
-            nullable: false,
-            default: None,
-            comment: None,
-            primary_key: None,
-            unique: None,
-            index: None,
-            foreign_key: None,
-        }],
-        constraints: vec![TableConstraint::PrimaryKey {
-            auto_increment: false,
-            columns: vec!["id".into()],
-            strategy: vespertide_core::PrimaryKeyAdditionStrategy::default(),
-        }],
-    };
-    let path = models_dir.join(format!("{name}.json"));
-    std_fs::write(path, serde_json::to_string_pretty(&table).unwrap()).unwrap();
 }
 
 mod branches;

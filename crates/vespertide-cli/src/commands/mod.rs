@@ -4,6 +4,7 @@ pub mod export;
 pub mod init;
 pub mod log;
 pub mod new;
+mod raw_sql_warning;
 pub mod revision;
 pub mod sql;
 pub mod status;

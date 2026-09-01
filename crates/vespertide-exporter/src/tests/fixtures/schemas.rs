@@ -131,6 +131,39 @@ pub(crate) fn schema_scenario(name: &str) -> (TableDef, Vec<TableDef>) {
             &["created_by_user_id", "updated_by_user_id"],
             true,
         ),
+        "composite_and_single_fk_same_target" => {
+            let target = table(
+                "target",
+                vec![
+                    simple("a", Integer),
+                    simple("b", Integer),
+                    simple("u", Integer),
+                ],
+                vec![
+                    pk(&["a", "b"]),
+                    TableConstraint::Unique {
+                        name: None,
+                        columns: vec!["u".into()],
+                        strategy: vespertide_core::UniqueConstraintStrategy::default(),
+                    },
+                ],
+            );
+            let src = table_with_fk_constraints(
+                "src",
+                vec![
+                    simple("id", Integer),
+                    simple("a_id", Integer),
+                    simple("b_id", Integer),
+                    simple("solo", Integer),
+                ],
+                &["id"],
+                vec![
+                    (vec!["a_id", "b_id"], "target", vec!["a", "b"]),
+                    (vec!["solo"], "target", vec!["u"]),
+                ],
+            );
+            (src.clone(), vec![target, src])
+        }
         _ => panic!("unknown schema scenario {name}"),
     }
 }

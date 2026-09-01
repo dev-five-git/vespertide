@@ -33,7 +33,7 @@ jobs:
     name: fmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt
@@ -44,7 +44,7 @@ jobs:
     name: clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: clippy
@@ -55,7 +55,7 @@ jobs:
     name: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Test
         run: cargo test --workspace --all-features
@@ -73,7 +73,7 @@ jobs:
       matrix:
         threads: ["1", "4"]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Test with Rayon thread count
         run: cargo test --workspace --all-features --exclude vespertide-fuzz
@@ -89,7 +89,7 @@ jobs:
     name: SQL validity (daemon-free)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Install build-essential for pg_query (PG C parser)
         run: sudo apt-get update && sudo apt-get install -y build-essential libreadline-dev zlib1g-dev flex bison
@@ -105,7 +105,7 @@ jobs:
     name: cargo-deny
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
@@ -116,7 +116,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -196,7 +196,7 @@ jobs:
       changepacks: ${{ steps.changepacks.outputs.changepacks }}
       release_assets_urls: ${{ steps.changepacks.outputs.release_assets_urls }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       # changepacks/action@main: project-internal action intentionally tracks main.
       # `publish: true` runs `cargo publish` for every Cargo.toml changed in this
       # release wave. `release_assets_urls` output is consumed by the downstream
@@ -258,7 +258,7 @@ jobs:
             archive: zip
             use_cross: false
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
@@ -266,7 +266,7 @@ jobs:
 
       - name: Install cross (aarch64-unknown-linux-gnu only)
         if: matrix.use_cross
-        uses: taiki-e/install-action@v2.81.6
+        uses: taiki-e/install-action@v2.86.3
         with:
           tool: cross
 
@@ -354,7 +354,7 @@ jobs:
             binary_dir_name: win32-x64
             archive_format: zip
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -485,7 +485,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -548,7 +548,7 @@ jobs:
     name: doc
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Check docs
         run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace
@@ -557,7 +557,7 @@ jobs:
     name: schema-drift
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Regenerate schemas
         run: cargo run -p vespertide-schema-gen -- --out _tmp_schemas
@@ -568,7 +568,7 @@ jobs:
     name: insta-pending
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Run exporter snapshots
         run: cargo test -p vespertide-exporter
@@ -584,7 +584,7 @@ jobs:
     name: line-budget
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Check Rust line budget
         run: sh scripts/check-line-budget.sh
 
@@ -595,7 +595,7 @@ jobs:
       image: xd009642/tarpaulin:develop-nightly
       options: --security-opt seccomp=unconfined
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest

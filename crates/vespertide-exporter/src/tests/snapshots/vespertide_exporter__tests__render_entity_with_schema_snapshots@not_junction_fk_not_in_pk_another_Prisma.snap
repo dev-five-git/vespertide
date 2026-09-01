@@ -1,0 +1,10 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model Another {
+  id Int @id
+  not_junction NotJunction[]
+
+  @@map("another")
+}

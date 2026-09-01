@@ -227,7 +227,7 @@ impl TableConstraint {
             } => TableConstraint::ForeignKey {
                 name,
                 columns,
-                ref_table: format!("{prefix}{ref_table}").into(),
+                ref_table: ref_table.with_prefix(prefix),
                 ref_columns,
                 on_delete,
                 on_update,

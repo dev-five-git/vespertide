@@ -41,7 +41,10 @@
 
 use std::collections::{BTreeMap, HashSet};
 
-use vespertide_core::{MigrationAction, MigrationPlan, ReferenceAction, TableConstraint, TableDef};
+use vespertide_core::{
+    MigrationAction, MigrationPlan, ReferenceAction, TableConstraint, TableDef,
+    schema::names::names_to_strings,
+};
 
 /// Depth at or above which a cascade chain is flagged as "Deep".
 const DEEP_THRESHOLD: usize = 3;
@@ -127,7 +130,7 @@ pub fn find_cascade_reach_violations(
         warnings.push(CascadeReachWarning {
             action_index: idx,
             origin_child_table: table.to_string(),
-            origin_columns: columns.iter().map(ToString::to_string).collect(),
+            origin_columns: names_to_strings(columns),
             parent_table: ref_table.to_string(),
             depth,
             reached_tables: reached,
@@ -239,10 +242,11 @@ fn classify_risk(depth: usize, max_fanout: usize) -> Option<CascadeRiskLevel> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::plan;
     use rstest::rstest;
     use vespertide_core::{
-        ColumnDef, ColumnType, ForeignKeyOrphanStrategy, MigrationAction, MigrationPlan,
-        ReferenceAction, SimpleColumnType, TableConstraint, TableDef, TableName,
+        ColumnDef, ColumnType, ForeignKeyOrphanStrategy, MigrationAction, ReferenceAction,
+        SimpleColumnType, TableConstraint, TableDef, TableName,
     };
 
     fn col(name: &str) -> ColumnDef {
@@ -313,16 +317,6 @@ mod tests {
                 on_update: None,
                 orphan_strategy: ForeignKeyOrphanStrategy::default(),
             },
-        }
-    }
-
-    fn plan(actions: Vec<MigrationAction>) -> MigrationPlan {
-        MigrationPlan {
-            id: "test".into(),
-            version: 1,
-            comment: None,
-            created_at: None,
-            actions,
         }
     }
 

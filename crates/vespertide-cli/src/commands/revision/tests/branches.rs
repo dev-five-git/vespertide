@@ -266,17 +266,11 @@ async fn cmd_revision_core_dangling_fk_drop_returns_hard_error() {
         actions: vec![
             MigrationAction::CreateTable {
                 table: "users".into(),
-                columns: vec![ColumnDef {
-                    name: "id".into(),
-                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
-                    nullable: false,
-                    default: None,
-                    comment: None,
-                    primary_key: None,
-                    unique: None,
-                    index: None,
-                    foreign_key: None,
-                }],
+                columns: vec![ColumnDef::new(
+                    "id",
+                    ColumnType::Simple(SimpleColumnType::Integer),
+                    false,
+                )],
                 constraints: vec![TableConstraint::PrimaryKey {
                     auto_increment: false,
                     columns: vec!["id".into()],
@@ -286,28 +280,12 @@ async fn cmd_revision_core_dangling_fk_drop_returns_hard_error() {
             MigrationAction::CreateTable {
                 table: "posts".into(),
                 columns: vec![
-                    ColumnDef {
-                        name: "id".into(),
-                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
-                        nullable: false,
-                        default: None,
-                        comment: None,
-                        primary_key: None,
-                        unique: None,
-                        index: None,
-                        foreign_key: None,
-                    },
-                    ColumnDef {
-                        name: "user_id".into(),
-                        r#type: ColumnType::Simple(SimpleColumnType::Integer),
-                        nullable: true,
-                        default: None,
-                        comment: None,
-                        primary_key: None,
-                        unique: None,
-                        index: None,
-                        foreign_key: None,
-                    },
+                    ColumnDef::new("id", ColumnType::Simple(SimpleColumnType::Integer), false),
+                    ColumnDef::new(
+                        "user_id",
+                        ColumnType::Simple(SimpleColumnType::Integer),
+                        true,
+                    ),
                 ],
                 constraints: vec![
                     TableConstraint::PrimaryKey {
@@ -341,34 +319,19 @@ async fn cmd_revision_core_dangling_fk_drop_returns_hard_error() {
         name: "posts".into(),
         description: None,
         columns: vec![
-            ColumnDef {
-                name: "id".into(),
-                r#type: ColumnType::Simple(SimpleColumnType::Integer),
-                nullable: false,
-                default: None,
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
-            },
-            ColumnDef {
-                name: "user_id".into(),
-                r#type: ColumnType::Simple(SimpleColumnType::Integer),
-                nullable: true,
-                default: None,
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: Some(ForeignKeySyntax::Object(ForeignKeyDef {
-                    ref_table: "users".into(),
-                    ref_columns: vec!["id".into()],
-                    on_delete: None,
-                    on_update: None,
-                    orphan_strategy: ForeignKeyOrphanStrategy::default(),
-                })),
-            },
+            ColumnDef::new("id", ColumnType::Simple(SimpleColumnType::Integer), false),
+            ColumnDef::new(
+                "user_id",
+                ColumnType::Simple(SimpleColumnType::Integer),
+                true,
+            )
+            .foreign_key(ForeignKeySyntax::Object(ForeignKeyDef {
+                ref_table: "users".into(),
+                ref_columns: vec!["id".into()],
+                on_delete: None,
+                on_update: None,
+                orphan_strategy: ForeignKeyOrphanStrategy::default(),
+            })),
         ],
         constraints: vec![TableConstraint::PrimaryKey {
             auto_increment: false,
@@ -417,28 +380,8 @@ async fn cmd_revision_core_drop_resolution_cancel_aborts() {
         actions: vec![MigrationAction::CreateTable {
             table: "users".into(),
             columns: vec![
-                ColumnDef {
-                    name: "id".into(),
-                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
-                    nullable: false,
-                    default: None,
-                    comment: None,
-                    primary_key: None,
-                    unique: None,
-                    index: None,
-                    foreign_key: None,
-                },
-                ColumnDef {
-                    name: "email".into(),
-                    r#type: ColumnType::Simple(SimpleColumnType::Text),
-                    nullable: true,
-                    default: None,
-                    comment: None,
-                    primary_key: None,
-                    unique: None,
-                    index: None,
-                    foreign_key: None,
-                },
+                ColumnDef::new("id", ColumnType::Simple(SimpleColumnType::Integer), false),
+                ColumnDef::new("email", ColumnType::Simple(SimpleColumnType::Text), true),
             ],
             constraints: vec![TableConstraint::PrimaryKey {
                 auto_increment: false,
@@ -459,17 +402,11 @@ async fn cmd_revision_core_drop_resolution_cancel_aborts() {
     let model = TableDef {
         name: "users".into(),
         description: None,
-        columns: vec![ColumnDef {
-            name: "id".into(),
-            r#type: ColumnType::Simple(SimpleColumnType::Integer),
-            nullable: false,
-            default: None,
-            comment: None,
-            primary_key: None,
-            unique: None,
-            index: None,
-            foreign_key: None,
-        }],
+        columns: vec![ColumnDef::new(
+            "id",
+            ColumnType::Simple(SimpleColumnType::Integer),
+            false,
+        )],
         constraints: vec![TableConstraint::PrimaryKey {
             auto_increment: false,
             columns: vec!["id".into()],
@@ -514,28 +451,8 @@ async fn cmd_revision_core_drop_resolution_accept_drop_writes_migration() {
         actions: vec![MigrationAction::CreateTable {
             table: "users".into(),
             columns: vec![
-                ColumnDef {
-                    name: "id".into(),
-                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
-                    nullable: false,
-                    default: None,
-                    comment: None,
-                    primary_key: None,
-                    unique: None,
-                    index: None,
-                    foreign_key: None,
-                },
-                ColumnDef {
-                    name: "email".into(),
-                    r#type: ColumnType::Simple(SimpleColumnType::Text),
-                    nullable: true,
-                    default: None,
-                    comment: None,
-                    primary_key: None,
-                    unique: None,
-                    index: None,
-                    foreign_key: None,
-                },
+                ColumnDef::new("id", ColumnType::Simple(SimpleColumnType::Integer), false),
+                ColumnDef::new("email", ColumnType::Simple(SimpleColumnType::Text), true),
             ],
             constraints: vec![TableConstraint::PrimaryKey {
                 auto_increment: false,
@@ -555,17 +472,11 @@ async fn cmd_revision_core_drop_resolution_accept_drop_writes_migration() {
     let model = TableDef {
         name: "users".into(),
         description: None,
-        columns: vec![ColumnDef {
-            name: "id".into(),
-            r#type: ColumnType::Simple(SimpleColumnType::Integer),
-            nullable: false,
-            default: None,
-            comment: None,
-            primary_key: None,
-            unique: None,
-            index: None,
-            foreign_key: None,
-        }],
+        columns: vec![ColumnDef::new(
+            "id",
+            ColumnType::Simple(SimpleColumnType::Integer),
+            false,
+        )],
         constraints: vec![TableConstraint::PrimaryKey {
             auto_increment: false,
             columns: vec!["id".into()],
@@ -612,28 +523,9 @@ async fn cmd_revision_core_default_change_backfill_path() {
         actions: vec![MigrationAction::CreateTable {
             table: "users".into(),
             columns: vec![
-                ColumnDef {
-                    name: "id".into(),
-                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
-                    nullable: false,
-                    default: None,
-                    comment: None,
-                    primary_key: None,
-                    unique: None,
-                    index: None,
-                    foreign_key: None,
-                },
-                ColumnDef {
-                    name: "status".into(),
-                    r#type: ColumnType::Simple(SimpleColumnType::Text),
-                    nullable: false,
-                    default: Some("'pending'".into()),
-                    comment: None,
-                    primary_key: None,
-                    unique: None,
-                    index: None,
-                    foreign_key: None,
-                },
+                ColumnDef::new("id", ColumnType::Simple(SimpleColumnType::Integer), false),
+                ColumnDef::new("status", ColumnType::Simple(SimpleColumnType::Text), false)
+                    .default("'pending'".into()),
             ],
             constraints: vec![TableConstraint::PrimaryKey {
                 auto_increment: false,
@@ -655,28 +547,9 @@ async fn cmd_revision_core_default_change_backfill_path() {
         name: "users".into(),
         description: None,
         columns: vec![
-            ColumnDef {
-                name: "id".into(),
-                r#type: ColumnType::Simple(SimpleColumnType::Integer),
-                nullable: false,
-                default: None,
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
-            },
-            ColumnDef {
-                name: "status".into(),
-                r#type: ColumnType::Simple(SimpleColumnType::Text),
-                nullable: false,
-                default: Some("'active'".into()),
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
-            },
+            ColumnDef::new("id", ColumnType::Simple(SimpleColumnType::Integer), false),
+            ColumnDef::new("status", ColumnType::Simple(SimpleColumnType::Text), false)
+                .default("'active'".into()),
         ],
         constraints: vec![TableConstraint::PrimaryKey {
             auto_increment: false,
@@ -736,28 +609,9 @@ async fn cmd_revision_core_default_change_cancel_aborts() {
         actions: vec![MigrationAction::CreateTable {
             table: "users".into(),
             columns: vec![
-                ColumnDef {
-                    name: "id".into(),
-                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
-                    nullable: false,
-                    default: None,
-                    comment: None,
-                    primary_key: None,
-                    unique: None,
-                    index: None,
-                    foreign_key: None,
-                },
-                ColumnDef {
-                    name: "status".into(),
-                    r#type: ColumnType::Simple(SimpleColumnType::Text),
-                    nullable: false,
-                    default: Some("'pending'".into()),
-                    comment: None,
-                    primary_key: None,
-                    unique: None,
-                    index: None,
-                    foreign_key: None,
-                },
+                ColumnDef::new("id", ColumnType::Simple(SimpleColumnType::Integer), false),
+                ColumnDef::new("status", ColumnType::Simple(SimpleColumnType::Text), false)
+                    .default("'pending'".into()),
             ],
             constraints: vec![TableConstraint::PrimaryKey {
                 auto_increment: false,
@@ -778,28 +632,9 @@ async fn cmd_revision_core_default_change_cancel_aborts() {
         name: "users".into(),
         description: None,
         columns: vec![
-            ColumnDef {
-                name: "id".into(),
-                r#type: ColumnType::Simple(SimpleColumnType::Integer),
-                nullable: false,
-                default: None,
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
-            },
-            ColumnDef {
-                name: "status".into(),
-                r#type: ColumnType::Simple(SimpleColumnType::Text),
-                nullable: false,
-                default: Some("'active'".into()),
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
-            },
+            ColumnDef::new("id", ColumnType::Simple(SimpleColumnType::Integer), false),
+            ColumnDef::new("status", ColumnType::Simple(SimpleColumnType::Text), false)
+                .default("'active'".into()),
         ],
         constraints: vec![TableConstraint::PrimaryKey {
             auto_increment: false,
@@ -847,28 +682,9 @@ async fn cmd_revision_core_default_change_skip_writes_v2_without_backfill() {
         actions: vec![MigrationAction::CreateTable {
             table: "users".into(),
             columns: vec![
-                ColumnDef {
-                    name: "id".into(),
-                    r#type: ColumnType::Simple(SimpleColumnType::Integer),
-                    nullable: false,
-                    default: None,
-                    comment: None,
-                    primary_key: None,
-                    unique: None,
-                    index: None,
-                    foreign_key: None,
-                },
-                ColumnDef {
-                    name: "status".into(),
-                    r#type: ColumnType::Simple(SimpleColumnType::Text),
-                    nullable: false,
-                    default: Some("'pending'".into()),
-                    comment: None,
-                    primary_key: None,
-                    unique: None,
-                    index: None,
-                    foreign_key: None,
-                },
+                ColumnDef::new("id", ColumnType::Simple(SimpleColumnType::Integer), false),
+                ColumnDef::new("status", ColumnType::Simple(SimpleColumnType::Text), false)
+                    .default("'pending'".into()),
             ],
             constraints: vec![TableConstraint::PrimaryKey {
                 auto_increment: false,
@@ -889,28 +705,9 @@ async fn cmd_revision_core_default_change_skip_writes_v2_without_backfill() {
         name: "users".into(),
         description: None,
         columns: vec![
-            ColumnDef {
-                name: "id".into(),
-                r#type: ColumnType::Simple(SimpleColumnType::Integer),
-                nullable: false,
-                default: None,
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
-            },
-            ColumnDef {
-                name: "status".into(),
-                r#type: ColumnType::Simple(SimpleColumnType::Text),
-                nullable: false,
-                default: Some("'active'".into()),
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
-            },
+            ColumnDef::new("id", ColumnType::Simple(SimpleColumnType::Integer), false),
+            ColumnDef::new("status", ColumnType::Simple(SimpleColumnType::Text), false)
+                .default("'active'".into()),
         ],
         constraints: vec![TableConstraint::PrimaryKey {
             auto_increment: false,
@@ -941,17 +738,7 @@ async fn cmd_revision_core_default_change_skip_writes_v2_without_backfill() {
 }
 
 pub(super) fn col(name: &str, ty: ColumnType, nullable: bool) -> ColumnDef {
-    ColumnDef {
-        name: name.into(),
-        r#type: ty,
-        nullable,
-        default: None,
-        comment: None,
-        primary_key: None,
-        unique: None,
-        index: None,
-        foreign_key: None,
-    }
+    ColumnDef::new(name, ty, nullable)
 }
 
 pub(super) fn int_col(name: &str, nullable: bool) -> ColumnDef {

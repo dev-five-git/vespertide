@@ -1,0 +1,7 @@
+---
+source: crates/vespertide-query/src/sql/data_migration.rs
+expression: "queries[0].build(backend)"
+---
+UpDaTe "User"
+  SET meta = '{"a": 1}'::jsonb, n = N + 1
+  WHERE Kind = 'Legacy';

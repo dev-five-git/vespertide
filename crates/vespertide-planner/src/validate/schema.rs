@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, HashSet};
 
 use rayon::prelude::*;
-use vespertide_core::{TableConstraint, TableDef, schema::primary_key::PrimaryKeySyntax};
+use vespertide_core::{
+    TableConstraint, TableDef, schema::names::ColumnName, schema::primary_key::PrimaryKeySyntax,
+};
 
 use super::enums::validate_column;
 use super::foreign_keys::validate_foreign_key_constraint;
@@ -179,7 +181,7 @@ pub(super) fn validate_table(
                     return Err(PlannerError::InvalidAutoIncrement(
                         table.name.to_string(),
                         col_name.to_string(),
-                        format!("{:?}", column.r#type),
+                        column.r#type.display_label(),
                     ));
                 }
             }
@@ -197,7 +199,7 @@ pub(super) fn validate_table(
                 return Err(PlannerError::InvalidAutoIncrement(
                     table.name.to_string(),
                     column.name.to_string(),
-                    format!("{:?}", column.r#type),
+                    column.r#type.display_label(),
                 ));
             }
         }
@@ -224,38 +226,10 @@ fn validate_constraint(
 ) -> Result<(), PlannerError> {
     match constraint {
         TableConstraint::PrimaryKey { columns, .. } => {
-            if columns.is_empty() {
-                return Err(PlannerError::EmptyConstraintColumns(
-                    table_name.to_string(),
-                    "PrimaryKey".to_string(),
-                ));
-            }
-            for col in columns {
-                if !table_columns.contains(col.as_str()) {
-                    return Err(PlannerError::ConstraintColumnNotFound(
-                        table_name.to_string(),
-                        "PrimaryKey".to_string(),
-                        col.to_string(),
-                    ));
-                }
-            }
+            validate_named_constraint_columns(table_name, "PrimaryKey", columns, table_columns)?;
         }
         TableConstraint::Unique { columns, .. } => {
-            if columns.is_empty() {
-                return Err(PlannerError::EmptyConstraintColumns(
-                    table_name.to_string(),
-                    "Unique".to_string(),
-                ));
-            }
-            for col in columns {
-                if !table_columns.contains(col.as_str()) {
-                    return Err(PlannerError::ConstraintColumnNotFound(
-                        table_name.to_string(),
-                        "Unique".to_string(),
-                        col.to_string(),
-                    ));
-                }
-            }
+            validate_named_constraint_columns(table_name, "Unique", columns, table_columns)?;
         }
         TableConstraint::ForeignKey {
             columns,
@@ -296,5 +270,33 @@ fn validate_constraint(
         _ => unreachable!("TableConstraint is #[non_exhaustive]; all variants are matched above"),
     }
 
+    Ok(())
+}
+
+/// Shared column-membership validation for named table constraints
+/// (`PrimaryKey` / `Unique`): the column list must be non-empty and every
+/// column must exist on the table. `label` is echoed verbatim into the
+/// error variants (`"PrimaryKey"` / `"Unique"`).
+fn validate_named_constraint_columns(
+    table_name: &str,
+    label: &str,
+    columns: &[ColumnName],
+    table_columns: &HashSet<&str>,
+) -> Result<(), PlannerError> {
+    if columns.is_empty() {
+        return Err(PlannerError::EmptyConstraintColumns(
+            table_name.to_string(),
+            label.to_string(),
+        ));
+    }
+    for col in columns {
+        if !table_columns.contains(col.as_str()) {
+            return Err(PlannerError::ConstraintColumnNotFound(
+                table_name.to_string(),
+                label.to_string(),
+                col.to_string(),
+            ));
+        }
+    }
     Ok(())
 }

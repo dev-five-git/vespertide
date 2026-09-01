@@ -11,6 +11,7 @@ use vespertide_planner::{CheckExprAst, CheckExprLiteral, CheckExprOp, parse_chec
 
 use super::DomainHover;
 use crate::check_expr_range::expr_inner_range;
+use crate::tree_util::{is_inside_constraints, is_pair};
 
 pub(super) fn try_hover(
     node: tree_sitter::Node<'_>,
@@ -229,28 +230,6 @@ fn expr_pair_ancestor<'tree>(
         cur = candidate.parent();
     }
     None
-}
-
-/// True when any ancestor pair has key `"constraints"`. Mirrors
-/// `column::is_inside_columns` from the column-hover handler.
-fn is_inside_constraints(node: tree_sitter::Node<'_>, source: &str) -> bool {
-    let mut cur = node.parent();
-    while let Some(candidate) = cur {
-        if is_pair(candidate)
-            && let Some(key) = candidate.named_child(0)
-            && source
-                .get(key.byte_range())
-                .is_some_and(|text| strip_quotes(text) == "constraints")
-        {
-            return true;
-        }
-        cur = candidate.parent();
-    }
-    false
-}
-
-fn is_pair(node: tree_sitter::Node<'_>) -> bool {
-    matches!(node.kind(), "pair" | "block_mapping_pair")
 }
 
 #[cfg(test)]
@@ -599,9 +578,8 @@ constraints:
         let needle = "age > 0 AND";
         let pos = src.find(needle).expect("needle present") + needle.len() - 2;
 
-        let hover =
-            super::super::compute(src, DocumentFormat::Json, tree.as_ref(), &idx, &docs, pos)
-                .expect("hover inside parseable CHECK expression");
+        let hover = super::super::compute(src, tree.as_ref(), &idx, &docs, pos)
+            .expect("hover inside parseable CHECK expression");
 
         assert!(
             hover.markdown.contains("AND"),
@@ -644,8 +622,7 @@ constraints:
         let tree = pool.parse(src, DocumentFormat::Json);
         let pos = src.find("LOWER(").expect("needle present") + 2;
 
-        let hover =
-            super::super::compute(src, DocumentFormat::Json, tree.as_ref(), &idx, &docs, pos);
+        let hover = super::super::compute(src, tree.as_ref(), &idx, &docs, pos);
 
         if let Some(h) = hover {
             let lower = h.markdown.to_lowercase();
@@ -671,15 +648,8 @@ constraints:
         let post_tree = pool.parse(post_src, DocumentFormat::Json);
         let pos = post_src.find(r#""ref_table":"user""#).unwrap() + 14;
 
-        let hover = super::super::compute(
-            post_src,
-            DocumentFormat::Json,
-            post_tree.as_ref(),
-            &idx,
-            &docs,
-            pos,
-        )
-        .expect("hover on ref_table must still resolve");
+        let hover = super::super::compute(post_src, post_tree.as_ref(), &idx, &docs, pos)
+            .expect("hover on ref_table must still resolve");
 
         assert!(
             hover.markdown.contains("Target table"),

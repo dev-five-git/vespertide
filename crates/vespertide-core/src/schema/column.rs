@@ -101,41 +101,41 @@ impl ColumnType {
 
     /// Convert column type to Rust type string (for `SeaORM` entity generation)
     pub fn to_rust_type(&self, nullable: bool) -> String {
-        let base = match self {
+        let base: &'static str = match self {
             ColumnType::Simple(ty) => match ty {
-                SimpleColumnType::SmallInt => "i16".to_string(),
-                SimpleColumnType::Integer => "i32".to_string(),
-                SimpleColumnType::BigInt => "i64".to_string(),
-                SimpleColumnType::Real => "f32".to_string(),
-                SimpleColumnType::DoublePrecision => "f64".to_string(),
+                SimpleColumnType::SmallInt => "i16",
+                SimpleColumnType::Integer => "i32",
+                SimpleColumnType::BigInt => "i64",
+                SimpleColumnType::Real => "f32",
+                SimpleColumnType::DoublePrecision => "f64",
                 SimpleColumnType::Text
                 | SimpleColumnType::Interval
                 | SimpleColumnType::Inet
                 | SimpleColumnType::Cidr
                 | SimpleColumnType::Macaddr
-                | SimpleColumnType::Xml => "String".to_string(),
-                SimpleColumnType::Boolean => "bool".to_string(),
-                SimpleColumnType::Date => "Date".to_string(),
-                SimpleColumnType::Time => "Time".to_string(),
-                SimpleColumnType::Timestamp => "DateTime".to_string(),
-                SimpleColumnType::Timestamptz => "DateTimeWithTimeZone".to_string(),
-                SimpleColumnType::Bytea => "Vec<u8>".to_string(),
-                SimpleColumnType::Uuid => "Uuid".to_string(),
-                SimpleColumnType::Json => "Json".to_string(),
+                | SimpleColumnType::Xml => "String",
+                SimpleColumnType::Boolean => "bool",
+                SimpleColumnType::Date => "Date",
+                SimpleColumnType::Time => "Time",
+                SimpleColumnType::Timestamp => "DateTime",
+                SimpleColumnType::Timestamptz => "DateTimeWithTimeZone",
+                SimpleColumnType::Bytea => "Vec<u8>",
+                SimpleColumnType::Uuid => "Uuid",
+                SimpleColumnType::Json => "Json",
             },
             ColumnType::Complex(ty) => match ty {
-                ComplexColumnType::Numeric { .. } => "Decimal".to_string(),
+                ComplexColumnType::Numeric { .. } => "Decimal",
                 ComplexColumnType::Varchar { .. }
                 | ComplexColumnType::Char { .. }
                 | ComplexColumnType::Custom { .. }
-                | ComplexColumnType::Enum { .. } => "String".to_string(),
+                | ComplexColumnType::Enum { .. } => "String",
             },
         };
 
         if nullable {
             format!("Option<{base}>")
         } else {
-            base
+            base.to_string()
         }
     }
 
@@ -145,6 +145,22 @@ impl ColumnType {
         match self {
             ColumnType::Simple(ty) => ty.to_display_string(),
             ColumnType::Complex(ty) => ty.to_display_string(),
+        }
+    }
+
+    /// Render the type in the **model-file (wire-format) spelling** — the
+    /// exact syntax users write in JSON/YAML models: `small_int`,
+    /// `varchar(32)`, `numeric(10, 2)`, `enum(status)`, `custom(TSVECTOR)`.
+    /// Use this for user-facing diagnostics that echo model syntax.
+    /// Distinct from [`Self::to_display_string`], which renders
+    /// SQL-flavoured names for CLI prompts (`smallint`, `double precision`,
+    /// `enum<status>`), and from `Debug`, which leaks Rust internals
+    /// (`Simple(Integer)`, `Varchar { length: 32 }`).
+    #[must_use]
+    pub fn display_label(&self) -> String {
+        match self {
+            ColumnType::Simple(simple) => simple.model_name().to_string(),
+            ColumnType::Complex(complex) => complex.display_label(),
         }
     }
 
@@ -160,16 +176,13 @@ impl ColumnType {
     /// Get enum variant names if this is an enum type
     /// Returns None if not an enum, Some(names) otherwise
     pub fn enum_variant_names(&self) -> Option<Vec<String>> {
-        match self {
-            ColumnType::Complex(ComplexColumnType::Enum { values, .. }) => Some(
-                values
-                    .variant_names()
-                    .into_iter()
-                    .map(String::from)
-                    .collect(),
-            ),
-            _ => None,
-        }
+        let ColumnType::Complex(ComplexColumnType::Enum { values, .. }) = self else {
+            return None;
+        };
+        Some(match values {
+            EnumValues::String(v) => v.clone(),
+            EnumValues::Integer(v) => v.iter().map(|n| n.name.clone()).collect(),
+        })
     }
 }
 
@@ -336,6 +349,35 @@ impl SimpleColumnType {
         }
     }
 
+    /// Returns the snake_case model-file spelling of this type — the exact
+    /// string users write in JSON/YAML models (the serde wire name), e.g.
+    /// `SmallInt` → `"small_int"`. Use this for user-facing messages that
+    /// reference the model syntax; use [`Self::sql_type`] for SQL rendering.
+    #[must_use]
+    pub fn model_name(&self) -> &'static str {
+        match self {
+            SimpleColumnType::SmallInt => "small_int",
+            SimpleColumnType::Integer => "integer",
+            SimpleColumnType::BigInt => "big_int",
+            SimpleColumnType::Real => "real",
+            SimpleColumnType::DoublePrecision => "double_precision",
+            SimpleColumnType::Text => "text",
+            SimpleColumnType::Boolean => "boolean",
+            SimpleColumnType::Date => "date",
+            SimpleColumnType::Time => "time",
+            SimpleColumnType::Timestamp => "timestamp",
+            SimpleColumnType::Timestamptz => "timestamptz",
+            SimpleColumnType::Interval => "interval",
+            SimpleColumnType::Bytea => "bytea",
+            SimpleColumnType::Uuid => "uuid",
+            SimpleColumnType::Json => "json",
+            SimpleColumnType::Inet => "inet",
+            SimpleColumnType::Cidr => "cidr",
+            SimpleColumnType::Macaddr => "macaddr",
+            SimpleColumnType::Xml => "xml",
+        }
+    }
+
     /// Returns true if this type supports `auto_increment` (integer types only)
     pub fn supports_auto_increment(&self) -> bool {
         matches!(
@@ -344,29 +386,39 @@ impl SimpleColumnType {
         )
     }
 
-    /// Convert to human-readable display string
-    pub fn to_display_string(&self) -> String {
+    /// Borrow the human-readable display label as a `&'static str`.
+    ///
+    /// Prefer this over [`Self::to_display_string`] when the caller only needs
+    /// to read the label — it avoids an allocation for a compile-time constant.
+    #[must_use]
+    pub fn display_str(&self) -> &'static str {
         match self {
-            SimpleColumnType::SmallInt => "smallint".to_string(),
-            SimpleColumnType::Integer => "integer".to_string(),
-            SimpleColumnType::BigInt => "bigint".to_string(),
-            SimpleColumnType::Real => "real".to_string(),
-            SimpleColumnType::DoublePrecision => "double precision".to_string(),
-            SimpleColumnType::Text => "text".to_string(),
-            SimpleColumnType::Boolean => "boolean".to_string(),
-            SimpleColumnType::Date => "date".to_string(),
-            SimpleColumnType::Time => "time".to_string(),
-            SimpleColumnType::Timestamp => "timestamp".to_string(),
-            SimpleColumnType::Timestamptz => "timestamptz".to_string(),
-            SimpleColumnType::Interval => "interval".to_string(),
-            SimpleColumnType::Bytea => "bytea".to_string(),
-            SimpleColumnType::Uuid => "uuid".to_string(),
-            SimpleColumnType::Json => "json".to_string(),
-            SimpleColumnType::Inet => "inet".to_string(),
-            SimpleColumnType::Cidr => "cidr".to_string(),
-            SimpleColumnType::Macaddr => "macaddr".to_string(),
-            SimpleColumnType::Xml => "xml".to_string(),
+            SimpleColumnType::SmallInt => "smallint",
+            SimpleColumnType::Integer => "integer",
+            SimpleColumnType::BigInt => "bigint",
+            SimpleColumnType::Real => "real",
+            SimpleColumnType::DoublePrecision => "double precision",
+            SimpleColumnType::Text => "text",
+            SimpleColumnType::Boolean => "boolean",
+            SimpleColumnType::Date => "date",
+            SimpleColumnType::Time => "time",
+            SimpleColumnType::Timestamp => "timestamp",
+            SimpleColumnType::Timestamptz => "timestamptz",
+            SimpleColumnType::Interval => "interval",
+            SimpleColumnType::Bytea => "bytea",
+            SimpleColumnType::Uuid => "uuid",
+            SimpleColumnType::Json => "json",
+            SimpleColumnType::Inet => "inet",
+            SimpleColumnType::Cidr => "cidr",
+            SimpleColumnType::Macaddr => "macaddr",
+            SimpleColumnType::Xml => "xml",
         }
+    }
+
+    /// Convert to human-readable display string
+    #[must_use]
+    pub fn to_display_string(&self) -> String {
+        self.display_str().to_string()
     }
 
     /// Get the default fill value for this type
@@ -437,12 +489,51 @@ impl EnumValues {
         matches!(self, EnumValues::Integer(_))
     }
 
-    /// Get all variant names
-    pub fn variant_names(&self) -> Vec<&str> {
+    /// Join every variant *name* with `separator`, writing straight into one
+    /// buffer — no intermediate `Vec<&str>` allocation.
+    ///
+    /// Unlike [`Self::sql_values_joined`] (which emits SQL literals: quoted
+    /// strings / integer values), this emits the human-readable variant
+    /// *names* for diagnostics such as "allowed values are: a, b, c". For an
+    /// integer enum the member names are used.
+    ///
+    /// ```rust
+    /// use vespertide_core::{EnumValues, NumValue};
+    ///
+    /// let s = EnumValues::String(vec!["active".into(), "inactive".into()]);
+    /// assert_eq!(s.variant_names_joined(", "), "active, inactive");
+    ///
+    /// let i = EnumValues::Integer(vec![
+    ///     NumValue { name: "low".into(),  value: 0  },
+    ///     NumValue { name: "high".into(), value: 10 },
+    /// ]);
+    /// assert_eq!(i.variant_names_joined(", "), "low, high");
+    ///
+    /// let empty = EnumValues::String(vec![]);
+    /// assert_eq!(empty.variant_names_joined(", "), "");
+    /// ```
+    #[must_use]
+    pub fn variant_names_joined(&self, separator: &str) -> String {
+        let mut out = String::new();
         match self {
-            EnumValues::String(values) => values.iter().map(std::string::String::as_str).collect(),
-            EnumValues::Integer(values) => values.iter().map(|v| v.name.as_str()).collect(),
+            EnumValues::String(values) => {
+                for (i, s) in values.iter().enumerate() {
+                    if i > 0 {
+                        out.push_str(separator);
+                    }
+                    out.push_str(s);
+                }
+            }
+            EnumValues::Integer(values) => {
+                for (i, v) in values.iter().enumerate() {
+                    if i > 0 {
+                        out.push_str(separator);
+                    }
+                    out.push_str(&v.name);
+                }
+            }
         }
+        out
     }
 
     /// Get the number of variants
@@ -461,16 +552,78 @@ impl EnumValues {
         }
     }
 
-    /// Get SQL values for CREATE TYPE ENUM (only for string enums)
-    /// Returns quoted strings like 'value1', 'value2'
-    pub fn to_sql_values(&self) -> Vec<String> {
+    /// Returns `true` when `value` matches any variant of this enum.
+    ///
+    /// For string enums the comparison is exact-string against each variant.
+    /// For integer enums the value is first parsed as `i64` (matching the
+    /// `NumValue::value` storage type): successful parses match against
+    /// `NumValue::value`, failed parses fall back to matching against
+    /// `NumValue::name`. Mirrors the loose JSON-default behaviour expected by
+    /// the planner validator so a model author can write either the numeric
+    /// literal (`5`) or the variant name (`"Active"`) for an integer enum
+    /// default.
+    #[must_use]
+    pub fn contains_value(&self, value: &str) -> bool {
         match self {
-            EnumValues::String(values) => values
-                .iter()
-                .map(|s| format!("'{}'", s.replace('\'', "''")))
-                .collect(),
-            EnumValues::Integer(values) => values.iter().map(|v| v.value.to_string()).collect(),
+            EnumValues::String(variants) => variants.iter().any(|v| v == value),
+            EnumValues::Integer(variants) => value.parse::<i64>().map_or_else(
+                |_| variants.iter().any(|v| v.name == value),
+                |n| variants.iter().any(|v| v.value == n),
+            ),
         }
+    }
+
+    /// Format every variant for `CREATE TYPE … AS ENUM(...)` /
+    /// `CHECK (col IN (...))` and join with `separator`, writing into one
+    /// buffer — no intermediate `Vec<String>` allocation.
+    ///
+    /// Mirrors `vespertide_query::sql::helpers::quote_idents` and
+    /// `vespertide_core::schema::names::join_column_names`.
+    ///
+    /// ```rust
+    /// use vespertide_core::{EnumValues, NumValue};
+    ///
+    /// let s = EnumValues::String(vec!["active".into(), "O'Brien".into()]);
+    /// assert_eq!(s.sql_values_joined(", "), "'active', 'O''Brien'");
+    ///
+    /// let i = EnumValues::Integer(vec![
+    ///     NumValue { name: "low".into(),  value: 0  },
+    ///     NumValue { name: "high".into(), value: 10 },
+    /// ]);
+    /// assert_eq!(i.sql_values_joined(", "), "0, 10");
+    ///
+    /// let empty = EnumValues::String(vec![]);
+    /// assert_eq!(empty.sql_values_joined(", "), "");
+    /// ```
+    #[must_use]
+    pub fn sql_values_joined(&self, separator: &str) -> String {
+        use std::fmt::Write as _;
+        let mut out = String::new();
+        match self {
+            EnumValues::String(values) => {
+                for (i, s) in values.iter().enumerate() {
+                    if i > 0 {
+                        out.push_str(separator);
+                    }
+                    out.push('\'');
+                    // Centralized '' escape — matches the existing
+                    // `format!("'{}'", s.replace('\'', "''"))` byte-for-byte,
+                    // and borrows when no quote is present (zero alloc).
+                    out.push_str(&crate::escape_sql_string_literal(s));
+                    out.push('\'');
+                }
+            }
+            EnumValues::Integer(values) => {
+                for (i, v) in values.iter().enumerate() {
+                    if i > 0 {
+                        out.push_str(separator);
+                    }
+                    // i64 Display into String is infallible.
+                    write!(out, "{}", v.value).expect("writing an i64 to a String never fails");
+                }
+            }
+        }
+        out
     }
 }
 
@@ -551,6 +704,23 @@ impl ComplexColumnType {
         }
     }
 
+    /// Wire-format spelling of the complex type for user-facing
+    /// diagnostics: `varchar(32)`, `char(2)`, `numeric(10, 2)`,
+    /// `custom(TSVECTOR)`, `enum(status)`. See
+    /// [`ColumnType::display_label`].
+    #[must_use]
+    pub fn display_label(&self) -> String {
+        match self {
+            ComplexColumnType::Varchar { length } => format!("varchar({length})"),
+            ComplexColumnType::Char { length } => format!("char({length})"),
+            ComplexColumnType::Numeric { precision, scale } => {
+                format!("numeric({precision}, {scale})")
+            }
+            ComplexColumnType::Custom { custom_type } => format!("custom({custom_type})"),
+            ComplexColumnType::Enum { name, .. } => format!("enum({name})"),
+        }
+    }
+
     /// Get the default fill value for this type.
     pub fn default_fill_value(&self) -> &'static str {
         match self {
@@ -560,5 +730,48 @@ impl ComplexColumnType {
             | ComplexColumnType::Custom { .. }
             | ComplexColumnType::Enum { .. } => "''",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    /// `display_label` is the wire-format spelling shown in LSP drift messages,
+    /// planner type-mismatch diagnostics and schema violations. Every consumer
+    /// only forwards the string, so without a direct assertion the whole body
+    /// could return a constant and nothing would notice.
+    #[rstest]
+    #[case::varchar(ComplexColumnType::Varchar { length: 32 }, "varchar(32)")]
+    #[case::char(ComplexColumnType::Char { length: 2 }, "char(2)")]
+    #[case::numeric(ComplexColumnType::Numeric { precision: 10, scale: 2 }, "numeric(10, 2)")]
+    #[case::custom(ComplexColumnType::Custom { custom_type: "TSVECTOR".into() }, "custom(TSVECTOR)")]
+    #[case::enum_type(
+        ComplexColumnType::Enum {
+            name: "status".into(),
+            values: EnumValues::String(vec!["active".into()]),
+        },
+        "enum(status)"
+    )]
+    fn complex_display_label_renders_wire_format(
+        #[case] complex: ComplexColumnType,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(complex.display_label(), expected);
+        // The `ColumnType` wrapper must forward to the same string rather than
+        // rendering its own spelling.
+        assert_eq!(ColumnType::Complex(complex).display_label(), expected);
+    }
+
+    #[rstest]
+    #[case::integer(SimpleColumnType::Integer, "integer")]
+    #[case::big_int(SimpleColumnType::BigInt, "big_int")]
+    #[case::timestamptz(SimpleColumnType::Timestamptz, "timestamptz")]
+    fn simple_display_label_uses_the_model_name(
+        #[case] simple: SimpleColumnType,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(ColumnType::Simple(simple).display_label(), expected);
     }
 }

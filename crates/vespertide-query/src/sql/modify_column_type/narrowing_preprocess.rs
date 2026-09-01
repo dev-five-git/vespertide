@@ -303,6 +303,7 @@ mod integer_bounds_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{backend_tag, joined_sql_semicolon};
     use insta::{assert_snapshot, with_settings};
     use vespertide_core::{ColumnDef, ColumnType, ComplexColumnType, SimpleColumnType, TableDef};
 
@@ -353,11 +354,7 @@ mod tests {
     ) -> Result<String, QueryError> {
         let baseline = baseline_with(old);
         let queries = build_narrowing_preprocess(backend, "tbl", "col", new, strategy, &baseline)?;
-        Ok(queries
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<_>>()
-            .join(";\n"))
+        Ok(joined_sql_semicolon(backend, &queries))
     }
 
     fn snap(name: &str, sql: &str) {
@@ -377,11 +374,12 @@ mod tests {
         ($name:ident, $old:expr, $new:expr, $strategy:expr) => {
             #[test]
             fn $name() {
-                for (backend, tag) in [
-                    (DatabaseBackend::Postgres, "postgres"),
-                    (DatabaseBackend::MySql, "mysql"),
-                    (DatabaseBackend::Sqlite, "sqlite"),
+                for backend in [
+                    DatabaseBackend::Postgres,
+                    DatabaseBackend::MySql,
+                    DatabaseBackend::Sqlite,
                 ] {
+                    let tag = backend_tag(backend);
                     let sql = run(backend, $old, &$new, &$strategy)
                         .expect("supported (kind, strategy) combo");
                     snap(&format!("preprocess_{}_{}", stringify!($name), tag), &sql);

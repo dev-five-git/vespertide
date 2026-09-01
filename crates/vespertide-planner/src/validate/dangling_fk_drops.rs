@@ -48,7 +48,10 @@
 
 use std::collections::{BTreeSet, HashSet};
 
-use vespertide_core::{ColumnName, MigrationAction, MigrationPlan, TableConstraint, TableDef};
+use vespertide_core::{
+    ColumnName, MigrationAction, MigrationPlan, TableConstraint, TableDef,
+    schema::names::names_to_strings,
+};
 
 /// A single dangling FK reference: dropping `(dropped_table, dropped_column)`
 /// would leave `referencing_table` with a foreign key that points at nothing.
@@ -297,7 +300,7 @@ fn collect_explicitly_removed_fks(plan: &MigrationPlan) -> HashSet<RemovedFkKey>
             set.insert((
                 table.to_string(),
                 name.clone(),
-                columns.iter().map(ToString::to_string).collect(),
+                names_to_strings(columns),
                 ref_table.to_string(),
             ));
         }
@@ -318,7 +321,7 @@ fn collect_explicitly_removed_fks(plan: &MigrationPlan) -> HashSet<RemovedFkKey>
             set.insert((
                 table.to_string(),
                 name.clone(),
-                columns.iter().map(ToString::to_string).collect(),
+                names_to_strings(columns),
                 ref_table.to_string(),
             ));
         }
@@ -336,7 +339,7 @@ fn fk_in_removed_set(
     let key: RemovedFkKey = (
         owner.to_string(),
         name.cloned(),
-        columns.iter().map(ToString::to_string).collect(),
+        names_to_strings(columns),
         ref_table.to_string(),
     );
     removed.contains(&key)

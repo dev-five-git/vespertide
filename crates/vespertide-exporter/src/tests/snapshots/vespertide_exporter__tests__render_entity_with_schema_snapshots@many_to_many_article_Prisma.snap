@@ -1,0 +1,10 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model Article {
+  id BigInt @id
+  article_user ArticleUser[]
+
+  @@map("article")
+}

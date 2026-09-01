@@ -1,4 +1,5 @@
 use proptest::prelude::*;
+use vespertide_core::arbitrary::{arb_safe_ident, arb_simple_column_type};
 use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType, TableConstraint, TableDef};
 use vespertide_planner::{apply_action, diff_schemas};
 
@@ -122,7 +123,9 @@ fn mutate_schema(from: &[TableDef]) -> impl Strategy<Value = Vec<TableDef>> + us
     ]
 }
 
-// TODO: deduplicate with vespertide-core::arbitrary once available.
+/// Locally-shaped table generator: FK-free, constraint-free schemas matched to
+/// `mutate_schema`'s mutation domain. Core's `arb_table_def` produces a heavier
+/// schema (constraints, FKs, options) that does not fit this proptest's invariants.
 fn arb_table_def() -> impl Strategy<Value = TableDef> {
     (arb_safe_ident(), arb_unique_columns()).prop_map(|(name, columns)| TableDef {
         name: name.into(),
@@ -132,7 +135,9 @@ fn arb_table_def() -> impl Strategy<Value = TableDef> {
     })
 }
 
-// TODO: deduplicate with vespertide-core::arbitrary once available.
+/// Locally-shaped column-set generator: 1..6 columns with unique names, no
+/// inline constraints. Mirrors `mutate_schema`'s assumption that columns can
+/// be appended freely.
 fn arb_unique_columns() -> impl Strategy<Value = Vec<ColumnDef>> {
     prop::collection::vec(arb_column_def(), 1..6).prop_filter("unique column names", |columns| {
         let mut seen = std::collections::BTreeSet::new();
@@ -142,39 +147,14 @@ fn arb_unique_columns() -> impl Strategy<Value = Vec<ColumnDef>> {
     })
 }
 
-// TODO: deduplicate with vespertide-core::arbitrary once available.
+/// Locally-shaped column generator: no defaults, no comments, no inline
+/// constraints, simple types only. Bridges `arb_simple_column_type` (which
+/// yields `SimpleColumnType`) to `ColumnType::Simple` for `ColumnDef::new`.
 fn arb_column_def() -> impl Strategy<Value = ColumnDef> {
-    (arb_safe_ident(), arb_simple_column_type(), any::<bool>())
+    (
+        arb_safe_ident(),
+        arb_simple_column_type().prop_map(ColumnType::Simple),
+        any::<bool>(),
+    )
         .prop_map(|(name, column_type, nullable)| ColumnDef::new(name, column_type, nullable))
-}
-
-// TODO: deduplicate with vespertide-core::arbitrary once available.
-fn arb_simple_column_type() -> impl Strategy<Value = ColumnType> {
-    prop_oneof![
-        Just(SimpleColumnType::SmallInt),
-        Just(SimpleColumnType::Integer),
-        Just(SimpleColumnType::BigInt),
-        Just(SimpleColumnType::Real),
-        Just(SimpleColumnType::DoublePrecision),
-        Just(SimpleColumnType::Text),
-        Just(SimpleColumnType::Boolean),
-        Just(SimpleColumnType::Date),
-        Just(SimpleColumnType::Time),
-        Just(SimpleColumnType::Timestamp),
-        Just(SimpleColumnType::Timestamptz),
-        Just(SimpleColumnType::Interval),
-        Just(SimpleColumnType::Bytea),
-        Just(SimpleColumnType::Uuid),
-        Just(SimpleColumnType::Json),
-        Just(SimpleColumnType::Inet),
-        Just(SimpleColumnType::Cidr),
-        Just(SimpleColumnType::Macaddr),
-        Just(SimpleColumnType::Xml),
-    ]
-    .prop_map(ColumnType::Simple)
-}
-
-// TODO: deduplicate with vespertide-core::arbitrary once available.
-fn arb_safe_ident() -> impl Strategy<Value = String> {
-    "[a-z][a-z0-9_]{0,10}"
 }

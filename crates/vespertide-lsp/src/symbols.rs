@@ -184,7 +184,7 @@ fn build_workspace_symbol_list(
         let pool = shared_parser_pool();
         for name in disk.names() {
             if let Some(path) = disk.model_path(&name)
-                && let Some(uri) = path_to_uri(&path)
+                && let Some(uri) = crate::position::path_to_uri(&path)
                 && !seen_uris.contains(&uri)
                 && let Some((text_arc, tree_arc)) = disk.cached_parse(&path, pool)
             {
@@ -306,65 +306,10 @@ fn direct_pair_node<'tree>(
     find_pair_with_key(mapping, source, target_key)?.named_child(1)
 }
 
-fn find_pair_with_key<'tree>(
-    mapping: tree_sitter::Node<'tree>,
-    source: &[u8],
-    target_key: &str,
-) -> Option<tree_sitter::Node<'tree>> {
-    let mut cursor = mapping.walk();
-    mapping.children(&mut cursor).find(|&child| {
-        matches!(child.kind(), "pair" | "block_mapping_pair")
-            && child
-                .named_child(0)
-                .and_then(|key| std::str::from_utf8(&source[key.byte_range()]).ok())
-                .map(strip_quotes)
-                == Some(target_key)
-    })
-}
-
-fn find_outer_mapping(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
-    if matches!(node.kind(), "object" | "block_mapping" | "flow_mapping") {
-        return Some(node);
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if let Some(found) = find_outer_mapping(child) {
-            return Some(found);
-        }
-    }
-    None
-}
-
-fn unwrap_yaml_node(node: tree_sitter::Node<'_>) -> tree_sitter::Node<'_> {
-    // Fused while-let so the empty-wrapper case (no usable `named_child(0)`)
-    // and the kind-mismatch case share the same exit — no defensive `return`
-    // line that depends on a tree-sitter-yaml release producing empty wrappers.
-    let mut current = node;
-    while matches!(current.kind(), "flow_node" | "block_node")
-        && let Some(inner) = current
-            .named_child(0)
-            .filter(|inner| inner.id() != current.id())
-    {
-        current = inner;
-    }
-    current
-}
-
-fn trim_one_byte(range: &Range<usize>) -> Range<usize> {
-    if range.end.saturating_sub(range.start) >= 2 {
-        (range.start + 1)..(range.end - 1)
-    } else {
-        range.clone()
-    }
-}
-
-fn path_to_uri(path: &std::path::Path) -> Option<Uri> {
-    let mut text = path.to_string_lossy().replace('\\', "/");
-    if !text.starts_with('/') {
-        text = format!("/{text}");
-    }
-    std::str::FromStr::from_str(&format!("file://{text}")).ok()
-}
+use crate::tree_util::{
+    find_outer_mapping, find_pair_with_key, trim_one_byte_each_side as trim_one_byte,
+    unwrap_yaml_node,
+};
 
 /// ASCII case-insensitive substring search. `needle_lower` must already be
 /// lowercase (the public `compute()` entry-point lowercases the query once).
@@ -1000,17 +945,5 @@ mod tests {
         );
 
         assert!(compute("xyz_nothing_matches", &docs, None).is_empty());
-    }
-
-    #[test]
-    fn path_to_uri_prepends_leading_slash_for_relative_path() {
-        // A relative path never starts with `/` on any platform, so this
-        // exercises the leading-slash normalization branch deterministically.
-        let uri = path_to_uri(std::path::Path::new("models/user.json")).expect("uri");
-        assert!(
-            uri.as_str().starts_with("file:///"),
-            "got: {}",
-            uri.as_str()
-        );
     }
 }

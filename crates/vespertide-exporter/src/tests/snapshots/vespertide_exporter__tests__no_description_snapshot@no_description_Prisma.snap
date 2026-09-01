@@ -1,0 +1,9 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model NoDesc {
+  id Int @id
+
+  @@map("no_desc")
+}

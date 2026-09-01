@@ -1,7 +1,10 @@
 //! Resolve "what symbol is the cursor on?" for the references provider.
 
 use crate::text_util::strip_quotes;
-use tower_lsp_server::ls_types::Uri;
+use crate::tree_util::{
+    ancestor_pair, direct_child_value, enclosing_string, is_top_level_pair, node_at_byte,
+    outermost_ancestor_mapping, skip_yaml_wrappers,
+};
 
 use super::ReferenceSymbol;
 
@@ -10,10 +13,8 @@ use super::ReferenceSymbol;
 pub(super) fn resolve(
     source: &str,
     tree: Option<&tree_sitter::Tree>,
-    current_uri: &Uri,
     byte_offset: usize,
 ) -> Option<ReferenceSymbol> {
-    let _ = current_uri;
     let tree = tree?;
     let node = node_at_byte(tree, byte_offset)?;
     let string_node = enclosing_string(node)?;
@@ -24,7 +25,7 @@ pub(super) fn resolve(
     }
 
     // What pair owns the string?
-    let pair = enclosing_pair(string_node)?;
+    let pair = ancestor_pair(string_node)?;
     let key = pair.named_child(0)?;
     let key_text = strip_quotes(source.get(key.byte_range())?);
 
@@ -106,81 +107,11 @@ fn resolve_check_expr_column(
     })
 }
 
-fn enclosing_string(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
-    let mut current = Some(node);
-    while let Some(candidate) = current {
-        match candidate.kind() {
-            "string"
-            | "double_quote_scalar"
-            | "single_quote_scalar"
-            | "string_scalar"
-            | "plain_scalar" => return Some(candidate),
-            "string_content" => return candidate.parent(),
-            // Stop at structural boundaries.
-            "array" | "object" | "pair" | "block_mapping_pair" | "block_mapping"
-            | "block_sequence" | "flow_mapping" | "flow_sequence" => return None,
-            _ => {}
-        }
-        current = candidate.parent();
-    }
-    None
-}
-
-fn enclosing_pair(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
-    let mut current = node.parent();
-    while let Some(candidate) = current {
-        if matches!(candidate.kind(), "pair" | "block_mapping_pair") {
-            return Some(candidate);
-        }
-        current = candidate.parent();
-    }
-    None
-}
-
-/// A pair is "top level" when its direct ancestor mapping is itself the
-/// outermost mapping of the document. This is how we distinguish the
-/// table's own `name: ...` from a column's `name: ...`.
-fn is_top_level_pair(pair: tree_sitter::Node<'_>) -> bool {
-    let Some(parent_mapping) = pair.parent() else {
-        return false;
-    };
-    if !matches!(
-        parent_mapping.kind(),
-        "object" | "block_mapping" | "flow_mapping"
-    ) {
-        return false;
-    }
-    // Walk above the parent mapping; if we encounter another mapping with
-    // the same kind, we are nested and therefore not top level.
-    let mut current = parent_mapping.parent();
-    while let Some(candidate) = current {
-        if matches!(
-            candidate.kind(),
-            "object" | "block_mapping" | "flow_mapping"
-        ) {
-            return false;
-        }
-        current = candidate.parent();
-    }
-    true
-}
-
 /// Given a column's `name` pair, find the owning table's top-level name.
 fn enclosing_table_name(name_pair: tree_sitter::Node<'_>, source: &str) -> Option<String> {
     // The pair we got is inside a column object. Walk up to the document's
     // outermost mapping and return its direct `name` value.
-    let mut current = name_pair.parent();
-    let mut outer = None;
-    while let Some(candidate) = current {
-        if matches!(
-            candidate.kind(),
-            "object" | "block_mapping" | "flow_mapping"
-        ) {
-            outer = Some(candidate);
-        }
-        current = candidate.parent();
-    }
-    let outer = outer?;
+    let outer = outermost_ancestor_mapping(name_pair)?;
 
     let mut cursor = outer.walk();
     for child in outer.children(&mut cursor) {
@@ -196,51 +127,6 @@ fn enclosing_table_name(name_pair: tree_sitter::Node<'_>, source: &str) -> Optio
     None
 }
 
-fn direct_child_value<'a>(
-    object: tree_sitter::Node<'_>,
-    source: &'a str,
-    target_key: &str,
-) -> Option<&'a str> {
-    let mut cursor = object.walk();
-    for child in object.children(&mut cursor) {
-        if matches!(child.kind(), "pair" | "block_mapping_pair")
-            && let Some(key) = child.named_child(0)
-            && let Some(key_text) = source.get(key.byte_range())
-            && strip_quotes(key_text) == target_key
-            && let Some(value) = child.named_child(1)
-            && let Some(text) = source.get(value.byte_range())
-        {
-            return Some(text);
-        }
-    }
-    None
-}
-
-fn skip_yaml_wrappers(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
-    let mut current = node;
-    while matches!(current.kind(), "flow_node" | "block_node") {
-        let parent = current.parent();
-        parent?;
-        current = parent.expect("YAML wrapper reached from a mapping pair has a parent");
-    }
-    Some(current)
-}
-
-fn node_at_byte(tree: &tree_sitter::Tree, byte_offset: usize) -> Option<tree_sitter::Node<'_>> {
-    let root = tree.root_node();
-    let mut current = root;
-    'outer: loop {
-        let mut cursor = current.walk();
-        for child in current.children(&mut cursor) {
-            if child.byte_range().contains(&byte_offset) {
-                current = child;
-                continue 'outer;
-            }
-        }
-        return Some(current);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,7 +137,7 @@ mod tests {
     fn resolve_returns_none_when_tree_is_none() {
         let src = r#"{"name":"u"}"#;
 
-        assert!(resolve(src, None, &uri("u.json"), 0).is_none());
+        assert!(resolve(src, None, 0).is_none());
     }
 
     #[rstest]
@@ -273,7 +159,7 @@ mod tests {
         let tree = parse_json(src);
         let pos = src.find(needle).unwrap() + cursor_delta;
 
-        assert_eq!(resolve(src, Some(&tree), &uri("u.json"), pos), expected);
+        assert_eq!(resolve(src, Some(&tree), pos), expected);
     }
 
     #[rstest]
@@ -288,10 +174,7 @@ mod tests {
         let tree = parse_yaml(src);
         let pos = src.find(needle).unwrap() + cursor_delta;
 
-        assert_eq!(
-            resolve(src, Some(&tree), &uri("u.yaml"), pos),
-            Some(expected)
-        );
+        assert_eq!(resolve(src, Some(&tree), pos), Some(expected));
     }
 
     fn first_node<'tree>(
@@ -320,7 +203,7 @@ mod tests {
         let tree = parse_json(src);
         let pos = src.find("hello").unwrap();
 
-        assert!(resolve(src, Some(&tree), &uri("u.json"), pos).is_none());
+        assert!(resolve(src, Some(&tree), pos).is_none());
     }
 
     #[test]
@@ -330,7 +213,7 @@ mod tests {
 
         assert!(!is_check_constraint_pair(root, r#"{"name":"u"}"#));
         assert!(enclosing_string(root).is_none());
-        assert!(enclosing_pair(root).is_none());
+        assert!(ancestor_pair(root).is_none());
         assert!(!is_top_level_pair(root));
     }
 

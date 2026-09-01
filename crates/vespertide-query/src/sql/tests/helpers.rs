@@ -1,9 +1,46 @@
-use super::super::helpers::{is_enum_type, needs_quoting, parse_pg_type_cast};
+use super::super::helpers::{
+    apply_column_type_with_table, build_create_enum_type_sql, convert_default_for_backend,
+    is_enum_type, needs_quoting, parse_pg_type_cast, recreate_indexes_after_rebuild,
+    to_sea_fk_action,
+};
+
+/// Convert vespertide `ReferenceAction` to SQL string.
+///
+/// Test oracle: production paths go through [`to_sea_fk_action`]; this
+/// string-level mapping is only asserted against here, so it lives in the test
+/// module rather than as a `#[cfg(test)]` item inside the production file.
+fn reference_action_sql(action: &ReferenceAction) -> &'static str {
+    match action {
+        ReferenceAction::Cascade => "CASCADE",
+        ReferenceAction::Restrict => "RESTRICT",
+        ReferenceAction::SetNull => "SET NULL",
+        ReferenceAction::SetDefault => "SET DEFAULT",
+        ReferenceAction::NoAction => "NO ACTION",
+        _ => unreachable!("ReferenceAction is #[non_exhaustive]; all variants are matched above"),
+    }
+}
+
+/// Extract enum name from column type if it's an enum.
+///
+/// Test oracle: only these unit tests consume this accessor, so it lives here
+/// rather than as a `#[cfg(test)]` item inside the production file.
+fn get_enum_name(column_type: &ColumnType) -> Option<&str> {
+    if let ColumnType::Complex(ComplexColumnType::Enum { name, .. }) = column_type {
+        Some(name.as_str())
+    } else {
+        None
+    }
+}
 use super::*;
 use proptest::prelude::*;
 use sea_query::{Alias, ColumnDef as SeaColumnDef, ForeignKeyAction};
-use vespertide_core::{ComplexColumnType, EnumValues};
+use vespertide_core::{ComplexColumnType, EnumValues, NumValue};
 
+// The `#[values(Postgres, MySql, Sqlite)]` axis on the three type-mapping tests
+// below is the N-BACKEND TRIPLE policy from `crates/vespertide-query/AGENTS.md`:
+// a type-mapping test that only runs Postgres hides every backend-specific arm.
+// Concretely, `apply_numeric_type` splits `Postgres | MySql` (decimal_len) from
+// `Sqlite` (double), so a Postgres-only Numeric case never reached the SQLite arm.
 #[rstest]
 #[case(ColumnType::Simple(SimpleColumnType::Integer))]
 #[case(ColumnType::Simple(SimpleColumnType::BigInt))]
@@ -13,10 +50,18 @@ use vespertide_core::{ComplexColumnType, EnumValues};
 #[case(ColumnType::Simple(SimpleColumnType::Uuid))]
 #[case(ColumnType::Complex(ComplexColumnType::Varchar { length: 255 }))]
 #[case(ColumnType::Complex(ComplexColumnType::Numeric { precision: 10, scale: 2 }))]
-fn test_column_type_conversion(#[case] ty: ColumnType) {
+fn test_column_type_conversion(
+    #[case] ty: ColumnType,
+    #[values(
+        DatabaseBackend::Postgres,
+        DatabaseBackend::MySql,
+        DatabaseBackend::Sqlite
+    )]
+    backend: DatabaseBackend,
+) {
     // Just ensure no panic - test by creating a column with this type
     let mut col = SeaColumnDef::new(Alias::new("test"));
-    apply_column_type_with_table(&mut col, &ty, "test_table", DatabaseBackend::Postgres);
+    apply_column_type_with_table(&mut col, &ty, "test_table", backend);
 }
 
 #[rstest]
@@ -39,30 +84,41 @@ fn test_column_type_conversion(#[case] ty: ColumnType) {
 #[case(SimpleColumnType::Cidr)]
 #[case(SimpleColumnType::Macaddr)]
 #[case(SimpleColumnType::Xml)]
-fn test_all_simple_types_cover_branches(#[case] ty: SimpleColumnType) {
-    let mut col = SeaColumnDef::new(Alias::new("t"));
-    apply_column_type_with_table(
-        &mut col,
-        &ColumnType::Simple(ty),
-        "test_table",
+fn test_all_simple_types_cover_branches(
+    #[case] ty: SimpleColumnType,
+    #[values(
         DatabaseBackend::Postgres,
-    );
+        DatabaseBackend::MySql,
+        DatabaseBackend::Sqlite
+    )]
+    backend: DatabaseBackend,
+) {
+    let mut col = SeaColumnDef::new(Alias::new("t"));
+    apply_column_type_with_table(&mut col, &ColumnType::Simple(ty), "test_table", backend);
 }
 
 #[rstest]
 #[case(ComplexColumnType::Varchar { length: 42 })]
 #[case(ComplexColumnType::Numeric { precision: 8, scale: 3 })]
+// Precision beyond the 28-digit ceiling exercises `apply_numeric_type`'s
+// `precision.min(28)` / `scale.min(safe_precision)` clamp, which a
+// within-range case leaves as a straight pass-through.
+#[case(ComplexColumnType::Numeric { precision: 40, scale: 35 })]
 #[case(ComplexColumnType::Char { length: 3 })]
 #[case(ComplexColumnType::Custom { custom_type: "GEOGRAPHY".into() })]
 #[case(ComplexColumnType::Enum { name: "status".into(), values: EnumValues::String(vec!["active".into(), "inactive".into()]) })]
-fn test_all_complex_types_cover_branches(#[case] ty: ComplexColumnType) {
-    let mut col = SeaColumnDef::new(Alias::new("t"));
-    apply_column_type_with_table(
-        &mut col,
-        &ColumnType::Complex(ty),
-        "test_table",
+#[case(ComplexColumnType::Enum { name: "level".into(), values: EnumValues::Integer(vec![NumValue { name: "low".into(), value: 0 }]) })]
+fn test_all_complex_types_cover_branches(
+    #[case] ty: ComplexColumnType,
+    #[values(
         DatabaseBackend::Postgres,
-    );
+        DatabaseBackend::MySql,
+        DatabaseBackend::Sqlite
+    )]
+    backend: DatabaseBackend,
+) {
+    let mut col = SeaColumnDef::new(Alias::new("t"));
+    apply_column_type_with_table(&mut col, &ColumnType::Complex(ty), "test_table", backend);
 }
 
 #[rstest]
@@ -116,6 +172,21 @@ fn test_reference_action_sql_all_variants(#[case] action: ReferenceAction, #[cas
     DatabaseBackend::Sqlite,
     "CURRENT_TIMESTAMP"
 )]
+// The UUID and timestamp keyword lists are `||` chains, so an input matching an
+// early alternative short-circuits and leaves the tail alternatives untested.
+// These two reach the LAST alternative of each chain.
+#[case::sqlite_uuid_spelling_postgres(
+    "lower(hex(randomblob(16)))",
+    DatabaseBackend::Postgres,
+    "gen_random_uuid()"
+)]
+#[case::sqlite_uuid_spelling_sqlite(
+    "lower(hex(randomblob(16)))",
+    DatabaseBackend::Sqlite,
+    "lower(hex(randomblob(16)))"
+)]
+#[case::getdate_postgres("getdate()", DatabaseBackend::Postgres, "CURRENT_TIMESTAMP")]
+#[case::getdate_mysql("GetDate()", DatabaseBackend::MySql, "CURRENT_TIMESTAMP")]
 #[case::now_postgres("now()", DatabaseBackend::Postgres, "CURRENT_TIMESTAMP")]
 #[case::now_mysql("now()", DatabaseBackend::MySql, "CURRENT_TIMESTAMP")]
 #[case::now_sqlite("now()", DatabaseBackend::Sqlite, "CURRENT_TIMESTAMP")]
@@ -213,6 +284,8 @@ fn test_parse_pg_type_cast_no_cast() {
     assert!(parse_pg_type_cast("42").is_none());
     assert!(parse_pg_type_cast("NOW()").is_none());
     assert!(parse_pg_type_cast("CURRENT_TIMESTAMP").is_none());
+    assert!(parse_pg_type_cast("::json").is_none());
+    assert!(parse_pg_type_cast("0::").is_none());
 }
 
 #[test]
@@ -274,6 +347,61 @@ fn test_parse_pg_type_cast_unterminated_quote() {
     // Unterminated quoted string should return None (line 203)
     assert!(parse_pg_type_cast("'unclosed").is_none());
     assert!(parse_pg_type_cast("'no close quote::json").is_none());
+}
+
+/// The split point is the LAST *top-level* `::`: not one inside a string
+/// literal, and not one nested in parentheses. Splitting at the first
+/// occurrence truncated `fill_with` expressions mid-literal.
+#[rstest]
+#[case::cast_operator_inside_literal(
+    "CASE WHEN plan_tag = 'legacy::v1' THEN 1 ELSE 2 END::integer",
+    "CASE WHEN plan_tag = 'legacy::v1' THEN 1 ELSE 2 END",
+    "integer"
+)]
+#[case::cast_chain("'x'::text::json", "'x'::text", "json")]
+#[case::cast_nested_in_parens(
+    "(CASE WHEN plan_key::text = 'API' THEN 'A' ELSE 'B' END)::billing_metric",
+    "(CASE WHEN plan_key::text = 'API' THEN 'A' ELSE 'B' END)",
+    "billing_metric"
+)]
+#[case::escaped_quote_before_cast("'it''s::not'::text", "'it''s::not'", "text")]
+fn test_parse_pg_type_cast_splits_at_last_top_level_operator(
+    #[case] expr: &str,
+    #[case] expected_value: &str,
+    #[case] expected_type: &str,
+) {
+    let (value, cast_type) = parse_pg_type_cast(expr).expect("expression carries a trailing cast");
+    assert_eq!(value, expected_value);
+    assert_eq!(cast_type, expected_type);
+}
+
+/// A `::` that only ever appears inside a string literal or inside an
+/// unclosed paren group is not a cast at all.
+#[rstest]
+#[case::only_inside_literal("'legacy::v1'")]
+#[case::only_inside_parens("(a::text)")]
+#[case::unbalanced_open_paren("(a::text")]
+fn test_parse_pg_type_cast_ignores_non_top_level_operators(#[case] expr: &str) {
+    assert!(
+        parse_pg_type_cast(expr).is_none(),
+        "no top-level cast in: {expr}"
+    );
+}
+
+/// Chained casts must nest, not collapse: MySQL wraps each level and SQLite
+/// strips every level rather than leaving a stray `::text` behind.
+#[rstest]
+#[case::postgres(DatabaseBackend::Postgres, "'x'::text::json")]
+#[case::mysql(DatabaseBackend::MySql, "CAST(CAST('x' AS CHAR) AS JSON)")]
+#[case::sqlite(DatabaseBackend::Sqlite, "'x'")]
+fn test_convert_default_for_backend_cast_chain(
+    #[case] backend: DatabaseBackend,
+    #[case] expected: &str,
+) {
+    assert_eq!(
+        convert_default_for_backend("'x'::text::json", backend),
+        expected
+    );
 }
 
 #[rstest]

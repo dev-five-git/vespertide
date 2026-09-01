@@ -1,6 +1,6 @@
 [package]
 name = "vespertide-query"
-version = "0.2.1"
+version = "0.3.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -21,14 +21,14 @@ thiserror = "2"
 # (`=1.0.0-rc.33`). sea-orm is the primary dependency, so vespertide-query
 # tracks its sea-query line to keep a single unified version in the graph.
 # The caret form still permits stable 1.0.0 once sea-orm upgrades past the rc.
-sea-query = { version = "1.0.1", features = ["thread-safe"] }
+sea-query = { version = "1.0.2", features = ["thread-safe"] }
 
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports"] }
 rstest = "0.26"
-insta = "1.47"
+insta = "1.48"
 proptest = "1"
-serial_test = "3.5"
+serial_test = "4.0"
 vespertide-core = { workspace = true, features = ["arbitrary"] }
 # Daemon-free SQL validation:
 # - rusqlite (bundled): in-memory SQLite for real execution checks (no system libsqlite needed)

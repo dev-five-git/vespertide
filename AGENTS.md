@@ -18,7 +18,7 @@ vespertide/
 │   ├── vespertide-planner/   # Schema diffing, baseline reconstruction, validation
 │   ├── vespertide-query/     # SQL generation (Postgres/MySQL/SQLite)
 │   ├── vespertide-cli/       # CLI commands: init, diff, sql, revision, export
-│   ├── vespertide-exporter/  # ORM codegen: SeaORM, SQLAlchemy, SQLModel
+│   ├── vespertide-exporter/  # ORM codegen: SeaORM, SQLAlchemy, SQLModel, JPA, Prisma
 │   ├── vespertide-loader/    # Filesystem loading of models/migrations
 │   ├── vespertide-config/    # vespertide.json configuration
 │   ├── vespertide-lsp/       # Language server: 13 LSP capabilities + HS-7~11 caching
@@ -42,12 +42,12 @@ vespertide/
 | Core types (TableDef, ColumnDef) | `vespertide-core/src/schema/` | Start with `table.rs`, `column.rs` |
 | **Newtype name wrappers** | `vespertide-core/src/schema/names.rs` | `TableName` / `ColumnName` / `IndexName` with `#[serde(transparent)]` |
 | Column type system | `vespertide-core/src/schema/column.rs` | `ColumnType::Simple/Complex` variants |
-| Migration actions | `vespertide-core/src/action/` | **14 action variants** (incl. `RawSql` escape hatch), `MigrationPlan` struct |
+| Migration actions | `vespertide-core/src/action/` | **15 action variants** (incl. `RawSql` escape hatch), `MigrationPlan` struct |
 | **QueryError variants** | `vespertide-query/src/error.rs` | `InvalidColumnType` / `SchemaError` / `BackendError` / `UnsupportedAction`; `Other` is `#[deprecated]` |
 | Schema diffing | `vespertide-planner/src/diff/` | topological sort for FK deps |
 | SQL generation | `vespertide-query/src/sql/` | One file per action type |
 | CLI commands | `vespertide-cli/src/commands/` | `cmd_*` functions |
-| ORM export | `vespertide-exporter/src/{seaorm,sqlalchemy,sqlmodel,jpa}/` | Backend-specific generators |
+| ORM export | `vespertide-exporter/src/{seaorm,sqlalchemy,sqlmodel,jpa,prisma}/` | Backend-specific generators |
 | Compile-time macro | `vespertide-macro/src/lib.rs` | `vespertide_migration!` proc macro |
 | **LSP RingCache (HS-7~11)** | `vespertide-lsp/src/cache.rs` | Generic ring-buffer LRU shared across symbols/diagnostics/drift/semantic-token caches |
 | **LSP drift cache** | `vespertide-lsp/src/drift/cache.rs` | HS-10 drift cache implementation |
@@ -169,7 +169,7 @@ See `docs/clippy-allow-audit.md` for the full audit history.
 | `QueryError::Other(...)` in new code | Emits deprecation warning. Use `SchemaError` / `InvalidColumnType` / `BackendError` / `UnsupportedAction` |
 | Exhaustive struct literal for `MigrationOptions` / `VespertideConfig` | `#[non_exhaustive]` — use `..Default::default()` |
 | Comparing newtype with `String::eq(&name.to_string(), "user")` | `TableName: PartialEq<&str>` — use `name == "user"` directly |
-| Per-ORM exporter snapshot test (single ORM) | Use the 4-ORM `orm_cases!` macro; snapshots must cross-compare all ORMs |
+| Per-ORM exporter snapshot test (single ORM) | Use the 5-ORM `orm_cases!` macro; snapshots must cross-compare all ORMs |
 
 ## COMMANDS
 
@@ -223,32 +223,34 @@ cargo clippy --workspace --all-targets --all-features 2>&1 | grep -c allow_attri
 The script greps each tracked `.rs` for a `tests/` path segment or a top-level
 `mod tests {` block to pick the tier. Current state: ✅ zero violations.
 
-Files near the ceiling (next split candidates — line counts as of the F94 /
-line-budget two-tier wave):
+Files near the ceiling (next split candidates — line counts as of the
+`origin/main` (Prisma exporter) merge into `improve-performance`):
 
 | File | Lines | Tier | What |
 |------|-------|------|------|
-| `planner/src/validate/check_expr_parser.rs` | 1199 | prod+inline-tests (≤1200) | Shared CHECK boolean-expression parser/lexer |
-| `cli/src/commands/diff.rs` | 1196 | prod+inline-tests (≤1200) | Diff CLI command (colored action formatting) |
-| `planner/src/drop_resolution.rs` | 1186 | prod+inline-tests (≤1200) | Drop resolution (DeleteColumn/Table strategy) |
-| `query/src/sql/delete_column/mod.rs` | 1117 | prod+inline-tests (≤1200) | DROP COLUMN with SQLite rebuild |
-| `planner/src/validate/tests/plan_validation.rs` | 1105 | test-file (≤1200) | Plan validation tests |
-| `query/src/sql/modify_column_type/mod.rs` | 1100 | prod+inline-tests (≤1200) | ALTER COLUMN TYPE |
-| `cli/src/commands/erd/mod.rs` | 1065 | prod+inline-tests (≤1200) | ERD command orchestrator |
-| `lsp/src/diagnostics/mod.rs` | 1025 | prod+inline-tests (≤1200) | LSP diagnostics (incl. CHECK faults) |
-| `core/src/schema/table/tests/mod.rs` | 1003 | test-file (≤1200) | Table normalization tests |
-| `cli/src/commands/export.rs` | 992 | prod+inline-tests | CLI export command for 4 ORMs |
-| `lsp/src/code_actions.rs` | 985 | prod+inline-tests | LSP code actions (incl. CHECK BETWEEN-swap) |
-| `core/src/action/mod.rs` | 981 | prod+inline-tests | MigrationAction (tests in `action/tests/`) |
-| `cli/src/commands/revision/prompts/choices_and_apply.rs` | 933 | production | Revision Choice enums + prompts + apply |
+| `macro/src/tests/mod.rs` | 1150 | test-file (≤1200) | `vespertide_migration!` expansion tests |
+| `cli/src/commands/erd/tests/mod.rs` | 1147 | test-file (≤1200) | ERD command tests |
+| `query/src/sql/modify_column_type/mod.rs` | 1140 | prod+inline-tests (≤1200) | ALTER COLUMN TYPE |
+| `query/src/sql/delete_column/mod.rs` | 1138 | prod+inline-tests (≤1200) | DROP COLUMN with SQLite rebuild |
+| `query/src/sql/add_constraint/mod.rs` | 1138 | prod+inline-tests (≤1200) | ADD CONSTRAINT |
+| `core/src/schema/table/tests/mod.rs` | 1137 | test-file (≤1200) | Table normalization tests |
+| `exporter/src/tests/fixtures/mod.rs` | 1126 | test-file (≤1200) | Shared 5-ORM fixture schemas |
+| `planner/src/validate/check_strengthening.rs` | 1121 | prod+inline-tests (≤1200) | CHECK strengthening analysis |
+| `query/src/sql/helpers.rs` | 1109 | prod+inline-tests (≤1200) | Identifier quoting / type-cast helpers |
+| `lsp/src/code_actions.rs` | 1107 | prod+inline-tests (≤1200) | LSP code actions (incl. CHECK BETWEEN-swap) |
+| `planner/src/validate/sequence_exhaustion/tests/mod.rs` | 1069 | test-file (≤1200) | Sequence-exhaustion tests |
+| `lsp/src/diagnostics/mod.rs` | 1059 | prod+inline-tests (≤1200) | LSP diagnostics (incl. CHECK faults) |
+| `planner/src/validate/check_type_mismatch.rs` | 995 | prod+inline-tests | CHECK literal type-mismatch detection |
+| `exporter/src/prisma/render.rs` | 891 | production | Prisma model/field/attribute rendering |
 
-Several `prod+inline-tests` files sit within ~15 lines of the 1200 ceiling
-(`check_expr_parser.rs`, `diff.rs`, `drop_resolution.rs`). When they next
-grow, extract the inline `#[cfg(test)] mod tests` to `<module>/tests/mod.rs`
-(the sanctioned pattern — keeps production logic under the 1000-line cap while
-the test code keeps the +200 budget). `cli/commands/diff.rs` and
-`core/action/mod.rs` were compacted in-place (verbose `ColumnDef {...}` → 
-`ColumnDef::new(...)` + constraint-builder helpers) rather than extracted.
+Several `prod+inline-tests` files sit within ~60 lines of the 1200 ceiling
+(`modify_column_type/mod.rs`, `delete_column/mod.rs`, `add_constraint/mod.rs`).
+When they next grow, extract the inline `#[cfg(test)] mod tests` to
+`<module>/tests/mod.rs` (the sanctioned pattern — keeps production logic under
+the 1000-line cap while the test code keeps the +200 budget).
+`cli/commands/diff/mod.rs` and `core/action/mod.rs` were compacted in-place
+(verbose `ColumnDef {...}` → `ColumnDef::new(...)` + constraint-builder
+helpers) rather than extracted.
 
 **Historical splits** (Waves 1-9 of optimization work):
 - `planner/src/diff.rs` (4739) → `diff/{mod,columns,constraints,ordering,tables}.rs`
@@ -284,7 +286,7 @@ Verify line policy (canonical, same as CI): `sh scripts/check-line-budget.sh`
 - `insta` for snapshot testing (exporter crate)
 - `proptest` for property-based testing (`vespertide-planner` diff + `vespertide-query` SQL)
 - Helper functions: `col()`, `table()` reduce boilerplate
-- **2267 tests across ~276 `.rs` files, 0 failed, 3 documented `#[ignore]`** (offline trybuild + 2 `///` doctest blocks)
+- **4234 tests across ~383 `.rs` files, 0 failed, 3 documented `#[ignore]`** (offline trybuild + 2 `///` doctest blocks)
 
 ### Test-file placement policy (avoid confusion with production code)
 
@@ -368,12 +370,14 @@ fn create_table_snapshot(#[case] backend: DatabaseBackend) {
 }
 ```
 
-This is the same pattern used by `vespertide-query` (3 backends, 357 snapshots) and `vespertide-exporter` (4 ORMs via `Orm` enum, 232 cross-ORM snapshots). When adding a new backend / ORM / format, the change is **one `#[case::name(Value)]` line**.
+This is the same pattern used by `vespertide-query` (3 backends, 357 snapshots) and `vespertide-exporter` (5 ORMs via `Orm` enum, 335 cross-ORM snapshots). When adding a new backend / ORM / format, the change is **one `#[case::name(Value)]` line**.
 
 ### Exporter snapshots MUST cover ALL ORMs (no per-ORM snapshots)
-Every `vespertide-exporter` snapshot test MUST be written through the shared `orm_cases!` rstest macro in `crates/vespertide-exporter/src/tests/mod.rs`, which renders each fixture for **all four ORMs** (`Orm::SeaOrm`, `Orm::SqlAlchemy`, `Orm::SqlModel`, `Orm::Jpa`). A new export scenario = ONE fixture + ONE `orm_cases!(...)` line, producing exactly four snapshots (one per ORM) in the single shared `crates/vespertide-exporter/src/tests/snapshots/` directory.
+Every `vespertide-exporter` snapshot test MUST be written through the shared `orm_cases!` rstest macro in `crates/vespertide-exporter/src/tests/mod.rs`, which renders each fixture for **all five ORMs** (`Orm::SeaOrm`, `Orm::SqlAlchemy`, `Orm::SqlModel`, `Orm::Jpa`, `Orm::Prisma`). A new export scenario = ONE fixture + ONE `orm_cases!(...)` line, producing exactly five snapshots (one per ORM) in the single shared `crates/vespertide-exporter/src/tests/snapshots/` directory.
 
-FORBIDDEN: per-ORM `#[test]` snapshot functions inside `src/seaorm/`, `src/sqlalchemy/`, `src/sqlmodel/`, `src/jpa/`, or any `snapshots/` directory other than `src/tests/snapshots/`. A scenario snapshotted for only one ORM is a defect — ORM output must always be cross-compared across all four. When adding a new ORM the change is a single `#[case::<orm>(Orm::<Variant>)]` line in the macro, never a new per-ORM test.
+FORBIDDEN: per-ORM `#[test]` snapshot functions inside `src/seaorm/`, `src/sqlalchemy/`, `src/sqlmodel/`, `src/jpa/`, `src/prisma/`, or any `snapshots/` directory other than `src/tests/snapshots/`. A scenario snapshotted for only one ORM is a defect — ORM output must always be cross-compared across all five. When adding a new ORM the change is a single `#[case::<orm>(Orm::<Variant>)]` line in the macro, never a new per-ORM test.
+
+Exception: an entry point that exists in only one backend (e.g. Prisma's single-file `render_schema`, which deduplicates enums globally) is not a cross-ORM scenario, so its snapshot tests live as inline tests of that module — with the snapshot files still written to the shared `src/tests/snapshots/` via `with_settings!(snapshot_path => ...)`.
 
 ### `#[cfg(test)]` test-oracle pattern
 When a function exists solely as an oracle for a regression test (e.g. comparing

@@ -1,9 +1,12 @@
+mod data_migration;
 mod display;
 mod narrowing_strategy;
 mod prefix;
 mod remap_mapping_serde;
 
 use crate::schema::{ColumnDef, ColumnName, ColumnType, TableConstraint, TableName};
+pub use data_migration::{DataMigrationSql, leading_ddl_keyword, sql_preview};
+pub use display::truncate_comment;
 pub use narrowing_strategy::NarrowingStrategy;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -42,7 +45,9 @@ pub struct MigrationPlan {
 ///
 /// Prefer typed actions over [`MigrationAction::RawSql`]. Raw SQL is an emergency escape hatch:
 /// it is not portable across backends and is skipped during baseline replay, which means the
-/// planner cannot reason about it.
+/// planner cannot reason about it. For SQL that only changes *data*, use
+/// [`MigrationAction::DataMigration`] instead: it is skipped by replay too, but by contract
+/// rather than by ignorance.
 ///
 /// This enum is `#[non_exhaustive]`: new variants may be added in future releases.
 /// Downstream `match` expressions should include a wildcard arm.
@@ -83,7 +88,12 @@ pub enum MigrationAction {
         column: ColumnName,
         new_type: ColumnType,
         /// Mapping of removed enum values to replacement values for safe enum value removal.
-        /// e.g., `{"cancelled": "'pending'"}` generates an `UPDATE` before the type change.
+        /// Both sides are **bare** enum labels — write them exactly as they appear in the enum
+        /// `values` list, with no surrounding SQL quotes. The SQL generator binds them as data
+        /// values and adds the quoting itself.
+        /// e.g., `{"cancelled": "pending"}` generates an `UPDATE` before the type change.
+        /// A legacy pre-quoted replacement (`"'pending'"`) still works: one outer quote layer is
+        /// stripped with a warning.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         fill_with: Option<BTreeMap<String, String>>,
         /// Strategy for transforming existing rows that would violate a *narrowed* new type
@@ -201,12 +211,44 @@ pub enum MigrationAction {
     /// **Emergency escape hatch only.** Raw SQL is not portable across backends and is invisible
     /// to baseline replay, so the planner cannot reason about schema state after this action.
     /// Use typed actions whenever possible.
+    ///
+    /// For SQL that changes **data only**, use [`MigrationAction::DataMigration`] instead. Both
+    /// are skipped by baseline replay, but `raw_sql` is skipped because its effect is *unknown*
+    /// while `data_migration` is skipped because *changing no schema* is its enforced contract.
+    /// Using `raw_sql` for DDL silently drops that schema change from the reconstructed baseline,
+    /// after which `vespertide diff` reports the same already-applied changes forever.
     RawSql { sql: String },
+    /// Execute a **data-only** statement verbatim (`UPDATE` / `INSERT` / `DELETE` / …).
+    ///
+    /// This is the typed home for backfills that the schema-coupled facilities cannot express:
+    /// conditional updates of *existing* columns, correlated-subquery backfills, and data
+    /// reshaping during a format change. Unlike `AddColumn.fill_with` (which only fires for a
+    /// newly added NOT NULL column with no default) or `ModifyColumnDefault.backfill` (one
+    /// column, one value, every row), `data_migration` carries an arbitrary DML statement and
+    /// is not tied to any schema change.
+    ///
+    /// **Contract: this action changes no schema.** Baseline replay skips it — not because its
+    /// effect is unknown, as with [`MigrationAction::RawSql`], but because "no schema change"
+    /// is guaranteed. The guarantee is enforced: a statement whose first token is `CREATE`,
+    /// `ALTER`, `DROP`, or `TRUNCATE` is rejected at load and plan time.
+    ///
+    /// The SQL is emitted byte-for-byte as written — no case folding, cast rewriting, or
+    /// reformatting. Set `sql` to a single string for portable SQL, or to an object keyed by
+    /// `postgres` / `mysql` / `sqlite` when the statement cannot be portable. A `description`
+    /// is optional but strongly encouraged: it is what `vespertide diff` shows for this action.
+    DataMigration {
+        /// The statement(s) to run, emitted verbatim. See [`DataMigrationSql`].
+        sql: DataMigrationSql,
+        /// Why this data change exists, shown in `vespertide diff` output.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        description: Option<String>,
+    },
 }
 
 impl MigrationAction {
     /// Returns the primary table this action affects, if any.
-    /// Returns None for actions that don't bind to a single table (e.g. `RawSql`).
+    /// Returns None for actions that don't bind to a single table
+    /// (e.g. `RawSql`, `DataMigration`).
     #[must_use]
     pub fn table_name(&self) -> Option<&str> {
         match self {
@@ -224,8 +266,22 @@ impl MigrationAction {
             | Self::ReplaceConstraint { table, .. }
             | Self::RemapEnumValues { table, .. } => Some(table.as_str()),
             Self::RenameTable { from, .. } => Some(from.as_str()),
-            Self::RawSql { .. } => None,
+            Self::RawSql { .. } | Self::DataMigration { .. } => None,
         }
+    }
+
+    /// The DDL keyword this action's SQL illegally opens with, if any.
+    ///
+    /// Only [`MigrationAction::DataMigration`] carries a schema-neutrality
+    /// contract, so every other variant returns `None`. Per-backend statements
+    /// are all checked; the first offender wins.
+    #[must_use]
+    pub fn data_migration_ddl_violation(&self) -> Option<(&'static str, &str)> {
+        let Self::DataMigration { sql, .. } = self else {
+            return None;
+        };
+        sql.statements()
+            .find_map(|stmt| leading_ddl_keyword(stmt).map(|keyword| (keyword, stmt)))
     }
 }
 
@@ -430,8 +486,144 @@ mod tests {
         Some("old_users")
     )]
     #[case::raw_sql(MigrationAction::RawSql { sql: "SELECT 1".into() }, None)]
+    #[case::data_migration(
+        MigrationAction::DataMigration { sql: "UPDATE t SET x = 1".into(), description: None },
+        None
+    )]
     fn test_table_name(#[case] action: MigrationAction, #[case] expected: Option<&str>) {
         assert_eq!(action.table_name(), expected);
+    }
+
+    #[test]
+    fn data_migration_wire_format_round_trip_without_description() {
+        let canonical = r#"{"type":"data_migration","sql":"UPDATE user SET active = true"}"#;
+        let parsed: MigrationAction = serde_json::from_str(canonical).expect("parse");
+        assert_eq!(
+            parsed,
+            MigrationAction::DataMigration {
+                sql: "UPDATE user SET active = true".into(),
+                description: None,
+            }
+        );
+        assert_eq!(
+            serde_json::to_string(&parsed).expect("serialize"),
+            canonical,
+            "wire format MUST be byte-identical"
+        );
+    }
+
+    #[test]
+    fn data_migration_wire_format_round_trip_with_description() {
+        let canonical = concat!(
+            r#"{"type":"data_migration","sql":"UPDATE user SET active = true","#,
+            r#""description":"activate legacy accounts"}"#
+        );
+        let parsed: MigrationAction = serde_json::from_str(canonical).expect("parse");
+        assert_eq!(
+            serde_json::to_string(&parsed).expect("serialize"),
+            canonical
+        );
+    }
+
+    #[test]
+    fn data_migration_per_backend_wire_format_round_trip() {
+        let canonical = concat!(
+            r#"{"type":"data_migration","sql":{"postgres":"UPDATE a","#,
+            r#""mysql":"UPDATE b","sqlite":"UPDATE c"}}"#
+        );
+        let parsed: MigrationAction = serde_json::from_str(canonical).expect("parse");
+        assert_eq!(
+            parsed,
+            MigrationAction::DataMigration {
+                sql: DataMigrationSql::PerBackend {
+                    postgres: "UPDATE a".into(),
+                    mysql: "UPDATE b".into(),
+                    sqlite: "UPDATE c".into(),
+                },
+                description: None,
+            }
+        );
+        assert_eq!(
+            serde_json::to_string(&parsed).expect("serialize"),
+            canonical
+        );
+    }
+
+    #[rstest]
+    #[case::uniform_dml("UPDATE user SET active = true".into(), None)]
+    #[case::uniform_ddl("DROP TABLE user".into(), Some(("DROP", "DROP TABLE user")))]
+    #[case::commented_ddl(
+        "-- tidy up\n  truncate table audit".into(),
+        Some(("TRUNCATE", "-- tidy up\n  truncate table audit"))
+    )]
+    fn data_migration_ddl_violation_detects_uniform_sql(
+        #[case] sql: DataMigrationSql,
+        #[case] expected: Option<(&'static str, &str)>,
+    ) {
+        let action = MigrationAction::DataMigration {
+            sql,
+            description: None,
+        };
+        assert_eq!(action.data_migration_ddl_violation(), expected);
+    }
+
+    #[test]
+    fn data_migration_ddl_violation_scans_every_backend_statement() {
+        let action = MigrationAction::DataMigration {
+            sql: DataMigrationSql::PerBackend {
+                postgres: "UPDATE t SET x = 1".into(),
+                mysql: "UPDATE t SET x = 1".into(),
+                sqlite: "ALTER TABLE t RENAME TO t2".into(),
+            },
+            description: None,
+        };
+        assert_eq!(
+            action.data_migration_ddl_violation(),
+            Some(("ALTER", "ALTER TABLE t RENAME TO t2")),
+            "a DDL statement hidden in a non-default backend branch must still be caught"
+        );
+    }
+
+    #[test]
+    fn ddl_violation_is_none_for_every_non_data_migration_action() {
+        let action = MigrationAction::RawSql {
+            sql: "DROP TABLE user".to_string(),
+        };
+        assert_eq!(
+            action.data_migration_ddl_violation(),
+            None,
+            "raw_sql keeps its escape-hatch freedom; only data_migration is constrained"
+        );
+    }
+
+    #[rstest]
+    #[case::with_description(
+        MigrationAction::DataMigration {
+            sql: "UPDATE user SET active = true".into(),
+            description: Some("activate legacy accounts".into()),
+        },
+        "DataMigration: activate legacy accounts"
+    )]
+    #[case::without_description(
+        MigrationAction::DataMigration {
+            sql: "UPDATE user SET active = true".into(),
+            description: None,
+        },
+        "DataMigration: UPDATE user SET active = true"
+    )]
+    #[case::per_backend_without_description(
+        MigrationAction::DataMigration {
+            sql: DataMigrationSql::PerBackend {
+                postgres: "UPDATE pg".into(),
+                mysql: "UPDATE my".into(),
+                sqlite: "UPDATE lite".into(),
+            },
+            description: None,
+        },
+        "DataMigration: UPDATE pg"
+    )]
+    fn test_display_data_migration(#[case] action: MigrationAction, #[case] expected: &str) {
+        assert_eq!(action.to_string(), expected);
     }
 
     #[rstest]

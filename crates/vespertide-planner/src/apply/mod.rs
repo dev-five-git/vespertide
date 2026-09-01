@@ -1,5 +1,6 @@
 mod column_ops;
 mod constraint_ops;
+mod data_migration;
 mod raw_sql;
 mod table_ops;
 
@@ -9,6 +10,20 @@ mod tests;
 use vespertide_core::{MigrationAction, TableDef};
 
 use crate::error::PlannerError;
+
+/// Locate a table in `schema` by name and return a mutable reference, or
+/// [`PlannerError::TableNotFound`] when no match exists. Shared by the
+/// `column_ops`, `constraint_ops`, and `table_ops` submodules so the
+/// `TableNotFound` error semantics live in exactly one place.
+pub(super) fn find_table_mut<'a>(
+    schema: &'a mut [TableDef],
+    table: &str,
+) -> Result<&'a mut TableDef, PlannerError> {
+    schema
+        .iter_mut()
+        .find(|t| t.name == table)
+        .ok_or_else(|| PlannerError::TableNotFound(table.to_string()))
+}
 
 /// Apply a single migration action to an in-memory schema snapshot.
 pub fn apply_action(
@@ -72,6 +87,10 @@ pub fn apply_action(
             column,
             mapping,
         } => column_ops::remap_enum_values(schema, table, column, mapping),
+        MigrationAction::DataMigration { .. } => {
+            data_migration::apply_data_migration();
+            Ok(())
+        }
         MigrationAction::RawSql { .. } | _ => {
             raw_sql::apply_raw_sql();
             Ok(())

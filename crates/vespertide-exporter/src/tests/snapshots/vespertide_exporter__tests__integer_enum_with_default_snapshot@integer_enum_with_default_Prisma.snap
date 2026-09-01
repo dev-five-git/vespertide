@@ -1,0 +1,15 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+enum TaskStatus {
+  PENDING // = 0
+  COMPLETED // = 100
+}
+
+model Tasks {
+  id Int
+  status TaskStatus @default(dbgenerated("1"))
+
+  @@map("tasks")
+}

@@ -6,14 +6,16 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use vespertide_core::{TableConstraint, TableDef};
+use vespertide_core::{ColumnName, TableConstraint, TableDef, TableName};
+use vespertide_naming::seaorm_module_name;
 
 use super::super::imports::{
-    resolve_relation_entity_module_path, sanitize_field_name, to_pascal_case, to_snake_case,
-    unique_name,
+    resolve_relation_entity_module_path, sanitize_field_name, sanitize_type_name, to_pascal_case,
+    to_snake_case, unique_name,
 };
-use super::super::render::{primary_key_columns, single_column_unique_set};
+use super::super::render::primary_key_columns;
 use super::naming::{generate_relation_enum_name, pluralize, unique_relation_enum_name};
+use crate::constraint_scan::single_column_uniques;
 
 /// Information about a reverse relation to be generated.
 struct ReverseRelation {
@@ -77,14 +79,14 @@ pub(super) fn collect_reverse_relation_targets(
 fn collect_many_to_many_targets(
     current_table: &TableDef,
     junction_table: &TableDef,
-    junction_pk: &HashSet<String>,
+    junction_pk: &HashSet<&str>,
     schema: &[TableDef],
 ) -> Option<Vec<String>> {
     if junction_pk.len() < 2 {
         return None;
     }
 
-    let fks: Vec<_> = junction_table
+    let fks: Vec<(&[ColumnName], &TableName)> = junction_table
         .constraints
         .iter()
         .filter_map(|c| {
@@ -92,7 +94,7 @@ fn collect_many_to_many_targets(
                 columns, ref_table, ..
             } = c
             {
-                Some((columns.clone(), ref_table.clone()))
+                Some((columns.as_slice(), ref_table))
             } else {
                 None
             }
@@ -112,7 +114,7 @@ fn collect_many_to_many_targets(
     }
 
     fks.iter()
-        .find(|(_, ref_table)| ref_table == &current_table.name)?;
+        .find(|(_, ref_table)| **ref_table == current_table.name)?;
 
     let mut targets = Vec::new();
 
@@ -121,10 +123,10 @@ fn collect_many_to_many_targets(
 
     // Target tables via M2M
     for (_, ref_table) in &fks {
-        if ref_table == &current_table.name {
+        if **ref_table == current_table.name {
             continue;
         }
-        let target_exists = schema.iter().any(|t| &t.name == ref_table);
+        let target_exists = schema.iter().any(|t| &t.name == *ref_table);
         if target_exists {
             targets.push(ref_table.to_string());
         }
@@ -178,8 +180,7 @@ fn reverse_relation_field_defs_inner(ctx: ReverseRelationFieldCtx<'_>) -> Vec<St
     let mut relations: Vec<ReverseRelation> = Vec::new();
 
     // Count how many FKs from each table reference this table
-    let mut fk_count_per_table: std::collections::HashMap<String, usize> =
-        std::collections::HashMap::new();
+    let mut fk_count_per_table: HashMap<&str, usize> = HashMap::new();
     for other_table in schema {
         if other_table.name == table.name {
             continue;
@@ -189,7 +190,7 @@ fn reverse_relation_field_defs_inner(ctx: ReverseRelationFieldCtx<'_>) -> Vec<St
                 && ref_table == &table.name
             {
                 *fk_count_per_table
-                    .entry(other_table.name.to_string())
+                    .entry(other_table.name.as_str())
                     .or_insert(0) += 1;
             }
         }
@@ -203,7 +204,7 @@ fn reverse_relation_field_defs_inner(ctx: ReverseRelationFieldCtx<'_>) -> Vec<St
 
         // Get PK and unique columns for the other table
         let other_pk = primary_key_columns(other_table);
-        let other_unique = single_column_unique_set(&other_table.constraints);
+        let other_unique = single_column_uniques(&other_table.constraints);
 
         // Check if this is a junction table (composite PK with multiple FKs)
         if let Some(m2m_relations) =
@@ -238,7 +239,8 @@ fn reverse_relation_field_defs_inner(ctx: ReverseRelationFieldCtx<'_>) -> Vec<St
                     // Generate base field name
                     let base_relation_enum = generate_relation_enum_name(columns);
                     let field_base = if has_multiple_fks {
-                        let lowercase_enum = to_snake_case(&base_relation_enum);
+                        let lowercase_enum =
+                            sanitize_field_name(&to_snake_case(&base_relation_enum));
                         if is_one_to_one {
                             lowercase_enum
                         } else {
@@ -258,11 +260,11 @@ fn reverse_relation_field_defs_inner(ctx: ReverseRelationFieldCtx<'_>) -> Vec<St
                         target_entity: other_table.name.to_string(),
                         is_one_to_one,
                         field_base,
-                        base_relation_enum,
+                        base_relation_enum: base_relation_enum.clone(),
                         source_table: other_table.name.to_string(),
                         has_multiple_fks,
                         via: None,
-                        via_rel: Some(generate_relation_enum_name(columns)),
+                        via_rel: Some(base_relation_enum),
                         is_m2m: false,
                     });
                 }
@@ -302,7 +304,7 @@ fn reverse_relation_field_defs_inner(ctx: ReverseRelationFieldCtx<'_>) -> Vec<St
             } else {
                 let via_value = rel.via.as_ref().unwrap_or(&rel.source_table);
                 // Direct: use via table name, fall back to FK-based on collision
-                let base_enum = to_pascal_case(via_value);
+                let base_enum = sanitize_type_name(&to_pascal_case(via_value));
                 if used_relation_enums.contains(&base_enum) {
                     rel.base_relation_enum.clone()
                 } else {
@@ -322,6 +324,7 @@ fn reverse_relation_field_defs_inner(ctx: ReverseRelationFieldCtx<'_>) -> Vec<St
                     "    #[sea_orm({relation_type}, relation_enum = \"{relation_enum_name}\", via_rel = \"{via_rel}\")]"
                 )
             } else if let Some(via) = &rel.via {
+                let via = seaorm_module_name(via);
                 format!(
                     "    #[sea_orm({relation_type}, relation_enum = \"{relation_enum_name}\", via = \"{via}\")]"
                 )
@@ -330,6 +333,7 @@ fn reverse_relation_field_defs_inner(ctx: ReverseRelationFieldCtx<'_>) -> Vec<St
             }
         } else if let Some(via) = &rel.via {
             // No ambiguity - just via without relation_enum
+            let via = seaorm_module_name(via);
             format!("    #[sea_orm({relation_type}, via = \"{via}\")]")
         } else {
             format!("    #[sea_orm({relation_type})]")
@@ -356,7 +360,7 @@ fn reverse_relation_field_defs_inner(ctx: ReverseRelationFieldCtx<'_>) -> Vec<St
 fn collect_many_to_many_relations(
     current_table: &TableDef,
     junction_table: &TableDef,
-    junction_pk: &HashSet<String>,
+    junction_pk: &HashSet<&str>,
     schema: &[TableDef],
 ) -> Option<Vec<ReverseRelation>> {
     // Junction table must have composite PK (2+ columns)
@@ -365,7 +369,7 @@ fn collect_many_to_many_relations(
     }
 
     // Collect all FKs from the junction table
-    let fks: Vec<_> = junction_table
+    let fks: Vec<(&[ColumnName], &TableName)> = junction_table
         .constraints
         .iter()
         .filter_map(|c| {
@@ -373,7 +377,7 @@ fn collect_many_to_many_relations(
                 columns, ref_table, ..
             } = c
             {
-                Some((columns.clone(), ref_table.clone()))
+                Some((columns.as_slice(), ref_table))
             } else {
                 None
             }
@@ -396,27 +400,27 @@ fn collect_many_to_many_relations(
 
     // Find which FK references the current table
     fks.iter()
-        .find(|(_, ref_table)| ref_table == &current_table.name)?;
+        .find(|(_, ref_table)| **ref_table == current_table.name)?;
 
     let mut relations = Vec::new();
 
-    let self_ref_fks: Vec<_> = fks
+    // All FKs point back at the current table ⇒ pure self-ref junction, not an
+    // M2M junction linking two distinct tables.
+    if fks
         .iter()
-        .filter(|(_, ref_table)| ref_table == &current_table.name)
-        .cloned()
-        .collect();
-
-    if self_ref_fks.len() == fks.len() {
+        .all(|(_, ref_table)| **ref_table == current_table.name)
+    {
         return None;
     }
 
     // First, add has_many to the junction table itself (direct relation, not M2M)
+    let junction_pascal = to_pascal_case(&junction_table.name);
     let junction_base = pluralize(&sanitize_field_name(&junction_table.name));
     relations.push(ReverseRelation {
         target_entity: junction_table.name.to_string(),
         is_one_to_one: false,
         field_base: junction_base,
-        base_relation_enum: to_pascal_case(&junction_table.name),
+        base_relation_enum: sanitize_type_name(&junction_pascal),
         source_table: junction_table.name.to_string(),
         has_multiple_fks: false,
         via: None,
@@ -426,11 +430,11 @@ fn collect_many_to_many_relations(
 
     // Then add has_many with via for the target tables (M2M relations)
     for (_columns, ref_table) in &fks {
-        if ref_table == &current_table.name {
+        if **ref_table == current_table.name {
             continue;
         }
 
-        let target_exists = schema.iter().any(|t| &t.name == ref_table);
+        let target_exists = schema.iter().any(|t| &t.name == *ref_table);
         if !target_exists {
             continue;
         }
@@ -440,11 +444,13 @@ fn collect_many_to_many_relations(
             pluralize(&sanitize_field_name(ref_table)),
             sanitize_field_name(&junction_table.name)
         );
-        let base_relation_enum = format!(
+        // `junction_pascal` is loop-invariant: computed once above rather than
+        // re-derived per target table.
+        let base_relation_enum = sanitize_type_name(&format!(
             "{}Via{}",
             to_pascal_case(ref_table),
-            to_pascal_case(&junction_table.name)
-        );
+            junction_pascal
+        ));
 
         relations.push(ReverseRelation {
             target_entity: ref_table.to_string(),

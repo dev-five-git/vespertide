@@ -16,7 +16,6 @@ use vespertide_core::TableDef;
 
 use crate::cache::{RingCache, hash_text};
 use crate::parser::DocumentFormat;
-use crate::workspace_index::WorkspaceIndex;
 
 #[expect(
     clippy::match_same_arms,
@@ -79,9 +78,7 @@ pub fn compute_shared(
     text: &str,
     format: DocumentFormat,
     tree: Option<&tree_sitter::Tree>,
-    index: &WorkspaceIndex,
 ) -> Arc<Vec<DomainDiagnostic>> {
-    let _ = index;
     diagnostics_cache().get_or_compute((hash_text(text), text.len(), format), || {
         compute_uncached(text, format, tree)
     })
@@ -93,9 +90,8 @@ pub fn compute(
     text: &str,
     format: DocumentFormat,
     tree: Option<&tree_sitter::Tree>,
-    index: &WorkspaceIndex,
 ) -> Vec<DomainDiagnostic> {
-    (*compute_shared(text, format, tree, index)).clone()
+    (*compute_shared(text, format, tree)).clone()
 }
 
 /// Uncached implementation used by the cache on miss.
@@ -204,7 +200,6 @@ mod tests {
     #[test]
     fn valid_table_no_diagnostics() {
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = r#"{
             "name": "user",
             "columns": [
@@ -212,7 +207,7 @@ mod tests {
             ]
         }"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
         assert!(diags.is_empty(), "expected zero diagnostics, got {diags:?}");
     }
 
@@ -221,11 +216,10 @@ mod tests {
         let pool = ParserPool::new();
         let source = r#"{"name":"user","columns":[{"name":"id","type":"integer","nullable":false,"primary_key":true}]}"#;
         let tree = pool.parse(source, DocumentFormat::Json).unwrap();
-        let index = WorkspaceIndex::new();
 
-        let first = compute(source, DocumentFormat::Json, Some(&tree), &index);
-        let second = compute(source, DocumentFormat::Json, Some(&tree), &index);
-        let third = compute(source, DocumentFormat::Json, Some(&tree), &index);
+        let first = compute(source, DocumentFormat::Json, Some(&tree));
+        let second = compute(source, DocumentFormat::Json, Some(&tree));
+        let third = compute(source, DocumentFormat::Json, Some(&tree));
 
         // Cache must not change observable behaviour.
         assert_eq!(first, second);
@@ -238,11 +232,10 @@ mod tests {
         let pool = ParserPool::new();
         let source = r#"{"name":"u","columns":[{"name":"id","type":"integer"}]}"#;
         let tree = pool.parse(source, DocumentFormat::Json).unwrap();
-        let idx = WorkspaceIndex::new();
 
-        let first = compute(source, DocumentFormat::Json, Some(&tree), &idx);
-        let second = compute(source, DocumentFormat::Json, Some(&tree), &idx);
-        let third = compute(source, DocumentFormat::Json, Some(&tree), &idx);
+        let first = compute(source, DocumentFormat::Json, Some(&tree));
+        let second = compute(source, DocumentFormat::Json, Some(&tree));
+        let third = compute(source, DocumentFormat::Json, Some(&tree));
 
         assert_eq!(first, second);
         assert_eq!(second, third);
@@ -255,17 +248,16 @@ mod tests {
         let source = "name: u\ncolumns: []\n";
         let json_tree = pool.parse(source, DocumentFormat::Json).unwrap();
         let yaml_tree = pool.parse(source, DocumentFormat::Yaml).unwrap();
-        let idx = WorkspaceIndex::new();
 
-        let json_diags = compute(source, DocumentFormat::Json, Some(&json_tree), &idx);
-        let yaml_diags = compute(source, DocumentFormat::Yaml, Some(&yaml_tree), &idx);
+        let json_diags = compute(source, DocumentFormat::Json, Some(&json_tree));
+        let yaml_diags = compute(source, DocumentFormat::Yaml, Some(&yaml_tree));
 
         assert_ne!(
             json_diags, yaml_diags,
             "JSON syntax diagnostics must not pollute YAML results"
         );
-        let json_diags_2 = compute(source, DocumentFormat::Json, Some(&json_tree), &idx);
-        let yaml_diags_2 = compute(source, DocumentFormat::Yaml, Some(&yaml_tree), &idx);
+        let json_diags_2 = compute(source, DocumentFormat::Json, Some(&json_tree));
+        let yaml_diags_2 = compute(source, DocumentFormat::Yaml, Some(&yaml_tree));
         assert_eq!(json_diags, json_diags_2);
         assert_eq!(yaml_diags, yaml_diags_2);
     }
@@ -274,19 +266,18 @@ mod tests {
     fn diagnostics_cache_does_not_pollute_across_distinct_texts() {
         diagnostics_cache().clear();
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let valid = r#"{"name":"a","columns":[{"name":"id","type":"integer"}]}"#;
         let invalid = r#"{"name":"b","columns":[{"name":"id","type":"wrong"}]}"#;
         let valid_tree = pool.parse(valid, DocumentFormat::Json).unwrap();
         let invalid_tree = pool.parse(invalid, DocumentFormat::Json).unwrap();
 
-        let valid_diags = compute(valid, DocumentFormat::Json, Some(&valid_tree), &idx);
-        let invalid_diags = compute(invalid, DocumentFormat::Json, Some(&invalid_tree), &idx);
+        let valid_diags = compute(valid, DocumentFormat::Json, Some(&valid_tree));
+        let invalid_diags = compute(invalid, DocumentFormat::Json, Some(&invalid_tree));
 
         assert!(valid_diags.iter().all(|diag| diag.code != "unknown-type"));
         assert!(invalid_diags.iter().any(|diag| diag.code == "unknown-type"));
-        let valid_diags_2 = compute(valid, DocumentFormat::Json, Some(&valid_tree), &idx);
-        let invalid_diags_2 = compute(invalid, DocumentFormat::Json, Some(&invalid_tree), &idx);
+        let valid_diags_2 = compute(valid, DocumentFormat::Json, Some(&valid_tree));
+        let invalid_diags_2 = compute(invalid, DocumentFormat::Json, Some(&invalid_tree));
         assert_eq!(valid_diags, valid_diags_2);
         assert_eq!(invalid_diags, invalid_diags_2);
     }
@@ -297,9 +288,8 @@ mod tests {
         let pool = ParserPool::new();
         let source = r#"{"name":"u","columns":[{"name":"id","type":"unknown_type"}]}"#;
         let tree = pool.parse(source, DocumentFormat::Json).unwrap();
-        let idx = WorkspaceIndex::new();
 
-        let cached = compute(source, DocumentFormat::Json, Some(&tree), &idx);
+        let cached = compute(source, DocumentFormat::Json, Some(&tree));
         let uncached = compute_uncached(source, DocumentFormat::Json, Some(&tree));
 
         assert_eq!(cached, uncached);
@@ -308,10 +298,9 @@ mod tests {
     #[test]
     fn truncated_json_produces_syntax_error() {
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = r#"{"name": "user","#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
         assert!(!diags.is_empty());
         assert!(
             diags
@@ -323,10 +312,9 @@ mod tests {
     #[test]
     fn unknown_column_type_highlights_type_pair_not_braces() {
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = r#"{"name":"u","columns":[{"name":"id","type":"wrong","nullable":false,"primary_key":true}]}"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
 
         let err = diags
             .iter()
@@ -356,20 +344,52 @@ mod tests {
     #[test]
     fn known_simple_types_produce_no_unknown_type_diagnostic() {
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = r#"{"name":"u","columns":[{"name":"id","type":"integer","nullable":false,"primary_key":true}]}"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
         assert!(diags.iter().all(|d| d.code != "unknown-type"));
+    }
+
+    #[rstest]
+    #[case::json(
+        r#"{"name":"u","columns":[{"name":"payload","type":"jsonb","nullable":false}]}"#,
+        DocumentFormat::Json
+    )]
+    #[case::yaml(
+        "name: u\ncolumns:\n  - name: payload\n    type: jsonb\n    nullable: false\n",
+        DocumentFormat::Yaml
+    )]
+    fn jsonb_is_not_a_simple_type_and_gets_flagged(
+        #[case] src: &str,
+        #[case] format: DocumentFormat,
+    ) {
+        // `SimpleColumnType` has no `Jsonb` variant: the loader rejects
+        // `"type": "jsonb"`, so the editor must flag it too.
+        let pool = ParserPool::new();
+        let tree = pool.parse(src, format);
+        let diags = compute(src, format, tree.as_ref());
+
+        let err = diags
+            .iter()
+            .find(|d| d.code == "unknown-type")
+            .expect("`jsonb` must produce an unknown-type diagnostic");
+        let suggested = err
+            .message
+            .split_once("Expected one of:")
+            .map(|(_, tail)| tail)
+            .expect("diagnostic should list the expected types");
+        assert!(
+            !suggested.contains("jsonb"),
+            "the suggested type list must not advertise `jsonb`, got: {suggested}"
+        );
     }
 
     #[test]
     fn yaml_unknown_column_type_highlights_type_pair() {
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = "name: u\ncolumns:\n  - name: id\n    type: wrong\n    nullable: false\n    primary_key: true\n";
         let tree = pool.parse(src, DocumentFormat::Yaml);
-        let diags = compute(src, DocumentFormat::Yaml, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Yaml, tree.as_ref());
 
         let err = diags
             .iter()
@@ -389,10 +409,9 @@ mod tests {
     #[test]
     fn yaml_valid_simple_type_produces_no_unknown_type_diagnostic() {
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = "name: u\ncolumns:\n  - name: id\n    type: uuid\n    nullable: false\n    primary_key: true\n";
         let tree = pool.parse(src, DocumentFormat::Yaml);
-        let diags = compute(src, DocumentFormat::Yaml, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Yaml, tree.as_ref());
         assert!(diags.iter().all(|d| d.code != "unknown-type"));
     }
 
@@ -400,10 +419,9 @@ mod tests {
     fn yaml_complex_type_object_skips_unknown_type_check() {
         // varchar lives in an object, not a string. The pre-pass must skip it.
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = "name: u\ncolumns:\n  - name: title\n    type: {kind: varchar, length: 200}\n    nullable: false\n";
         let tree = pool.parse(src, DocumentFormat::Yaml);
-        let diags = compute(src, DocumentFormat::Yaml, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Yaml, tree.as_ref());
         assert!(
             diags.iter().all(|d| d.code != "unknown-type"),
             "object type values must not trigger unknown-type, got: {diags:?}"
@@ -413,10 +431,9 @@ mod tests {
     #[test]
     fn enum_without_values_field_emits_complex_type_error() {
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = r#"{"name":"u","columns":[{"name":"status","type":{"kind":"enum","name":"s"},"nullable":false}]}"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
 
         let err = diags
             .iter()
@@ -434,10 +451,9 @@ mod tests {
     #[test]
     fn enum_with_empty_values_array_is_flagged() {
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = r#"{"name":"u","columns":[{"name":"s","type":{"kind":"enum","name":"st","values":[]}}]}"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
 
         let err = diags
             .iter()
@@ -449,10 +465,9 @@ mod tests {
     #[test]
     fn enum_string_duplicate_value_is_flagged_on_the_offending_element() {
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = r#"{"name":"u","columns":[{"name":"s","type":{"kind":"enum","name":"st","values":["active","banned","active"]}}]}"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
 
         let err = diags
             .iter()
@@ -472,10 +487,9 @@ mod tests {
     #[test]
     fn varchar_without_length_field_is_flagged() {
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = r#"{"name":"u","columns":[{"name":"title","type":{"kind":"varchar"}}]}"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
 
         let err = diags
             .iter()
@@ -487,10 +501,9 @@ mod tests {
     #[test]
     fn numeric_missing_precision_and_scale_is_flagged() {
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = r#"{"name":"u","columns":[{"name":"amount","type":{"kind":"numeric"}}]}"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
 
         let err = diags
             .iter()
@@ -503,10 +516,9 @@ mod tests {
     #[test]
     fn unknown_complex_kind_is_flagged_on_kind_pair() {
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = r#"{"name":"u","columns":[{"name":"x","type":{"kind":"nope"}}]}"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
 
         let err = diags
             .iter()
@@ -522,10 +534,9 @@ mod tests {
     #[test]
     fn integer_enum_duplicate_numeric_value_is_flagged() {
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = r#"{"name":"u","columns":[{"name":"p","type":{"kind":"enum","name":"pl","values":[{"name":"low","value":0},{"name":"high","value":0}]}}]}"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
 
         let err = diags
             .iter()
@@ -545,7 +556,6 @@ mod tests {
     #[test]
     fn enum_integer_member_name_is_not_treated_as_column() {
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         // `priority.value` enum has a member literally called `id`, the
         // same as the first column's name. This MUST NOT trigger a
         // duplicate-column diagnostic.
@@ -568,7 +578,7 @@ mod tests {
             ]
         }"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
         assert!(
             diags.iter().all(|d| d.code != "duplicate-column"),
             "enum member name `id` must not collide with column name `id`, got: {diags:#?}"
@@ -578,10 +588,9 @@ mod tests {
     #[test]
     fn duplicate_column_name_pinpoints_the_second_occurrence() {
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = r#"{"name":"u","columns":[{"name":"id","type":"integer","nullable":false,"primary_key":true},{"name":"id","type":"text","nullable":true}]}"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
 
         let dup = diags
             .iter()
@@ -658,11 +667,10 @@ mod tests {
     #[test]
     fn missing_columns_field_produces_validation_error() {
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         // Valid JSON syntax but missing required `columns`.
         let src = r#"{"name": "user"}"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
         // Either serde rejects (parse-error) or validate_schema rejects. Both
         // are acceptable as long as we emit something.
         assert!(!diags.is_empty());
@@ -676,7 +684,6 @@ mod tests {
     fn fk_without_supporting_index_emits_warning() {
         diagnostics_cache().clear();
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         // orders.user_id has an inline FK but no index → F51 warning.
         let src = r#"{
             "name": "orders_f51_uncovered",
@@ -687,7 +694,7 @@ mod tests {
             ]
         }"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
 
         let fk_diag = diags
             .iter()
@@ -722,7 +729,6 @@ mod tests {
     fn fk_with_inline_index_emits_no_warning() {
         diagnostics_cache().clear();
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         // Same orders table, this time WITH `"index": true` on user_id.
         let src = r#"{
             "name": "orders_f51_covered",
@@ -734,7 +740,7 @@ mod tests {
             ]
         }"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
 
         assert!(
             diags.iter().all(|d| d.code != "fk-supporting-index"),
@@ -746,7 +752,6 @@ mod tests {
     fn self_referential_fk_without_index_emits_warning() {
         diagnostics_cache().clear();
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         // Tree structure — parent_id → self.id with no index.
         let src = r#"{
             "name": "categories_f51_selfref",
@@ -757,7 +762,7 @@ mod tests {
             ]
         }"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
 
         let fk_diag = diags
             .iter()
@@ -779,7 +784,6 @@ mod tests {
     fn integer_auto_increment_pk_emits_sequence_exhaustion_warning() {
         diagnostics_cache().clear();
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = r#"{
             "name": "events_f76_int",
             "columns": [
@@ -789,7 +793,7 @@ mod tests {
             ]
         }"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
 
         let warn = diags
             .iter()
@@ -822,7 +826,6 @@ mod tests {
     fn small_int_auto_increment_pk_emits_high_severity_message() {
         diagnostics_cache().clear();
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = r#"{
             "name": "tiny_seq_f76",
             "columns": [
@@ -831,7 +834,7 @@ mod tests {
             ]
         }"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
 
         let warn = diags
             .iter()
@@ -853,7 +856,6 @@ mod tests {
     fn big_int_auto_increment_pk_emits_no_warning() {
         diagnostics_cache().clear();
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = r#"{
             "name": "safe_seq_f76",
             "columns": [
@@ -862,7 +864,7 @@ mod tests {
             ]
         }"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
 
         assert!(
             diags.iter().all(|d| d.code != "sequence-exhaustion"),
@@ -874,10 +876,9 @@ mod tests {
     fn check_valid_expression_emits_no_check_diagnostics() {
         diagnostics_cache().clear();
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = r#"{"name":"users","columns":[{"name":"id","type":"integer","nullable":false,"primary_key":true},{"name":"age","type":"integer","nullable":false}],"constraints":[{"type":"check","name":"check_age_reasonable","expr":"age > 0 AND age < 150"}]}"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
 
         let check_diag_count = diags
             .iter()
@@ -896,10 +897,9 @@ mod tests {
     fn check_between_reversed_emits_error() {
         diagnostics_cache().clear();
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = r#"{"name":"users","columns":[{"name":"id","type":"integer","nullable":false,"primary_key":true},{"name":"age","type":"integer","nullable":false}],"constraints":[{"type":"check","name":"check_age_between","expr":"age BETWEEN 100 AND 0"}]}"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
 
         let check_diags = diags
             .iter()
@@ -929,10 +929,9 @@ mod tests {
     fn check_self_contradiction_emits_error() {
         diagnostics_cache().clear();
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = r#"{"name":"users","columns":[{"name":"id","type":"integer","nullable":false,"primary_key":true},{"name":"age","type":"integer","nullable":false}],"constraints":[{"type":"check","name":"check_age_impossible","expr":"age > 100 AND age < 0"}]}"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
 
         let check_diags = diags
             .iter()
@@ -959,10 +958,9 @@ mod tests {
     fn check_type_mismatch_emits_warning() {
         diagnostics_cache().clear();
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = r#"{"name":"users","columns":[{"name":"id","type":"integer","nullable":false,"primary_key":true},{"name":"age","type":"integer","nullable":false}],"constraints":[{"type":"check","name":"check_age_type","expr":"age = 'abc'"}]}"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
 
         let mismatch_diags = diags
             .iter()
@@ -980,10 +978,9 @@ mod tests {
     fn f86_default_violates_check_still_works() {
         diagnostics_cache().clear();
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = r#"{"name":"users","columns":[{"name":"id","type":"integer","nullable":false,"primary_key":true},{"name":"age","type":"integer","nullable":false,"default":5}],"constraints":[{"type":"check","name":"check_age_min","expr":"age > 10"}]}"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
 
         let default_diags = diags
             .iter()
@@ -1007,10 +1004,9 @@ mod tests {
     fn yaml_check_type_mismatch_emits_warning() {
         diagnostics_cache().clear();
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = "name: users\ncolumns:\n  - name: id\n    type: integer\n    nullable: false\n    primary_key: true\n  - name: age\n    type: integer\n    nullable: false\nconstraints:\n  - type: check\n    name: check_age_type\n    expr: age = 'abc'\n";
         let tree = pool.parse(src, DocumentFormat::Yaml);
-        let diags = compute(src, DocumentFormat::Yaml, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Yaml, tree.as_ref());
 
         let mismatch_diags = diags
             .iter()
@@ -1028,12 +1024,11 @@ mod tests {
     fn diagnostics_shared_returns_arc_consistently() {
         diagnostics_cache().clear();
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = r#"{"name":"u","columns":[{"name":"id","type":"integer","nullable":false,"primary_key":true}]}"#;
         let tree = pool.parse(src, DocumentFormat::Json).unwrap();
 
-        let first = compute_shared(src, DocumentFormat::Json, Some(&tree), &idx);
-        let second = compute_shared(src, DocumentFormat::Json, Some(&tree), &idx);
+        let first = compute_shared(src, DocumentFormat::Json, Some(&tree));
+        let second = compute_shared(src, DocumentFormat::Json, Some(&tree));
 
         assert_eq!(&*first, &*second);
     }
@@ -1045,10 +1040,9 @@ mod tests {
     fn diagnostics_invalid_schema_cases_emit_diagnostics(#[case] src: &str) {
         diagnostics_cache().clear();
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let tree = pool.parse(src, DocumentFormat::Json);
 
-        let diags = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let diags = compute(src, DocumentFormat::Json, tree.as_ref());
 
         assert!(!diags.is_empty(), "invalid schema should emit diagnostics");
     }
@@ -1057,10 +1051,9 @@ mod tests {
     fn missing_primary_key_warning_path_does_not_panic() {
         diagnostics_cache().clear();
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let src = r#"{"name":"u","columns":[{"name":"data","type":"text","nullable":false}]}"#;
         let tree = pool.parse(src, DocumentFormat::Json);
 
-        let _ = compute(src, DocumentFormat::Json, tree.as_ref(), &idx);
+        let _ = compute(src, DocumentFormat::Json, tree.as_ref());
     }
 }

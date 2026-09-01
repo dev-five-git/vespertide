@@ -175,15 +175,15 @@
     "test": "vscode-test"
   },
   "dependencies": {
-    "vscode-languageclient": "^10.0.0"
+    "vscode-languageclient": "^10.1.0"
   },
   "devDependencies": {
-    "@types/node": "^25.9.2",
-    "@types/vscode": "^1.120.0",
-    "@vscode/test-cli": "^0.0.12",
+    "@types/node": "^26.2.0",
+    "@types/vscode": "^1.134.0",
+    "@vscode/test-cli": "^0.0.15",
     "@vscode/vsce": "^3.9.2",
-    "esbuild": "^0.28.0",
-    "ovsx": "^1.0.0",
+    "esbuild": "^0.28.2",
+    "ovsx": "^1.1.1",
     "typescript": "^6.0.3"
   },
   "vsce": {

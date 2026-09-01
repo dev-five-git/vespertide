@@ -20,7 +20,10 @@ pub(super) fn render_empty() -> String {
     )
 }
 
-pub(super) fn escape_xml(input: &str) -> String {
+pub(super) fn escape_xml(input: &str) -> std::borrow::Cow<'_, str> {
+    if !input.contains(['&', '<', '>', '"', '\'']) {
+        return std::borrow::Cow::Borrowed(input);
+    }
     let mut out = String::with_capacity(input.len());
     for ch in input.chars() {
         match ch {
@@ -32,7 +35,7 @@ pub(super) fn escape_xml(input: &str) -> String {
             _ => out.push(ch),
         }
     }
-    out
+    std::borrow::Cow::Owned(out)
 }
 
 #[cfg(test)]

@@ -1,8 +1,55 @@
 use std::fmt::Write as _;
+use std::path::Path;
+
+use anyhow::{Context, Result};
+use serde::Serialize;
+use tokio::fs;
 use vespertide_config::FileFormat;
 
 // Re-export loader functions for convenience
 pub use vespertide_loader::{load_config, load_migrations, load_models};
+
+/// Serialize `value` as pretty JSON, inject a top-level `$schema` key, and
+/// write the result to `path`.
+pub(crate) async fn write_json_with_schema<T: Serialize>(
+    path: &Path,
+    value: &T,
+    schema_url: &str,
+) -> Result<()> {
+    let mut value = serde_json::to_value(value).context("serialize value to json")?;
+    if let serde_json::Value::Object(ref mut map) = value {
+        map.insert(
+            "$schema".to_string(),
+            serde_json::Value::String(schema_url.to_string()),
+        );
+    }
+    let text = serde_json::to_string_pretty(&value).context("stringify json with schema")?;
+    fs::write(path, text)
+        .await
+        .with_context(|| format!("write file: {}", path.display()))?;
+    Ok(())
+}
+
+/// Serialize `value` as YAML, inject a top-level `$schema` key, and write the
+/// result to `path`.
+pub(crate) async fn write_yaml_with_schema<T: Serialize>(
+    path: &Path,
+    value: &T,
+    schema_url: &str,
+) -> Result<()> {
+    let mut value = serde_yaml::to_value(value).context("serialize value to yaml value")?;
+    if let serde_yaml::Value::Mapping(ref mut map) = value {
+        map.insert(
+            serde_yaml::Value::String("$schema".to_string()),
+            serde_yaml::Value::String(schema_url.to_string()),
+        );
+    }
+    let text = serde_yaml::to_string(&value).context("serialize yaml with schema")?;
+    fs::write(path, text)
+        .await
+        .with_context(|| format!("write file: {}", path.display()))?;
+    Ok(())
+}
 
 pub(crate) fn schema_url(schema_filename: &str) -> String {
     // If not set, default to public raw GitHub schema location.
@@ -25,77 +72,91 @@ pub fn migration_filename_with_format_and_pattern(
     let sanitized = sanitize_comment(comment);
     let name = render_migration_name(pattern, version, &sanitized);
 
-    let ext = match format {
-        FileFormat::Json => "json",
-        FileFormat::Yaml => "yaml",
-        FileFormat::Yml => "yml",
-    };
-
-    format!("{name}.vespertide.{ext}")
+    format!("{name}.vespertide.{ext}", ext = format.extension())
 }
 
+/// Lowercase `comment`, replace non-alphanumeric characters with `_`, and
+/// collapse whitespace runs to a single `_` — in one pass, no intermediate
+/// allocations.
 fn sanitize_comment(comment: Option<&str>) -> String {
-    comment
-        .map(|c| {
-            c.to_lowercase()
-                .chars()
-                .map(|ch| {
-                    if ch.is_alphanumeric() || ch == ' ' {
-                        ch
-                    } else {
-                        '_'
-                    }
-                })
-                .collect::<String>()
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join("_")
-        })
-        .unwrap_or_default()
+    let Some(comment) = comment else {
+        return String::new();
+    };
+
+    let mut out = String::with_capacity(comment.len());
+    let mut pending_separator = false;
+    for ch in comment.chars() {
+        if ch.is_whitespace() {
+            // Leading whitespace is dropped; inner runs flush as one `_`.
+            pending_separator = !out.is_empty();
+            continue;
+        }
+        if pending_separator {
+            out.push('_');
+            pending_separator = false;
+        }
+        if ch.is_alphanumeric() {
+            out.extend(ch.to_lowercase());
+        } else {
+            out.push('_');
+        }
+    }
+    out
 }
 
 fn render_migration_name(pattern: &str, version: u32, sanitized_comment: &str) -> String {
     let default_version = format!("{version:04}");
-    let chars: Vec<char> = pattern.chars().collect();
+    // Byte-wise scan: every placeholder byte (`%`, `v`, `m`, digits) is ASCII,
+    // and UTF-8 continuation bytes can never equal an ASCII byte, so scanning
+    // bytes is correct for multi-byte patterns. Non-placeholder spans are
+    // copied verbatim without the per-char `Vec<char>` staging buffer.
+    let bytes = pattern.as_bytes();
+    let mut out = String::with_capacity(pattern.len() + sanitized_comment.len());
+    let mut verbatim_start = 0;
     let mut i = 0;
-    let mut out = String::new();
 
-    while i < chars.len() {
-        if chars[i] == '%' {
-            // Handle %v, %m, and %0Nv (width-padded).
-            if i + 1 < chars.len() {
-                let next = chars[i + 1];
-                if next == 'v' {
-                    out.push_str(&default_version);
-                    i += 2;
-                    continue;
-                } else if next == 'm' {
-                    out.push_str(sanitized_comment);
-                    i += 2;
-                    continue;
-                } else if next == '0' {
-                    let mut j = i + 2;
-                    let mut width = String::new();
-                    while j < chars.len() && chars[j].is_ascii_digit() {
-                        width.push(chars[j]);
-                        j += 1;
+    while i < bytes.len() {
+        if bytes[i] != b'%' || i + 1 >= bytes.len() {
+            i += 1;
+            continue;
+        }
+        // Handle %v, %m, and %0Nv (width-padded).
+        match bytes[i + 1] {
+            b'v' => {
+                out.push_str(&pattern[verbatim_start..i]);
+                out.push_str(&default_version);
+                i += 2;
+                verbatim_start = i;
+            }
+            b'm' => {
+                out.push_str(&pattern[verbatim_start..i]);
+                out.push_str(sanitized_comment);
+                i += 2;
+                verbatim_start = i;
+            }
+            b'0' => {
+                let mut j = i + 2;
+                while j < bytes.len() && bytes[j].is_ascii_digit() {
+                    j += 1;
+                }
+                if j < bytes.len() && bytes[j] == b'v' {
+                    out.push_str(&pattern[verbatim_start..i]);
+                    let width: usize = pattern[i + 2..j].parse().unwrap_or(0);
+                    if width == 0 {
+                        out.push_str(&default_version);
+                    } else {
+                        let _ = write!(out, "{version:0width$}");
                     }
-                    if j < chars.len() && chars[j] == 'v' {
-                        let w: usize = width.parse().unwrap_or(0);
-                        if w == 0 {
-                            out.push_str(&default_version);
-                        } else {
-                            let _ = write!(out, "{version:0w$}");
-                        }
-                        i = j + 1;
-                        continue;
-                    }
+                    i = j + 1;
+                    verbatim_start = i;
+                } else {
+                    i += 1;
                 }
             }
+            _ => i += 1,
         }
-        out.push(chars[i]);
-        i += 1;
     }
+    out.push_str(&pattern[verbatim_start..]);
 
     let mut name = out;
 
@@ -263,6 +324,36 @@ mod tests {
     #[case(3, None, FileFormat::Json, "%0v__", "0003.vespertide.json")] // width 0 falls back to default version and trailing separators are trimmed
     #[case(12, None, FileFormat::Json, "%v", "0012.vespertide.json")]
     #[case(7, None, FileFormat::Json, "%m", "0007.vespertide.json")] // uses default when comment only and empty
+    #[case(
+        4,
+        Some("Añadir  Tabla"),
+        FileFormat::Yaml,
+        "한_%v_%m",
+        "한_0004_añadir_tabla.vespertide.yaml"
+    )]
+    // UTF-8 pattern + comment lock the byte-scanner and one-pass sanitize
+    // The three cases below close the remaining arms of `render_migration_name`'s
+    // placeholder match. Each arm is a distinct `i` advance, and LLVM attributes
+    // the region to a different line depending on how the crate is built (the
+    // workspace-wide tarpaulin run and a single-package run disagree), so every
+    // arm needs its own case rather than relying on one representative pattern.
+    #[case(9, None, FileFormat::Json, "%z_%v", "%z_0009.vespertide.json")] // `_ => i += 1`: unknown placeholder is copied verbatim, scan resumes
+    #[case(
+        9,
+        Some("Fix Bug"),
+        FileFormat::Json,
+        "%03x-%m-tail",
+        "%03x-fix_bug-tail.vespertide.json"
+    )] // `b'0'` arm's else: digits not terminated by `v` fall through untouched
+    #[case(9, None, FileFormat::Json, "%v%", "0009%.vespertide.json")]
+    // `i + 1 >= bytes.len()`: a trailing bare `%` is not a placeholder
+    // Digits running to the very end exercise both `j < bytes.len()` bounds in
+    // the `%0N` scan; relaxing either to `<=` indexes one past the slice.
+    #[case(9, None, FileFormat::Json, "%012", "%012.vespertide.json")]
+    // A width that differs from the 4-digit default proves the width really
+    // comes from `pattern[i + 2..j]`: with `%04v` the padded and default
+    // renderings coincide, so the slice bounds go unchecked.
+    #[case(9, None, FileFormat::Json, "%06v", "000009.vespertide.json")]
     fn migration_filename_with_format_and_pattern_tests(
         #[case] version: u32,
         #[case] comment: Option<&str>,

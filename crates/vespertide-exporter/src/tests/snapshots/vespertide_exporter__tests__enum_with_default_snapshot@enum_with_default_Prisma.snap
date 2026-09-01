@@ -1,0 +1,18 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+enum TaskStatus {
+  PENDING @map("pending")
+  IN_PROGRESS @map("in_progress")
+  COMPLETED @map("completed")
+}
+
+model Tasks {
+  id Int
+  status TaskStatus @default(PENDING)
+  priority Int @default(0)
+  is_archived Boolean @default(false)
+
+  @@map("tasks")
+}

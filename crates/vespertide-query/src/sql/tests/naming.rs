@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::{backend_tag, joined_sql, joined_sql_semicolon};
 use vespertide_core::TableDef;
 
 // Comprehensive unique constraint naming tests
@@ -53,11 +54,7 @@ fn test_add_unique_with_custom_name(
     }];
 
     let result = build_action_queries(backend, &action, &current_schema).unwrap();
-    let sql = result
-        .iter()
-        .map(|q| q.build(backend))
-        .collect::<Vec<String>>()
-        .join("\n");
+    let sql = joined_sql(backend, &result);
 
     // Should use uq_table__name pattern
     let expected_name = format!("uq_user__{constraint_name}");
@@ -122,11 +119,7 @@ fn test_add_unnamed_unique(#[case] backend: DatabaseBackend, #[case] columns: Ve
     }];
 
     let result = build_action_queries(backend, &action, &current_schema).unwrap();
-    let sql = result
-        .iter()
-        .map(|q| q.build(backend))
-        .collect::<Vec<String>>()
-        .join("\n");
+    let sql = joined_sql(backend, &result);
 
     // Should use uq_table__col1_col2... pattern
     let expected_name = format!("uq_user__{}", columns.join("_"));
@@ -193,11 +186,7 @@ fn test_remove_unique_with_custom_name(
     };
 
     let result = build_action_queries(backend, &action, &current_schema).unwrap();
-    let sql = result
-        .iter()
-        .map(|q| q.build(backend))
-        .collect::<Vec<String>>()
-        .join("\n");
+    let sql = joined_sql(backend, &result);
 
     // Should use uq_table__name pattern (for Postgres/MySQL, not SQLite which rebuilds table)
     if backend != DatabaseBackend::Sqlite {
@@ -266,11 +255,7 @@ fn test_remove_unnamed_unique(#[case] backend: DatabaseBackend, #[case] columns:
     };
 
     let result = build_action_queries(backend, &action, &current_schema).unwrap();
-    let sql = result
-        .iter()
-        .map(|q| q.build(backend))
-        .collect::<Vec<String>>()
-        .join("\n");
+    let sql = joined_sql(backend, &result);
 
     // Should use uq_table__col1_col2... pattern (for Postgres/MySQL, not SQLite which rebuilds table)
     if backend != DatabaseBackend::Sqlite {
@@ -317,24 +302,13 @@ fn test_build_action_queries_modify_column_nullable(#[case] backend: DatabaseBac
     }];
     let result = build_action_queries(backend, &action, &current_schema).unwrap();
     assert!(!result.is_empty());
-    let sql = result
-        .iter()
-        .map(|q| q.build(backend))
-        .collect::<Vec<String>>()
-        .join("\n");
+    let sql = joined_sql(backend, &result);
 
     // Should contain UPDATE for fill_with and ALTER for nullable change
     assert!(sql.contains("UPDATE"));
     assert!(sql.contains("unknown"));
 
-    let suffix = format!(
-        "{}_modify_nullable",
-        match backend {
-            DatabaseBackend::Postgres => "postgres",
-            DatabaseBackend::MySql => "mysql",
-            DatabaseBackend::Sqlite => "sqlite",
-        }
-    );
+    let suffix = format!("{}_modify_nullable", backend_tag(backend));
 
     with_settings!({ snapshot_path => "../snapshots", snapshot_suffix => suffix }, {
         assert_snapshot!(sql);
@@ -371,23 +345,12 @@ fn test_build_action_queries_modify_column_default(#[case] backend: DatabaseBack
     }];
     let result = build_action_queries(backend, &action, &current_schema).unwrap();
     assert!(!result.is_empty());
-    let sql = result
-        .iter()
-        .map(|q| q.build(backend))
-        .collect::<Vec<String>>()
-        .join("\n");
+    let sql = joined_sql(backend, &result);
 
     // Should contain DEFAULT and 'active'
     assert!(sql.contains("DEFAULT") || sql.contains("active"));
 
-    let suffix = format!(
-        "{}_modify_default",
-        match backend {
-            DatabaseBackend::Postgres => "postgres",
-            DatabaseBackend::MySql => "mysql",
-            DatabaseBackend::Sqlite => "sqlite",
-        }
-    );
+    let suffix = format!("{}_modify_default", backend_tag(backend));
 
     with_settings!({ snapshot_path => "../snapshots", snapshot_suffix => suffix }, {
         assert_snapshot!(sql);
@@ -422,25 +385,14 @@ fn test_build_action_queries_modify_column_comment(#[case] backend: DatabaseBack
         constraints: vec![],
     }];
     let result = build_action_queries(backend, &action, &current_schema).unwrap();
-    let sql = result
-        .iter()
-        .map(|q| q.build(backend))
-        .collect::<Vec<String>>()
-        .join("\n");
+    let sql = joined_sql(backend, &result);
 
     // Postgres and MySQL should have comment, SQLite returns empty
     if backend != DatabaseBackend::Sqlite {
         assert!(sql.contains("COMMENT") || sql.contains("User email address"));
     }
 
-    let suffix = format!(
-        "{}_modify_comment",
-        match backend {
-            DatabaseBackend::Postgres => "postgres",
-            DatabaseBackend::MySql => "mysql",
-            DatabaseBackend::Sqlite => "sqlite",
-        }
-    );
+    let suffix = format!("{}_modify_comment", backend_tag(backend));
 
     with_settings!({ snapshot_path => "../snapshots", snapshot_suffix => suffix }, {
         assert_snapshot!(sql);
@@ -483,11 +435,7 @@ fn test_create_table_with_function_default(#[case] backend: DatabaseBackend) {
         constraints: vec![],
     };
     let result = build_action_queries(backend, &action, &[]).unwrap();
-    let sql = result
-        .iter()
-        .map(|q| q.build(backend))
-        .collect::<Vec<_>>()
-        .join(";\n");
+    let sql = joined_sql_semicolon(backend, &result);
 
     with_settings!({ snapshot_path => "../snapshots", snapshot_suffix => format!("create_table_func_default_{:?}", backend) }, {
         assert_snapshot!(sql);
@@ -531,11 +479,7 @@ fn test_delete_column_with_enum_type(#[case] backend: DatabaseBackend) {
         constraints: vec![],
     }];
     let result = build_action_queries(backend, &action, &schema).unwrap();
-    let sql = result
-        .iter()
-        .map(|q| q.build(backend))
-        .collect::<Vec<_>>()
-        .join(";\n");
+    let sql = joined_sql_semicolon(backend, &result);
 
     with_settings!({ snapshot_path => "../snapshots", snapshot_suffix => format!("delete_enum_column_{:?}", backend) }, {
         assert_snapshot!(sql);
@@ -593,20 +537,9 @@ fn test_replace_fk_constraint(#[case] backend: DatabaseBackend) {
         },
     };
     let result = build_action_queries(backend, &action, &schema).unwrap();
-    let sql = result
-        .iter()
-        .map(|q| q.build(backend))
-        .collect::<Vec<_>>()
-        .join(";\n");
+    let sql = joined_sql_semicolon(backend, &result);
 
-    let suffix = format!(
-        "replace_fk_constraint_{}",
-        match backend {
-            DatabaseBackend::Postgres => "postgres",
-            DatabaseBackend::MySql => "mysql",
-            DatabaseBackend::Sqlite => "sqlite",
-        }
-    );
+    let suffix = format!("replace_fk_constraint_{}", backend_tag(backend));
 
     with_settings!({ snapshot_path => "../snapshots", snapshot_suffix => suffix }, {
         assert_snapshot!(sql);

@@ -12,9 +12,9 @@
 //! would fail to resolve.
 
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::{
@@ -62,7 +62,19 @@ pub struct Backend {
     pub workspace_tables: Arc<WorkspaceTables>,
     /// Drift loader cache reused across did_change-triggered refreshes.
     pub drift_cache: Arc<DriftCache>,
+    /// Memoized result of [`Self::collect_workspace_tables`], keyed on
+    /// `(docstore_fingerprint, workspace_tables_generation)`. A single
+    /// `did_change` fans out diagnostics to every open document
+    /// (`publish` + `publish_related`), so without this each keystroke would
+    /// re-deserialize + re-normalize + re-clone EVERY open model once per open
+    /// document — O(N²) per keystroke. The fan-out shares one docstore state,
+    /// so all but the first call hit this cache, collapsing it to O(N).
+    workspace_tables_cache: Mutex<Option<WorkspaceTablesCacheEntry>>,
 }
+
+/// `(docstore_fingerprint, disk_generation, value)` — see
+/// [`Backend::workspace_tables_cache`].
+type WorkspaceTablesCacheEntry = (u64, u64, Arc<Vec<diagnostics::WorkspaceTable>>);
 
 impl Backend {
     /// Construct a new backend bound to the given LSP [`Client`].
@@ -77,6 +89,7 @@ impl Backend {
             index: Arc::new(WorkspaceIndex::new()),
             workspace_tables: Arc::new(WorkspaceTables::new()),
             drift_cache: Arc::new(DriftCache::new()),
+            workspace_tables_cache: Mutex::new(None),
         }
     }
 
@@ -116,7 +129,63 @@ impl Backend {
         }
     }
 
-    fn collect_workspace_tables(&self) -> Vec<diagnostics::WorkspaceTable> {
+    fn collect_workspace_tables(&self) -> Arc<Vec<diagnostics::WorkspaceTable>> {
+        // Sample the cache key: open-document fingerprint + disk-table
+        // generation. `compute_lsp_diagnostics` later reads the current
+        // document text SEPARATELY, so to avoid serving a workspace snapshot
+        // that is inconsistent with that read under concurrent handlers, every
+        // cache decision below is gated on the state being UNCHANGED across the
+        // operation (`workspace_state_unchanged`). This keeps the cache's
+        // consistency window equal to the pre-cache two-read window while still
+        // collapsing the per-`did_change` `publish` + `publish_related` fan-out
+        // (which shares one docstore state) from O(N²) to O(N).
+        let disk_generation = self.workspace_tables.generation();
+        let fingerprint = crate::cache::docstore_fingerprint(self.store.as_ref());
+
+        let cached = {
+            let cache = self.workspace_tables_cache.lock().expect(
+                "workspace_tables_cache lock poisoned — invariant: no panic while holding lock",
+            );
+            match cache.as_ref() {
+                Some((fp, generation, value))
+                    if *fp == fingerprint && *generation == disk_generation =>
+                {
+                    Some(Arc::clone(value))
+                }
+                _ => None,
+            }
+        };
+        if let Some(value) = cached
+            && self.workspace_state_unchanged(fingerprint, disk_generation)
+        {
+            // Re-validated: no concurrent handler moved the workspace between
+            // sampling the key and now, so this snapshot is still current.
+            return value;
+        }
+
+        let built = Arc::new(self.build_workspace_tables());
+        // Only memoize when the sampled state is still current. If a concurrent
+        // mutation raced the build, caching it could later serve a stale
+        // snapshot, so skip the store and let the next call rebuild.
+        if self.workspace_state_unchanged(fingerprint, disk_generation) {
+            *self.workspace_tables_cache.lock().expect(
+                "workspace_tables_cache lock poisoned — invariant: no panic while holding lock",
+            ) = Some((fingerprint, disk_generation, Arc::clone(&built)));
+        }
+        built
+    }
+
+    /// `true` when the open-document fingerprint and disk-table generation still
+    /// match the sampled `(fingerprint, disk_generation)` — i.e. no concurrent
+    /// handler changed the workspace since the caller sampled the cache key.
+    /// `generation` is read first (cheap atomic) so a disk refresh short-circuits
+    /// before recomputing the document fingerprint.
+    fn workspace_state_unchanged(&self, fingerprint: u64, disk_generation: u64) -> bool {
+        self.workspace_tables.generation() == disk_generation
+            && crate::cache::docstore_fingerprint(self.store.as_ref()) == fingerprint
+    }
+
+    fn build_workspace_tables(&self) -> Vec<diagnostics::WorkspaceTable> {
         let mut workspace = Vec::new();
         // Dedup by NORMALIZED FILESYSTEM PATH so a file that is both open
         // in the editor and present on disk is registered only once.
@@ -153,14 +222,6 @@ impl Backend {
         }
 
         workspace
-    }
-
-    fn path_to_uri(path: &Path) -> Option<Uri> {
-        let mut path_text = path.to_string_lossy().replace('\\', "/");
-        if !path_text.starts_with('/') {
-            path_text = format!("/{path_text}");
-        }
-        Uri::from_str(&format!("file://{path_text}")).ok()
     }
 
     fn fallback_disk_uri(table_name: &str) -> Uri {
@@ -308,8 +369,8 @@ fn disk_workspace_table(
     disk_path: Option<PathBuf>,
 ) -> Option<(PathBuf, diagnostics::WorkspaceTable)> {
     let disk_path = disk_path?;
-    let disk_uri =
-        Backend::path_to_uri(&disk_path).unwrap_or_else(|| Backend::fallback_disk_uri(name));
+    let disk_uri = crate::position::path_to_uri(&disk_path)
+        .unwrap_or_else(|| Backend::fallback_disk_uri(name));
     let entry = diagnostics::WorkspaceTable {
         uri: disk_uri,
         table,

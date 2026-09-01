@@ -1,0 +1,8 @@
+---
+source: crates/vespertide-query/src/sql/add_column.rs
+expression: sql
+---
+CREATE TABLE "subscription_temp" ( "id" integer NOT NULL, "plan_key" text NOT NULL, "plan_tag" text NOT NULL, "device_os" text NOT NULL, "device_family" text NOT NULL, "metric" enum_text NOT NULL , CONSTRAINT "chk_subscription__metric" CHECK ("metric" IN ('MONTHLY_QUOTA', 'SEAT')));
+INSERT INTO "subscription_temp" ("id", "plan_key", "plan_tag", "device_os", "device_family", "metric") SELECT "id", "plan_key", "plan_tag", "device_os", "device_family", (CASE WHEN plan_key::text = 'API' THEN 'MONTHLY_QUOTA' ELSE 'SEAT' END)::billing_metric AS "metric" FROM "subscription";
+DROP TABLE "subscription";
+ALTER TABLE "subscription_temp" RENAME TO "subscription"

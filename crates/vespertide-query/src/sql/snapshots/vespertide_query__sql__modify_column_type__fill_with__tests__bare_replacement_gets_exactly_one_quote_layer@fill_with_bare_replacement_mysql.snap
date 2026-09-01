@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql/modify_column_type/fill_with.rs
+expression: sql
+---
+UPDATE `plan` SET `sheet_policy` = 'FIXED' WHERE `sheet_policy` = 'OVER_500'

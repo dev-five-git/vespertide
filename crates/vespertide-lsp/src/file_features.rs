@@ -4,7 +4,7 @@
 //! here because they share the same tree-sitter walk patterns and
 //! none has enough surface area to deserve its own directory.
 
-use crate::text_util::strip_quotes;
+use crate::tree_util::{node_at_byte, trim_one_byte_each_side as trim_one_byte};
 use std::ops::Range;
 
 // =====================================================================
@@ -118,11 +118,7 @@ pub fn compute_document_symbols(
 // =====================================================================
 
 #[must_use]
-pub fn compute_folding_ranges(
-    source: &str,
-    tree: Option<&tree_sitter::Tree>,
-) -> Vec<DomainFoldingRange> {
-    let _ = source;
+pub fn compute_folding_ranges(tree: Option<&tree_sitter::Tree>) -> Vec<DomainFoldingRange> {
     let mut out = Vec::new();
     if let Some(tree) = tree {
         collect_foldable(tree.root_node(), &mut out);
@@ -220,11 +216,9 @@ fn collect_matching_strings(
 /// collapsed so the LSP client doesn't show the same selection twice.
 #[must_use]
 pub fn compute_selection_ranges(
-    source: &str,
     tree: Option<&tree_sitter::Tree>,
     cursor_byte: usize,
 ) -> Vec<DomainSelectionRange> {
-    let _ = source;
     let mut chain = Vec::new();
     if let Some(tree) = tree
         && let Some(start) = node_at_byte(tree, cursor_byte)
@@ -249,34 +243,7 @@ pub fn compute_selection_ranges(
 // Shared helpers
 // =====================================================================
 
-fn find_outer_mapping(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
-    if matches!(node.kind(), "object" | "block_mapping" | "flow_mapping") {
-        return Some(node);
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if let Some(found) = find_outer_mapping(child) {
-            return Some(found);
-        }
-    }
-    None
-}
-
-fn find_pair_with_key<'tree>(
-    mapping: tree_sitter::Node<'tree>,
-    source: &[u8],
-    target_key: &str,
-) -> Option<tree_sitter::Node<'tree>> {
-    let mut cursor = mapping.walk();
-    mapping.children(&mut cursor).find(|&child| {
-        matches!(child.kind(), "pair" | "block_mapping_pair")
-            && child
-                .named_child(0)
-                .and_then(|key| std::str::from_utf8(&source[key.byte_range()]).ok())
-                .map(strip_quotes)
-                == Some(target_key)
-    })
-}
+use crate::tree_util::{find_outer_mapping, find_pair_with_key};
 
 fn direct_string_value(
     mapping: tree_sitter::Node<'_>,
@@ -367,29 +334,6 @@ fn unwrap_yaml(node: tree_sitter::Node<'_>) -> tree_sitter::Node<'_> {
     current
 }
 
-fn node_at_byte(tree: &tree_sitter::Tree, byte_offset: usize) -> Option<tree_sitter::Node<'_>> {
-    let root = tree.root_node();
-    let mut current = root;
-    'outer: loop {
-        let mut cursor = current.walk();
-        for child in current.children(&mut cursor) {
-            if child.byte_range().contains(&byte_offset) {
-                current = child;
-                continue 'outer;
-            }
-        }
-        return Some(current);
-    }
-}
-
-fn trim_one_byte(range: &Range<usize>) -> Range<usize> {
-    if range.end.saturating_sub(range.start) >= 2 {
-        (range.start + 1)..(range.end - 1)
-    } else {
-        range.clone()
-    }
-}
-
 // =====================================================================
 // Tests
 // =====================================================================
@@ -438,7 +382,7 @@ mod tests {
             ]
         }"#;
         let tree = parse_json(src);
-        let ranges = compute_folding_ranges(src, Some(&tree));
+        let ranges = compute_folding_ranges(Some(&tree));
         // At minimum: top-level object + columns array + each column.
         assert!(ranges.len() >= 4, "got: {ranges:?}");
     }
@@ -466,7 +410,7 @@ mod tests {
         let src = r#"{"name":"u","columns":[{"name":"id","type":"integer"}]}"#;
         let tree = parse_json(src);
         let cursor = src.find(r#""id""#).unwrap() + 1;
-        let chain = compute_selection_ranges(src, Some(&tree), cursor);
+        let chain = compute_selection_ranges(Some(&tree), cursor);
         assert!(
             chain.len() >= 3,
             "expected token → pair → object → ..., got: {chain:?}"
@@ -566,9 +510,9 @@ mod tests {
     #[test]
     fn none_tree_returns_empty_for_all_file_features() {
         assert!(compute_document_symbols("x", None).is_empty());
-        assert!(compute_folding_ranges("x", None).is_empty());
+        assert!(compute_folding_ranges(None).is_empty());
         assert!(compute_document_highlight("x", None, 0).is_empty());
-        assert!(compute_selection_ranges("x", None, 0).is_empty());
+        assert!(compute_selection_ranges(None, 0).is_empty());
     }
 
     #[rstest]
@@ -595,6 +539,6 @@ mod tests {
         let tree = parse_json(src);
         let cursor = src.find(r#""id""#).unwrap() + 1;
 
-        assert!(compute_selection_ranges(src, Some(&tree), cursor).len() >= 2);
+        assert!(compute_selection_ranges(Some(&tree), cursor).len() >= 2);
     }
 }

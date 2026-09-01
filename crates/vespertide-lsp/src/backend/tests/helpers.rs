@@ -151,7 +151,7 @@ fn disk_symbol_reference_and_rename_helpers_lower_disk_paths(
     let tmp = tempdir().unwrap();
     let path = tmp.path().join(file_name);
     std::fs::write(&path, source).unwrap();
-    let target_uri = super::super::Backend::path_to_uri(&path).unwrap();
+    let target_uri = crate::position::path_to_uri(&path).unwrap();
     let (service, _socket) = make_service();
     let backend = service.inner();
     let email_start = source.find("email").unwrap();

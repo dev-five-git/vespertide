@@ -19,15 +19,7 @@ fn hover_on_fk_ref_table_previews_target_columns() {
     let post_src = r#"{"name":"post","columns":[{"name":"author_id","type":"integer","nullable":false,"foreign_key":{"ref_table":"user","ref_columns":["id"]}}]}"#;
     let post_tree = pool.parse(post_src, DocumentFormat::Json);
     let pos = post_src.find(r#""ref_table":"user""#).unwrap() + 14;
-    let hover = compute_hover(
-        post_src,
-        DocumentFormat::Json,
-        post_tree.as_ref(),
-        &idx,
-        &docs,
-        pos,
-    )
-    .unwrap();
+    let hover = compute_hover(post_src, post_tree.as_ref(), &idx, &docs, pos).unwrap();
 
     assert!(hover.markdown.contains("Target table"));
     assert!(hover.markdown.contains("columns: id"));
@@ -52,14 +44,7 @@ fn cross_file_definition_resolves() {
     let post_src = r#"{"name":"post","columns":[{"name":"author_id","type":"integer","nullable":false,"foreign_key":{"ref_table":"user","ref_columns":["id"]}}]}"#;
     let post_tree = pool.parse(post_src, DocumentFormat::Json);
     let pos = post_src.find(r#""ref_table":"user""#).unwrap() + 14;
-    let location = compute_definition(
-        post_src,
-        DocumentFormat::Json,
-        post_tree.as_ref(),
-        &idx,
-        &docs,
-        pos,
-    );
+    let location = compute_definition(post_src, post_tree.as_ref(), &idx, &docs, pos);
     assert!(location.is_some());
     assert_eq!(location.unwrap().uri, user_uri);
 }

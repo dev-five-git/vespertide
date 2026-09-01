@@ -82,9 +82,9 @@ fn run(out: &Path) -> Result<()> {
 const MIGRATION_ONLY_FIELDS: &[&str] = &["strategy", "orphan_strategy"];
 
 /// Recursively walk a JSON Schema document and remove every occurrence
-/// of `MIGRATION_ONLY_FIELDS` from `properties`, `required`, and
-/// `default` blocks. Operates on the schemars output as plain
-/// `serde_json::Value` so it survives schemars major-version changes.
+/// of `MIGRATION_ONLY_FIELDS` from `properties` and `required` blocks.
+/// Operates on the schemars output as plain `serde_json::Value` so it
+/// survives schemars major-version changes.
 fn strip_migration_fields(value: &mut serde_json::Value) {
     match value {
         serde_json::Value::Object(map) => {

@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+enum EdgeState {
+  UNKNOWN // = -1
+  NOT_STARTED // = 0
+  IN_PROGRESS // = 10
+  HTTP_500 // = 500
+}
+
+model WorkflowRuns {
+  id Int @id
+  state EdgeState
+
+  @@map("workflow_runs")
+}

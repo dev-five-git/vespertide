@@ -69,10 +69,16 @@ impl ParserPool {
     /// V2 may use `Tree::edit` + incremental reparse if profiling demands.
     #[must_use]
     pub fn parse(&self, text: &str, format: DocumentFormat) -> Option<Tree> {
-        match format {
-            DocumentFormat::Json => self.json.lock().unwrap().parse(text, None),
-            DocumentFormat::Yaml => self.yaml.lock().unwrap().parse(text, None),
-        }
+        let parser = match format {
+            DocumentFormat::Json => &self.json,
+            DocumentFormat::Yaml => &self.yaml,
+        };
+        parser
+            .lock()
+            .expect(
+                "ParserPool lock poisoned — invariant: tree_sitter::Parser::parse must not panic",
+            )
+            .parse(text, None)
     }
 }
 

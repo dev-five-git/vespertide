@@ -13,10 +13,9 @@ use std::ops::Range;
 
 use tower_lsp_server::ls_types::Uri;
 
-use crate::parser::DocumentFormat;
 use crate::references::{self, ReferenceSymbol};
 use crate::store::DocumentStore;
-use crate::workspace_index::WorkspaceIndex;
+use crate::tree_util::{node_at_byte, trim_one_byte_each_side as trim_one_byte};
 use crate::workspace_tables::WorkspaceTables;
 
 /// Result of `textDocument/prepareRename`. When the cursor is on a
@@ -37,12 +36,10 @@ pub struct DomainPrepareRename {
 #[must_use]
 pub fn prepare(
     source: &str,
-    _format: DocumentFormat,
     tree: Option<&tree_sitter::Tree>,
-    current_uri: &Uri,
     byte_offset: usize,
 ) -> Option<DomainPrepareRename> {
-    let symbol = references::resolve_symbol(source, tree, current_uri, byte_offset)?;
+    let symbol = references::resolve_symbol(source, tree, byte_offset)?;
     let placeholder = match &symbol {
         ReferenceSymbol::Table { name } => name.clone(),
         ReferenceSymbol::Column { column, .. } => column.clone(),
@@ -130,29 +127,6 @@ fn inner_content_range(node: tree_sitter::Node<'_>, source: &str) -> Range<usize
     }
 }
 
-fn trim_one_byte(range: &Range<usize>) -> Range<usize> {
-    if range.end.saturating_sub(range.start) >= 2 {
-        (range.start + 1)..(range.end - 1)
-    } else {
-        range.clone()
-    }
-}
-
-fn node_at_byte(tree: &tree_sitter::Tree, byte_offset: usize) -> Option<tree_sitter::Node<'_>> {
-    let root = tree.root_node();
-    let mut current = root;
-    'outer: loop {
-        let mut cursor = current.walk();
-        for child in current.children(&mut cursor) {
-            if child.byte_range().contains(&byte_offset) {
-                current = child;
-                continue 'outer;
-            }
-        }
-        return Some(current);
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DomainTextEdit {
     pub byte_range: Range<usize>,
@@ -174,16 +148,10 @@ pub struct DomainRename {
 ///   * `new_name` is empty, identical to the old name, or contains
 ///     invalid characters (whitespace, quotes, control chars).
 #[must_use]
-#[expect(
-    clippy::too_many_arguments,
-    reason = "rename needs source document, cursor, open/disk workspace stores, and new identifier; RenameContext is a deferred 0.3.x refactor"
-)]
 pub fn compute(
     source: &str,
-    format: DocumentFormat,
     tree: Option<&tree_sitter::Tree>,
     current_uri: &Uri,
-    index: &WorkspaceIndex,
     docs: &DocumentStore,
     disk_tables: Option<&WorkspaceTables>,
     byte_offset: usize,
@@ -192,7 +160,7 @@ pub fn compute(
     if !is_valid_identifier(new_name) {
         return None;
     }
-    let symbol = references::resolve_symbol(source, tree, current_uri, byte_offset)?;
+    let symbol = references::resolve_symbol(source, tree, byte_offset)?;
     let old_name = match &symbol {
         ReferenceSymbol::Table { name } => name.clone(),
         ReferenceSymbol::Column { column, .. } => column.clone(),
@@ -203,10 +171,8 @@ pub fn compute(
 
     let refs = references::compute(
         source,
-        format,
         tree,
         current_uri,
-        index,
         docs,
         disk_tables,
         byte_offset,
@@ -257,13 +223,13 @@ fn is_valid_identifier(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::ParserPool;
+    use crate::parser::{DocumentFormat, ParserPool};
     use crate::test_support::uri;
+    use crate::workspace_index::WorkspaceIndex;
 
     #[test]
     fn rejects_empty_or_whitespace_or_same_name() {
         let pool = ParserPool::new();
-        let idx = WorkspaceIndex::new();
         let docs = DocumentStore::new();
         let src = r#"{"name":"user","columns":[{"name":"id","type":"integer"}]}"#;
         let tree = pool.parse(src, DocumentFormat::Json);
@@ -271,18 +237,7 @@ mod tests {
 
         for bad in ["", " ", "\"", "user", "a b"] {
             assert!(
-                compute(
-                    src,
-                    DocumentFormat::Json,
-                    tree.as_ref(),
-                    &uri("user.json"),
-                    &idx,
-                    &docs,
-                    None,
-                    pos,
-                    bad,
-                )
-                .is_none(),
+                compute(src, tree.as_ref(), &uri("user.json"), &docs, None, pos, bad,).is_none(),
                 "rename to `{bad}` should be rejected"
             );
         }
@@ -320,10 +275,8 @@ mod tests {
         let pos = user_src.find(r#""name":"user""#).unwrap() + 9;
         let plan = compute(
             user_src,
-            DocumentFormat::Json,
             Some(&user_tree),
             &user_uri,
-            &idx,
             &docs,
             None,
             pos,
@@ -363,18 +316,8 @@ mod tests {
         docs.open(user_uri.clone(), "json".to_string(), 1, src.to_string());
 
         let pos = src.find(r#""name":"id""#).unwrap() + 9;
-        let plan = compute(
-            src,
-            DocumentFormat::Json,
-            Some(&tree),
-            &user_uri,
-            &idx,
-            &docs,
-            None,
-            pos,
-            "a",
-        )
-        .expect("rename should succeed");
+        let plan = compute(src, Some(&tree), &user_uri, &docs, None, pos, "a")
+            .expect("rename should succeed");
 
         let file_edits = plan.edits.get(&user_uri).expect("edits for user.json");
         assert_eq!(file_edits.len(), 1);
@@ -386,9 +329,7 @@ mod tests {
         );
 
         // Apply the edit and confirm the result is still valid JSON.
-        let mut after = String::from(&src[..edit.byte_range.start]);
-        after.push_str(&edit.new_text);
-        after.push_str(&src[edit.byte_range.end..]);
+        let after = crate::test_support::apply_text_edit(src, edit);
         assert!(
             after.contains(r#""a""#),
             "result must keep the quotes: {after}"
@@ -404,14 +345,7 @@ mod tests {
         let tree = pool.parse(src, DocumentFormat::Json).unwrap();
         // Cursor inside `"user"` value.
         let pos = src.find(r#""name":"user""#).unwrap() + 9;
-        let result = prepare(
-            src,
-            DocumentFormat::Json,
-            Some(&tree),
-            &uri("user.json"),
-            pos,
-        )
-        .expect("table name should be renameable");
+        let result = prepare(src, Some(&tree), pos).expect("table name should be renameable");
         assert_eq!(result.placeholder, "user");
         assert_eq!(
             &src[result.byte_range.clone()],
@@ -426,8 +360,7 @@ mod tests {
         let src = r#"{"name":"u","columns":[{"name":"email","type":"text"}]}"#;
         let tree = pool.parse(src, DocumentFormat::Json).unwrap();
         let pos = src.find(r#""name":"email""#).unwrap() + 10;
-        let result = prepare(src, DocumentFormat::Json, Some(&tree), &uri("u.json"), pos)
-            .expect("column name should be renameable");
+        let result = prepare(src, Some(&tree), pos).expect("column name should be renameable");
         assert_eq!(result.placeholder, "email");
         assert_eq!(&src[result.byte_range.clone()], "email");
     }
@@ -438,7 +371,7 @@ mod tests {
         let src = r#"{"name":"u","columns":[{"name":"id","type":"integer"}]}"#;
         let tree = pool.parse(src, DocumentFormat::Json).unwrap();
         // Cursor on the opening brace — not a symbol.
-        let result = prepare(src, DocumentFormat::Json, Some(&tree), &uri("u.json"), 0);
+        let result = prepare(src, Some(&tree), 0);
         assert!(
             result.is_none(),
             "non-symbol positions must not be renameable"
@@ -489,10 +422,8 @@ mod tests {
         let pos = user_src.find(r#""name":"email""#).unwrap() + 10;
         let plan = compute(
             user_src,
-            DocumentFormat::Json,
             Some(&user_tree),
             &user_uri,
-            &idx,
             &docs,
             None,
             pos,
@@ -530,18 +461,8 @@ mod tests {
 
         // Rename from the column declaration.
         let pos = src.find(r#""name":"age""#).unwrap() + 8;
-        let plan = compute(
-            src,
-            DocumentFormat::Json,
-            Some(&tree),
-            &user_uri,
-            &idx,
-            &docs,
-            None,
-            pos,
-            "years",
-        )
-        .expect("rename should succeed");
+        let plan = compute(src, Some(&tree), &user_uri, &docs, None, pos, "years")
+            .expect("rename should succeed");
 
         let file_edits = plan.edits.get(&user_uri).expect("edits for user.json");
         // Declaration edit + the `age` inside the CHECK expr.
@@ -560,12 +481,7 @@ mod tests {
 
         // Apply all edits front-to-back and confirm the CHECK now reads
         // `years > 0` and the document still parses as JSON.
-        let mut sorted = file_edits.clone();
-        sorted.sort_by_key(|e| std::cmp::Reverse(e.byte_range.start));
-        let mut after = src.to_string();
-        for edit in &sorted {
-            after.replace_range(edit.byte_range.clone(), &edit.new_text);
-        }
+        let after = crate::test_support::apply_text_edits(src, file_edits);
         assert!(
             after.contains(r#""expr":"years > 0""#),
             "CHECK expr must be rewritten to `years > 0`, got: {after}"
@@ -588,18 +504,8 @@ mod tests {
 
         // Cursor placed ON the first `age` inside the CHECK expr.
         let pos = src.find(r#""expr":"age"#).unwrap() + 8;
-        let plan = compute(
-            src,
-            DocumentFormat::Json,
-            Some(&tree),
-            &user_uri,
-            &idx,
-            &docs,
-            None,
-            pos,
-            "years",
-        )
-        .expect("rename from inside CHECK should succeed");
+        let plan = compute(src, Some(&tree), &user_uri, &docs, None, pos, "years")
+            .expect("rename from inside CHECK should succeed");
 
         let file_edits = plan.edits.get(&user_uri).expect("edits for user.json");
         // Declaration + two CHECK occurrences = 3 edits, all replacing `age`.
@@ -658,10 +564,8 @@ mod tests {
         let pos = user_src.find(r#""name":"age""#).unwrap() + 8;
         let plan = compute(
             user_src,
-            DocumentFormat::Json,
             Some(&user_tree),
             &user_uri,
-            &idx,
             &docs,
             None,
             pos,
@@ -687,14 +591,8 @@ mod tests {
         let tree = pool.parse(src, DocumentFormat::Json).unwrap();
         // Cursor on the SECOND `age` inside the CHECK expr.
         let second_age = src.find("AND age").unwrap() + 4;
-        let result = prepare(
-            src,
-            DocumentFormat::Json,
-            Some(&tree),
-            &uri("user.json"),
-            second_age,
-        )
-        .expect("CHECK-expr column should be renameable");
+        let result =
+            prepare(src, Some(&tree), second_age).expect("CHECK-expr column should be renameable");
         assert_eq!(result.placeholder, "age");
         assert_eq!(
             &src[result.byte_range.clone()],
@@ -718,27 +616,14 @@ mod tests {
         let quoted = "name: \"user\"\ncolumns: []\n";
         let quoted_tree = pool.parse(quoted, DocumentFormat::Yaml).unwrap();
         let quoted_pos = quoted.find("user").unwrap();
-        let quoted_result = prepare(
-            quoted,
-            DocumentFormat::Yaml,
-            Some(&quoted_tree),
-            &uri("user.yaml"),
-            quoted_pos,
-        )
-        .expect("quoted YAML name");
+        let quoted_result =
+            prepare(quoted, Some(&quoted_tree), quoted_pos).expect("quoted YAML name");
         assert_eq!(&quoted[quoted_result.byte_range.clone()], "user");
 
         let plain = "name: user\ncolumns: []\n";
         let plain_tree = pool.parse(plain, DocumentFormat::Yaml).unwrap();
         let plain_pos = plain.find("user").unwrap();
-        let plain_result = prepare(
-            plain,
-            DocumentFormat::Yaml,
-            Some(&plain_tree),
-            &uri("user.yaml"),
-            plain_pos,
-        )
-        .expect("plain YAML name");
+        let plain_result = prepare(plain, Some(&plain_tree), plain_pos).expect("plain YAML name");
         assert_eq!(&plain[plain_result.byte_range.clone()], "user");
     }
 
@@ -760,20 +645,7 @@ mod tests {
         docs.open(u.clone(), "json".to_string(), 1, src.to_string());
         let pos = src.find(r#""name":"user""#).unwrap() + 9;
 
-        assert!(
-            compute(
-                src,
-                DocumentFormat::Json,
-                Some(&tree),
-                &u,
-                &idx,
-                &docs,
-                None,
-                pos,
-                "user"
-            )
-            .is_none()
-        );
+        assert!(compute(src, Some(&tree), &u, &docs, None, pos, "user").is_none());
     }
 
     #[test]
@@ -787,24 +659,11 @@ mod tests {
         idx.upsert(&u, src, &tree);
         docs.open(u.clone(), "json".to_string(), 1, src.to_string());
 
-        assert!(
-            compute(
-                src,
-                DocumentFormat::Json,
-                Some(&tree),
-                &u,
-                &idx,
-                &docs,
-                None,
-                0,
-                "new"
-            )
-            .is_none()
-        );
+        assert!(compute(src, Some(&tree), &u, &docs, None, 0, "new").is_none());
     }
 
     #[test]
     fn prepare_returns_none_when_tree_missing() {
-        assert!(prepare("x", DocumentFormat::Json, None, &uri("x.json"), 0).is_none());
+        assert!(prepare("x", None, 0).is_none());
     }
 }

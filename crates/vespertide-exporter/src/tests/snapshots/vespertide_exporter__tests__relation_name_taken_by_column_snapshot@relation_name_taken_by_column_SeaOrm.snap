@@ -1,0 +1,35 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "users")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    #[sea_orm(has_many)]
+    pub items: HasMany<super::items::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "UsersSchema");
+impl ActiveModelBehavior for ActiveModel {}
+
+
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "items")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub owner: Option<i32>,
+    #[sea_orm(belongs_to, from = "owner", to = "id")]
+    pub owner_1: HasOne<super::users::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "ItemsSchema");
+impl ActiveModelBehavior for ActiveModel {}

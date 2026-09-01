@@ -6,21 +6,15 @@ use std::path::PathBuf;
 use tower_lsp_server::ls_types::Uri;
 
 use crate::store::DocumentStore;
-use crate::workspace_index::WorkspaceIndex;
 use crate::workspace_tables::WorkspaceTables;
 
 use super::{DomainReference, ReferenceSymbol};
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "reference search needs target symbol, current document, open/disk workspace stores, and declaration policy; ReferenceSearchContext is deferred"
-)]
 pub(super) fn find_all(
     symbol: &ReferenceSymbol,
     current_uri: &Uri,
     current_source: &str,
     current_tree: Option<&tree_sitter::Tree>,
-    index: &WorkspaceIndex,
     docs: &DocumentStore,
     disk_tables: Option<&WorkspaceTables>,
     include_declaration: bool,
@@ -39,32 +33,33 @@ pub(super) fn find_all(
         );
     }
 
+    // Snapshot the open URIs once and reuse it for both the open-document
+    // scan and the disk-file dedup set below (was queried twice).
+    let open_uris = docs.open_uris();
+
     // Every OTHER open document.
-    let other_uris: Vec<Uri> = docs
-        .open_uris()
-        .into_iter()
-        .filter(|uri| uri != current_uri)
-        .collect();
-    for uri in other_uris {
-        docs.with_doc(&uri, |text, tree| {
+    for uri in open_uris.iter().filter(|uri| *uri != current_uri) {
+        docs.with_doc(uri, |text, tree| {
             if let Some(tree) = tree {
-                collect_in_document(symbol, &uri, text, tree, include_declaration, &mut out);
+                collect_in_document(symbol, uri, text, tree, include_declaration, &mut out);
             }
         });
     }
 
     // Disk-only models that the editor has not opened.
     if let Some(disk) = disk_tables {
-        let open_paths: std::collections::BTreeSet<PathBuf> = docs
-            .open_uris()
-            .into_iter()
-            .filter_map(|uri| crate::position::uri_to_path(&uri))
+        let open_paths: std::collections::BTreeSet<PathBuf> = open_uris
+            .iter()
+            .filter_map(crate::position::uri_to_path)
             .collect();
+        // One parser pool for the whole disk sweep instead of constructing a
+        // fresh tree-sitter parser per file inside `scan_disk_file`.
+        let pool = crate::parser::ParserPool::new();
         for name in disk.names() {
             if let Some(path) = disk.model_path(&name) {
                 // Already scanned via the open document above.
                 if !open_paths.contains(&path) {
-                    scan_disk_file(symbol, &path, include_declaration, &mut out);
+                    scan_disk_file(symbol, &path, &pool, include_declaration, &mut out);
                 }
             }
         }
@@ -79,16 +74,13 @@ pub(super) fn find_all(
     });
     out.dedup();
 
-    // Resolved declarations are valuable to surface even without
-    // include_declaration via cross-file lookups (some clients ignore the
-    // flag and rely on us to be authoritative). Keep callsite explicit.
-    let _ = index;
     out
 }
 
 fn scan_disk_file(
     symbol: &ReferenceSymbol,
     path: &std::path::Path,
+    pool: &crate::parser::ParserPool,
     include_declaration: bool,
     out: &mut Vec<DomainReference>,
 ) {
@@ -98,23 +90,19 @@ fn scan_disk_file(
             Some("yaml" | "yml") => Some(crate::parser::DocumentFormat::Yaml),
             _ => None,
         };
-        if let Some(format) = format {
-            let pool = crate::parser::ParserPool::new();
-            if let Some(tree) = pool.parse(&text, format) {
-                let uri = path_to_uri(path);
-                collect_in_document(symbol, &uri, &text, &tree, include_declaration, out);
-            }
+        if let Some(format) = format
+            && let Some(tree) = pool.parse(&text, format)
+        {
+            // Fallback to the synthetic empty `file:///` URI keeps
+            // `scan_disk_file` infallible even on the (practically
+            // unreachable) path that `path_to_uri` rejects — better to
+            // attribute references to an obviously-synthetic URI than to
+            // silently drop them.
+            let uri = crate::position::path_to_uri(path)
+                .unwrap_or_else(|| <Uri as std::str::FromStr>::from_str("file:///").unwrap());
+            collect_in_document(symbol, &uri, &text, &tree, include_declaration, out);
         }
     }
-}
-
-fn path_to_uri(path: &std::path::Path) -> Uri {
-    let mut text = path.to_string_lossy().replace('\\', "/");
-    if !text.starts_with('/') {
-        text = format!("/{text}");
-    }
-    std::str::FromStr::from_str(&format!("file://{text}"))
-        .unwrap_or_else(|_| std::str::FromStr::from_str("file:///").unwrap())
 }
 
 fn collect_in_document(
@@ -230,21 +218,27 @@ fn check_owning_table_matches(
     outer_table_name(source, expr_pair).is_some_and(|name| name == expected_table)
 }
 
-/// Look up a sibling pair's scalar value within the same constraint object.
-fn sibling_value(source: &[u8], pair: tree_sitter::Node<'_>, target_key: &str) -> Option<String> {
-    let object_raw = pair.parent()?;
-    let object = match object_raw.kind() {
-        "flow_node" | "block_node" => object_raw.named_child(0)?,
-        _ => object_raw,
-    };
+/// Scan a mapping node's DIRECT child pairs (non-recursive) for the pair
+/// whose key equals `key`, then return its value's scalar text with the
+/// `flow_node`/`block_node` wrapper peeled and surrounding quotes stripped.
+///
+/// Shared by `sibling_value`, `outer_table_name`, `sibling_ref_table_matches`,
+/// and `is_column_pair`, which each open-coded this exact walk before. The
+/// crate's `tree_util::find_pair_with_key` is the *recursive* variant; this is
+/// the *direct-child* one.
+fn direct_child_scalar<'a>(
+    object: tree_sitter::Node<'_>,
+    source: &'a [u8],
+    key: &str,
+) -> Option<&'a str> {
     let mut cursor = object.walk();
     for child in object.children(&mut cursor) {
         if matches!(child.kind(), "pair" | "block_mapping_pair")
-            && let Some(key) = child.named_child(0)
+            && let Some(key_node) = child.named_child(0)
             && let Some(key_text) = source
-                .get(key.byte_range())
+                .get(key_node.byte_range())
                 .and_then(|bytes| std::str::from_utf8(bytes).ok())
-            && strip_quotes(key_text) == target_key
+            && strip_quotes(key_text) == key
         {
             let value = child.named_child(1)?;
             let actual = match value.kind() {
@@ -254,47 +248,30 @@ fn sibling_value(source: &[u8], pair: tree_sitter::Node<'_>, target_key: &str) -
             let text = source
                 .get(actual.byte_range())
                 .and_then(|bytes| std::str::from_utf8(bytes).ok())?;
-            return Some(strip_quotes(text).to_string());
+            return Some(strip_quotes(text));
         }
     }
     None
 }
 
+/// Look up a sibling pair's scalar value within the same constraint object.
+fn sibling_value<'a>(
+    source: &'a [u8],
+    pair: tree_sitter::Node<'_>,
+    target_key: &str,
+) -> Option<&'a str> {
+    let object_raw = pair.parent()?;
+    let object = match object_raw.kind() {
+        "flow_node" | "block_node" => object_raw.named_child(0)?,
+        _ => object_raw,
+    };
+    direct_child_scalar(object, source, target_key)
+}
+
 /// Walk up to the document's outermost mapping and return its `name` value.
-fn outer_table_name(source: &[u8], node: tree_sitter::Node<'_>) -> Option<String> {
-    let mut current = node.parent();
-    let mut outer = None;
-    while let Some(candidate) = current {
-        if matches!(
-            candidate.kind(),
-            "object" | "block_mapping" | "flow_mapping"
-        ) {
-            outer = Some(candidate);
-        }
-        current = candidate.parent();
-    }
-    let outer = outer?;
-    let mut cursor = outer.walk();
-    for child in outer.children(&mut cursor) {
-        if matches!(child.kind(), "pair" | "block_mapping_pair")
-            && let Some(key) = child.named_child(0)
-            && let Some(key_text) = source
-                .get(key.byte_range())
-                .and_then(|bytes| std::str::from_utf8(bytes).ok())
-            && strip_quotes(key_text) == "name"
-        {
-            let value = child.named_child(1)?;
-            let actual = match value.kind() {
-                "flow_node" | "block_node" => value.named_child(0).unwrap_or(value),
-                _ => value,
-            };
-            let text = source
-                .get(actual.byte_range())
-                .and_then(|bytes| std::str::from_utf8(bytes).ok())?;
-            return Some(strip_quotes(text).to_string());
-        }
-    }
-    None
+fn outer_table_name<'a>(source: &'a [u8], node: tree_sitter::Node<'_>) -> Option<&'a str> {
+    let outer = crate::tree_util::outermost_ancestor_mapping(node)?;
+    direct_child_scalar(outer, source, "name")
 }
 
 /// Lex the CHECK expression in `value` and push a reference for every bare
@@ -334,23 +311,9 @@ fn sibling_ref_table_matches(
         "flow_node" | "block_node" => raw.named_child(0),
         _ => Some(raw),
     });
-    if let Some(fk_object) = fk_object {
-        let mut cursor = fk_object.walk();
-        for child in fk_object.children(&mut cursor) {
-            if matches!(child.kind(), "pair" | "block_mapping_pair")
-                && let Some(key) = child.named_child(0)
-                && let Some(key_text) = source
-                    .get(key.byte_range())
-                    .and_then(|bytes| std::str::from_utf8(bytes).ok())
-                && strip_quotes(key_text) == "ref_table"
-            {
-                return child
-                    .named_child(1)
-                    .is_some_and(|value| value_matches(source, value, table_name));
-            }
-        }
-    }
-    false
+    fk_object
+        .and_then(|obj| direct_child_scalar(obj, source, "ref_table"))
+        .is_some_and(|ref_table| ref_table == table_name)
 }
 
 fn push_array_matches(
@@ -414,46 +377,22 @@ fn inner_content_range(node: tree_sitter::Node<'_>) -> std::ops::Range<usize> {
         // tree-sitter-json: `string` is `"…"`. Its first named child is
         // `string_content` (absent when the literal is empty).
         "string" => node.named_child(0).map_or_else(
-            || trim_one_byte_each_side(node.byte_range()),
+            || crate::tree_util::trim_one_byte_each_side(&node.byte_range()),
             |inner| inner.byte_range(),
         ),
         // tree-sitter-yaml quoted scalars include their delimiters; trim
         // one byte on each side.
-        "double_quote_scalar" | "single_quote_scalar" => trim_one_byte_each_side(node.byte_range()),
+        "double_quote_scalar" | "single_quote_scalar" => {
+            crate::tree_util::trim_one_byte_each_side(&node.byte_range())
+        }
         // Unquoted scalars (YAML plain / string_scalar, or anything else)
         // have no delimiters — the full range is the identifier.
         _ => node.byte_range(),
     }
 }
 
-fn trim_one_byte_each_side(range: std::ops::Range<usize>) -> std::ops::Range<usize> {
-    if range.end.saturating_sub(range.start) >= 2 {
-        (range.start + 1)..(range.end - 1)
-    } else {
-        range
-    }
-}
-
 fn is_top_level(pair: tree_sitter::Node<'_>) -> bool {
-    if let Some(parent) = pair.parent() {
-        if matches!(parent.kind(), "object" | "block_mapping" | "flow_mapping") {
-            let mut current = parent.parent();
-            while let Some(candidate) = current {
-                if matches!(
-                    candidate.kind(),
-                    "object" | "block_mapping" | "flow_mapping"
-                ) {
-                    return false;
-                }
-                current = candidate.parent();
-            }
-            true
-        } else {
-            false
-        }
-    } else {
-        false
-    }
+    crate::tree_util::is_top_level_pair(pair)
 }
 
 /// Check that this `name` pair lives directly inside a column object whose
@@ -469,35 +408,11 @@ fn is_column_pair(name_pair: tree_sitter::Node<'_>, source: &[u8], expected_tabl
     {
         // The column object is not allowed to be the outermost mapping — that's
         // the table itself.
-        let mut current = column_object.parent();
-        let mut outer = None;
-        while let Some(candidate) = current {
-            if matches!(
-                candidate.kind(),
-                "object" | "block_mapping" | "flow_mapping"
-            ) {
-                outer = Some(candidate);
-            }
-            current = candidate.parent();
-        }
-
-        if let Some(outer) = outer
+        if let Some(outer) = crate::tree_util::outermost_ancestor_mapping(column_object)
             && outer.id() != column_object.id()
         {
-            let mut cursor = outer.walk();
-            for child in outer.children(&mut cursor) {
-                if matches!(child.kind(), "pair" | "block_mapping_pair")
-                    && let Some(key) = child.named_child(0)
-                    && let Some(key_text) = source
-                        .get(key.byte_range())
-                        .and_then(|bytes| std::str::from_utf8(bytes).ok())
-                    && strip_quotes(key_text) == "name"
-                {
-                    return child
-                        .named_child(1)
-                        .is_some_and(|value| value_matches(source, value, expected_table));
-                }
-            }
+            return direct_child_scalar(outer, source, "name")
+                .is_some_and(|name| name == expected_table);
         }
     }
     false
@@ -546,11 +461,13 @@ mod tests {
         std::fs::write(&txt, "name: user\ncolumns: []\n").unwrap();
 
         let mut out = Vec::new();
+        let pool = crate::parser::ParserPool::new();
         scan_disk_file(
             &ReferenceSymbol::Table {
                 name: "user".to_string(),
             },
             &yaml,
+            &pool,
             true,
             &mut out,
         );
@@ -559,6 +476,7 @@ mod tests {
                 name: "account".to_string(),
             },
             &yml,
+            &pool,
             true,
             &mut out,
         );
@@ -568,6 +486,7 @@ mod tests {
                 name: "user".to_string(),
             },
             &txt,
+            &pool,
             true,
             &mut out,
         );
@@ -596,7 +515,6 @@ mod tests {
             &current_uri,
             src,
             Some(&current_tree),
-            &WorkspaceIndex::new(),
             &docs,
             None,
             false,
@@ -639,7 +557,7 @@ mod tests {
 
     #[test]
     fn range_and_top_level_helpers_cover_defensive_branches() {
-        assert_eq!(trim_one_byte_each_side(4..5), 4..5);
+        assert_eq!(crate::tree_util::trim_one_byte_each_side(&(4..5)), 4..5);
 
         let src = r#"{"name":"user","columns":[{"name":"id","type":"integer"}]}"#;
         let tree = parse_json(src);
@@ -708,6 +626,23 @@ mod tests {
         assert!(!is_column_pair(nested_name, src.as_bytes(), "user"));
     }
 
+    /// The table's own `name` pair sits directly in the outermost mapping, so
+    /// `outer.id() != column_object.id()` is false and the function reaches its
+    /// trailing `false` — the only path that skips both inner `if let`s. Without
+    /// this, a table-level `name` could be mistaken for a column declaration.
+    #[test]
+    fn is_column_pair_returns_false_for_the_tables_own_name_pair() {
+        let src = r#"{"name":"user","columns":[{"name":"id","type":"integer"}]}"#;
+        let tree = parse_json(src);
+        let root_name =
+            find_pair_with_key(tree.root_node(), src.as_bytes(), "name").expect("root name pair");
+
+        assert!(
+            !is_column_pair(root_name, src.as_bytes(), "user"),
+            "the table's own `name` is not a column declaration"
+        );
+    }
+
     #[test]
     fn collect_in_document_keeps_table_and_check_references_distinct() {
         let src = r#"{"name":"user","columns":[{"name":"age","type":"integer"}],"constraints":[{"type":"check","name":"c","expr":"age > 0"}]}"#;
@@ -736,15 +671,40 @@ mod tests {
         );
     }
 
+    /// The test above only ever lexes a CHECK expression whose single column
+    /// identifier matches the symbol, so `push_check_expr_matches` never took
+    /// the `ident == column` false path. A predicate naming two columns forces
+    /// both: `age` is pushed, `score` is skipped.
     #[test]
-    fn path_to_uri_prepends_leading_slash_for_relative_path() {
-        // A relative path never starts with `/` on any platform, so this
-        // exercises the leading-slash normalization branch deterministically.
-        let uri = path_to_uri(std::path::Path::new("models/user.json"));
+    fn check_expr_matches_skip_identifiers_for_other_columns() {
+        let src = r#"{"name":"user","columns":[{"name":"age","type":"integer"},{"name":"score","type":"integer"}],"constraints":[{"type":"check","name":"c","expr":"age > 0 AND score > age"}]}"#;
+        let tree = parse_json(src);
+        let mut out = Vec::new();
+
+        collect_in_document(
+            &ReferenceSymbol::Column {
+                table: "user".to_string(),
+                column: "age".to_string(),
+            },
+            &uri("user.json"),
+            src,
+            &tree,
+            false,
+            &mut out,
+        );
+
+        let hits: Vec<&str> = out
+            .iter()
+            .map(|reference| &src[reference.byte_range.clone()])
+            .collect();
         assert!(
-            uri.as_str().starts_with("file:///"),
-            "got: {}",
-            uri.as_str()
+            hits.iter().all(|hit| *hit == "age"),
+            "only `age` identifiers may be reported, got: {hits:?}"
+        );
+        assert_eq!(
+            hits.len(),
+            2,
+            "both `age` occurrences in the CHECK predicate are references: {hits:?}"
         );
     }
 }

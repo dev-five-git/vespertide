@@ -75,7 +75,7 @@ exclude_re = [
     # column x-range rather than sitting side-by-side. Therefore both mutants
     # are byte-identical for every renderer-reachable layout while the other
     # pick_anchors arithmetic remains in scope.
-    "edges[.]rs:152(:[0-9]+)?: replace > with >= in pick_anchors",
+    "edges[.]rs:[0-9]+:[0-9]+: replace > with >= in pick_anchors",
     # E6: classify_strengthening's `||` guard
     # (`old==Unparseable || new==Unparseable -> return None`) is equivalent
     # under `&&`. When exactly one side is Unparseable the `&&` mutant skips
@@ -83,7 +83,7 @@ exclude_re = [
     # has no matching arm and falls to `_ => None` ? identical observable
     # result for every input. The two-unparseable case is also caught earlier
     # by `if old == new { return None }`. No test can distinguish the mutant.
-    "check_strengthening[.]rs:233(:[0-9]+)?: replace [|][|] with && in classify_strengthening",
+    "check_strengthening[.]rs:[0-9]+:[0-9]+: replace [|][|] with && in classify_strengthening",
     # E7: the Rayon `*_par_*_threshold()` functions in parallel_config.rs
     # (vespertide-planner + vespertide-query) are perf-only dispatch knobs.
     # Replacing the returned threshold with 0 or 1 only changes WHEN the
@@ -97,51 +97,51 @@ exclude_re = [
     # ModifyColumnDefault for the same column), so they can never be equal.
     # `< -> <=` therefore has no reachable input that distinguishes it ?
     # equivalent. The `&&` operator on the same line remains in the gate.
-    "ordering[.]rs:410(:[0-9]+)?: replace < with <= in sort_enum_default_dependencies",
+    "ordering[.]rs:[0-9]+:[0-9]+: replace < with <= in sort_enum_default_dependencies",
     # E9: the `len() < *_par_*_threshold()` seq-vs-parallel DISPATCH comparisons.
     # Mutating `<` to ==/>/<= only changes which execution path is taken; the
     # sequential and Rayon paths produce identical results (covered by the
     # validate/diff/build result tests). Perf-only ? same category as E1.
-    "validate/plan[.]rs:46(:[0-9]+)?: replace < with (==|>|<=) in find_plan_violations",
-    "validate/plan[.]rs:167(:[0-9]+)?: replace < with (==|>|<=) in find_missing_fill_with",
-    "validate/plan[.]rs:280(:[0-9]+)?: replace < with (==|>|<=) in find_missing_enum_fill_with",
-    "validate/schema[.]rs:77(:[0-9]+)?: replace < with (==|>|<=) in find_schema_violations",
-    "diff/mod[.]rs:49(:[0-9]+)?: replace < with (==|>|<=) in diff_schemas",
-    "builder/mod[.]rs:63(:[0-9]+)?: replace < with (==|>|<=) in build_plan_queries",
+    "validate/plan[.]rs:[0-9]+:[0-9]+: replace < with (==|>|<=) in find_plan_violations",
+    "validate/plan[.]rs:[0-9]+:[0-9]+: replace < with (==|>|<=) in find_missing_fill_with",
+    "validate/plan[.]rs:[0-9]+:[0-9]+: replace < with (==|>|<=) in find_missing_enum_fill_with",
+    "validate/schema[.]rs:[0-9]+:[0-9]+: replace < with (==|>|<=) in find_schema_violations",
+    "diff/mod[.]rs:[0-9]+:[0-9]+: replace < with (==|>|<=) in diff_schemas",
+    "builder/mod[.]rs:[0-9]+:[0-9]+: replace < with (==|>|<=) in build_plan_queries",
     # E10: the pairwise contradiction loop `for j in (i + 1)..preds.len()`.
     # The `+ -> *` mutant yields `i * 1 == i`, so the inner loop additionally
     # visits the (i, i) self-pair `check_pair(col, p, p)`. A predicate never
     # contradicts itself (two identical Compare/In/Between/IsNull predicates
     # are always mutually satisfiable), so every added self-pair returns None
     # and the observable result is unchanged ? equivalent.
-    "check_self_contradiction[.]rs:120(:[0-9]+)?: replace [+] with [*] in find_contradiction",
+    "check_self_contradiction[.]rs:[0-9]+:[0-9]+: replace [+] with [*] in find_contradiction",
     # E11: is_definitely_mismatch's `(Json, _) => false` and
     # `(Custom { .. }, _) => false` arms return exactly the same value as the
     # match's `_ => false` catch-all. Deleting either arm makes that input
     # fall straight through to `_ => false` ? identical observable result,
     # equivalent.
-    "check_type_mismatch[.]rs:366(:[0-9]+)?: delete match arm .* in is_definitely_mismatch",
-    "check_type_mismatch[.]rs:395(:[0-9]+)?: delete match arm .* in is_definitely_mismatch",
+    "check_type_mismatch[.]rs:[0-9]+:[0-9]+: delete match arm .* in is_definitely_mismatch",
+    "check_type_mismatch[.]rs:[0-9]+:[0-9]+: delete match arm .* in is_definitely_mismatch",
     # E12: in find_primary_key_additions, `n_existing == 0 => NewColumns`.
     # The function acts ONLY on `ExistingColumns`; both NewColumns and the
     # `_ => Mixed` fallback hit `if !matches!(kind, ExistingColumns) continue;`.
     # Deleting the `0` arm sends n_existing==0 to Mixed (PK columns always
     # number >=1, so `0 == len` is unreachable) ? same `continue`, equivalent.
-    "pk_additions[.]rs:115(:[0-9]+)?: delete match arm 0 in find_primary_key_additions",
+    "pk_additions[.]rs:[0-9]+:[0-9]+: delete match arm 0 in find_primary_key_additions",
     # E13: in clear_index_fields, `filtered.len() < names.len()` gates whether
     # the multi-index array is rewritten after removing a constraint name. When
     # the name is absent, `filtered` is a clone of `names` (same elements, same
     # order), so the `<= ` branch would set `col.index = Some(Array(filtered))`
     # to a value byte-identical to the untouched original ? no observable
     # difference, equivalent.
-    "constraint_ops[.]rs:148(:[0-9]+)?: replace < with <= in clear_index_fields",
+    "constraint_ops[.]rs:[0-9]+:[0-9]+: replace < with <= in clear_index_fields",
     # E14: the loader's `paths.len() < LOAD_FILES_PAR_THRESHOLD` seq-vs-parallel
     # dispatch. Mutating `<` only changes whether files are loaded sequentially
     # or via Rayon; the loaded result is identical. Perf-only, same as E1/E9.
-    "loader/src/migrations[.]rs:21(:[0-9]+)?: replace < with (==|>|<=) in load_migrations",
-    "loader/src/migrations[.]rs:65(:[0-9]+)?: replace < with (==|>|<=) in load_migrations_from_dir",
-    "loader/src/models[.]rs:43(:[0-9]+)?: replace < with (==|>|<=) in load_models_recursive",
-    "loader/src/models[.]rs:145(:[0-9]+)?: replace < with (==|>|<=) in load_models_recursive_internal",
+    "loader/src/migrations[.]rs:[0-9]+:[0-9]+: replace < with (==|>|<=) in load_migrations",
+    "loader/src/migrations[.]rs:[0-9]+:[0-9]+: replace < with (==|>|<=) in load_migrations_from_dir",
+    "loader/src/models[.]rs:[0-9]+:[0-9]+: replace < with (==|>|<=) in load_models_recursive",
+    "loader/src/models[.]rs:[0-9]+:[0-9]+: replace < with (==|>|<=) in load_models_recursive_internal",
     # E15: pure `println!` display helpers (revision fill_with header/footer and
     # narrowing strategy descriptions). No return value or logic; replacing the
     # body with () or deleting a match arm only changes stdout decoration. Same
@@ -175,9 +175,58 @@ exclude_re = [
     # scanner's exponent loop condition. (Caught/missed mutants in these
     # functions stay in the gate; only the non-terminating ones are excluded.)
     "check_expr_parser[.]rs:[0-9]+:[0-9]+: replace [+]= with (-=|[*]=|/=) in tokenize_spanned",
-    "check_expr_parser[.]rs:408(:[0-9]+)?: .* in tokenize_spanned",
+    # The scanner's `while i < bytes.len() && ..` bounds guards. Relaxing the
+    # bound is the same non-advancing class as the `+=` mutants above: the
+    # cursor stops being the loop's decreasing measure and the scan never
+    # terminates. Narrowed from a `.*`-in-tokenize_spanned wildcard so any
+    # OTHER mutation in the scanner still has to be killed by a test.
+    "check_expr_parser[.]rs:[0-9]+:[0-9]+: replace < with (<=|==|>) in tokenize_spanned",
     "check_expr_parser[.]rs:[0-9]+:[0-9]+: replace [+]= with (-=|[*]=|/=) in Parser::parse_predicate",
     "layout[.]rs:[0-9]+:[0-9]+: replace [+]= with (-=|[*]=|/=) in rebalance_groups",
+    # Same non-termination class in the migration-filename byte scanner:
+    # `render_migration_name` walks `i` (and the inner width cursor `j`) forward
+    # by 1 or 2 per step. `*= 1` is the identity, and `-=` walks backwards into
+    # an underflow, so either way the cursor stops being the loop's decreasing
+    # measure and the scan never reaches `bytes.len()`. The scanner's comparison
+    # and slice-bound mutants stay in the gate - `%012` and `%06v` cover those.
+    "cli/src/utils[.]rs:[0-9]+:[0-9]+: replace [+]= with (-=|[*]=|/=) in render_migration_name",
+    # E19: `String::with_capacity` / `Vec::reserve` sizing arithmetic. These
+    # mutants change only how much the buffer pre-allocates; every one of these
+    # functions then pushes the same bytes in the same order, so the returned
+    # value is byte-identical and no assertion can distinguish them. (The
+    # buffer-push helpers themselves stay in the gate - only the capacity
+    # expression is excluded.)
+    "naming/src/lib[.]rs:[0-9]+:[0-9]+: replace [+] with (-|[*]) in build_constraint_name",
+    "schema/names[.]rs:[0-9]+:[0-9]+: replace ([+]|[*]) with ([*]|[+]) in join_column_names",
+    "sql/helpers[.]rs:[0-9]+:[0-9]+: replace [+] with (-|[*]) in quote_ident_into",
+    # E20: the loader's generic `paths.len() < LOAD_FILES_PAR_THRESHOLD`
+    # seq-vs-parallel dispatch, extracted into `map_paths_with_threshold` by the
+    # performance wave. Same perf-only category as E1/E7/E9/E14 - both arms map
+    # the same closure over the same paths and collect the same result.
+    "loader/src/parallel_config[.]rs:[0-9]+:[0-9]+: replace < with (==|>|<=) in map_paths_with_threshold",
+    # E21: `sorted_column_refs` skips the sort for 0- or 1-element slices, which
+    # are already sorted. Every mutant of that guard only changes WHETHER
+    # `sort_unstable` runs on a slice too short to reorder, so the returned
+    # order is identical either way.
+    "diff/constraints[.]rs:[0-9]+:[0-9]+: replace > with (<|==|>=) in sorted_column_refs",
+    # E22: `compute_integer_enum_remapping`'s empty-side fast path
+    # (`from_items.is_empty() || to_items.is_empty()`). Under `&&` only the
+    # both-empty case short-circuits, but the fall-through still yields an empty
+    # map either way: an empty `from_items` iterates zero times, and an empty
+    # `to_items` produces an empty `to_by_name` that matches no name. The guard
+    # skips work, it does not change the result.
+    "diff/columns[.]rs:[0-9]+:[0-9]+: replace [|][|] with && in compute_integer_enum_remapping",
+    # E23: `build_create_table`'s `matches!(backend, MySql) || !has_unique_constraints`
+    # picks between passing the constraint slice through by reference and
+    # cloning a unique-free copy. `TableConstraint::Unique` dispatches to
+    # `add_mysql_unique_constraint`, which no-ops on PG/SQLite, so both arms emit
+    # the same CREATE TABLE - the guard only decides whether the clone is paid
+    # for. (The `!` inside the partitioning filter on the next lines stays in the
+    # gate: dropping it would keep only the uniques and lose the PK, which
+    # `test_create_table_unique_alongside_primary_key` asserts against.) Anchored
+    # on the COLUMN of the guard's `!` so the filter's `!` a few lines below is
+    # not swept up - the two are indistinguishable by mutation text alone.
+    "sql/create_table[.]rs:[0-9]+:77: delete ! in build_create_table",
 ]
 
 # Focus on logic-heavy crates. Exclude:
@@ -198,3 +247,4 @@ exclude_globs = [
 
 # 3× baseline test time per mutant (handles proptest variance)
 timeout_multiplier = 3.0
+

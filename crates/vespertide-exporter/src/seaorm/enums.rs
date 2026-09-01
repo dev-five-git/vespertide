@@ -1,7 +1,7 @@
 use vespertide_config::SeaOrmConfig;
 use vespertide_core::{EnumValues, NumValue};
 
-use super::imports::to_pascal_case;
+use super::imports::{sanitize_type_name, to_pascal_case};
 
 pub(super) fn render_enum(
     lines: &mut Vec<String>,
@@ -100,11 +100,15 @@ pub(super) fn finalize_enum_variant_name(pascal: String) -> String {
     }
 
     // Handle numeric prefix: prefix with underscore or 'N'
-    if pascal.chars().next().is_some_and(|c| c.is_ascii_digit()) {
-        return format!("N{pascal}");
-    }
+    let pascal = if pascal.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+        format!("N{pascal}")
+    } else {
+        pascal
+    };
 
-    pascal
+    // `to_pascal_case` splits on `_` and `-` only, so anything else a value may
+    // carry — a space, a non-ASCII letter — is still sitting in the name.
+    sanitize_type_name(&pascal)
 }
 
 pub(super) fn enum_serde_rename_all(values: &EnumValues, config: &SeaOrmConfig) -> &'static str {

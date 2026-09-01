@@ -2,10 +2,222 @@ mod check;
 mod foreign_key;
 mod index;
 mod primary_key;
+mod unique;
+
+use vespertide_core::{TableConstraint, TableDef};
+
+use super::helpers::{build_sqlite_table_rebuild, require_table_in_schema};
+use super::types::{BuiltQuery, DatabaseBackend};
+use crate::error::QueryError;
+
+/// Locate the single-column PRIMARY KEY for `table` in `current_schema`,
+/// returning `None` whenever the table has no usable PK (missing, composite,
+/// or the PK column appears inside `cols` — the last case would turn a
+/// `NOT IN (SELECT MIN(pk) ... GROUP BY pk)` cleanup into a tautology).
+///
+/// Shared by [`primary_key::build_primary_key`]'s pre-cleanup and
+/// [`unique::build_unique`]'s pre-cleanup; co-locating the resolver here
+/// eliminates the drift risk of two byte-identical private copies.
+pub(super) fn try_resolve_single_pk_column<T: AsRef<str>>(
+    table: &str,
+    current_schema: &[TableDef],
+    cols: &[T],
+) -> Option<String> {
+    let table_def = current_schema.iter().find(|t| t.name.as_str() == table)?;
+
+    // Prefer the first table-level PRIMARY KEY constraint; fall back to
+    // inline `primary_key: true` columns only when no table-level PK exists.
+    // Either way the resolver fires only when exactly one column is the PK
+    // (composite PK → `None`).
+    let pk_column = if let Some(columns) = table_def.constraints.iter().find_map(|c| match c {
+        TableConstraint::PrimaryKey { columns, .. } => Some(columns),
+        _ => None,
+    }) {
+        if columns.len() != 1 {
+            return None;
+        }
+        columns[0].to_string()
+    } else {
+        let mut inline = table_def
+            .columns
+            .iter()
+            .filter(|col| col.primary_key.is_some());
+        let first = inline.next()?;
+        if inline.next().is_some() {
+            return None;
+        }
+        first.name.to_string()
+    };
+
+    if cols.iter().any(|c| c.as_ref() == pk_column) {
+        return None;
+    }
+    Some(pk_column)
+}
+
+pub fn build_add_constraint(
+    backend: DatabaseBackend,
+    table: &str,
+    constraint: &TableConstraint,
+    current_schema: &[TableDef],
+    pending_constraints: &[TableConstraint],
+) -> Result<Vec<BuiltQuery>, QueryError> {
+    if let TableConstraint::PrimaryKey {
+        columns, strategy, ..
+    } = constraint
+    {
+        return primary_key::build_primary_key(
+            backend,
+            table,
+            columns,
+            strategy,
+            constraint,
+            current_schema,
+            pending_constraints,
+        );
+    }
+
+    match constraint {
+        TableConstraint::Unique {
+            name,
+            columns,
+            strategy,
+        } => unique::build_unique(
+            backend,
+            table,
+            name.as_deref(),
+            columns,
+            strategy,
+            current_schema,
+        ),
+        TableConstraint::ForeignKey {
+            name,
+            columns,
+            ref_table,
+            ref_columns,
+            on_delete,
+            on_update,
+            orphan_strategy,
+        } => foreign_key::build_foreign_key(
+            backend,
+            table,
+            name.as_deref(),
+            columns,
+            ref_table,
+            ref_columns,
+            on_delete.as_ref(),
+            on_update.as_ref(),
+            *orphan_strategy,
+            constraint,
+            current_schema,
+            pending_constraints,
+        ),
+        TableConstraint::Index { name, columns } => {
+            Ok(index::build_index(table, name.as_deref(), columns))
+        }
+        TableConstraint::Check {
+            name,
+            expr,
+            strategy,
+        } => check::build_check(
+            backend,
+            table,
+            name,
+            expr,
+            strategy,
+            constraint,
+            current_schema,
+            pending_constraints,
+        ),
+        _ => unreachable!("TableConstraint is #[non_exhaustive]; all variants are matched above"),
+    }
+}
+
+pub(super) fn merge_constraint(
+    existing: &[TableConstraint],
+    constraint: &TableConstraint,
+) -> Vec<TableConstraint> {
+    let mut out = Vec::with_capacity(existing.len() + 1);
+    let mut replaced = false;
+    for c in existing {
+        if constraints_overlap(c, constraint) {
+            if !replaced {
+                out.push(constraint.clone());
+                replaced = true;
+            }
+        } else {
+            out.push(c.clone());
+        }
+    }
+    if !replaced {
+        out.push(constraint.clone());
+    }
+    out
+}
+
+pub(super) fn constraints_overlap(a: &TableConstraint, b: &TableConstraint) -> bool {
+    match (a, b) {
+        (
+            TableConstraint::ForeignKey {
+                columns: a_cols, ..
+            },
+            TableConstraint::ForeignKey {
+                columns: b_cols, ..
+            },
+        )
+        | (
+            TableConstraint::PrimaryKey {
+                columns: a_cols, ..
+            },
+            TableConstraint::PrimaryKey {
+                columns: b_cols, ..
+            },
+        ) => a_cols == b_cols,
+        (
+            TableConstraint::Check {
+                name: a_name,
+                expr: a_expr,
+                ..
+            },
+            TableConstraint::Check {
+                name: b_name,
+                expr: b_expr,
+                ..
+            },
+        ) => a_name == b_name && a_expr == b_expr,
+        _ => false,
+    }
+}
+
+pub(super) fn rebuild_sqlite_table_with_added_constraint(
+    backend: DatabaseBackend,
+    table: &str,
+    constraint: &TableConstraint,
+    current_schema: &[TableDef],
+    pending_constraints: &[TableConstraint],
+) -> Result<Vec<BuiltQuery>, QueryError> {
+    let table_def = require_table_in_schema(
+        current_schema,
+        table,
+        "SQLite requires current schema information to add constraints",
+    )?;
+    let new_constraints = merge_constraint(&table_def.constraints, constraint);
+    Ok(build_sqlite_table_rebuild(
+        backend,
+        table,
+        &table_def.columns,
+        &new_constraints,
+        &table_def.columns,
+        &table_def.constraints,
+        pending_constraints,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::sql::types::DatabaseBackend;
+    use crate::test_support::joined_sql;
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
     use vespertide_core::{
@@ -173,11 +385,7 @@ mod tests {
         // F3 introduced multi-statement output for FK additions (pre-cleanup +
         // ADD CONSTRAINT). Search across every emitted statement so the
         // assertion still locates the constraint SQL regardless of position.
-        let sql = result
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let sql = joined_sql(backend, &result);
         for exp in expected {
             assert!(
                 sql.contains(exp),
@@ -185,7 +393,7 @@ mod tests {
             );
         }
         with_settings!({ snapshot_path => "../snapshots", snapshot_suffix => format!("add_constraint_{}", title) }, {
-            assert_snapshot!(result.iter().map(|q| q.build(backend)).collect::<Vec<String>>().join("\n"));
+            assert_snapshot!(joined_sql(backend, &result));
         });
     }
     #[test]
@@ -244,11 +452,7 @@ mod tests {
         // into NOT VALID + VALIDATE. Validate identifier escaping appears in
         // both statements by joining the full result and asserting on every
         // distinct emitted form.
-        let pg_sql = pg_results
-            .iter()
-            .map(|q| q.build(DatabaseBackend::Postgres))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let pg_sql = joined_sql(DatabaseBackend::Postgres, &pg_results);
         assert!(pg_sql.contains("ALTER TABLE \"users\"\"archive\" ADD CONSTRAINT \"chk_age\"\"quote\" CHECK (age > 0) NOT VALID"), "PG NOT VALID statement missing or mis-escaped, got: {pg_sql}");
         assert!(
             pg_sql.contains(
@@ -316,11 +520,7 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(DatabaseBackend::Sqlite))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = joined_sql(DatabaseBackend::Sqlite, &queries);
         assert!(sql.contains("CONSTRAINT \"chk_id\" CHECK"));
     }
     #[test]
@@ -358,11 +558,7 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(DatabaseBackend::Sqlite))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = joined_sql(DatabaseBackend::Sqlite, &queries);
         assert!(sql.contains("CREATE INDEX"));
         assert!(sql.contains("idx_id"));
     }
@@ -404,11 +600,7 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(DatabaseBackend::Sqlite))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = joined_sql(DatabaseBackend::Sqlite, &queries);
         assert!(sql.contains("CREATE TABLE"));
     }
     #[test]
@@ -462,11 +654,7 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(DatabaseBackend::Sqlite))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = joined_sql(DatabaseBackend::Sqlite, &queries);
         assert!(sql.contains("CREATE TABLE"));
         assert!(sql.contains("CONSTRAINT \"chk_age\" CHECK"));
     }
@@ -502,11 +690,7 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(DatabaseBackend::Sqlite))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = joined_sql(DatabaseBackend::Sqlite, &queries);
         assert!(sql.contains("CREATE TABLE"));
         assert!(sql.contains("PRIMARY KEY"));
     }
@@ -546,11 +730,7 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(DatabaseBackend::Sqlite))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = joined_sql(DatabaseBackend::Sqlite, &queries);
         assert!(sql.contains("CREATE INDEX"));
         assert!(sql.contains("idx_age"));
     }
@@ -592,11 +772,7 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(DatabaseBackend::Sqlite))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = joined_sql(DatabaseBackend::Sqlite, &queries);
         assert!(sql.contains("CREATE TABLE"));
     }
     #[test]
@@ -959,192 +1135,4 @@ mod tests {
         let clauses = crate::sql::helpers::extract_check_clauses(&constraints);
         assert!(clauses.is_empty());
     }
-}
-
-mod unique;
-
-use sea_query::{Alias, Query, Table};
-use vespertide_core::{TableConstraint, TableDef};
-
-use super::helpers::{build_sqlite_temp_table_create, recreate_indexes_after_rebuild};
-use super::rename_table::build_rename_table;
-use super::types::{BuiltQuery, DatabaseBackend};
-use crate::error::QueryError;
-
-pub fn build_add_constraint(
-    backend: DatabaseBackend,
-    table: &str,
-    constraint: &TableConstraint,
-    current_schema: &[TableDef],
-    pending_constraints: &[TableConstraint],
-) -> Result<Vec<BuiltQuery>, QueryError> {
-    if let TableConstraint::PrimaryKey {
-        columns, strategy, ..
-    } = constraint
-    {
-        return primary_key::build_primary_key(
-            backend,
-            table,
-            columns,
-            strategy,
-            constraint,
-            current_schema,
-            pending_constraints,
-        );
-    }
-
-    match constraint {
-        TableConstraint::Unique {
-            name,
-            columns,
-            strategy,
-        } => unique::build_unique(
-            backend,
-            table,
-            name.as_deref(),
-            columns,
-            strategy,
-            current_schema,
-        ),
-        TableConstraint::ForeignKey {
-            name,
-            columns,
-            ref_table,
-            ref_columns,
-            on_delete,
-            on_update,
-            orphan_strategy,
-        } => foreign_key::build_foreign_key(
-            backend,
-            table,
-            name.as_deref(),
-            columns,
-            ref_table,
-            ref_columns,
-            on_delete.as_ref(),
-            on_update.as_ref(),
-            *orphan_strategy,
-            constraint,
-            current_schema,
-            pending_constraints,
-        ),
-        TableConstraint::Index { name, columns } => {
-            Ok(index::build_index(table, name.as_deref(), columns))
-        }
-        TableConstraint::Check {
-            name,
-            expr,
-            strategy,
-        } => check::build_check(
-            backend,
-            table,
-            name,
-            expr,
-            strategy,
-            constraint,
-            current_schema,
-            pending_constraints,
-        ),
-        _ => unreachable!("TableConstraint is #[non_exhaustive]; all variants are matched above"),
-    }
-}
-
-pub(super) fn merge_constraint(
-    existing: &[TableConstraint],
-    constraint: &TableConstraint,
-) -> Vec<TableConstraint> {
-    let mut out = Vec::with_capacity(existing.len() + 1);
-    let mut replaced = false;
-    for c in existing {
-        if constraints_overlap(c, constraint) {
-            if !replaced {
-                out.push(constraint.clone());
-                replaced = true;
-            }
-        } else {
-            out.push(c.clone());
-        }
-    }
-    if !replaced {
-        out.push(constraint.clone());
-    }
-    out
-}
-
-pub(super) fn constraints_overlap(a: &TableConstraint, b: &TableConstraint) -> bool {
-    match (a, b) {
-        (
-            TableConstraint::ForeignKey {
-                columns: a_cols, ..
-            },
-            TableConstraint::ForeignKey {
-                columns: b_cols, ..
-            },
-        )
-        | (
-            TableConstraint::PrimaryKey {
-                columns: a_cols, ..
-            },
-            TableConstraint::PrimaryKey {
-                columns: b_cols, ..
-            },
-        ) => a_cols == b_cols,
-        (
-            TableConstraint::Check {
-                name: a_name,
-                expr: a_expr,
-                ..
-            },
-            TableConstraint::Check {
-                name: b_name,
-                expr: b_expr,
-                ..
-            },
-        ) => a_name == b_name && a_expr == b_expr,
-        _ => false,
-    }
-}
-
-pub(super) fn rebuild_sqlite_table_with_added_constraint(
-    backend: DatabaseBackend,
-    table: &str,
-    constraint: &TableConstraint,
-    current_schema: &[TableDef],
-    pending_constraints: &[TableConstraint],
-) -> Result<Vec<BuiltQuery>, QueryError> {
-    let table_def = current_schema.iter().find(|t| t.name == table).ok_or_else(|| QueryError::SchemaError(format!("Table '{table}' not found in current schema. SQLite requires current schema information to add constraints.")))?;
-    let new_constraints = merge_constraint(&table_def.constraints, constraint);
-    let temp_table = format!("{table}_temp");
-    let create_query = build_sqlite_temp_table_create(
-        backend,
-        &temp_table,
-        table,
-        &table_def.columns,
-        &new_constraints,
-    );
-    let column_aliases: Vec<Alias> = table_def
-        .columns
-        .iter()
-        .map(|c| Alias::new(&c.name))
-        .collect();
-    let mut select_query = Query::select();
-    for col_alias in &column_aliases {
-        select_query.column(col_alias.clone());
-    }
-    select_query.from(Alias::new(table));
-    let insert_stmt = Query::insert()
-        .into_table(Alias::new(&temp_table))
-        .columns(column_aliases)
-        .select_from(select_query)
-        .unwrap()
-        .to_owned();
-    let insert_query = BuiltQuery::Insert(Box::new(insert_stmt));
-    let drop_table = Table::drop().table(Alias::new(table)).to_owned();
-    let drop_query = BuiltQuery::DropTable(Box::new(drop_table));
-    let rename_query = build_rename_table(&temp_table, table);
-    let index_queries =
-        recreate_indexes_after_rebuild(table, &table_def.constraints, pending_constraints);
-    let mut queries = vec![create_query, insert_query, drop_query, rename_query];
-    queries.extend(index_queries);
-    Ok(queries)
 }

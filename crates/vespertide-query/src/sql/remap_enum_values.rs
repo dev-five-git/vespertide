@@ -12,6 +12,7 @@
 //! `CASE WHEN` and `IN (...)` are universal.
 
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 
 use super::helpers::quote_ident;
 use super::types::{BuiltQuery, DatabaseBackend, RawSql};
@@ -32,22 +33,28 @@ pub fn build_remap_enum_values(
     }
     let qt = quote_ident(table, backend);
     let qc = quote_ident(column, backend);
-    let case_arms: Vec<String> = mapping
-        .iter()
-        .map(|(old, new)| format!("WHEN {qc} = {old} THEN {new}"))
-        .collect();
-    let in_list: Vec<String> = mapping.keys().map(i64::to_string).collect();
-    let sql = format!(
-        "UPDATE {qt} SET {qc} = CASE {arms} END WHERE {qc} IN ({in_list})",
-        arms = case_arms.join(" "),
-        in_list = in_list.join(", "),
-    );
+    // Write the CASE arms and the IN list into two reusable buffers in a
+    // single pass over `mapping` — no intermediate `Vec<String>` per pair.
+    let mut arms = String::new();
+    let mut in_list = String::new();
+    for (old, new) in mapping {
+        if !arms.is_empty() {
+            arms.push(' ');
+        }
+        let _ = write!(arms, "WHEN {qc} = {old} THEN {new}");
+        if !in_list.is_empty() {
+            in_list.push_str(", ");
+        }
+        let _ = write!(in_list, "{old}");
+    }
+    let sql = format!("UPDATE {qt} SET {qc} = CASE {arms} END WHERE {qc} IN ({in_list})");
     Ok(vec![BuiltQuery::Raw(RawSql::uniform(sql))])
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::backend_tag;
     use insta::{assert_snapshot, with_settings};
 
     fn run(backend: DatabaseBackend, mapping: &[(i64, i64)]) -> String {
@@ -77,11 +84,12 @@ mod tests {
         ($name:ident, $mapping:expr) => {
             #[test]
             fn $name() {
-                for (backend, tag) in [
-                    (DatabaseBackend::Postgres, "postgres"),
-                    (DatabaseBackend::MySql, "mysql"),
-                    (DatabaseBackend::Sqlite, "sqlite"),
+                for backend in [
+                    DatabaseBackend::Postgres,
+                    DatabaseBackend::MySql,
+                    DatabaseBackend::Sqlite,
                 ] {
+                    let tag = backend_tag(backend);
                     let sql = run(backend, $mapping);
                     snap(&format!("{}_{}", stringify!($name), tag), &sql);
                 }

@@ -28,7 +28,7 @@ pub(super) fn diff_deleted_tables(
     for name in from_map.keys() {
         if !to_map.contains_key(name) {
             actions.push(MigrationAction::DeleteTable {
-                table: (*name).to_string().into(),
+                table: (*name).into(),
             });
         }
     }

@@ -111,7 +111,8 @@ pub(super) fn find_non_nullable_fk_add_columns(
     current_models: &[TableDef],
 ) -> Vec<RecreateTableRequired> {
     // Collect FK columns from AddConstraint actions; lookup-only, ordering unused.
-    let mut fk_columns: HashSet<(String, String)> = HashSet::new();
+    // Keys borrow from `plan` so construction and probes stay allocation-free.
+    let mut fk_columns: HashSet<(&str, &str)> = HashSet::new();
     for action in &plan.actions {
         if let MigrationAction::AddConstraint {
             table,
@@ -119,16 +120,16 @@ pub(super) fn find_non_nullable_fk_add_columns(
         } = action
         {
             for col in columns {
-                fk_columns.insert((table.to_string(), col.to_string()));
+                fk_columns.insert((table.as_str(), col.as_str()));
             }
         }
     }
 
     // Collect columns being added in this migration (to distinguish new vs existing); lookup-only, ordering unused.
-    let mut added_columns: HashSet<(String, String)> = HashSet::new();
+    let mut added_columns: HashSet<(&str, &str)> = HashSet::new();
     for action in &plan.actions {
         if let MigrationAction::AddColumn { table, column, .. } = action {
-            added_columns.insert((table.to_string(), column.name.to_string()));
+            added_columns.insert((table.as_str(), column.name.as_str()));
         }
     }
 
@@ -138,7 +139,7 @@ pub(super) fn find_non_nullable_fk_add_columns(
     for action in &plan.actions {
         if let MigrationAction::AddColumn { table, column, .. } = action {
             let has_fk = column.foreign_key.is_some()
-                || fk_columns.contains(&(table.to_string(), column.name.to_string()));
+                || fk_columns.contains(&(table.as_str(), column.name.as_str()));
             if has_fk && !column.nullable && column.default.is_none() {
                 result.push(RecreateTableRequired {
                     table: table.to_string(),
@@ -158,7 +159,7 @@ pub(super) fn find_non_nullable_fk_add_columns(
         {
             for col_name in columns {
                 // Skip if this column is being added in this migration (handled by Case 1)
-                if added_columns.contains(&(table.to_string(), col_name.to_string())) {
+                if added_columns.contains(&(table.as_str(), col_name.as_str())) {
                     continue;
                 }
                 // Look up column in current models to check nullability
@@ -221,7 +222,7 @@ pub(super) fn rewrite_plan_for_recreation(
             .find(|m| m.name.as_str() == *table_name)
         {
             plan.actions.push(MigrationAction::DeleteTable {
-                table: table_name.to_string().into(),
+                table: (*table_name).into(),
             });
             plan.actions.push(MigrationAction::CreateTable {
                 table: model.name.clone(),

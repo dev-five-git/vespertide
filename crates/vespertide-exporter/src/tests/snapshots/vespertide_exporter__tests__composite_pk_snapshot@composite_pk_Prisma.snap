@@ -1,0 +1,11 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model Accounts {
+  id Int
+  tenant_id BigInt
+
+  @@id([id, tenant_id])
+  @@map("accounts")
+}

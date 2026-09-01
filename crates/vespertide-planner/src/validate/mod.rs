@@ -17,6 +17,7 @@ mod fk_policy_changes;
 mod foreign_keys;
 mod pk_additions;
 mod plan;
+mod raw_sql_replay;
 mod schema;
 mod sequence_exhaustion;
 mod timezone_conversion;
@@ -52,6 +53,7 @@ pub use plan::{
     EnumFillWithRequired, FillWithRequired, find_missing_enum_fill_with, find_missing_fill_with,
     find_plan_violations, validate_migration_plan,
 };
+pub use raw_sql_replay::{RawSqlReplayHazard, find_raw_sql_replay_hazards};
 pub use schema::{find_schema_violations, validate_schema};
 pub use sequence_exhaustion::{
     SequenceExhaustionKind, SequenceExhaustionWarning, SequenceRiskLevel,

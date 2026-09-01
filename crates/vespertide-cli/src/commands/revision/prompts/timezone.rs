@@ -39,7 +39,7 @@ pub(in crate::commands::revision) fn prompt_timezone_conversions(
 
     let mut choices = Vec::with_capacity(warnings.len());
     for (idx, w) in warnings.iter().enumerate() {
-        println!("{}", "\u{2500}".repeat(60).bright_black());
+        super::print_section_rule();
         println!(
             "  {} {}/{}: {} ({})",
             "\u{25b6}".bright_cyan(),
@@ -98,7 +98,7 @@ pub(in crate::commands::revision) fn prompt_timezone_conversions(
         );
         choices.push(tz);
     }
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
     Ok(Some(choices))
 }
 
@@ -155,7 +155,7 @@ pub(in crate::commands::revision) fn prompt_remap_enum_values(
         )
         .bright_yellow()
     );
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
     for action in &remaps {
         if let MigrationAction::RemapEnumValues {
             table,
@@ -177,7 +177,7 @@ pub(in crate::commands::revision) fn prompt_remap_enum_values(
             );
         }
     }
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
     println!(
         "  {} {}",
         "\u{26a0}".bright_red(),

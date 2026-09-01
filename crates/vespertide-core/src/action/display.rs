@@ -1,5 +1,6 @@
-use super::MigrationAction;
+use super::{DataMigrationSql, MigrationAction};
 use crate::schema::TableConstraint;
+use std::borrow::Cow;
 use std::fmt;
 
 impl fmt::Display for MigrationAction {
@@ -52,17 +53,22 @@ fn write_migration_action(f: &mut fmt::Formatter<'_>, action: &MigrationAction) 
         }
         MigrationAction::RenameTable { from, to } => write!(f, "RenameTable: {from} -> {to}"),
         MigrationAction::RawSql { sql } => write_raw_sql_action(f, sql),
+        MigrationAction::DataMigration { sql, description } => {
+            write_data_migration_action(f, sql, description.as_deref())
+        }
         MigrationAction::RemapEnumValues {
             table,
             column,
             mapping,
         } => {
-            let summary = mapping
-                .iter()
-                .map(|(old, new)| format!("{old}->{new}"))
-                .collect::<Vec<_>>()
-                .join(", ");
-            write!(f, "RemapEnumValues: {table}.{column} [{summary}]")
+            write!(f, "RemapEnumValues: {table}.{column} [")?;
+            for (i, (old, new)) in mapping.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{old}->{new}")?;
+            }
+            write!(f, "]")
         }
     }
 }
@@ -104,11 +110,20 @@ fn write_comment_action(
     }
 }
 
-fn truncate_comment(comment: &str) -> String {
-    if comment.chars().count() > 30 {
-        format!("{}...", truncate_chars(comment, 27))
+/// Truncate a column comment for display: comments longer than 30 characters
+/// are cut to their first 27 characters followed by `...`.
+///
+/// Single source of truth for the `ModifyColumnComment` display budget —
+/// shared by [`MigrationAction`]'s `Display` impl and the CLI diff formatter
+/// so the two renderings can never drift apart.
+#[must_use]
+pub fn truncate_comment(comment: &str) -> Cow<'_, str> {
+    // A 31st char existing (index 30) means the comment exceeds the budget;
+    // probing one index avoids a full chars().count() scan on long comments.
+    if comment.char_indices().nth(30).is_some() {
+        Cow::Owned(format!("{}...", truncate_chars(comment, 27)))
     } else {
-        comment.to_string()
+        Cow::Borrowed(comment)
     }
 }
 
@@ -117,12 +132,23 @@ fn truncate_chars(s: &str, max_chars: usize) -> String {
 }
 
 fn write_raw_sql_action(f: &mut fmt::Formatter<'_>, sql: &str) -> fmt::Result {
-    let display_sql = if sql.chars().count() > 50 {
-        format!("{}...", truncate_chars(sql, 47))
+    if sql.chars().nth(50).is_some() {
+        let head = truncate_chars(sql, 47);
+        write!(f, "RawSql: {head}...")
     } else {
-        sql.to_string()
-    };
-    write!(f, "RawSql: {display_sql}")
+        write!(f, "RawSql: {sql}")
+    }
+}
+
+fn write_data_migration_action(
+    f: &mut fmt::Formatter<'_>,
+    sql: &DataMigrationSql,
+    description: Option<&str>,
+) -> fmt::Result {
+    match description {
+        Some(description) => write!(f, "DataMigration: {description}"),
+        None => write!(f, "DataMigration: {}", super::sql_preview(sql.postgres())),
+    }
 }
 
 fn write_constraint_action(
@@ -134,14 +160,14 @@ fn write_constraint_action(
     match constraint {
         TableConstraint::PrimaryKey { .. } => write!(f, "{action}: {table}.PRIMARY KEY"),
         TableConstraint::Unique { name, .. } => {
-            write_named_constraint(f, action, table, name.as_ref(), "UNIQUE")
+            write_named_constraint(f, action, table, name.as_deref(), "UNIQUE")
         }
         TableConstraint::ForeignKey { name, .. } => {
-            write_named_constraint(f, action, table, name.as_ref(), "FOREIGN KEY")
+            write_named_constraint(f, action, table, name.as_deref(), "FOREIGN KEY")
         }
         TableConstraint::Check { name, .. } => write!(f, "{action}: {table}.{name} (CHECK)"),
         TableConstraint::Index { name, .. } => {
-            write_named_constraint(f, action, table, name.as_ref(), "INDEX")
+            write_named_constraint(f, action, table, name.as_deref(), "INDEX")
         }
     }
 }
@@ -150,7 +176,7 @@ fn write_named_constraint(
     f: &mut fmt::Formatter<'_>,
     action: &str,
     table: &str,
-    name: Option<&String>,
+    name: Option<&str>,
     fallback: &str,
 ) -> fmt::Result {
     if let Some(name) = name {

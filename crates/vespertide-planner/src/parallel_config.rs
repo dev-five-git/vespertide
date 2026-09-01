@@ -1,6 +1,7 @@
 //! Empirically tuned Rayon thresholds.
 //!
-//! See `docs/PARALLELIZATION.md` for the Wave 6 measurement notes.
+//! Measured during the Wave 6 parallelization pass via the criterion
+//! benchmarks in `crates/*/benches/`.
 
 /// `diff_schemas` per-table work breaks even just above 5,000 tables.
 /// Use the >5,000 rule's safety threshold so small/medium diffs stay sequential.

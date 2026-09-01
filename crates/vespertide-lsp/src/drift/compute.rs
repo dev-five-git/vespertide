@@ -6,7 +6,6 @@
 //! that owns a process-static `DriftCache` for ad-hoc callers (CLI, tests).
 
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 use std::sync::{Arc, OnceLock};
 
 use tower_lsp_server::ls_types::Uri;
@@ -215,18 +214,10 @@ fn guess_uri(models_dir: &Path, table_name: &str) -> Option<Uri> {
     for ext in ["json", "yaml", "yml"] {
         path.set_extension(ext);
         if path.exists() {
-            return path_to_uri(&path);
+            return crate::position::path_to_uri(&path);
         }
     }
     None
-}
-
-fn path_to_uri(path: &Path) -> Option<Uri> {
-    let mut path_text = path.to_string_lossy().replace('\\', "/");
-    if !path_text.starts_with('/') {
-        path_text = format!("/{path_text}");
-    }
-    Uri::from_str(&format!("file://{path_text}")).ok()
 }
 
 #[cfg(test)]
@@ -326,7 +317,8 @@ mod tests {
             .parse(user_model(), crate::parser::DocumentFormat::Json)
             .unwrap();
         let index = WorkspaceIndex::new();
-        let missing_uri = path_to_uri(&tmp.path().join("models/missing.json")).unwrap();
+        let missing_uri =
+            crate::position::path_to_uri(&tmp.path().join("models/missing.json")).unwrap();
         index.upsert(&missing_uri, user_model(), &tree);
 
         let out = compute_with_cache(
@@ -364,23 +356,5 @@ mod tests {
 
         assert!(guess_uri(tmp.path(), "user").is_some());
         assert!(guess_uri(tmp.path(), "missing").is_none());
-    }
-
-    #[test]
-    fn path_to_uri_prepends_leading_slash_for_relative_path() {
-        // A relative path never starts with `/` on any platform, so this
-        // exercises the leading-slash normalization branch deterministically
-        // (absolute POSIX paths on CI would otherwise skip it).
-        let uri = path_to_uri(std::path::Path::new("models/user.json")).expect("uri");
-        assert!(
-            uri.as_str().starts_with("file:///"),
-            "got: {}",
-            uri.as_str()
-        );
-        assert!(
-            uri.as_str().ends_with("models/user.json"),
-            "got: {}",
-            uri.as_str()
-        );
     }
 }

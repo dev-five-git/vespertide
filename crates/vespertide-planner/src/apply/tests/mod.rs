@@ -343,6 +343,35 @@ fn apply_action_success_cases(#[case] case: SuccessCase) {
     assert_eq!(schema, case.expected);
 }
 
+#[rstest]
+#[case::uniform(vespertide_core::DataMigrationSql::Uniform(
+    "UPDATE users SET name = 'x' WHERE name IS NULL".to_string()
+))]
+#[case::per_backend(vespertide_core::DataMigrationSql::PerBackend {
+    postgres: "UPDATE users SET name = 'x'".to_string(),
+    mysql: "UPDATE users SET name = 'x'".to_string(),
+    sqlite: "UPDATE users SET name = 'x'".to_string(),
+})]
+fn apply_data_migration_leaves_schema_untouched(#[case] sql: vespertide_core::DataMigrationSql) {
+    let before = vec![table(
+        "users",
+        vec![col("id", ColumnType::Simple(SimpleColumnType::Integer))],
+        vec![idx("ix_users__id", vec!["id"])],
+    )];
+    let mut schema = before.clone();
+
+    apply_action(
+        &mut schema,
+        &MigrationAction::DataMigration {
+            sql,
+            description: Some("backfill".to_string()),
+        },
+    )
+    .unwrap();
+
+    assert_eq!(schema, before);
+}
+
 #[test]
 fn apply_rename_table_rewrites_foreign_key_ref_table() {
     let mut schema = vec![

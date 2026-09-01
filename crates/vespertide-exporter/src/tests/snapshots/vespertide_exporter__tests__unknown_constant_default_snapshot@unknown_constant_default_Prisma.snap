@@ -1,0 +1,11 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 219
+expression: rendered
+---
+model UnknownDefault {
+  id Int @id
+  value String @default(dbgenerated("SOME_CONSTANT"))
+
+  @@map("unknown_default")
+}

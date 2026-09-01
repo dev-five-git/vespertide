@@ -22,8 +22,8 @@ mod tests {
         let cfg = VespertideConfig::default();
         assert_eq!(cfg.models_dir, PathBuf::from("models"));
         assert_eq!(cfg.migrations_dir, PathBuf::from("migrations"));
-        assert!(cfg.table_case().is_snake());
-        assert!(cfg.column_case().is_snake());
+        assert_eq!(cfg.table_case(), NameCase::Snake);
+        assert_eq!(cfg.column_case(), NameCase::Snake);
     }
 
     #[test]
@@ -38,8 +38,8 @@ mod tests {
 
         assert_eq!(cfg.models_dir(), Path::new("custom_models"));
         assert_eq!(cfg.migrations_dir(), Path::new("custom_migrations"));
-        assert!(cfg.table_case().is_camel());
-        assert!(cfg.column_case().is_pascal());
+        assert_eq!(cfg.table_case(), NameCase::Camel);
+        assert_eq!(cfg.column_case(), NameCase::Pascal);
     }
 
     #[test]

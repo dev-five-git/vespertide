@@ -1,12 +1,9 @@
-use sea_query::{Alias, Query, Table};
-
-use vespertide_core::{ColumnDef, TableDef};
+use vespertide_core::TableDef;
 
 use super::helpers::{
-    build_sea_column_def_with_table, build_sqlite_temp_table_create, normalize_enum_default,
-    quote_ident, recreate_indexes_after_rebuild,
+    build_mysql_modify_column_with, build_pg_alter_column_sql, build_sqlite_modify_column_with,
+    find_column_in_schema, normalize_enum_default, quote_ident,
 };
-use super::rename_table::build_rename_table;
 use super::types::{BuiltQuery, DatabaseBackend, RawSql};
 use crate::error::QueryError;
 
@@ -19,10 +16,6 @@ use crate::error::QueryError;
 /// (already-quoted literals for strings, bare expressions like `NOW()` for
 /// functions). When `backfill` is `None` the action behaves exactly as in
 /// v0.2.0 — only the schema is touched, existing rows keep their values.
-#[expect(
-    clippy::too_many_lines,
-    reason = "three-backend dispatch (PG / MySQL / SQLite) plus optional backfill UPDATE; splitting per-backend helpers scatters the read flow"
-)]
 pub fn build_modify_column_default(
     backend: DatabaseBackend,
     table: &str,
@@ -36,15 +29,10 @@ pub fn build_modify_column_default(
 
     match backend {
         DatabaseBackend::Postgres => {
-            let quoted_table = quote_ident(table, backend);
-            let quoted_column = quote_ident(column, backend);
             let alter_sql = if let Some(default_value) = new_default {
                 // Look up column type to properly quote enum defaults
-                let column_type = current_schema
-                    .iter()
-                    .find(|t| t.name == table)
-                    .and_then(|t| t.columns.iter().find(|c| c.name == column))
-                    .map(|c| &c.r#type);
+                let column_type =
+                    find_column_in_schema(current_schema, table, column).map(|c| &c.r#type);
 
                 let normalized_default = if let Some(col_type) = column_type {
                     normalize_enum_default(col_type, default_value)
@@ -52,109 +40,37 @@ pub fn build_modify_column_default(
                     default_value.to_string()
                 };
 
-                format!(
-                    "ALTER TABLE {quoted_table} ALTER COLUMN {quoted_column} SET DEFAULT {normalized_default}"
+                build_pg_alter_column_sql(
+                    table,
+                    column,
+                    &format!("SET DEFAULT {normalized_default}"),
                 )
             } else {
-                format!("ALTER TABLE {quoted_table} ALTER COLUMN {quoted_column} DROP DEFAULT")
+                build_pg_alter_column_sql(table, column, "DROP DEFAULT")
             };
             queries.push(BuiltQuery::Raw(RawSql::uniform(alter_sql)));
         }
         DatabaseBackend::MySql => {
-            // MySQL requires the full column definition in ALTER COLUMN
-            let table_def = current_schema
-                .iter()
-                .find(|t| t.name == table)
-                .ok_or_else(|| {
-                    QueryError::SchemaError(format!("Table '{table}' not found in current schema."))
-                })?;
-
-            let column_def = table_def
-                .columns
-                .iter()
-                .find(|c| c.name == column)
-                .ok_or_else(|| {
-                    QueryError::SchemaError(format!(
-                        "Column '{column}' not found in table '{table}'."
-                    ))
-                })?;
-
-            // Create a modified column def with the new default
-            let modified_col_def = ColumnDef {
-                default: new_default.map(std::convert::Into::into),
-                ..column_def.clone()
-            };
-
-            let sea_col = build_sea_column_def_with_table(backend, table, &modified_col_def);
-
-            let stmt = Table::alter()
-                .table(Alias::new(table))
-                .modify_column(sea_col)
-                .to_owned();
-            queries.push(BuiltQuery::AlterTable(Box::new(stmt)));
+            // MySQL requires the full column definition in ALTER COLUMN.
+            queries.push(build_mysql_modify_column_with(
+                table,
+                column,
+                current_schema,
+                "MySQL requires current schema information to modify column defaults",
+                |c| c.default = new_default.map(std::convert::Into::into),
+            )?);
         }
         DatabaseBackend::Sqlite => {
-            // SQLite doesn't support ALTER COLUMN for default changes
-            // Use temporary table approach
-            let table_def = current_schema
-                .iter()
-                .find(|t| t.name == table)
-                .ok_or_else(|| {
-                    QueryError::SchemaError(format!("Table '{table}' not found in current schema."))
-                })?;
-
-            // Create modified columns with the new default
-            let mut new_columns = table_def.columns.clone();
-            if let Some(col) = new_columns.iter_mut().find(|c| c.name == column) {
-                col.default = new_default.map(std::convert::Into::into);
-            }
-
-            // Generate temporary table name
-            let temp_table = format!("{table}_temp");
-
-            // 1. Create temporary table with modified column + CHECK constraints
-            let create_query = build_sqlite_temp_table_create(
-                backend,
-                &temp_table,
+            // SQLite doesn't support ALTER COLUMN for default changes;
+            // use the canonical temp-table rebuild with the modified column.
+            queries.extend(build_sqlite_modify_column_with(
                 table,
-                &new_columns,
-                &table_def.constraints,
-            );
-            queries.push(create_query);
-
-            // 2. Copy data (all columns)
-            let column_aliases: Vec<Alias> = table_def
-                .columns
-                .iter()
-                .map(|c| Alias::new(&c.name))
-                .collect();
-            let mut select_query = Query::select();
-            for col_alias in &column_aliases {
-                select_query.column(col_alias.clone());
-            }
-            select_query.from(Alias::new(table));
-
-            let insert_stmt = Query::insert()
-                .into_table(Alias::new(&temp_table))
-                .columns(column_aliases.clone())
-                .select_from(select_query)
-                .unwrap()
-                .to_owned();
-            queries.push(BuiltQuery::Insert(Box::new(insert_stmt)));
-
-            // 3. Drop original table
-            let drop_table = Table::drop().table(Alias::new(table)).to_owned();
-            queries.push(BuiltQuery::DropTable(Box::new(drop_table)));
-
-            // 4. Rename temporary table to original name
-            queries.push(build_rename_table(&temp_table, table));
-
-            // 5. Recreate indexes (both regular and UNIQUE)
-            queries.extend(recreate_indexes_after_rebuild(
-                table,
-                &table_def.constraints,
+                column,
+                current_schema,
                 pending_constraints,
-            ));
+                "SQLite requires current schema information to modify column defaults",
+                |c| c.default = new_default.map(std::convert::Into::into),
+            )?);
         }
     }
 
@@ -176,26 +92,10 @@ pub fn build_modify_column_default(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{backend_tag, col_n as col, joined_sql, table_def};
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
-    use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType, TableConstraint};
-
-    fn col(name: &str, ty: ColumnType, nullable: bool) -> ColumnDef {
-        ColumnDef::new(name, ty, nullable)
-    }
-
-    fn table_def(
-        name: &str,
-        columns: Vec<ColumnDef>,
-        constraints: Vec<TableConstraint>,
-    ) -> TableDef {
-        TableDef {
-            name: name.into(),
-            description: None,
-            columns,
-            constraints,
-        }
-    }
+    use vespertide_core::{ColumnType, SimpleColumnType, TableConstraint};
 
     #[rstest]
     #[case::postgres_set_default(DatabaseBackend::Postgres, Some("'unknown'"))]
@@ -221,19 +121,11 @@ mod tests {
             build_modify_column_default(backend, "users", "email", new_default, None, &schema, &[]);
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = joined_sql(backend, &queries);
 
         let suffix = format!(
             "{}_{}_users",
-            match backend {
-                DatabaseBackend::Postgres => "postgres",
-                DatabaseBackend::MySql => "mysql",
-                DatabaseBackend::Sqlite => "sqlite",
-            },
+            backend_tag(backend),
             if new_default.is_some() {
                 "set_default"
             } else {
@@ -334,11 +226,7 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(DatabaseBackend::Postgres))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = joined_sql(DatabaseBackend::Postgres, &queries);
 
         // Should still generate valid SQL, using the default value as-is
         assert!(sql.contains("ALTER TABLE \"users\" ALTER COLUMN \"status\" SET DEFAULT 'active'"));
@@ -373,11 +261,7 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = joined_sql(backend, &queries);
 
         // SQLite should recreate the index after table rebuild
         if backend == DatabaseBackend::Sqlite {
@@ -385,14 +269,7 @@ mod tests {
             assert!(sql.contains("idx_users_email"));
         }
 
-        let suffix = format!(
-            "{}_with_index",
-            match backend {
-                DatabaseBackend::Postgres => "postgres",
-                DatabaseBackend::MySql => "mysql",
-                DatabaseBackend::Sqlite => "sqlite",
-            }
-        );
+        let suffix = format!("{}_with_index", backend_tag(backend));
 
         with_settings!({ snapshot_suffix => suffix }, {
             assert_snapshot!(sql);
@@ -428,20 +305,9 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = joined_sql(backend, &queries);
 
-        let suffix = format!(
-            "{}_change_default",
-            match backend {
-                DatabaseBackend::Postgres => "postgres",
-                DatabaseBackend::MySql => "mysql",
-                DatabaseBackend::Sqlite => "sqlite",
-            }
-        );
+        let suffix = format!("{}_change_default", backend_tag(backend));
 
         with_settings!({ snapshot_suffix => suffix }, {
             assert_snapshot!(sql);
@@ -478,20 +344,9 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = joined_sql(backend, &queries);
 
-        let suffix = format!(
-            "{}_integer_default",
-            match backend {
-                DatabaseBackend::Postgres => "postgres",
-                DatabaseBackend::MySql => "mysql",
-                DatabaseBackend::Sqlite => "sqlite",
-            }
-        );
+        let suffix = format!("{}_integer_default", backend_tag(backend));
 
         with_settings!({ snapshot_suffix => suffix }, {
             assert_snapshot!(sql);
@@ -528,20 +383,9 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = joined_sql(backend, &queries);
 
-        let suffix = format!(
-            "{}_boolean_default",
-            match backend {
-                DatabaseBackend::Postgres => "postgres",
-                DatabaseBackend::MySql => "mysql",
-                DatabaseBackend::Sqlite => "sqlite",
-            }
-        );
+        let suffix = format!("{}_boolean_default", backend_tag(backend));
 
         with_settings!({ snapshot_suffix => suffix }, {
             assert_snapshot!(sql);
@@ -583,20 +427,9 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = joined_sql(backend, &queries);
 
-        let suffix = format!(
-            "{}_function_default",
-            match backend {
-                DatabaseBackend::Postgres => "postgres",
-                DatabaseBackend::MySql => "mysql",
-                DatabaseBackend::Sqlite => "sqlite",
-            }
-        );
+        let suffix = format!("{}_function_default", backend_tag(backend));
 
         with_settings!({ snapshot_suffix => suffix }, {
             assert_snapshot!(sql);
@@ -632,20 +465,9 @@ mod tests {
         );
         assert!(result.is_ok());
         let queries = result.unwrap();
-        let sql = queries
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let sql = joined_sql(backend, &queries);
 
-        let suffix = format!(
-            "{}_drop_existing_default",
-            match backend {
-                DatabaseBackend::Postgres => "postgres",
-                DatabaseBackend::MySql => "mysql",
-                DatabaseBackend::Sqlite => "sqlite",
-            }
-        );
+        let suffix = format!("{}_drop_existing_default", backend_tag(backend));
 
         with_settings!({ snapshot_suffix => suffix }, {
             assert_snapshot!(sql);
@@ -681,11 +503,7 @@ mod tests {
             &[],
         )
         .expect("backfill path should succeed");
-        let sql = queries
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let sql = joined_sql(backend, &queries);
 
         // The trailing UPDATE was emitted exactly once.
         let update_count = sql.matches("UPDATE").count();
@@ -693,5 +511,49 @@ mod tests {
         assert!(sql.contains("SET"));
         assert!(sql.contains("status"));
         assert!(sql.contains("'active'"));
+    }
+
+    /// `backfill` is a raw SQL expression slot, so it is interpolated
+    /// verbatim. This locks that contract against the `fill_with` defect
+    /// (first-`::` split + `to_lowercase`) ever being copied onto this path.
+    #[rstest]
+    #[case::postgres(DatabaseBackend::Postgres)]
+    #[case::mysql(DatabaseBackend::MySql)]
+    #[case::sqlite(DatabaseBackend::Sqlite)]
+    fn build_modify_column_default_backfill_expression_is_verbatim(
+        #[case] backend: DatabaseBackend,
+    ) {
+        const BACKFILL: &str = "(CASE WHEN plan_key::text = 'API' THEN 'MONTHLY_QUOTA' ELSE 'SEAT' END)::billing_metric";
+
+        let schema = vec![table_def(
+            "users",
+            vec![
+                col("id", ColumnType::Simple(SimpleColumnType::Integer), false),
+                col(
+                    "plan_key",
+                    ColumnType::Simple(SimpleColumnType::Text),
+                    false,
+                ),
+                col("metric", ColumnType::Simple(SimpleColumnType::Text), false),
+            ],
+            vec![],
+        )];
+
+        let queries = build_modify_column_default(
+            backend,
+            "users",
+            "metric",
+            None,
+            Some(BACKFILL),
+            &schema,
+            &[],
+        )
+        .expect("backfill path should succeed");
+        let sql = joined_sql(backend, &queries);
+
+        assert!(
+            sql.contains(BACKFILL),
+            "backfill must survive byte-for-byte, got: {sql}"
+        );
     }
 }

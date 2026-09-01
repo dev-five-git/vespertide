@@ -1,0 +1,28 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlmodel import Field, SQLModel
+from sqlalchemy import ForeignKeyConstraint
+
+
+class Orders(SQLModel, table=True):
+    __tablename__ = "orders"
+
+    id: int = Field(primary_key=True)
+    version: int = Field(primary_key=True)
+
+class LineItems(SQLModel, table=True):
+    __tablename__ = "line_items"
+
+    id: int = Field(primary_key=True)
+    order_id: int = Field(...)
+    order_version: int = Field(...)
+    sku: str = Field(...)
+
+    __table_args__ = (
+        ForeignKeyConstraint(["order_id", "order_version"], ["orders.id", "orders.version"]),
+    )

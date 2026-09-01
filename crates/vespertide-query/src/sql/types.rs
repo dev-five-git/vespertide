@@ -48,6 +48,22 @@ impl RawSql {
             sqlite,
         }
     }
+
+    /// Create a `RawSql` carrying `PostgreSQL`-only SQL; `MySQL` and `SQLite`
+    /// get no output.
+    ///
+    /// Replaces the repeated 3-line construction
+    /// `RawSql::per_backend(pg, String::new(), String::new())` so the
+    /// PG-only intent is visible at the call site (and the two
+    /// zero-capacity `String::new()` allocations are written once, in
+    /// this constructor).
+    pub fn postgres_only(sql: String) -> Self {
+        Self {
+            postgres: sql,
+            mysql: String::new(),
+            sqlite: String::new(),
+        }
+    }
 }
 
 impl BuiltQuery {

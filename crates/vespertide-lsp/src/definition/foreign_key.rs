@@ -12,13 +12,12 @@
 //! sees the document.
 
 use std::ops::Range;
-use std::path::Path;
-use std::str::FromStr;
-
-use tower_lsp_server::ls_types::Uri;
 
 use crate::store::DocumentStore;
 use crate::text_util::strip_quotes;
+use crate::tree_util::{
+    direct_child_value, enclosing_pair_with_key, enclosing_string, is_pair, skip_yaml_wrappers,
+};
 use crate::workspace_index::WorkspaceIndex;
 use crate::workspace_tables::WorkspaceTables;
 
@@ -129,77 +128,11 @@ fn resolve_target(
 
     // Fall back to the on-disk model so closed files still navigate.
     let path = disk_tables?.model_path(table_name)?;
-    let uri = path_to_file_uri(&path)?;
+    let uri = crate::position::path_to_uri(&path)?;
     Some(DomainLocation {
         uri,
         byte_range: 0..0,
     })
-}
-
-/// Skip past tree-sitter-yaml's pure wrapper nodes (`flow_node`,
-/// `block_node`). Returns the first ancestor that has a meaningful kind.
-fn skip_yaml_wrappers(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
-    let mut current = node;
-    while matches!(current.kind(), "flow_node" | "block_node") {
-        current = current.parent()?;
-    }
-    Some(current)
-}
-
-fn enclosing_string(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
-    let mut current = Some(node);
-    while let Some(candidate) = current {
-        match candidate.kind() {
-            "string"
-            | "double_quote_scalar"
-            | "single_quote_scalar"
-            | "string_scalar"
-            | "plain_scalar" => return Some(candidate),
-            // String_content is the inner span without quotes; climb to the
-            // surrounding `string` node so the parent is the JSON array.
-            "string_content" => return candidate.parent(),
-            "array" | "object" | "pair" | "block_mapping_pair" | "block_mapping"
-            | "block_sequence" | "flow_mapping" | "flow_sequence" => return None,
-            _ => {}
-        }
-        current = candidate.parent();
-    }
-    None
-}
-
-fn enclosing_pair_with_key<'tree>(
-    node: tree_sitter::Node<'tree>,
-    source: &str,
-    expected_key: &str,
-) -> Option<tree_sitter::Node<'tree>> {
-    let mut current = Some(node);
-    while let Some(candidate) = current {
-        if is_pair(candidate) && pair_key_is(candidate, source, expected_key) {
-            return Some(candidate);
-        }
-        current = candidate.parent();
-    }
-    None
-}
-
-fn pair_key_is(pair: tree_sitter::Node<'_>, source: &str, expected: &str) -> bool {
-    pair.named_child(0)
-        .is_some_and(|key| strip_quotes(&source[key.byte_range()]) == expected)
-}
-
-fn direct_child_value<'a>(
-    object: tree_sitter::Node<'_>,
-    source: &'a str,
-    target_key: &str,
-) -> Option<&'a str> {
-    let mut cursor = object.walk();
-    for child in object.children(&mut cursor) {
-        if is_pair(child) && pair_key_is(child, source, target_key) {
-            let value = child.named_child(1)?;
-            return Some(&source[value.byte_range()]);
-        }
-    }
-    None
 }
 
 fn find_column_name_range(
@@ -264,19 +197,6 @@ fn direct_named_child_pair<'tree>(
         .find(|&child| is_pair(child) && key_is(child, source, target_key))
 }
 
-fn path_to_file_uri(path: &Path) -> Option<Uri> {
-    let path_str = path.to_str()?;
-    // Normalize to forward slashes for the URI; on Windows the drive letter
-    // gets a leading slash so `C:\a\b` becomes `file:///C:/a/b`.
-    let normalized = path_str.replace('\\', "/");
-    let url = if normalized.starts_with('/') {
-        format!("file://{normalized}")
-    } else {
-        format!("file:///{normalized}")
-    };
-    Uri::from_str(&url).ok()
-}
-
 fn find_top_level_name_range(tree: &tree_sitter::Tree, text: &str) -> Option<Range<usize>> {
     let root = tree.root_node();
     let mapping = first_mapping(root)?;
@@ -336,15 +256,13 @@ fn is_mapping(node: tree_sitter::Node<'_>) -> bool {
     matches!(node.kind(), "object" | "block_mapping")
 }
 
-fn is_pair(node: tree_sitter::Node<'_>) -> bool {
-    matches!(node.kind(), "pair" | "block_mapping_pair")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::parser::DocumentFormat;
     use crate::test_support::parse;
+    use std::str::FromStr;
+    use tower_lsp_server::ls_types::Uri;
 
     fn node_at<'tree>(
         tree: &'tree tree_sitter::Tree,

@@ -301,6 +301,21 @@ fn test_filter_include_with_depth_2() {
 }
 
 #[test]
+fn test_filter_include_with_depth_beyond_saturation() {
+    // Depth far beyond the FK graph's diameter: the BFS frontier empties
+    // after every reachable table is found and the expansion stops early,
+    // yielding the same result as the exact-diameter depth.
+    let (filtered, warnings) =
+        filter_tables_with_warnings(filter_schema(), &only_include(&["user"]), &[], 10);
+
+    assert!(warnings.is_empty());
+    assert_eq!(
+        table_names(&filtered),
+        vec!["user", "media", "article", "article_user", "comment"]
+    );
+}
+
+#[test]
 fn test_filter_exclude() {
     let (filtered, warnings) =
         filter_tables_with_warnings(filter_schema(), &[], &only_include(&["article_user"]), 0);
@@ -539,28 +554,6 @@ fn svg_cardinality_labels(schema: &[TableDef]) -> String {
         .join("\n")
 }
 
-// === sanitize_identifier edge cases ===
-
-#[test]
-fn sanitize_identifier_digit_first_prefixes_underscore() {
-    assert_eq!(sanitize_identifier("9lives"), "_9lives");
-}
-
-#[test]
-fn sanitize_identifier_empty_returns_underscore() {
-    assert_eq!(sanitize_identifier(""), "_");
-}
-
-#[test]
-fn sanitize_identifier_non_ascii_becomes_underscore() {
-    assert_eq!(sanitize_identifier("a b-c.d"), "a_b_c_d");
-}
-
-#[test]
-fn sanitize_identifier_preserves_underscores_and_alphanumerics() {
-    assert_eq!(sanitize_identifier("table_99_ok"), "table_99_ok");
-}
-
 // === parallel FK edges between same (child, parent) pair ===
 
 #[test]
@@ -662,6 +655,24 @@ fn malformed_inline_fk_reference_is_ignored() {
         ],
     );
     assert!(collect_foreign_key_relations(&[users, bad]).is_empty());
+}
+
+#[test]
+fn table_level_fk_to_missing_table_is_ignored() {
+    let mut orphan = table(
+        "orphan",
+        vec![primary_key("id", integer()), column("ghost_id", integer())],
+    );
+    orphan.constraints.push(TableConstraint::ForeignKey {
+        name: Some("fk_orphan_ghost".into()),
+        columns: vec!["ghost_id".into()],
+        ref_table: "ghost".into(),
+        ref_columns: vec!["id".into()],
+        on_delete: None,
+        on_update: None,
+        orphan_strategy: Default::default(),
+    });
+    assert!(collect_foreign_key_relations(&[orphan]).is_empty());
 }
 
 #[test]
@@ -1133,4 +1144,23 @@ fn foreign_key_column_groups_pushes_new_inline_group_after_table_constraint() {
             vec!["reviewer_id".to_string()]
         ]
     );
+}
+
+/// `parse_reference` is only reached indirectly (through
+/// `collect_foreign_key_relations`), which leaves its accept/reject arms
+/// attributed to a region the workspace-wide and single-package tarpaulin runs
+/// disagree about. Calling it directly pins every branch to its own region.
+#[rstest::rstest]
+#[case::table_and_column("users.id", Some(("users", "id")))]
+#[case::three_parts("a.b.c", None)]
+#[case::empty_table(".id", None)]
+#[case::empty_column("users.", None)]
+#[case::no_separator("users", None)]
+#[case::empty_input("", None)]
+fn parse_reference_accepts_only_table_dot_column(
+    #[case] input: &str,
+    #[case] expected: Option<(&str, &str)>,
+) {
+    let expected = expected.map(|(table, column)| (table.to_string(), vec![column.to_string()]));
+    assert_eq!(parse_reference(input), expected);
 }

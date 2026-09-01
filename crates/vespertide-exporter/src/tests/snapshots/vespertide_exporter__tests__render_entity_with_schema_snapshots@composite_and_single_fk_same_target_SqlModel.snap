@@ -1,0 +1,22 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlmodel import Field, SQLModel
+from sqlalchemy import ForeignKeyConstraint
+
+
+class Src(SQLModel, table=True):
+    __tablename__ = "src"
+
+    id: int = Field(primary_key=True)
+    a_id: int = Field(...)
+    b_id: int = Field(...)
+    solo: int = Field(foreign_key="target.u")
+
+    __table_args__ = (
+        ForeignKeyConstraint(["a_id", "b_id"], ["target.a", "target.b"]),
+    )

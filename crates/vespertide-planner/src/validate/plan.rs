@@ -1,7 +1,7 @@
 use rayon::prelude::*;
 use vespertide_core::{
     ColumnType, ComplexColumnType, EnumValues, MigrationAction, MigrationPlan, TableConstraint,
-    TableDef,
+    TableDef, action::sql_preview,
 };
 
 use super::enums::validate_enum_value;
@@ -22,6 +22,7 @@ use crate::parallel_config::{VALIDATE_PLAN_PAR_ACTION_MIN_LEN, validate_plan_par
 /// - `AddColumn` actions with NOT NULL columns without default must have `fill_with`
 /// - `ModifyColumnNullable` actions changing from nullable to non-nullable must have `fill_with`
 /// - Enum columns with `default/fill_with` values must have valid enum values
+/// - `DataMigration` actions must not carry DDL (see [`PlannerError::DataMigrationContainsDdl`])
 pub fn validate_migration_plan(plan: &MigrationPlan) -> Result<(), PlannerError> {
     let mut violations = find_plan_violations(plan);
     match violations.len() {
@@ -128,6 +129,14 @@ fn validate_action(action: &MigrationAction) -> Result<(), PlannerError> {
                 for replacement in fw.values() {
                     validate_enum_value(replacement, name, values, table, column, "fill_with")?;
                 }
+            }
+        }
+        MigrationAction::DataMigration { .. } => {
+            if let Some((keyword, statement)) = action.data_migration_ddl_violation() {
+                return Err(PlannerError::DataMigrationContainsDdl {
+                    keyword,
+                    statement: sql_preview(statement),
+                });
             }
         }
         _ => {}

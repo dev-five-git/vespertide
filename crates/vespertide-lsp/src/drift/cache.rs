@@ -210,14 +210,13 @@ pub(super) fn max_mtime_in_dir(dir: &Path) -> SystemTime {
 mod tests {
     use super::super::DriftKind;
     use super::*;
+    use crate::test_support::uri;
     use std::fs;
-    use std::str::FromStr;
     use tempfile::tempdir;
-    use tower_lsp_server::ls_types::Uri;
 
     fn dummy_drift() -> DomainDrift {
         DomainDrift {
-            uri: Uri::from_str("file:///p.json").unwrap(),
+            uri: uri("p.json"),
             kind: DriftKind::RawSql,
             byte_range: None,
             message: "dummy".to_string(),
@@ -377,11 +376,11 @@ mod tests {
     #[test]
     fn docstore_fingerprint_changes_on_text_change() {
         let docs = DocumentStore::new();
-        let uri = Uri::from_str("file:///a.json").unwrap();
-        docs.open(uri.clone(), "json".to_string(), 1, "{}".to_string());
+        let doc_uri = uri("a.json");
+        docs.open(doc_uri.clone(), "json".to_string(), 1, "{}".to_string());
         let fp1 = docstore_fingerprint(&docs);
 
-        docs.update_full(&uri, r#"{"name":"x"}"#.to_string(), 2);
+        docs.update_full(&doc_uri, r#"{"name":"x"}"#.to_string(), 2);
         let fp2 = docstore_fingerprint(&docs);
 
         assert_ne!(fp1, fp2);

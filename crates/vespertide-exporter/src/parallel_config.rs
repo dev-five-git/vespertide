@@ -1,6 +1,7 @@
 //! Empirically tuned Rayon thresholds.
 //!
-//! See `docs/PARALLELIZATION.md` for the Wave 6 measurement notes.
+//! Measured during the Wave 6 parallelization pass via the criterion
+//! benchmarks in `crates/*/benches/`.
 
 /// Schema-level `SeaORM` export already wins at 50 tables.
 pub(crate) const SEAORM_EXPORT_PAR_TABLE_THRESHOLD: usize = 50;

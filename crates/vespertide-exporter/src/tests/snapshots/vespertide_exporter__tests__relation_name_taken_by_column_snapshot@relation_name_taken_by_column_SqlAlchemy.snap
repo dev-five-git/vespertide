@@ -1,0 +1,22 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from typing import Optional
+
+from sqlalchemy import ForeignKey, Integer
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Users(DeclarativeBase):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+class Items(DeclarativeBase):
+    __tablename__ = "items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)

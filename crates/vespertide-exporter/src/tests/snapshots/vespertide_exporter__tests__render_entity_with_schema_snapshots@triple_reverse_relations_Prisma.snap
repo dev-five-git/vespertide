@@ -1,0 +1,13 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 376
+expression: rendered
+---
+model Dual {
+  username String @id
+  username_triple_rel TripleRel[] @relation("TripleRelUsername")
+  checker_username_triple_rel TripleRel[] @relation("TripleRelCheckerUsername")
+  other_username_triple_rel TripleRel[] @relation("TripleRelOtherUsername")
+
+  @@map("dual")
+}

@@ -1,0 +1,13 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model Events {
+  id Int @id
+  venue_id Int
+  date DateTime
+
+  @@unique([venue_id, date], map: "uq_events__date_venue_id")
+  @@index([venue_id, date], map: "ix_events__date_venue_id")
+  @@map("events")
+}

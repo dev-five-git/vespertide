@@ -151,6 +151,23 @@ pub fn find_drop_resolutions(plan: &MigrationPlan, baseline: &[TableDef]) -> Vec
     out
 }
 
+/// Locate a column in the baseline schema by table and column name.
+///
+/// Folds the two open-coded `baseline.iter().find(...).and_then(...)` chains
+/// in this module (`resolve_column_drop`, `apply_column_rename`) into a single
+/// named helper. Returns a borrowed `&ColumnDef`; callers `.cloned()` when
+/// they need ownership.
+pub(crate) fn find_baseline_column<'a>(
+    baseline: &'a [TableDef],
+    table: &str,
+    column: &str,
+) -> Option<&'a ColumnDef> {
+    baseline
+        .iter()
+        .find(|t| t.name == table)
+        .and_then(|t| t.columns.iter().find(|c| c.name == column))
+}
+
 fn resolve_column_drop(
     action_index: usize,
     table: &str,
@@ -162,10 +179,7 @@ fn resolve_column_drop(
     // against the candidates. If baseline lookup fails we still emit a
     // resolution — the user will see a Drop / Cancel prompt with no
     // candidates rather than crash.
-    let dropped = baseline
-        .iter()
-        .find(|t| t.name == table)
-        .and_then(|t| t.columns.iter().find(|c| c.name == column));
+    let dropped = find_baseline_column(baseline, table, column);
 
     let column_type = dropped.map_or_else(|| "(unknown)".to_string(), render_column_type);
 
@@ -201,10 +215,10 @@ fn resolve_table_drop(
     plan: &MigrationPlan,
     baseline: &[TableDef],
 ) -> DropResolution {
-    let baseline_columns: Vec<String> = baseline
+    let baseline_columns: Vec<&str> = baseline
         .iter()
         .find(|t| t.name == table)
-        .map(|t| t.columns.iter().map(|c| c.name.to_string()).collect())
+        .map(|t| t.columns.iter().map(|c| c.name.as_str()).collect())
         .unwrap_or_default();
 
     let mut candidates: Vec<RenameCandidate> = plan
@@ -286,30 +300,25 @@ fn column_candidate(dropped: Option<&ColumnDef>, added: &ColumnDef) -> RenameCan
 }
 
 fn table_candidate(
-    baseline_columns: &[String],
+    baseline_columns: &[&str],
     new_name: &str,
     new_columns: &[ColumnDef],
 ) -> RenameCandidate {
-    let added_names: Vec<String> = new_columns.iter().map(|c| c.name.to_string()).collect();
-
-    let baseline_set: std::collections::HashSet<&str> =
-        baseline_columns.iter().map(String::as_str).collect();
+    let baseline_set: std::collections::HashSet<&str> = baseline_columns.iter().copied().collect();
     let added_set: std::collections::HashSet<&str> =
-        added_names.iter().map(String::as_str).collect();
+        new_columns.iter().map(|c| c.name.as_str()).collect();
 
-    let only_in_baseline: Vec<&&str> = baseline_set.difference(&added_set).collect();
-    let only_in_new: Vec<&&str> = added_set.difference(&baseline_set).collect();
+    let mut only_in_baseline: Vec<&str> = baseline_set.difference(&added_set).copied().collect();
+    let mut only_in_new: Vec<&str> = added_set.difference(&baseline_set).copied().collect();
 
     let mut differences = Vec::new();
     if !only_in_baseline.is_empty() {
-        let mut names: Vec<String> = only_in_baseline.iter().map(ToString::to_string).collect();
-        names.sort();
-        differences.push(format!("removed columns: {}", names.join(", ")));
+        only_in_baseline.sort_unstable();
+        differences.push(format!("removed columns: {}", only_in_baseline.join(", ")));
     }
     if !only_in_new.is_empty() {
-        let mut names: Vec<String> = only_in_new.iter().map(ToString::to_string).collect();
-        names.sort();
-        differences.push(format!("added columns: {}", names.join(", ")));
+        only_in_new.sort_unstable();
+        differences.push(format!("added columns: {}", only_in_new.join(", ")));
     }
 
     let match_quality = if differences.is_empty() {
@@ -451,11 +460,7 @@ fn apply_column_rename(
     };
 
     // Look up the old column's properties in the baseline.
-    let baseline_col = baseline
-        .iter()
-        .find(|t| t.name == table)
-        .and_then(|t| t.columns.iter().find(|c| c.name == old_column))
-        .cloned();
+    let baseline_col = find_baseline_column(baseline, table, old_column).cloned();
 
     // Compute follow-up actions BEFORE mutating the plan so we can append
     // them in a deterministic order right after the RenameColumn.

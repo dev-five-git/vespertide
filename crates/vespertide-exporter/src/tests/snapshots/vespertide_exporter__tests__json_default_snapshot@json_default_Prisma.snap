@@ -1,0 +1,10 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model Configs {
+  id Int @id
+  data Json @default(dbgenerated("{\"hello\": \"world\"}"))
+
+  @@map("configs")
+}

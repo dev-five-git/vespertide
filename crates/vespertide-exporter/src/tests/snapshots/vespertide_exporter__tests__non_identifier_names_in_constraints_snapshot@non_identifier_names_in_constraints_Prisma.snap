@@ -1,0 +1,15 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model Membership {
+  x1tenant_id Int @map("1tenant_id")
+  x2user_id Int @map("2user_id")
+  user_email String @map("user-email")
+  x3created String @map("3created")
+
+  @@id([x1tenant_id, x2user_id])
+  @@unique([user_email, x1tenant_id], map: "uq_membership__1tenant_id_user-email")
+  @@index([x3created], map: "ix_membership__3created")
+  @@map("membership")
+}

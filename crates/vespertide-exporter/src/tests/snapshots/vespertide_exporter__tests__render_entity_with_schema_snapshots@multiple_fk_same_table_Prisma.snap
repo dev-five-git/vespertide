@@ -1,0 +1,13 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model Post {
+  id String @id
+  creator_user_id String
+  creator_user User @relation("PostCreatorUser", fields: [creator_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  used_by_user_id String
+  used_by_user User @relation("PostUsedByUser", fields: [used_by_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("post")
+}

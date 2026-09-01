@@ -254,6 +254,28 @@ fn variant_renamed_with_same_value_is_not_a_remap() {
 }
 
 #[test]
+fn empty_from_integer_enum_emits_no_remap() {
+    // A column whose integer enum starts with *no* variants and gains some can
+    // never remap an existing value (there is no shared name to shift). The
+    // empty-`from` fast-path guard must short-circuit to an empty mapping, so
+    // no `RemapEnumValues` action is emitted for this transition.
+    let from = table("tickets", enum_col("priority", "ticket_priority", vec![]));
+    let to = table(
+        "tickets",
+        enum_col(
+            "priority",
+            "ticket_priority",
+            vec![("low", 0), ("medium", 5)],
+        ),
+    );
+    let actions = diff_pair(from, to);
+    assert!(
+        remap_actions(&actions).is_empty(),
+        "empty baseline integer enum cannot remap any value — no RemapEnumValues"
+    );
+}
+
+#[test]
 fn string_enum_is_ignored_by_this_pass() {
     use vespertide_core::EnumValues;
     let from_payload = {

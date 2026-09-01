@@ -7,12 +7,12 @@ mod parallel_config;
 mod test_support;
 mod utils;
 use crate::commands::erd::ErdFormat;
-use crate::commands::export::OrmArg;
 use commands::{
     cmd_diff, cmd_erd_with_filters, cmd_export, cmd_init, cmd_log, cmd_new, cmd_revision, cmd_sql,
     cmd_status,
 };
 use vespertide_config::FileFormat;
+use vespertide_exporter::Orm;
 use vespertide_query::DatabaseBackend;
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
@@ -96,7 +96,7 @@ enum Commands {
     Export {
         /// Target ORM for export.
         #[arg(short = 'o', long = "orm", value_enum, default_value = "seaorm")]
-        orm: OrmArg,
+        orm: Orm,
         /// Output directory (defaults to config modelsDir or src/models).
         #[arg(short = 'd', long = "export-dir")]
         export_dir: Option<std::path::PathBuf>,

@@ -1,5 +1,6 @@
 use vespertide_core::{ColumnDef, TableConstraint, TableDef};
 
+use super::find_table_mut;
 use crate::error::PlannerError;
 
 pub(super) fn create_table(
@@ -13,7 +14,7 @@ pub(super) fn create_table(
     }
 
     let table_def = TableDef {
-        name: table.to_string().into(),
+        name: table.into(),
         description: None,
         columns: columns.to_vec(),
         constraints: constraints.to_vec(),
@@ -47,10 +48,7 @@ pub(super) fn rename_table(
         Err(PlannerError::TableExists(to.to_string()))
     } else {
         {
-            let tbl = schema
-                .iter_mut()
-                .find(|t| t.name == from)
-                .ok_or_else(|| PlannerError::TableNotFound(from.to_string()))?;
+            let tbl = find_table_mut(schema, from)?;
             tbl.name = to.into();
         }
         for tbl in schema {

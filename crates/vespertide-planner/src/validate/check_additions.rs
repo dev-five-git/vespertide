@@ -125,25 +125,9 @@ fn find_check_target_column(expr: &str, table: &TableDef) -> Option<(String, boo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{add_check, col_int, plan};
     use rstest::rstest;
-    use vespertide_core::{
-        CheckViolationStrategy, ColumnDef, ColumnType, MigrationAction, MigrationPlan,
-        SimpleColumnType, TableConstraint, TableDef, TableName,
-    };
-
-    fn col(name: &str, nullable: bool) -> ColumnDef {
-        ColumnDef {
-            name: name.into(),
-            r#type: ColumnType::Simple(SimpleColumnType::Integer),
-            nullable,
-            default: None,
-            comment: None,
-            primary_key: None,
-            unique: None,
-            index: None,
-            foreign_key: None,
-        }
-    }
+    use vespertide_core::{ColumnDef, TableDef};
 
     fn table(name: &str, cols: Vec<ColumnDef>) -> TableDef {
         TableDef {
@@ -154,32 +138,11 @@ mod tests {
         }
     }
 
-    fn add_check(table: &str, name: &str, expr: &str) -> MigrationAction {
-        MigrationAction::AddConstraint {
-            table: TableName::from(table),
-            constraint: TableConstraint::Check {
-                name: name.into(),
-                expr: expr.into(),
-                strategy: CheckViolationStrategy::default(),
-            },
-        }
-    }
-
-    fn plan(actions: Vec<MigrationAction>) -> MigrationPlan {
-        MigrationPlan {
-            id: "test".into(),
-            version: 1,
-            comment: None,
-            created_at: None,
-            actions,
-        }
-    }
-
     #[rstest]
     fn case_01_simple_comparison_nullable_column_flagged() {
         let baseline = vec![table(
             "products",
-            vec![col("id", false), col("price", true)],
+            vec![col_int("id", false), col_int("price", true)],
         )];
         let p = plan(vec![add_check("products", "chk_positive", "price > 0")]);
         let ws = find_check_additions(&p, &baseline);
@@ -194,7 +157,7 @@ mod tests {
     fn case_02_simple_comparison_not_null_column_flagged_without_nullify() {
         let baseline = vec![table(
             "products",
-            vec![col("id", false), col("price", false)],
+            vec![col_int("id", false), col_int("price", false)],
         )];
         let p = plan(vec![add_check("products", "chk_positive", "price > 0")]);
         let ws = find_check_additions(&p, &baseline);
@@ -204,7 +167,10 @@ mod tests {
 
     #[rstest]
     fn case_03_in_clause_flagged() {
-        let baseline = vec![table("orders", vec![col("id", false), col("status", true)])];
+        let baseline = vec![table(
+            "orders",
+            vec![col_int("id", false), col_int("status", true)],
+        )];
         let p = plan(vec![add_check(
             "orders",
             "chk_status",
@@ -222,7 +188,7 @@ mod tests {
         // positives.
         let baseline = vec![table(
             "audit",
-            vec![col("id", false), col("a", true), col("b", true)],
+            vec![col_int("id", false), col_int("a", true), col_int("b", true)],
         )];
         let p = plan(vec![add_check("audit", "chk_complex", "a > b")]);
         let ws = find_check_additions(&p, &baseline);
@@ -231,7 +197,10 @@ mod tests {
 
     #[rstest]
     fn case_05_function_call_skipped() {
-        let baseline = vec![table("users", vec![col("id", false), col("name", true)])];
+        let baseline = vec![table(
+            "users",
+            vec![col_int("id", false), col_int("name", true)],
+        )];
         let p = plan(vec![add_check("users", "chk_name", "length(name) > 0")]);
         let ws = find_check_additions(&p, &baseline);
         assert!(ws.is_empty());
@@ -252,7 +221,7 @@ mod tests {
         // returns None for every existing column, so warning is
         // suppressed. (Either F12 will catch the unknown column or the
         // DB will reject the constraint at apply time.)
-        let baseline = vec![table("products", vec![col("id", false)])];
+        let baseline = vec![table("products", vec![col_int("id", false)])];
         let p = plan(vec![add_check("products", "chk_missing", "price > 0")]);
         let ws = find_check_additions(&p, &baseline);
         assert!(ws.is_empty());
@@ -262,7 +231,11 @@ mod tests {
     fn case_08_multiple_checks_each_flagged_separately() {
         let baseline = vec![table(
             "products",
-            vec![col("id", false), col("price", true), col("stock", true)],
+            vec![
+                col_int("id", false),
+                col_int("price", true),
+                col_int("stock", true),
+            ],
         )];
         let p = plan(vec![
             add_check("products", "chk_price", "price > 0"),

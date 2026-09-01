@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql/tests/dispatch.rs
+expression: sql
+---
+UPDATE "User" SET Tier = 'PRO'::text WHERE Kind = 'internal';

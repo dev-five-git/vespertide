@@ -1,0 +1,10 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model BoolDefaults {
+  id Int @id
+  is_deleted Boolean @default(false)
+
+  @@map("bool_defaults")
+}

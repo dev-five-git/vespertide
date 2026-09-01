@@ -85,15 +85,15 @@ default_trait_access = { level = "allow", priority = 1 }      # test fixtures of
 
 [workspace.dependencies]
 rayon = "1.12"
-vespertide-core = { path = "crates/vespertide-core", version = "=0.2.1", default-features = false }
-vespertide-config = { path = "crates/vespertide-config", version = "=0.2.1", default-features = false }
-vespertide-loader = { path = "crates/vespertide-loader", version = "=0.2.1", default-features = false }
-vespertide-macro = { path = "crates/vespertide-macro", version = "=0.2.1" }
-vespertide-naming = { path = "crates/vespertide-naming", version = "=0.2.1" }
-vespertide-planner = { path = "crates/vespertide-planner", version = "=0.2.1" }
-vespertide-query = { path = "crates/vespertide-query", version = "=0.2.1" }
-vespertide-exporter = { path = "crates/vespertide-exporter", version = "=0.2.1" }
-vespertide-lsp = { path = "crates/vespertide-lsp", version = "=0.2.1" }
+vespertide-core = { path = "crates/vespertide-core", version = "=0.3.0", default-features = false }
+vespertide-config = { path = "crates/vespertide-config", version = "=0.3.0", default-features = false }
+vespertide-loader = { path = "crates/vespertide-loader", version = "=0.3.0", default-features = false }
+vespertide-macro = { path = "crates/vespertide-macro", version = "=0.3.0" }
+vespertide-naming = { path = "crates/vespertide-naming", version = "=0.3.0" }
+vespertide-planner = { path = "crates/vespertide-planner", version = "=0.3.0" }
+vespertide-query = { path = "crates/vespertide-query", version = "=0.3.0" }
+vespertide-exporter = { path = "crates/vespertide-exporter", version = "=0.3.0" }
+vespertide-lsp = { path = "crates/vespertide-lsp", version = "=0.3.0" }
 
 [profile.dev]
 debug = 1  # Line tables only — faster DWARF generation for large codegen output

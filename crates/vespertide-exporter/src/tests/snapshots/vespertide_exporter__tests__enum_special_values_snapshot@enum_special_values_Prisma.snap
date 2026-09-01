@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+enum EventSeverity {
+  INFO_LEVEL @map("info-level")
+  WARNING_LEVEL @map("warning_level")
+  ERROR_LEVEL
+  X1CRITICAL @map("1critical")
+}
+
+model Events {
+  id Int
+  severity EventSeverity
+
+  @@map("events")
+}

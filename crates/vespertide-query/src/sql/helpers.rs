@@ -1,32 +1,27 @@
-use std::borrow::Cow;
-
 use sea_query::{
     Alias, ColumnDef as SeaColumnDef, ForeignKeyAction, MysqlQueryBuilder, PostgresQueryBuilder,
-    QueryStatementWriter, SchemaStatementBuilder, SimpleExpr, SqliteQueryBuilder,
+    Query, QueryStatementWriter, SchemaStatementBuilder, SimpleExpr, SqliteQueryBuilder, Table,
 };
 
 use vespertide_core::{
-    ColumnDef, ColumnType, ComplexColumnType, ReferenceAction, SimpleColumnType, TableConstraint,
+    ColumnDef, ColumnType, ComplexColumnType, EnumValues, ReferenceAction, SimpleColumnType,
+    TableConstraint, TableDef,
 };
 
 use super::create_table::build_create_table_for_backend;
 use super::types::{BuiltQuery, DatabaseBackend, RawSql};
 
-/// Normalize `fill_with` value - empty string becomes '' (SQL empty string literal)
-/// Returns a Cow to avoid allocations when possible.
+/// Normalize `fill_with` value - empty string becomes `''` (SQL empty-string
+/// literal). Returns a borrowed `&str` because both arms are static or borrowed
+/// from the caller — no allocation ever happens, so the `Cow` wrapper was
+/// purely ceremonial.
 #[must_use]
-pub fn normalize_fill_with(fill_with: Option<&str>) -> Option<Cow<'_, str>> {
-    fill_with.map(|s| {
-        if s.is_empty() {
-            Cow::Borrowed("''")
-        } else {
-            Cow::Borrowed(s)
-        }
-    })
+pub(crate) fn normalize_fill_with(fill_with: Option<&str>) -> Option<&str> {
+    fill_with.map(|s| if s.is_empty() { "''" } else { s })
 }
 
 /// Helper function to convert a schema statement to SQL for a specific backend
-pub fn build_schema_statement<T: SchemaStatementBuilder>(
+pub(crate) fn build_schema_statement<T: SchemaStatementBuilder>(
     stmt: &T,
     backend: DatabaseBackend,
 ) -> String {
@@ -38,7 +33,7 @@ pub fn build_schema_statement<T: SchemaStatementBuilder>(
 }
 
 /// Helper function to convert a query statement (INSERT, SELECT, etc.) to SQL for a specific backend
-pub fn build_query_statement<T: QueryStatementWriter>(
+pub(crate) fn build_query_statement<T: QueryStatementWriter>(
     stmt: &T,
     backend: DatabaseBackend,
 ) -> String {
@@ -50,7 +45,7 @@ pub fn build_query_statement<T: QueryStatementWriter>(
 }
 
 /// Apply vespertide `ColumnType` to `sea_query` `ColumnDef` with table-aware enum type naming
-pub fn apply_column_type_with_table(
+pub(crate) fn apply_column_type_with_table(
     col: &mut SeaColumnDef,
     ty: &ColumnType,
     table: &str,
@@ -173,21 +168,23 @@ fn apply_complex_column_type(
         ComplexColumnType::Custom { custom_type } => {
             col.custom(Alias::new(custom_type));
         }
-        ComplexColumnType::Enum { name, values } => {
-            // For integer enums, use INTEGER type instead of ENUM
-            if values.is_integer() {
+        // Matched on the variant rather than `values.is_integer()`: the former
+        // `enum_variant_aliases` helper carried an `EnumValues::Integer` arm
+        // that the `is_integer()` guard made unreachable.
+        ComplexColumnType::Enum { name, values } => match values {
+            // Integer enums are stored as INTEGER; no native enum type is emitted.
+            EnumValues::Integer(_) => {
                 col.integer();
-            } else {
+            }
+            EnumValues::String(variants) => {
                 // Use table-prefixed enum type name to avoid conflicts
                 let type_name = build_enum_type_name(table, name);
-                let variants = values
-                    .variant_names()
-                    .into_iter()
-                    .map(Alias::new)
-                    .collect::<Vec<Alias>>();
-                col.enumeration(Alias::new(&type_name), variants);
+                // Map each variant name straight into `Alias::new`, skipping the
+                // intermediate `Vec<&str>` that `variant_names()` would allocate.
+                let aliases: Vec<Alias> = variants.iter().map(Alias::new).collect();
+                col.enumeration(Alias::new(&type_name), aliases);
             }
-        }
+        },
         _ => unreachable!("ComplexColumnType is #[non_exhaustive]; all variants are matched above"),
     }
 }
@@ -215,7 +212,7 @@ fn apply_numeric_type(
 }
 
 /// Convert vespertide `ReferenceAction` to `sea_query` `ForeignKeyAction`
-pub fn to_sea_fk_action(action: &ReferenceAction) -> ForeignKeyAction {
+pub(crate) fn to_sea_fk_action(action: &ReferenceAction) -> ForeignKeyAction {
     match action {
         ReferenceAction::Cascade => ForeignKeyAction::Cascade,
         ReferenceAction::Restrict => ForeignKeyAction::Restrict,
@@ -226,24 +223,37 @@ pub fn to_sea_fk_action(action: &ReferenceAction) -> ForeignKeyAction {
     }
 }
 
-/// Convert vespertide `ReferenceAction` to SQL string
-pub fn reference_action_sql(action: &ReferenceAction) -> &'static str {
-    match action {
-        ReferenceAction::Cascade => "CASCADE",
-        ReferenceAction::Restrict => "RESTRICT",
-        ReferenceAction::SetNull => "SET NULL",
-        ReferenceAction::SetDefault => "SET DEFAULT",
-        ReferenceAction::NoAction => "NO ACTION",
-        _ => unreachable!("ReferenceAction is #[non_exhaustive]; all variants are matched above"),
-    }
+/// Function spellings meaning "generate a UUID". Matched against the **whole**
+/// input, case-insensitively, so they can never rewrite part of a larger
+/// expression.
+pub(super) const UUID_FUNCTION_SPELLINGS: [&str; 3] =
+    ["gen_random_uuid()", "uuid()", "lower(hex(randomblob(16)))"];
+
+/// Function spellings meaning "current timestamp". Same whole-input matching
+/// rule as [`UUID_FUNCTION_SPELLINGS`].
+pub(super) const TIMESTAMP_FUNCTION_SPELLINGS: [&str; 4] = [
+    "current_timestamp()",
+    "now()",
+    "current_timestamp",
+    "getdate()",
+];
+
+/// Whole-string, case-insensitive membership test.
+///
+/// Uses `eq_ignore_ascii_case` rather than `to_lowercase()` so no `String` is
+/// allocated per call, mirroring the convention `needs_quoting` uses below.
+pub(super) fn matches_any_spelling(value: &str, spellings: &[&str]) -> bool {
+    spellings.iter().any(|s| value.eq_ignore_ascii_case(s))
 }
 
 /// Convert a default value string to the appropriate backend-specific expression
-pub fn convert_default_for_backend(default: &str, backend: DatabaseBackend) -> String {
-    let lower = default.to_lowercase();
-
-    // UUID generation functions
-    if lower == "gen_random_uuid()" || lower == "uuid()" || lower == "lower(hex(randomblob(16)))" {
+///
+/// This is for a column **DEFAULT** — a single literal or function call the
+/// generator is free to canonicalise. It is *not* safe for a raw SQL
+/// expression slot such as `fill_with`; see
+/// [`super::fill_with::convert_fill_with_for_backend`].
+pub(crate) fn convert_default_for_backend(default: &str, backend: DatabaseBackend) -> String {
+    if matches_any_spelling(default, &UUID_FUNCTION_SPELLINGS) {
         return match backend {
             DatabaseBackend::Postgres => "gen_random_uuid()".to_string(),
             DatabaseBackend::MySql => "(UUID())".to_string(),
@@ -251,64 +261,115 @@ pub fn convert_default_for_backend(default: &str, backend: DatabaseBackend) -> S
         };
     }
 
-    // Timestamp functions (case-insensitive)
-    if lower == "current_timestamp()"
-        || lower == "now()"
-        || lower == "current_timestamp"
-        || lower == "getdate()"
-    {
+    if matches_any_spelling(default, &TIMESTAMP_FUNCTION_SPELLINGS) {
         return "CURRENT_TIMESTAMP".to_string();
     }
 
     // PostgreSQL-style type casts: 'value'::type or expr::type
     if let Some((value, cast_type)) = parse_pg_type_cast(default) {
-        return convert_type_cast(&value, &cast_type, backend);
+        return convert_cast_chain(value, &cast_type, backend);
     }
 
     default.to_string()
 }
 
+/// Byte offset of the **last top-level** `::` cast operator in `expr`.
+///
+/// Top-level means outside every single-quoted string literal *and* outside
+/// every parenthesised group. Both properties matter:
+///
+/// * Taking the **last** operator makes a cast chain (`'x'::text::json`) peel
+///   from the outside in, instead of treating `text::json` as one type name.
+/// * Skipping quoted and nested occurrences stops
+///   `CASE WHEN tag = 'a::b' THEN 1 ELSE 2 END::integer` from being split
+///   inside its own string literal — the defect that let a `fill_with`
+///   expression be silently truncated and case-folded.
+///
+/// Returns `None` when there is no top-level cast, or when a string literal is
+/// left unterminated (at that point syntax cannot be told from data).
+///
+/// Toggling `in_quote` on every `'` also handles the SQL `''` escape for free:
+/// the pair closes and immediately reopens the literal, so its content stays
+/// quoted. Driving the scan from `bytes().enumerate()` keeps the cursor
+/// monotonic by construction — there is no hand-rolled index arithmetic that
+/// could stall the loop. Comparing bytes is sound because every byte matched
+/// here is ASCII, which never occurs inside a multi-byte UTF-8 sequence, so a
+/// returned index is always a `char` boundary.
+pub(super) fn find_last_top_level_cast(expr: &str) -> Option<usize> {
+    let mut in_quote = false;
+    let mut depth: usize = 0;
+    let mut pending_colon: Option<usize> = None;
+    let mut last = None;
+
+    for (index, byte) in expr.bytes().enumerate() {
+        if in_quote {
+            if byte == b'\'' {
+                in_quote = false;
+            }
+            pending_colon = None;
+            continue;
+        }
+        match byte {
+            b'\'' => {
+                in_quote = true;
+                pending_colon = None;
+            }
+            b'(' => {
+                depth += 1;
+                pending_colon = None;
+            }
+            b')' => {
+                depth = depth.saturating_sub(1);
+                pending_colon = None;
+            }
+            b':' => match pending_colon.take() {
+                Some(start) if depth == 0 => last = Some(start),
+                Some(_) => {}
+                None => pending_colon = Some(index),
+            },
+            _ => pending_colon = None,
+        }
+    }
+
+    if in_quote { None } else { last }
+}
+
 /// Parse a PostgreSQL-style type cast expression (e.g., `'[]'::json`, `0::boolean`)
 /// Returns `(value, type)` if parsed, or None if not a type cast.
-pub(super) fn parse_pg_type_cast(expr: &str) -> Option<(String, String)> {
+///
+/// The split happens at the last top-level `::` (see
+/// [`find_last_top_level_cast`]), so `'x'::text::json` yields
+/// `("'x'::text", "json")` and a `::` that only appears inside a string
+/// literal is not a split point at all.
+///
+/// The value borrows `expr` (a contiguous slice of the input, quotes
+/// included); only `cast_type` is owned because of the `to_lowercase()`
+/// normalisation. **Only the type name is lower-cased — the value is returned
+/// byte-for-byte**, so no caller can mangle user SQL through this function.
+pub(super) fn parse_pg_type_cast(expr: &str) -> Option<(&str, String)> {
     let trimmed = expr.trim();
-
-    // Handle quoted values: 'value'::type
-    if let Some(after_open) = trimmed.strip_prefix('\'') {
-        // Find the closing quote (handle escaped quotes '')
-        let mut chars = after_open.char_indices().peekable();
-        while let Some((i, ch)) = chars.next() {
-            if ch == '\'' {
-                // Check for escaped quote ''
-                if chars.next_if(|(_, next)| *next == '\'').is_some() {
-                    continue;
-                }
-                // Found closing quote
-                let value_end = i + ch.len_utf8(); // index in `after_open`
-                let rest = after_open.get(value_end..)?;
-                if let Some(stripped) = rest.strip_prefix("::") {
-                    let cast_type = stripped.trim().to_lowercase();
-                    if !cast_type.is_empty() {
-                        let value = format!("'{}'", after_open.get(..i)?);
-                        return Some((value, cast_type));
-                    }
-                }
-                return None;
-            }
-        }
+    let split = find_last_top_level_cast(trimmed)?;
+    // `split` and `split + 2` index the two ASCII `:` bytes, so both slices
+    // land on `char` boundaries.
+    let value = trimmed[..split].trim();
+    let cast_type = trimmed[split + 2..].trim().to_lowercase();
+    if value.is_empty() || cast_type.is_empty() {
         return None;
     }
+    Some((value, cast_type))
+}
 
-    // Handle unquoted values: expr::type (e.g., 0::boolean, NULL::json)
-    if let Some((value, cast_type)) = trimmed.split_once("::") {
-        let value = value.trim().to_string();
-        let cast_type = cast_type.trim().to_lowercase();
-        if !value.is_empty() && !cast_type.is_empty() {
-            return Some((value, cast_type));
-        }
-    }
-
-    None
+/// Convert a possibly *chained* `PostgreSQL` cast to backend syntax.
+///
+/// Recurses so `'x'::text::json` nests properly: MySQL emits
+/// `CAST(CAST('x' AS CHAR) AS JSON)` and SQLite strips every level rather than
+/// leaving a stray `::text` behind.
+fn convert_cast_chain(value: &str, cast_type: &str, backend: DatabaseBackend) -> String {
+    let inner = match parse_pg_type_cast(value) {
+        Some((inner_value, inner_cast)) => convert_cast_chain(inner_value, &inner_cast, backend),
+        None => value.to_string(),
+    };
+    convert_type_cast(&inner, cast_type, backend)
 }
 
 /// Map `PostgreSQL` type name to `MySQL` CAST target type
@@ -354,7 +415,7 @@ pub(super) fn is_enum_type(column_type: &ColumnType) -> bool {
 
 /// Normalize a default value for enum columns - add quotes if needed
 /// This is used for SQL expressions (INSERT, UPDATE) where enum values need quoting
-pub fn normalize_enum_default(column_type: &ColumnType, value: &str) -> String {
+pub(crate) fn normalize_enum_default(column_type: &ColumnType, value: &str) -> String {
     if is_enum_type(column_type) && needs_quoting(value) {
         format!("'{value}'")
     } else {
@@ -392,7 +453,7 @@ pub(super) fn needs_quoting(default_str: &str) -> bool {
 }
 
 /// Build `sea_query` `ColumnDef` from vespertide `ColumnDef` for a specific backend with table-aware enum naming
-pub fn build_sea_column_def_with_table(
+pub(crate) fn build_sea_column_def_with_table(
     backend: DatabaseBackend,
     table: &str,
     column: &ColumnDef,
@@ -440,7 +501,7 @@ pub fn build_sea_column_def_with_table(
 ///
 /// The enum type name will be prefixed with the table name to avoid conflicts
 /// across tables using the same enum name (e.g., "status", "gender").
-pub fn build_create_enum_type_sql(
+pub(crate) fn build_create_enum_type_sql(
     table: &str,
     column_type: &ColumnType,
 ) -> Option<super::types::RawSql> {
@@ -450,7 +511,7 @@ pub fn build_create_enum_type_sql(
             return None;
         }
 
-        let values_sql = values.to_sql_values().join(", ");
+        let values_sql = values.sql_values_joined(", ");
 
         // Generate unique type name with table prefix
         let type_name = build_enum_type_name(table, name);
@@ -461,11 +522,7 @@ pub fn build_create_enum_type_sql(
 
         // MySQL: ENUMs are inline, no CREATE TYPE needed
         // SQLite: Uses TEXT, no CREATE TYPE needed
-        Some(super::types::RawSql::per_backend(
-            pg_sql,
-            String::new(),
-            String::new(),
-        ))
+        Some(super::types::RawSql::postgres_only(pg_sql))
     } else {
         None
     }
@@ -475,7 +532,7 @@ pub fn build_create_enum_type_sql(
 /// Returns None for non-PostgreSQL backends or non-enum types
 ///
 /// The enum type name will be prefixed with the table name to match the CREATE TYPE.
-pub fn build_drop_enum_type_sql(
+pub(crate) fn build_drop_enum_type_sql(
     table: &str,
     column_type: &ColumnType,
 ) -> Option<super::types::RawSql> {
@@ -488,32 +545,28 @@ pub fn build_drop_enum_type_sql(
         let pg_sql = format!("DROP TYPE {type_name}");
 
         // MySQL/SQLite: No action needed
-        Some(super::types::RawSql::per_backend(
-            pg_sql,
-            String::new(),
-            String::new(),
-        ))
+        Some(super::types::RawSql::postgres_only(pg_sql))
     } else {
         None
     }
 }
 
 // Re-export naming functions from vespertide-naming
-pub use vespertide_naming::{
+pub(crate) use vespertide_naming::{
     build_check_constraint_name, build_enum_type_name, build_foreign_key_name, build_index_name,
     build_unique_constraint_name,
 };
 
 /// Generate CHECK constraint expression for `SQLite` enum column
 /// Returns the constraint clause like: CONSTRAINT "`chk_table_col`" CHECK (col IN ('val1', 'val2'))
-pub fn build_sqlite_enum_check_clause(
+pub(crate) fn build_sqlite_enum_check_clause(
     table: &str,
     column: &str,
     column_type: &ColumnType,
 ) -> Option<String> {
     if let ColumnType::Complex(ComplexColumnType::Enum { values, .. }) = column_type {
         let name = build_check_constraint_name(table, column);
-        let values_sql = values.to_sql_values().join(", ");
+        let values_sql = values.sql_values_joined(", ");
         let name = quote_ident(&name, DatabaseBackend::Sqlite);
         let column = quote_ident(column, DatabaseBackend::Sqlite);
         Some(format!(
@@ -525,7 +578,7 @@ pub fn build_sqlite_enum_check_clause(
 }
 
 /// Collect all CHECK constraints for enum columns in a table (for `SQLite`)
-pub fn collect_sqlite_enum_check_clauses(table: &str, columns: &[ColumnDef]) -> Vec<String> {
+pub(crate) fn collect_sqlite_enum_check_clauses(table: &str, columns: &[ColumnDef]) -> Vec<String> {
     columns
         .iter()
         .filter_map(|col| build_sqlite_enum_check_clause(table, &col.name, &col.r#type))
@@ -534,7 +587,7 @@ pub fn collect_sqlite_enum_check_clauses(table: &str, columns: &[ColumnDef]) -> 
 
 /// Extract CHECK constraint clauses from a list of table constraints.
 /// Returns SQL fragments like: `CONSTRAINT "chk_name" CHECK (expr)`
-pub fn extract_check_clauses(constraints: &[TableConstraint]) -> Vec<String> {
+pub(crate) fn extract_check_clauses(constraints: &[TableConstraint]) -> Vec<String> {
     constraints
         .iter()
         .filter_map(|c| {
@@ -554,25 +607,45 @@ pub fn extract_check_clauses(constraints: &[TableConstraint]) -> Vec<String> {
 /// - Explicit CHECK constraints (from `TableConstraint::Check`)
 ///
 /// Returns deduplicated union of both.
-pub fn collect_all_check_clauses(
+pub(crate) fn collect_all_check_clauses(
     table: &str,
     columns: &[ColumnDef],
     constraints: &[TableConstraint],
 ) -> Vec<String> {
     let mut clauses = collect_sqlite_enum_check_clauses(table, columns);
+    // Enum clauses are already unique among themselves (one per column), so the
+    // membership set only needs to reject explicit clauses that collide with an
+    // enum clause or with an earlier-kept explicit clause. Build the dedup set
+    // from borrowed `&str` views of the enum clauses (no per-enum-clause `String`
+    // clone) plus each kept explicit clause's `&str`, filtering the explicit list
+    // into `retained` BEFORE touching `clauses` so no borrow into `clauses`
+    // overlaps its later mutation. Insertion order is preserved: enum clauses
+    // first, then explicit clauses in source order.
     let explicit = extract_check_clauses(constraints);
-    for clause in explicit {
-        if !clauses.contains(&clause) {
-            clauses.push(clause);
+    let mut retained: Vec<String> = Vec::with_capacity(explicit.len());
+    {
+        // `seen` borrows the enum clauses out of `clauses`, so keep it in an
+        // inner scope whose borrows end before `clauses` is mutated below. This
+        // seeds the dedup set from borrowed `&str` — no per-enum-clause `String`
+        // clone (the win) — and interns each kept explicit clause's `&str` so
+        // explicit-vs-explicit dedup stays a single O(log n) lookup. Only the
+        // explicit clauses actually kept are moved into `retained`.
+        let mut seen: std::collections::BTreeSet<&str> =
+            clauses.iter().map(String::as_str).collect();
+        for clause in &explicit {
+            if seen.insert(clause.as_str()) {
+                retained.push(clause.clone());
+            }
         }
     }
+    clauses.extend(retained);
     clauses
 }
 
 /// Build CREATE TABLE query with CHECK constraints properly embedded.
 /// sea-query doesn't support CHECK constraints natively, so we inject them
 /// by modifying the generated SQL string.
-pub fn build_create_with_checks(
+pub(crate) fn build_create_with_checks(
     backend: DatabaseBackend,
     create_stmt: &sea_query::TableCreateStatement,
     check_clauses: &[String],
@@ -584,13 +657,13 @@ pub fn build_create_with_checks(
         let mut modified_sql = base_sql;
         if let Some(pos) = modified_sql.rfind(')') {
             let check_sql = check_clauses.join(", ");
-            modified_sql.insert_str(pos, &format!(", {check_sql}"));
+            // Insert `", " + check_sql` at `pos` without an extra `format!`
+            // allocation: the joined text goes in first, then the separator is
+            // inserted BEFORE it at the same `pos`, yielding `", <check_sql>`.
+            modified_sql.insert_str(pos, &check_sql);
+            modified_sql.insert_str(pos, ", ");
         }
-        BuiltQuery::Raw(RawSql::per_backend(
-            modified_sql.clone(),
-            modified_sql.clone(),
-            modified_sql,
-        ))
+        BuiltQuery::Raw(RawSql::uniform(modified_sql))
     }
 }
 
@@ -599,7 +672,7 @@ pub fn build_create_with_checks(
 ///
 /// `table` is the ORIGINAL table name (used for constraint naming).
 /// `temp_table` is the temporary table name.
-pub fn build_sqlite_temp_table_create(
+pub(crate) fn build_sqlite_temp_table_create(
     backend: DatabaseBackend,
     temp_table: &str,
     table: &str,
@@ -611,13 +684,50 @@ pub fn build_sqlite_temp_table_create(
     build_create_with_checks(backend, &create_stmt, &check_clauses)
 }
 
+/// Canonical `INSERT INTO temp_table (cols) SELECT cols FROM table` builder used
+/// by every `SQLite` temp-table rebuild path.
+///
+/// Six call sites previously open-coded this identical sequence (delete column,
+/// modify column type, modify column default, modify column nullable, add
+/// constraint, replace constraint, remove constraint). Centralising it here
+/// removes the drift risk that comes with keeping six copies in lock-step.
+///
+/// `columns` is the column slice to copy — pass `&table_def.columns` for the
+/// "copy everything" rebuilds and a filtered slice (without the dropped column)
+/// for the `DELETE COLUMN` path.
+pub(super) fn build_copy_into_temp_table(
+    table: &str,
+    temp_table: &str,
+    columns: &[ColumnDef],
+) -> BuiltQuery {
+    let column_aliases: Vec<Alias> = columns
+        .iter()
+        .map(|column| Alias::new(&column.name))
+        .collect();
+
+    let mut select_query = Query::select();
+    for column_alias in &column_aliases {
+        select_query.column(column_alias.clone());
+    }
+    select_query.from(Alias::new(table));
+
+    let insert_stmt = Query::insert()
+        .into_table(Alias::new(temp_table))
+        .columns(column_aliases)
+        .select_from(select_query)
+        .expect("SQLite temp table copy SELECT should be valid")
+        .to_owned();
+
+    BuiltQuery::Insert(Box::new(insert_stmt))
+}
+
 /// Recreate all indexes (both regular and UNIQUE) after a `SQLite` temp table rebuild.
 /// After DROP TABLE + RENAME, all original indexes are gone, so plain CREATE INDEX is correct.
 ///
 /// `pending_constraints` are constraints that exist in the logical schema but haven't been
 /// physically created yet (e.g., promoted from inline column definitions by `AddColumn` normalization).
 /// These will be created by separate `AddConstraint` actions later, so we must NOT recreate them here.
-pub fn recreate_indexes_after_rebuild(
+pub(crate) fn recreate_indexes_after_rebuild(
     table: &str,
     constraints: &[TableConstraint],
     pending_constraints: &[TableConstraint],
@@ -626,6 +736,21 @@ pub fn recreate_indexes_after_rebuild(
     let mut queries = Vec::with_capacity(constraints.len());
     // perf: BTreeSet membership avoids nested Vec::contains scans during SQLite rebuilds.
     let pending_constraints: std::collections::BTreeSet<_> = pending_constraints.iter().collect();
+    // perf: `table` is loop-invariant — quote it once instead of per surviving constraint.
+    let quoted_table = quote_ident(table, DatabaseBackend::Sqlite);
+    // dedup: both Index and Unique arms differ only by name builder + `UNIQUE` keyword.
+    let mut push_index =
+        |index_name: String, columns: &[vespertide_core::ColumnName], unique: bool| {
+            let cols_sql = quote_idents(columns, DatabaseBackend::Sqlite);
+            let quoted_index = quote_ident(&index_name, DatabaseBackend::Sqlite);
+            let keyword = if unique {
+                "CREATE UNIQUE INDEX"
+            } else {
+                "CREATE INDEX"
+            };
+            let sql = format!("{keyword} {quoted_index} ON {quoted_table} ({cols_sql})");
+            queries.push(BuiltQuery::Raw(RawSql::uniform(sql)));
+        };
     for constraint in constraints {
         // Skip constraints that will be created by future AddConstraint actions
         if pending_constraints.contains(constraint) {
@@ -633,28 +758,18 @@ pub fn recreate_indexes_after_rebuild(
         }
         match constraint {
             TableConstraint::Index { name, columns } => {
-                let index_name = build_index_name(table, columns, name.as_deref());
-                let cols_sql = quote_idents(columns, DatabaseBackend::Sqlite);
-                let index_name = quote_ident(&index_name, DatabaseBackend::Sqlite);
-                let table = quote_ident(table, DatabaseBackend::Sqlite);
-                let sql = format!("CREATE INDEX {index_name} ON {table} ({cols_sql})");
-                queries.push(BuiltQuery::Raw(RawSql::per_backend(
-                    sql.clone(),
-                    sql.clone(),
-                    sql,
-                )));
+                push_index(
+                    build_index_name(table, columns, name.as_deref()),
+                    columns,
+                    false,
+                );
             }
             TableConstraint::Unique { name, columns, .. } => {
-                let index_name = build_unique_constraint_name(table, columns, name.as_deref());
-                let cols_sql = quote_idents(columns, DatabaseBackend::Sqlite);
-                let index_name = quote_ident(&index_name, DatabaseBackend::Sqlite);
-                let table = quote_ident(table, DatabaseBackend::Sqlite);
-                let sql = format!("CREATE UNIQUE INDEX {index_name} ON {table} ({cols_sql})");
-                queries.push(BuiltQuery::Raw(RawSql::per_backend(
-                    sql.clone(),
-                    sql.clone(),
-                    sql,
-                )));
+                push_index(
+                    build_unique_constraint_name(table, columns, name.as_deref()),
+                    columns,
+                    true,
+                );
             }
             _ => {}
         }
@@ -662,13 +777,62 @@ pub fn recreate_indexes_after_rebuild(
     queries
 }
 
-/// Extract enum name from column type if it's an enum
-pub fn get_enum_name(column_type: &ColumnType) -> Option<&str> {
-    if let ColumnType::Complex(ComplexColumnType::Enum { name, .. }) = column_type {
-        Some(name.as_str())
-    } else {
-        None
-    }
+/// Build the canonical 5-step `SQLite` temp-table rebuild sequence:
+///
+/// 1. `CREATE TABLE {table}_temp(...)` from `create_columns` + `create_constraints`
+/// 2. `INSERT INTO {table}_temp ... SELECT FROM {table}` over `copy_columns`
+/// 3. `DROP TABLE {table}`
+/// 4. `ALTER TABLE {table}_temp RENAME TO {table}`
+/// 5. Recreate indexes / UNIQUE indexes from `recreate_constraints`
+///    minus anything already in `pending_constraints`
+///
+/// Centralises the seven open-coded call sites
+/// (`add_constraint::rebuild_sqlite_table_with_added_constraint`,
+/// `remove_constraint::sqlite::rebuild_table_without_constraint`,
+/// the `SQLite` arms of `modify_column_default` / `modify_column_nullable`,
+/// `modify_column_type::sqlite_rebuild::build_modify_column_type_sqlite_temp_table`,
+/// `replace_constraint::build_sqlite_constraint_replace`, and
+/// `delete_column::sqlite_rebuild::build_delete_column_sqlite_temp_table`)
+/// that previously re-emitted the same fixed four-statement vec + index
+/// extension by hand. Each call site keeps its surrounding context
+/// (`fill_with` UPDATEs, enum DROP TYPE, ...) OUTSIDE this helper — the
+/// helper covers only the invariant rebuild contract, so emitted SQL
+/// stays byte-identical to the previous open-coded sequences (every
+/// existing snapshot must continue to match without regeneration).
+///
+/// The seven slices ARE the rebuild contract; bundling them into a
+/// struct hides which slice plays which role at each call site, so
+/// the parameters stay flat (and sit exactly at clippy's default
+/// 7-arg threshold for `too_many_arguments`).
+pub(super) fn build_sqlite_table_rebuild(
+    backend: DatabaseBackend,
+    table: &str,
+    create_columns: &[ColumnDef],
+    create_constraints: &[TableConstraint],
+    copy_columns: &[ColumnDef],
+    recreate_constraints: &[TableConstraint],
+    pending_constraints: &[TableConstraint],
+) -> Vec<BuiltQuery> {
+    let temp_table = format!("{table}_temp");
+    let create_query = build_sqlite_temp_table_create(
+        backend,
+        &temp_table,
+        table,
+        create_columns,
+        create_constraints,
+    );
+    let insert_query = build_copy_into_temp_table(table, &temp_table, copy_columns);
+    let drop_query = super::delete_table::build_delete_table(table);
+    let rename_query = super::rename_table::build_rename_table(&temp_table, table);
+    let index_queries =
+        recreate_indexes_after_rebuild(table, recreate_constraints, pending_constraints);
+    let mut queries = Vec::with_capacity(4 + index_queries.len());
+    queries.push(create_query);
+    queries.push(insert_query);
+    queries.push(drop_query);
+    queries.push(rename_query);
+    queries.extend(index_queries);
+    queries
 }
 
 /// Quote an identifier (table name, column name, constraint name) for the given backend.
@@ -681,26 +845,237 @@ pub fn get_enum_name(column_type: &ColumnType) -> Option<&str> {
 /// - `MySQL`: `` `identifier` `` (backticks; embedded `` ` `` escaped as ` `` `)
 #[must_use]
 pub fn quote_ident(name: &str, backend: DatabaseBackend) -> String {
-    match backend {
-        DatabaseBackend::Postgres | DatabaseBackend::Sqlite => {
-            let escaped = name.replace('"', "\"\"");
-            format!("\"{escaped}\"")
-        }
-        DatabaseBackend::MySql => {
-            let escaped = name.replace('`', "``");
-            format!("`{escaped}`")
-        }
+    let mut out = String::with_capacity(name.len() + 2);
+    quote_ident_into(&mut out, name, backend);
+    out
+}
+
+/// Append the quoted form of `name` for `backend` directly to `out`.
+///
+/// Core of [`quote_ident`], exposed as an append-style helper so
+/// multi-identifier emitters ([`quote_idents`]) can write every identifier
+/// straight into their single output buffer without a per-identifier
+/// `String` round-trip (one allocation + one memcpy saved per element).
+fn quote_ident_into(out: &mut String, name: &str, backend: DatabaseBackend) {
+    let delim = match backend {
+        DatabaseBackend::Postgres | DatabaseBackend::Sqlite => '"',
+        DatabaseBackend::MySql => '`',
+    };
+    // Hot path: every valid identifier produced by the codebase carries no
+    // embedded quote char, so one exact-size reservation suffices and the
+    // `str::replace` + `format!` double-allocation is unnecessary. Mirrors
+    // the borrowed-fast-path / owned-slow-path pattern already used by
+    // `vespertide_core::sql_escape::escape_sql_string_literal`.
+    if !name.contains(delim) {
+        out.reserve(name.len() + 2);
+        out.push(delim);
+        out.push_str(name);
+        out.push(delim);
+        return;
     }
+    // Slow path (defense-in-depth): identifier embeds the quote char and
+    // must be escaped by doubling it. Byte-identical output to the
+    // pre-fast-path implementation.
+    let escaped = name.replace(delim, &format!("{delim}{delim}"));
+    out.reserve(escaped.len() + 2);
+    out.push(delim);
+    out.push_str(&escaped);
+    out.push(delim);
 }
 
 /// Quote a list of identifiers and join them with comma.
 #[must_use]
 pub fn quote_idents<T: AsRef<str>>(names: &[T], backend: DatabaseBackend) -> String {
-    names
+    // Write straight into one buffer instead of collecting an intermediate
+    // `Vec<String>` and joining — same output, one fewer allocation per call.
+    let mut out = String::new();
+    for (i, n) in names.iter().enumerate() {
+        if i > 0 {
+            out.push_str(", ");
+        }
+        quote_ident_into(&mut out, n.as_ref(), backend);
+    }
+    out
+}
+
+/// Build a PostgreSQL `ALTER TABLE "t" ALTER COLUMN "c" <suffix>` statement.
+///
+/// Single source of truth for the seven open-coded PG-only emit sites
+/// across [`crate::sql::modify_column_default`],
+/// [`crate::sql::modify_column_nullable`], and
+/// [`crate::sql::modify_column_type::direct`]. Each call site used to
+/// repeat the same `quote_ident(table, …) + quote_ident(column, …) +
+/// format!("ALTER TABLE {qt} ALTER COLUMN {qc} <suffix>")` skeleton; this
+/// helper folds them into one call so the next PG ALTER variant only has
+/// to choose its suffix. SQL output is byte-identical (every existing
+/// snapshot must continue to match).
+#[must_use]
+pub(super) fn build_pg_alter_column_sql(table: &str, column: &str, suffix: &str) -> String {
+    let quoted_table = quote_ident(table, DatabaseBackend::Postgres);
+    let quoted_column = quote_ident(column, DatabaseBackend::Postgres);
+    format!("ALTER TABLE {quoted_table} ALTER COLUMN {quoted_column} {suffix}")
+}
+
+/// Look up `table` in `current_schema` and return a reference to its
+/// [`TableDef`], or a uniform `QueryError::SchemaError` describing why the
+/// lookup is mandatory for the calling backend.
+///
+/// Centralises the six SQL-builder call sites that previously open-coded
+/// the same `current_schema.iter().find(...).ok_or_else(...)` chain. The
+/// emitted message is `"Table '{table}' not found in current schema.
+/// {context}."` — pass `context` WITHOUT a trailing period so the helper
+/// is the single source of truth for the sentence terminator.
+pub(crate) fn require_table_in_schema<'a>(
+    schema: &'a [TableDef],
+    table: &str,
+    context: &str,
+) -> Result<&'a TableDef, crate::QueryError> {
+    schema.iter().find(|t| t.name == table).ok_or_else(|| {
+        crate::QueryError::SchemaError(format!(
+            "Table '{table}' not found in current schema. {context}."
+        ))
+    })
+}
+
+/// Build a `DROP INDEX` query for the given table-qualified `index_name`.
+///
+/// Single source of truth for the
+/// `sea_query::Index::drop().table(...).name(...)` shape. Centralises the
+/// four call sites that previously open-coded it (the SQLite-rebuild
+/// fallback in [`crate::sql::remove_constraint`], the Postgres / MySQL
+/// `Index` arms there, and the two inline constraint-drop arms in
+/// [`crate::sql::delete_column`]).
+#[must_use]
+pub(crate) fn build_drop_index_query(table: &str, index_name: &str) -> BuiltQuery {
+    let idx_drop = sea_query::Index::drop()
+        .table(Alias::new(table))
+        .name(index_name)
+        .to_owned();
+    BuiltQuery::DropIndex(Box::new(idx_drop))
+}
+
+/// Look up `column` in `table_def.columns` and return a reference to its
+/// [`ColumnDef`], or a uniform `QueryError::SchemaError` describing the
+/// miss. Mirrors [`require_table_in_schema`] one level down: centralises
+/// the call sites that previously open-coded
+/// `table_def.columns.iter().find(|c| c.name == column).ok_or_else(...)`
+/// with the canonical `"Column '{column}' not found in table '{table}'."`
+/// message (trailing period included so callers stay byte-identical to
+/// existing string-match assertions).
+pub(crate) fn require_column_in_table<'a>(
+    table_def: &'a TableDef,
+    column: &str,
+) -> Result<&'a ColumnDef, crate::QueryError> {
+    table_def
+        .columns
         .iter()
-        .map(|n| quote_ident(n.as_ref(), backend))
-        .collect::<Vec<_>>()
-        .join(", ")
+        .find(|c| c.name == column)
+        .ok_or_else(|| {
+            crate::QueryError::SchemaError(format!(
+                "Column '{column}' not found in table '{table}'.",
+                table = table_def.name,
+            ))
+        })
+}
+
+/// Build the `MySQL ALTER TABLE ... MODIFY COLUMN ...` query produced by
+/// every "modify one ColumnDef field" builder (nullability, default, …).
+///
+/// Folds the byte-identical six-line MySQL dispatch — look up the table,
+/// look up the column, clone & mutate one field, hand the result to
+/// `build_sea_column_def_with_table`, wrap as an `AlterTable` — into a
+/// single helper. `context` is the descriptor appended to the canonical
+/// `require_table_in_schema` error message ("MySQL requires …"); pass it
+/// WITHOUT a trailing period (the helper adds it).
+///
+/// `mutator` rewrites whichever single field the caller cares about
+/// (`|c| c.nullable = …`, `|c| c.default = …`, …) on a fresh clone, so
+/// the original `current_schema` is never mutated.
+///
+/// `modify_column_comment` deliberately does NOT use this helper: its
+/// MySQL emit hand-appends a `COMMENT '…'` suffix outside sea-query and
+/// produces `BuiltQuery::Raw` rather than `BuiltQuery::AlterTable`.
+pub(crate) fn build_mysql_modify_column_with<F>(
+    table: &str,
+    column: &str,
+    current_schema: &[TableDef],
+    context: &str,
+    mutator: F,
+) -> Result<BuiltQuery, crate::QueryError>
+where
+    F: FnOnce(&mut ColumnDef),
+{
+    let table_def = require_table_in_schema(current_schema, table, context)?;
+    let column_def = require_column_in_table(table_def, column)?;
+    let mut modified_col_def = column_def.clone();
+    mutator(&mut modified_col_def);
+    let sea_col = build_sea_column_def_with_table(DatabaseBackend::MySql, table, &modified_col_def);
+    let stmt = Table::alter()
+        .table(Alias::new(table))
+        .modify_column(sea_col)
+        .to_owned();
+    Ok(BuiltQuery::AlterTable(Box::new(stmt)))
+}
+
+/// Build the canonical `SQLite` temp-table rebuild for every "modify one
+/// ColumnDef field" builder (nullability, default, …). Every other column
+/// stays untouched; `mutator` rewrites only the single column the action
+/// targets — matching the existing
+/// `new_columns.iter_mut().find(|c| c.name == column)` shape, including
+/// the silent no-op when the column is absent (which is the documented
+/// behaviour: see the `column_not_found` test in `modify_column_nullable`).
+///
+/// Folds the byte-identical nine-line SQLite dispatch — look up the
+/// table, clone the column list, rewrite one column, forward the rebuild
+/// contract to `build_sqlite_table_rebuild` — into a single helper.
+/// `context` is the descriptor appended to the canonical
+/// `require_table_in_schema` error message.
+pub(crate) fn build_sqlite_modify_column_with<F>(
+    table: &str,
+    column: &str,
+    current_schema: &[TableDef],
+    pending_constraints: &[TableConstraint],
+    context: &str,
+    mutator: F,
+) -> Result<Vec<BuiltQuery>, crate::QueryError>
+where
+    F: FnOnce(&mut ColumnDef),
+{
+    let table_def = require_table_in_schema(current_schema, table, context)?;
+    let mut new_columns = table_def.columns.clone();
+    if let Some(col) = new_columns.iter_mut().find(|c| c.name == column) {
+        mutator(col);
+    }
+    Ok(build_sqlite_table_rebuild(
+        DatabaseBackend::Sqlite,
+        table,
+        &new_columns,
+        &table_def.constraints,
+        &table_def.columns,
+        &table_def.constraints,
+        pending_constraints,
+    ))
+}
+
+/// Look up `column` in the table named `table` inside `schema`, returning
+/// `None` when either the table or the column is absent.
+///
+/// Centralises the `schema.iter().find(|t| t.name == table).and_then(|t|
+/// t.columns.iter().find(|c| c.name == column))` chain used by the five
+/// non-error-returning column lookups across the SQL builders (the
+/// `DeleteColumn` dispatcher, the Postgres `ModifyColumnDefault` path,
+/// and the three direct `ModifyColumnType` helpers). The error-returning
+/// twin lives one helper up as [`require_column_in_table`].
+#[must_use]
+pub(crate) fn find_column_in_schema<'a>(
+    schema: &'a [TableDef],
+    table: &str,
+    column: &str,
+) -> Option<&'a ColumnDef> {
+    schema
+        .iter()
+        .find(|t| t.name == table)
+        .and_then(|t| t.columns.iter().find(|c| c.name == column))
 }
 
 #[cfg(test)]
@@ -731,6 +1106,37 @@ mod tests {
         assert!(
             matches!(query, BuiltQuery::CreateTable(_)),
             "empty-checks branch must return BuiltQuery::CreateTable"
+        );
+    }
+
+    /// `require_table_in_schema` returns the matching table when present.
+    #[test]
+    fn require_table_in_schema_hit_returns_table_ref() {
+        let schema = vec![TableDef {
+            name: "users".into(),
+            description: None,
+            columns: vec![],
+            constraints: vec![],
+        }];
+        let table_def = require_table_in_schema(&schema, "users", "test context")
+            .expect("table 'users' should be found in the schema");
+        assert_eq!(table_def.name.as_str(), "users");
+    }
+
+    /// `require_table_in_schema` emits the canonical `SchemaError`
+    /// message — same template as every replaced call site, so wire-error
+    /// output stays byte-identical for callers and downstream tests.
+    #[test]
+    fn require_table_in_schema_miss_emits_canonical_message() {
+        let schema: Vec<TableDef> = vec![];
+        let err = require_table_in_schema(&schema, "missing", "SQLite requires test context")
+            .expect_err("missing table must error");
+        let msg = err.to_string();
+        assert!(
+            msg.contains(
+                "Table 'missing' not found in current schema. SQLite requires test context."
+            ),
+            "expected canonical message with trailing period, got: {msg}"
         );
     }
 }

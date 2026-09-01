@@ -1,6 +1,9 @@
 use std::collections::{BTreeMap, HashSet};
 
-use vespertide_core::{ColumnName, TableConstraint, TableDef};
+use vespertide_core::{
+    ColumnName, TableConstraint, TableDef,
+    schema::names::{join_column_names, names_to_strings},
+};
 
 use crate::error::PlannerError;
 
@@ -152,9 +155,9 @@ fn missing_fk_supporting_indexes_for_table(table: &TableDef) -> Vec<MissingFkSup
                 Some(MissingFkSupportingIndex {
                     table: table.name.to_string(),
                     constraint_name: name.clone(),
-                    columns: columns.iter().map(ToString::to_string).collect(),
+                    columns: names_to_strings(columns),
                     ref_table: ref_table.to_string(),
-                    ref_columns: ref_columns.iter().map(ToString::to_string).collect(),
+                    ref_columns: names_to_strings(ref_columns),
                     suggested_index_name: build_suggested_index_name(table.name.as_str(), columns),
                 })
             }
@@ -170,10 +173,6 @@ fn has_covering_index(covering_prefixes: &[&[ColumnName]], fk_columns: &[ColumnN
 }
 
 fn build_suggested_index_name(table: &str, columns: &[ColumnName]) -> String {
-    let cols_joined = columns
-        .iter()
-        .map(ColumnName::as_str)
-        .collect::<Vec<_>>()
-        .join("_");
+    let cols_joined = join_column_names(columns, "_");
     format!("ix_{table}__{cols_joined}")
 }

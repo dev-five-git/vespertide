@@ -1,5 +1,6 @@
 use proptest::prelude::*;
 use rayon::ThreadPoolBuilder;
+use vespertide_core::arbitrary::{arb_safe_ident, arb_simple_column_type};
 use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType, TableDef};
 
 proptest! {
@@ -106,14 +107,26 @@ fn wide_schema(table_count: usize) -> Vec<TableDef> {
         .collect()
 }
 
+/// Locally-shaped table generator: FK-free, constraint-free schemas with 0..=8
+/// columns. Core's `arb_table_def` produces a heavier schema (constraints, FKs,
+/// 1..=8 columns) that does not match this determinism test's exact shape —
+/// the codegen-determinism assertion targets the simple-column variant of
+/// `ColumnType` only, bridged here via `arb_simple_column_type().prop_map(ColumnType::Simple)`.
 fn arb_table_def() -> impl Strategy<Value = TableDef> {
     (
         arb_safe_ident(),
-        prop::collection::vec((arb_safe_ident(), arb_column_type(), any::<bool>()), 0..=8)
-            .prop_filter("unique column names", |columns| {
-                let mut names = std::collections::BTreeSet::new();
-                columns.iter().all(|(name, _, _)| names.insert(name))
-            }),
+        prop::collection::vec(
+            (
+                arb_safe_ident(),
+                arb_simple_column_type().prop_map(ColumnType::Simple),
+                any::<bool>(),
+            ),
+            0..=8,
+        )
+        .prop_filter("unique column names", |columns| {
+            let mut names = std::collections::BTreeSet::new();
+            columns.iter().all(|(name, _, _)| names.insert(name))
+        }),
     )
         .prop_map(|(name, columns)| TableDef {
             name: name.into(),
@@ -133,50 +146,5 @@ fn arb_table_def() -> impl Strategy<Value = TableDef> {
                 })
                 .collect(),
             constraints: Vec::new(),
-        })
-}
-
-fn arb_column_type() -> impl Strategy<Value = ColumnType> {
-    prop_oneof![
-        Just(SimpleColumnType::SmallInt),
-        Just(SimpleColumnType::Integer),
-        Just(SimpleColumnType::BigInt),
-        Just(SimpleColumnType::Real),
-        Just(SimpleColumnType::DoublePrecision),
-        Just(SimpleColumnType::Text),
-        Just(SimpleColumnType::Boolean),
-        Just(SimpleColumnType::Date),
-        Just(SimpleColumnType::Time),
-        Just(SimpleColumnType::Timestamp),
-        Just(SimpleColumnType::Timestamptz),
-        Just(SimpleColumnType::Interval),
-        Just(SimpleColumnType::Bytea),
-        Just(SimpleColumnType::Uuid),
-        Just(SimpleColumnType::Json),
-        Just(SimpleColumnType::Inet),
-        Just(SimpleColumnType::Cidr),
-        Just(SimpleColumnType::Macaddr),
-        Just(SimpleColumnType::Xml),
-    ]
-    .prop_map(ColumnType::Simple)
-}
-
-fn arb_safe_ident() -> impl Strategy<Value = String> {
-    (
-        prop::char::range('a', 'z'),
-        prop::collection::vec(
-            prop_oneof![
-                prop::char::range('a', 'z'),
-                prop::char::range('0', '9'),
-                Just('_'),
-            ],
-            0..=20,
-        ),
-    )
-        .prop_map(|(first, rest)| {
-            let mut ident = String::with_capacity(rest.len() + 1);
-            ident.push(first);
-            ident.extend(rest);
-            ident
         })
 }

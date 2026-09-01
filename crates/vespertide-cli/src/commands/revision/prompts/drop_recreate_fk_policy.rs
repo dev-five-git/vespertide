@@ -52,7 +52,7 @@ pub(in crate::commands::revision) fn prompt_fk_policy_changes(
          — backend behavior will SILENTLY differ:"
             .bright_yellow()
     );
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
     for w in warnings {
         println!(
             "  {} {}",
@@ -60,7 +60,7 @@ pub(in crate::commands::revision) fn prompt_fk_policy_changes(
             format_fk_policy_change_line(w).bright_white()
         );
     }
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
     println!(
         "  {} {}",
         "\u{26a0}".bright_red(),
@@ -86,7 +86,7 @@ pub(in crate::commands::revision) fn prompt_recreate_tables(
         "\u{26a0}".bright_yellow(),
         "The following tables need to be RECREATED:".bright_yellow()
     );
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
 
     for item in tables {
         let reason_msg = match item.reason {
@@ -102,7 +102,7 @@ pub(in crate::commands::revision) fn prompt_recreate_tables(
         );
     }
 
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
     println!(
         "  {} {}",
         "\u{26a0}".bright_red(),
@@ -135,7 +135,7 @@ pub(in crate::commands::revision) fn prompt_drop_resolution(
 ) -> Result<Option<DropChoice>> {
     let header = format_drop_header(&resolution.target);
     println!();
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
     println!("{header}");
     if !resolution.candidates.is_empty() {
         println!(
@@ -143,7 +143,7 @@ pub(in crate::commands::revision) fn prompt_drop_resolution(
             "Same-plan add actions detected as possible rename targets.".bright_white()
         );
     }
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
 
     let mut labels: Vec<String> = Vec::new();
     for c in &resolution.candidates {

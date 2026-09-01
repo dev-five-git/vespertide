@@ -1,18 +1,23 @@
 use std::fmt::Write as _;
 
 use vespertide_core::{ColumnType, ComplexColumnType, EnumValues, SimpleColumnType, TableDef};
+use vespertide_naming::{IdentifierStart, sanitize_identifier};
 
 use super::{
     Cardinality, ForeignKeyRelation, collect_foreign_key_relations, is_foreign_key_column,
-    is_primary_key_column, sanitize_identifier,
+    is_primary_key_column,
 };
 
 pub fn render_mermaid(tables: &[TableDef]) -> String {
     let mut output = String::from("erDiagram\n");
 
     for table in tables {
-        writeln!(output, "  {} {{", sanitize_identifier(&table.name))
-            .expect("write Mermaid table header");
+        writeln!(
+            output,
+            "  {} {{",
+            sanitize_identifier(&table.name, IdentifierStart::Underscore)
+        )
+        .expect("write Mermaid table header");
 
         for column in &table.columns {
             let primary_key = if is_primary_key_column(table, &column.name) {
@@ -30,7 +35,7 @@ pub fn render_mermaid(tables: &[TableDef]) -> String {
                 output,
                 "    {} {}{}{}",
                 column_type_to_mermaid(&column.r#type),
-                sanitize_identifier(&column.name),
+                sanitize_identifier(&column.name, IdentifierStart::Underscore),
                 primary_key,
                 foreign_key
             )
@@ -45,9 +50,9 @@ pub fn render_mermaid(tables: &[TableDef]) -> String {
         writeln!(
             output,
             "  {} {} {} : \"{}\"",
-            sanitize_identifier(left_table),
+            sanitize_identifier(left_table, IdentifierStart::Underscore),
             connector,
-            sanitize_identifier(right_table),
+            sanitize_identifier(right_table, IdentifierStart::Underscore),
             escape_mermaid_label(&relation.child_columns.join(", "))
         )
         .expect("write Mermaid relationship");
@@ -98,8 +103,11 @@ fn complex_column_type_to_mermaid(column_type: &ComplexColumnType) -> &'static s
     }
 }
 
-fn escape_mermaid_label(label: &str) -> String {
-    label.replace('\\', "\\\\").replace('"', "\\\"")
+fn escape_mermaid_label(label: &str) -> std::borrow::Cow<'_, str> {
+    if !label.contains(['\\', '"']) {
+        return std::borrow::Cow::Borrowed(label);
+    }
+    std::borrow::Cow::Owned(label.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 #[cfg(test)]

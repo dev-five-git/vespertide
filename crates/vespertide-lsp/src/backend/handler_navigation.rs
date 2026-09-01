@@ -32,7 +32,7 @@ use tower_lsp_server::ls_types::{
 use super::Backend;
 use super::helpers::{
     byte_to_ls_position, domain_edits_to_lsp, domain_reference_to_location, domain_to_lsp,
-    symbol_to_lsp,
+    non_empty, symbol_to_lsp,
 };
 use crate::parser::DocumentFormat;
 
@@ -162,16 +162,15 @@ pub(super) async fn hover_impl(backend: &Backend, params: HoverParams) -> Result
     let uri = &params.text_document_position_params.text_document.uri;
     let pos_ls = params.text_document_position_params.position;
     let pos_lsp = crate::position::ls_to_lsp_position(pos_ls);
-    let Some(format) = DocumentFormat::from_uri(uri) else {
+    if DocumentFormat::from_uri(uri).is_none() {
         return Ok(None);
-    };
+    }
 
     let result = backend.store.docs_iter_for_uri(uri, |state| {
         let text = state.text();
         let byte = crate::position::lsp_position_to_byte(&state.doc, pos_lsp);
         let domain = crate::hover::compute_with_workspace_tables(
             text,
-            format,
             state.tree.as_ref(),
             backend.index.as_ref(),
             backend.store.as_ref(),
@@ -207,9 +206,9 @@ pub(super) async fn goto_definition_impl(
     let uri = params.text_document_position_params.text_document.uri;
     let pos_ls = params.text_document_position_params.position;
     let pos_lsp = crate::position::ls_to_lsp_position(pos_ls);
-    let Some(format) = DocumentFormat::from_uri(&uri) else {
+    if DocumentFormat::from_uri(&uri).is_none() {
         return Ok(None);
-    };
+    }
 
     let domain = backend
         .store
@@ -218,7 +217,6 @@ pub(super) async fn goto_definition_impl(
             let byte = crate::position::lsp_position_to_byte(&state.doc, pos_lsp);
             crate::definition::compute_with_workspace_tables(
                 text,
-                format,
                 state.tree.as_ref(),
                 backend.index.as_ref(),
                 backend.store.as_ref(),
@@ -275,19 +273,17 @@ pub(super) async fn references_impl(
     let pos_ls = params.text_document_position.position;
     let pos_lsp = crate::position::ls_to_lsp_position(pos_ls);
     let include_declaration = params.context.include_declaration;
-    let Some(format) = DocumentFormat::from_uri(&uri) else {
+    if DocumentFormat::from_uri(&uri).is_none() {
         return Ok(None);
-    };
+    }
 
     let domain_refs = backend.store.docs_iter_for_uri(&uri, |state| {
         let text = state.text();
         let byte = crate::position::lsp_position_to_byte(&state.doc, pos_lsp);
         crate::references::compute(
             text,
-            format,
             state.tree.as_ref(),
             &uri,
-            backend.index.as_ref(),
             backend.store.as_ref(),
             Some(backend.workspace_tables.as_ref()),
             byte,
@@ -311,11 +307,7 @@ pub(super) async fn references_impl(
         .filter_map(|reference| domain_reference_to_location(&reference, backend))
         .collect::<Vec<_>>();
 
-    if locations.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(locations))
-    }
+    Ok(non_empty(locations))
 }
 
 pub(super) async fn code_action_impl(
@@ -359,11 +351,7 @@ pub(super) async fn code_action_impl(
         })
         .collect();
 
-    if actions.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(actions))
-    }
+    Ok(non_empty(actions))
 }
 
 pub(super) async fn inlay_hint_impl(
@@ -403,11 +391,7 @@ pub(super) async fn inlay_hint_impl(
 
     log_inlay_hint(&uri, hints.len());
 
-    if hints.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(hints))
-    }
+    Ok(non_empty(hints))
 }
 
 pub(super) async fn symbol_impl(
@@ -427,9 +411,5 @@ pub(super) async fn symbol_impl(
         .iter()
         .filter_map(|sym| symbol_to_lsp(sym, backend))
         .collect();
-    if lsp_symbols.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(WorkspaceSymbolResponse::Flat(lsp_symbols)))
-    }
+    Ok(non_empty(lsp_symbols).map(WorkspaceSymbolResponse::Flat))
 }

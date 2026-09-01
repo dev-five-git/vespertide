@@ -47,3 +47,39 @@ pub(crate) fn parse_json(src: &str) -> tree_sitter::Tree {
 pub(crate) fn parse_yaml(src: &str) -> tree_sitter::Tree {
     ParserPool::new().parse(src, DocumentFormat::Yaml).unwrap()
 }
+
+/// Apply a slice of [`crate::rename::DomainTextEdit`]s to `src`, walking
+/// back-to-front so earlier-edit byte ranges stay valid after later edits
+/// land. Consolidates two byte-identical inline copies that lived in
+/// `code_actions::tests::apply` and in the rename test
+/// `rn_s1_rename_column_rewrites_check_expr_occurrence`. Iterates by
+/// reference to avoid an extra `Vec<DomainTextEdit>` clone — the original
+/// `code_actions::apply` called `action.edits.clone()` to sort the owned
+/// vector; here only the `&DomainTextEdit` references are sorted.
+pub(crate) fn apply_text_edits(src: &str, edits: &[crate::rename::DomainTextEdit]) -> String {
+    let mut sorted: Vec<&crate::rename::DomainTextEdit> = edits.iter().collect();
+    sorted.sort_by_key(|e| std::cmp::Reverse(e.byte_range.start));
+    let mut out = src.to_string();
+    for e in &sorted {
+        out.replace_range(e.byte_range.clone(), &e.new_text);
+    }
+    out
+}
+
+/// Apply a single [`crate::rename::DomainTextEdit`] to `src` and return
+/// the result. Consolidates four byte-identical inline copies that lived
+/// in three `code_actions` tests (`remove_primary_key_when_present`,
+/// `text_column_offers_varchar_conversion`,
+/// `add_foreign_key_skeleton_offered_when_absent`) and the rename test
+/// `rename_quoted_column_name_inside_columns_array`. Preserves the
+/// allocate-prefix → push-new-text → push-suffix pattern of the original
+/// inline copies (no sort needed — only one edit).
+pub(crate) fn apply_text_edit(src: &str, edit: &crate::rename::DomainTextEdit) -> String {
+    let mut out = String::with_capacity(
+        src.len() - (edit.byte_range.end - edit.byte_range.start) + edit.new_text.len(),
+    );
+    out.push_str(&src[..edit.byte_range.start]);
+    out.push_str(&edit.new_text);
+    out.push_str(&src[edit.byte_range.end..]);
+    out
+}

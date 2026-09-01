@@ -1,6 +1,7 @@
 //! Column hover: markdown showing name, type, nullable, default, constraints.
 
 use crate::text_util::strip_quotes;
+use crate::tree_util::{ancestor_pair_with_key, is_pair};
 use std::fmt::Write as _;
 use std::ops::Range;
 
@@ -68,17 +69,7 @@ fn column_object_markdown(obj: tree_sitter::Node<'_>, source: &str) -> Option<St
 }
 
 fn is_inside_columns(node: tree_sitter::Node<'_>, source: &str) -> bool {
-    let mut cur = node.parent();
-    while let Some(candidate) = cur {
-        if is_pair(candidate)
-            && let Some(key) = candidate.named_child(0)
-            && strip_quotes(&source[key.byte_range()]) == "columns"
-        {
-            return true;
-        }
-        cur = candidate.parent();
-    }
-    false
+    ancestor_pair_with_key(node, source, "columns").is_some()
 }
 
 fn highlight_range(node: tree_sitter::Node<'_>, fallback: tree_sitter::Node<'_>) -> Range<usize> {
@@ -92,10 +83,6 @@ fn highlight_range(node: tree_sitter::Node<'_>, fallback: tree_sitter::Node<'_>)
 
 fn is_mapping(node: tree_sitter::Node<'_>) -> bool {
     matches!(node.kind(), "object" | "block_mapping")
-}
-
-fn is_pair(node: tree_sitter::Node<'_>) -> bool {
-    matches!(node.kind(), "pair" | "block_mapping_pair")
 }
 
 fn constraint_is_enabled(value: &str) -> bool {

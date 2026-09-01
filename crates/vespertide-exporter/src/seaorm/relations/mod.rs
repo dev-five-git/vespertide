@@ -22,7 +22,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use vespertide_core::TableDef;
 
 use super::imports::{
-    resolve_relation_entity_module_path, sanitize_field_name, to_pascal_case, unique_name,
+    resolve_relation_entity_module_path, sanitize_field_name, sanitize_type_name, to_pascal_case,
+    unique_name,
 };
 
 mod fk_resolve;
@@ -58,7 +59,14 @@ pub(in crate::seaorm) fn relation_field_defs_with_schema(
     crate_prefix: &str,
 ) -> Vec<String> {
     let mut out = Vec::new();
-    let mut used = HashSet::new();
+    // Relation field names are derived from column and table names, so they can
+    // land on a name a column already took. Claiming every column up front makes
+    // the relation take the numbered variant instead of redeclaring the field.
+    let mut used: HashSet<String> = table
+        .columns
+        .iter()
+        .map(|column| sanitize_field_name(&column.name))
+        .collect();
     let forward_relations = resolve_table_fks_pure(table, schema);
     let mut all_target_entities: Vec<String> = forward_relations
         .iter()
@@ -88,8 +96,11 @@ pub(in crate::seaorm) fn relation_field_defs_with_schema(
         let entity_appears_multiple_times =
             entity_count.get(resolved_table).is_some_and(|c| *c > 1);
 
+        // Inference works on the database names, so it gets the referenced
+        // column rather than the escaped field name `to` carries.
         let field_base = if columns.len() == 1 {
-            infer_field_name_from_fk_column(&columns[0], resolved_table, &to)
+            let referenced = resolved_columns.first().map_or("", AsRef::as_ref);
+            infer_field_name_from_fk_column(&columns[0], resolved_table, referenced)
         } else {
             sanitize_field_name(resolved_table)
         };
@@ -101,7 +112,10 @@ pub(in crate::seaorm) fn relation_field_defs_with_schema(
         let attr = if needs_relation_enum {
             let base_relation_enum = generate_relation_enum_name(columns);
             let relation_enum_name = if used_relation_enums.contains(&base_relation_enum) {
-                format!("{}{}", base_relation_enum, to_pascal_case(&table.name))
+                format!(
+                    "{base_relation_enum}{}",
+                    sanitize_type_name(&to_pascal_case(&table.name))
+                )
             } else {
                 base_relation_enum.clone()
             };

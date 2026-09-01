@@ -1,0 +1,10 @@
+---
+source: crates/vespertide-exporter/src/prisma/mod.rs
+expression: schema
+---
+model Users {
+  id Int @id
+  display_name String?
+
+  @@map("users")
+}

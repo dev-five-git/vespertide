@@ -4,6 +4,7 @@ use proptest::{collection, prelude::*};
 
 use crate::{
     MigrationAction,
+    action::DataMigrationSql,
     schema::{
         ColumnDef, ColumnType, ComplexColumnType, DefaultValue, EnumValues, NumValue,
         ReferenceAction, SimpleColumnType, StrOrBoolOrArray, StringOrBool, TableConstraint,
@@ -313,7 +314,26 @@ pub fn arb_migration_action() -> impl Strategy<Value = MigrationAction> {
             to: to.into()
         }),
         arb_sql().prop_map(|sql| MigrationAction::RawSql { sql }),
+        arb_data_migration_action(),
     ]
+}
+
+fn arb_data_migration_sql() -> impl Strategy<Value = DataMigrationSql> {
+    prop_oneof![
+        arb_sql().prop_map(DataMigrationSql::Uniform),
+        (arb_sql(), arb_sql(), arb_sql()).prop_map(|(postgres, mysql, sqlite)| {
+            DataMigrationSql::PerBackend {
+                postgres,
+                mysql,
+                sqlite,
+            }
+        }),
+    ]
+}
+
+fn arb_data_migration_action() -> impl Strategy<Value = MigrationAction> {
+    (arb_data_migration_sql(), prop::option::of(arb_comment()))
+        .prop_map(|(sql, description)| MigrationAction::DataMigration { sql, description })
 }
 
 fn arb_create_table_action() -> impl Strategy<Value = MigrationAction> {
@@ -466,7 +486,12 @@ fn names_are_unique<'a>(names: impl Iterator<Item = &'a str>) -> bool {
 
 fn arb_default_string() -> impl Strategy<Value = String> {
     prop_oneof![
-        arb_safe_ident(),
+        // Bare identifier used as a raw SQL default expression. The `_d`
+        // suffix guarantees the ident never collides with a fully-reserved
+        // SQL keyword (`do`, `as`, `end`, ...) that PostgreSQL's parser
+        // rejects as an expression head — no reserved keyword in PG, MySQL,
+        // or SQLite ends in `_d`.
+        arb_safe_ident().prop_map(|ident| format!("{ident}_d")),
         arb_safe_ident().prop_map(|ident| format!("'{ident}'")),
         Just("NOW()".to_string()),
         Just("CURRENT_TIMESTAMP".to_string()),
@@ -586,7 +611,21 @@ mod tests {
                 | MigrationAction::ReplaceConstraint { .. }
                 | MigrationAction::RenameTable { .. }
                 | MigrationAction::RawSql { .. }
+                | MigrationAction::DataMigration { .. }
                 | MigrationAction::RemapEnumValues { .. } => {}
+            }
+        }
+
+        #[test]
+        fn arb_data_migration_action_yields_both_sql_forms(
+            action in arb_data_migration_action()
+        ) {
+            let MigrationAction::DataMigration { sql, .. } = action else {
+                prop_assert!(false, "expected DataMigration");
+                return Ok(());
+            };
+            match sql {
+                DataMigrationSql::Uniform(_) | DataMigrationSql::PerBackend { .. } => {}
             }
         }
 

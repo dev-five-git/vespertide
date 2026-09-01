@@ -234,17 +234,17 @@ fn is_function_expr(s: &str) -> bool {
     if trimmed.contains('(') {
         return true;
     }
-    let upper = trimmed.to_uppercase();
-    matches!(
-        upper.as_str(),
-        "CURRENT_TIMESTAMP"
-            | "CURRENT_DATE"
-            | "CURRENT_TIME"
-            | "LOCALTIMESTAMP"
-            | "LOCALTIME"
-            | "CURRENT_USER"
-            | "SESSION_USER"
-    )
+    // ASCII-case-insensitive compares against the fixed keyword set avoid the
+    // per-call `String` allocation that `to_uppercase()` would incur (mirrors
+    // the allocation-free convention in `helpers.rs::needs_quoting`). All
+    // keywords are pure ASCII, so the result is byte-identical.
+    trimmed.eq_ignore_ascii_case("CURRENT_TIMESTAMP")
+        || trimmed.eq_ignore_ascii_case("CURRENT_DATE")
+        || trimmed.eq_ignore_ascii_case("CURRENT_TIME")
+        || trimmed.eq_ignore_ascii_case("LOCALTIMESTAMP")
+        || trimmed.eq_ignore_ascii_case("LOCALTIME")
+        || trimmed.eq_ignore_ascii_case("CURRENT_USER")
+        || trimmed.eq_ignore_ascii_case("SESSION_USER")
 }
 
 #[cfg(test)]
@@ -350,6 +350,13 @@ mod tests {
         assert!(is_function_expr("current_timestamp"));
         assert!(is_function_expr("CURRENT_DATE"));
         assert!(is_function_expr("LocalTimestamp"));
+        // The keyword list is one `||` chain, so only an input that reaches the
+        // FINAL alternatives proves those `||`s are disjunctions: an earlier
+        // match short-circuits and leaves the tail untested.
+        assert!(is_function_expr("CURRENT_TIME"));
+        assert!(is_function_expr("LOCALTIME"));
+        assert!(is_function_expr("CURRENT_USER"));
+        assert!(is_function_expr("session_user"));
     }
 
     #[test]

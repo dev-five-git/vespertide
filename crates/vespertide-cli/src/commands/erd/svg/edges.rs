@@ -38,16 +38,36 @@ pub(super) enum Side {
     Bottom,
 }
 
-fn edge_geometry(
-    child: &TableBox,
-    parent: &TableBox,
-    edge: &EdgeSpec,
-) -> (f64, f64, f64, f64, Side, Side, f64) {
+/// Pre-computed routing data for a single edge.
+///
+/// Computed once per edge in [`super::render::render_doc`] and reused by both
+/// [`render_edge_path`] and [`render_edge_label`] so the two render passes do
+/// not recompute the anchors / curvature for every edge twice.
+#[derive(Copy, Clone, Debug)]
+pub(super) struct EdgeGeometry {
+    pub sx: f64,
+    pub sy: f64,
+    pub ex: f64,
+    pub ey: f64,
+    pub sdir: Side,
+    pub edir: Side,
+    pub curvature: f64,
+}
+
+pub(super) fn edge_geometry(child: &TableBox, parent: &TableBox, edge: &EdgeSpec) -> EdgeGeometry {
     let child_y = child.y + HEADER_H + edge.child_row as f64 * ROW_H + ROW_H / 2.0;
     let parent_y = parent.y + HEADER_H + edge.parent_row as f64 * ROW_H + ROW_H / 2.0;
     let (sx, sy, ex, ey, sdir, edir) = pick_anchors(child, parent, child_y, parent_y);
     let curvature = parallel_curvature_offset(edge.parallel_index, edge.parallel_count);
-    (sx, sy, ex, ey, sdir, edir, curvature)
+    EdgeGeometry {
+        sx,
+        sy,
+        ex,
+        ey,
+        sdir,
+        edir,
+        curvature,
+    }
 }
 
 pub(super) fn render_edge_path(
@@ -55,9 +75,17 @@ pub(super) fn render_edge_path(
     child: &TableBox,
     parent: &TableBox,
     edge: &EdgeSpec,
+    geom: EdgeGeometry,
 ) {
-    let (sx, sy, ex, ey, sdir, edir, curvature) = edge_geometry(child, parent, edge);
-    let path = bezier_path(sx, sy, ex, ey, sdir, edir, curvature);
+    let path = bezier_path(
+        geom.sx,
+        geom.sy,
+        geom.ex,
+        geom.ey,
+        geom.sdir,
+        geom.edir,
+        geom.curvature,
+    );
 
     // Two-layer stroke: subtle wide halo + crisp narrow stroke for a soft look.
     let _ = writeln!(
@@ -74,18 +102,20 @@ pub(super) fn render_edge_path(
     );
 }
 
-pub(super) fn render_edge_label(
-    out: &mut String,
-    child: &TableBox,
-    parent: &TableBox,
-    edge: &EdgeSpec,
-) {
-    let (sx, sy, ex, ey, sdir, edir, curvature) = edge_geometry(child, parent, edge);
-
+pub(super) fn render_edge_label(out: &mut String, edge: &EdgeSpec, geom: EdgeGeometry) {
     // Label position is spread along the curve for parallel edges so the
     // cardinality badges no longer stack on top of one another.
     let label_t = label_t_for_parallel(edge.parallel_index, edge.parallel_count);
-    let (label_x, label_y) = bezier_at(sx, sy, ex, ey, sdir, edir, curvature, label_t);
+    let (label_x, label_y) = bezier_at(
+        geom.sx,
+        geom.sy,
+        geom.ex,
+        geom.ey,
+        geom.sdir,
+        geom.edir,
+        geom.curvature,
+        label_t,
+    );
 
     // Pill-shaped white background guarantees the label stays readable when
     // curves or other labels cross it.

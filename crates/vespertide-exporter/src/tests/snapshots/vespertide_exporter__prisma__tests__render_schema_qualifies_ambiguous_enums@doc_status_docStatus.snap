@@ -1,0 +1,27 @@
+---
+source: crates/vespertide-exporter/src/prisma/mod.rs
+expression: schema
+---
+enum OrdersDocStatus {
+  NEW @map("new")
+  PAID @map("paid")
+}
+
+enum TicketsDocStatus {
+  OPEN @map("open")
+  CLOSED @map("closed")
+}
+
+model Orders {
+  id Int @id
+  st OrdersDocStatus
+
+  @@map("orders")
+}
+
+model Tickets {
+  id Int @id
+  st TicketsDocStatus
+
+  @@map("tickets")
+}

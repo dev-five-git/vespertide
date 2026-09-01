@@ -26,7 +26,10 @@
 
 use std::collections::HashSet;
 
-use vespertide_core::{ColumnName, MigrationAction, MigrationPlan, TableConstraint, TableDef};
+use vespertide_core::{
+    ColumnName, MigrationAction, MigrationPlan, TableConstraint, TableDef,
+    schema::names::names_to_strings,
+};
 
 /// One risky UNIQUE addition needing user resolution.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,7 +128,7 @@ pub fn find_unique_additions(
             action_index: idx,
             table: table.to_string(),
             constraint_name: name.clone(),
-            columns: columns.iter().map(ToString::to_string).collect(),
+            columns: names_to_strings(columns),
             pk_kind,
             fk_references,
         });
@@ -139,7 +142,7 @@ fn resolve_pk_kind(table_def: &TableDef, unique_columns: &[ColumnName]) -> PkKin
         .iter()
         .find_map(|c| {
             if let TableConstraint::PrimaryKey { columns, .. } = c {
-                Some(columns.iter().map(ToString::to_string).collect())
+                Some(names_to_strings(columns))
             } else {
                 None
             }
@@ -198,7 +201,7 @@ fn collect_fk_references(
                 out.push(FkReference {
                     child_table: tbl.name.to_string(),
                     constraint_name: name.clone(),
-                    child_columns: columns.iter().map(ToString::to_string).collect(),
+                    child_columns: names_to_strings(columns),
                 });
             }
         }
@@ -215,7 +218,7 @@ mod tests {
         ColumnDef::new(name, ColumnType::Simple(SimpleColumnType::Text), false)
     }
 
-    use crate::test_support::{pk, table};
+    use crate::test_support::{pk, plan, table};
 
     fn unique(name: Option<&str>, columns: Vec<&str>) -> TableConstraint {
         TableConstraint::Unique {
@@ -229,16 +232,6 @@ mod tests {
         MigrationAction::AddConstraint {
             table: t.into(),
             constraint: c,
-        }
-    }
-
-    fn plan(actions: Vec<MigrationAction>) -> MigrationPlan {
-        MigrationPlan {
-            id: String::new(),
-            comment: None,
-            created_at: None,
-            version: 1,
-            actions,
         }
     }
 

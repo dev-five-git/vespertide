@@ -15,12 +15,12 @@
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::{
     DocumentHighlight, DocumentHighlightKind, DocumentHighlightParams, DocumentSymbol,
-    DocumentSymbolParams, DocumentSymbolResponse, FoldingRange, FoldingRangeParams, Range,
-    SelectionRange, SelectionRangeParams, SymbolKind as LspSymbolKind,
+    DocumentSymbolParams, DocumentSymbolResponse, FoldingRange, FoldingRangeParams, SelectionRange,
+    SelectionRangeParams, SymbolKind as LspSymbolKind,
 };
 
 use super::Backend;
-use super::helpers::byte_to_ls_position;
+use super::helpers::{byte_range_to_ls, byte_to_ls_position, non_empty};
 
 pub(super) async fn document_symbol_impl(
     backend: &Backend,
@@ -44,8 +44,7 @@ pub(super) async fn folding_range_impl(
 ) -> Result<Option<Vec<FoldingRange>>> {
     let uri = params.text_document.uri;
     let folds = backend.store.docs_iter_for_uri(&uri, |state| {
-        let text = state.text();
-        let domain = crate::file_features::compute_folding_ranges(text, state.tree.as_ref());
+        let domain = crate::file_features::compute_folding_ranges(state.tree.as_ref());
         domain
             .into_iter()
             .filter_map(|f| {
@@ -65,12 +64,7 @@ pub(super) async fn folding_range_impl(
             })
             .collect::<Vec<_>>()
     });
-    let folds = folds.unwrap_or_default();
-    if folds.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(folds))
-    }
+    Ok(non_empty(folds.unwrap_or_default()))
 }
 
 pub(super) async fn document_highlight_impl(
@@ -86,10 +80,7 @@ pub(super) async fn document_highlight_impl(
         crate::file_features::compute_document_highlight(text, state.tree.as_ref(), byte)
             .into_iter()
             .map(|h| DocumentHighlight {
-                range: Range {
-                    start: byte_to_ls_position(&state.doc, h.byte_range.start),
-                    end: byte_to_ls_position(&state.doc, h.byte_range.end),
-                },
+                range: byte_range_to_ls(&state.doc, &h.byte_range),
                 kind: Some(match h.kind {
                     crate::file_features::DomainDocumentHighlightKind::Read => {
                         DocumentHighlightKind::READ
@@ -101,12 +92,7 @@ pub(super) async fn document_highlight_impl(
             })
             .collect::<Vec<_>>()
     });
-    let hits = hits.unwrap_or_default();
-    if hits.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(hits))
-    }
+    Ok(non_empty(hits.unwrap_or_default()))
 }
 
 pub(super) async fn selection_range_impl(
@@ -121,17 +107,11 @@ pub(super) async fn selection_range_impl(
             .map(|pos_ls| {
                 let pos_lsp = crate::position::ls_to_lsp_position(pos_ls);
                 let byte = crate::position::lsp_position_to_byte(&state.doc, pos_lsp);
-                let chain = crate::file_features::compute_selection_ranges(
-                    state.text(),
-                    state.tree.as_ref(),
-                    byte,
-                );
+                let chain =
+                    crate::file_features::compute_selection_ranges(state.tree.as_ref(), byte);
                 let mut acc: Option<Box<SelectionRange>> = None;
                 for entry in chain.into_iter().rev() {
-                    let lsp_range = Range {
-                        start: byte_to_ls_position(&state.doc, entry.byte_range.start),
-                        end: byte_to_ls_position(&state.doc, entry.byte_range.end),
-                    };
+                    let lsp_range = byte_range_to_ls(&state.doc, &entry.byte_range);
                     acc = Some(Box::new(SelectionRange {
                         range: lsp_range,
                         parent: acc,
@@ -140,10 +120,7 @@ pub(super) async fn selection_range_impl(
                 match acc {
                     Some(boxed) => *boxed,
                     None => SelectionRange {
-                        range: Range {
-                            start: byte_to_ls_position(&state.doc, byte),
-                            end: byte_to_ls_position(&state.doc, byte),
-                        },
+                        range: byte_range_to_ls(&state.doc, &(byte..byte)),
                         parent: None,
                     },
                 }
@@ -157,14 +134,8 @@ fn domain_doc_sym_to_lsp(
     sym: crate::file_features::DomainDocumentSymbol,
     doc: &lsp_textdocument::FullTextDocument,
 ) -> DocumentSymbol {
-    let range = Range {
-        start: byte_to_ls_position(doc, sym.byte_range.start),
-        end: byte_to_ls_position(doc, sym.byte_range.end),
-    };
-    let selection_range = Range {
-        start: byte_to_ls_position(doc, sym.selection_byte_range.start),
-        end: byte_to_ls_position(doc, sym.selection_byte_range.end),
-    };
+    let range = byte_range_to_ls(doc, &sym.byte_range);
+    let selection_range = byte_range_to_ls(doc, &sym.selection_byte_range);
     let kind = match sym.kind {
         crate::file_features::DomainDocumentSymbolKind::Table => LspSymbolKind::CLASS,
         crate::file_features::DomainDocumentSymbolKind::Column => LspSymbolKind::FIELD,

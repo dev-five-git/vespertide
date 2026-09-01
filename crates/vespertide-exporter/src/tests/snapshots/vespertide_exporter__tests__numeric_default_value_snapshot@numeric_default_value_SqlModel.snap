@@ -1,5 +1,5 @@
 ---
-source: crates/vespertide-exporter/src/tests.rs
+source: crates/vespertide-exporter/src/tests/mod.rs
 expression: rendered
 ---
 from __future__ import annotations
@@ -13,4 +13,4 @@ class Products(SQLModel, table=True):
     __tablename__ = "products"
 
     id: int = Field(...)
-    price: Decimal = Field(default=0.00)
+    price: Decimal = Field(default=0)

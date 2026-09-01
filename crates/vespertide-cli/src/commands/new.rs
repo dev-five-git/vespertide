@@ -1,12 +1,9 @@
-use std::path::Path;
-
 use anyhow::{Context, Result, bail};
 use colored::Colorize;
-use serde_json::Value;
 use tokio::fs;
 use vespertide_core::TableDef;
 
-use crate::utils::{load_config, schema_url};
+use crate::utils::{load_config, schema_url, write_json_with_schema, write_yaml_with_schema};
 use vespertide_config::FileFormat;
 
 pub async fn cmd_new(name: String, format: Option<FileFormat>) -> Result<()> {
@@ -19,20 +16,14 @@ pub async fn cmd_new(name: String, format: Option<FileFormat>) -> Result<()> {
             .context("create models directory")?;
     }
 
-    let ext = match format {
-        FileFormat::Json => "json",
-        FileFormat::Yaml => "yaml",
-        FileFormat::Yml => "yml",
-    };
-
     let schema_url = schema_url("model.schema.json");
-    let path = dir.join(format!("{name}.vespertide.{ext}"));
+    let path = dir.join(format!("{name}.vespertide.{ext}", ext = format.extension()));
     if path.exists() {
         bail!("model file already exists: {}", path.display());
     }
 
     let table = TableDef {
-        name: name.clone().into(),
+        name: name.into(),
         description: None,
         columns: Vec::new(),
         constraints: Vec::new(),
@@ -40,41 +31,16 @@ pub async fn cmd_new(name: String, format: Option<FileFormat>) -> Result<()> {
 
     match format {
         FileFormat::Json => write_json_with_schema(&path, &table, &schema_url).await?,
-        FileFormat::Yaml | FileFormat::Yml => write_yaml(&path, &table, &schema_url).await?,
+        FileFormat::Yaml | FileFormat::Yml => {
+            write_yaml_with_schema(&path, &table, &schema_url).await?;
+        }
     }
 
     println!(
         "{} {}",
         "Created model template:".bright_green().bold(),
-        format!("{}", path.display()).bright_white()
+        path.display().to_string().bright_white()
     );
-    Ok(())
-}
-
-async fn write_json_with_schema(path: &Path, table: &TableDef, schema_url: &str) -> Result<()> {
-    let mut value = serde_json::to_value(table).context("serialize table to json")?;
-    if let Value::Object(ref mut map) = value {
-        map.insert("$schema".to_string(), Value::String(schema_url.to_string()));
-    }
-    let text = serde_json::to_string_pretty(&value).context("stringify json with schema")?;
-    fs::write(path, text)
-        .await
-        .with_context(|| format!("write file: {}", path.display()))?;
-    Ok(())
-}
-
-async fn write_yaml(path: &Path, table: &TableDef, schema_url: &str) -> Result<()> {
-    let mut value = serde_yaml::to_value(table).context("serialize table to yaml value")?;
-    if let serde_yaml::Value::Mapping(ref mut map) = value {
-        map.insert(
-            serde_yaml::Value::String("$schema".to_string()),
-            serde_yaml::Value::String(schema_url.to_string()),
-        );
-    }
-    let text = serde_yaml::to_string(&value).context("serialize yaml with schema")?;
-    fs::write(path, text)
-        .await
-        .with_context(|| format!("write file: {}", path.display()))?;
     Ok(())
 }
 

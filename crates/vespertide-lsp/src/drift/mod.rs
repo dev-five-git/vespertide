@@ -22,8 +22,6 @@ const _: fn(&vespertide_planner::PlannerError) -> Option<crate::diagnostics::Err
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
     use tempfile::tempdir;
     use tower_lsp_server::ls_types::Uri;
     use vespertide_core::{
@@ -36,7 +34,7 @@ mod tests {
     };
     use super::{DomainDrift, DriftKind, compute};
     use crate::store::DocumentStore;
-    use crate::test_support::parse_json;
+    use crate::test_support::{parse_json, uri as ts_uri};
     use crate::workspace_index::WorkspaceIndex;
 
     fn column(name: &str, r#type: ColumnType, nullable: bool) -> ColumnDef {
@@ -78,7 +76,7 @@ mod tests {
     }
 
     fn uri() -> Uri {
-        Uri::from_str("file:///user.json").unwrap()
+        ts_uri("user.json")
     }
 
     #[test]
@@ -179,7 +177,7 @@ mod tests {
     #[test]
     fn render_helpers_format_correctly() {
         let int_type = ColumnType::Simple(SimpleColumnType::Integer);
-        assert!(render_column_type(&int_type).contains("Integer"));
+        assert_eq!(render_column_type(&int_type), "integer");
         assert_eq!(render_default(None), "<none>");
         assert_eq!(render_default(Some("0")), "\"0\"");
         assert_eq!(render_nullable(true), "nullable");
@@ -247,8 +245,8 @@ mod tests {
 
         let (_, _, message) = action_to_drift(&action, &baseline, source, Some(&tree)).unwrap();
 
-        assert!(message.contains("Integer"));
-        assert!(message.contains("BigInt"));
+        assert!(message.contains("integer"));
+        assert!(message.contains("big_int"));
     }
 
     #[test]

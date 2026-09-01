@@ -56,6 +56,24 @@ pub enum PlannerError {
     EmptyConstraintColumns(String, String),
     #[error("AddColumn requires fill_with when column is NOT NULL without default: {0}.{1}")]
     MissingFillWith(String, String),
+    /// A `data_migration` action whose SQL opens with a DDL keyword.
+    ///
+    /// `data_migration` is contractually schema-neutral: baseline replay skips
+    /// it *because* it changes no schema. Hiding DDL inside one would drop that
+    /// change from the reconstructed baseline permanently, after which
+    /// `vespertide diff` reports the same already-applied changes on every run.
+    /// Rejecting the plan at load time keeps the contract enforceable.
+    #[error(
+        "data_migration contains DDL: the statement starts with `{keyword}` ({statement}). \
+         `data_migration` promises to change data only — baseline replay skips it on that \
+         basis, so schema changes hidden here are lost forever and `vespertide diff` will \
+         report phantom pending changes. Express the schema change with a typed action, or \
+         use `raw_sql` if you genuinely need the escape hatch."
+    )]
+    DataMigrationContainsDdl {
+        keyword: &'static str,
+        statement: String,
+    },
     #[error("table validation error: {0}")]
     TableValidation(String),
     #[error("table '{0}' must have a primary key")]

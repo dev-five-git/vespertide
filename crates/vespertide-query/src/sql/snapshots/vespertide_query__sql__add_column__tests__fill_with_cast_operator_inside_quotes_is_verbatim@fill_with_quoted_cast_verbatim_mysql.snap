@@ -1,0 +1,7 @@
+---
+source: crates/vespertide-query/src/sql/add_column.rs
+expression: sql
+---
+ALTER TABLE `subscription` ADD COLUMN `tier` int;
+UPDATE `subscription` SET `tier` = CASE WHEN plan_tag = 'legacy::v1' THEN 1 ELSE 2 END::integer;
+ALTER TABLE `subscription` MODIFY COLUMN `tier` int NOT NULL

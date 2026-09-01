@@ -137,6 +137,15 @@ fn compute_inner(
     }
 }
 
+/// Test-only helper shared by `completion::context::tests` and
+/// `completion::values::tests`: map a slice of `DomainCompletion` items to a
+/// `Vec<&str>` of their labels. Centralises the byte-identical helper that
+/// previously lived in both sibling test modules.
+#[cfg(test)]
+pub(super) fn completion_labels(items: &[DomainCompletion]) -> Vec<&str> {
+    items.iter().map(|item| item.label.as_str()).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;

@@ -1,0 +1,12 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model Employees {
+  id Int @id
+  manager_id Int?
+  manager Employees? @relation("EmployeesManager", fields: [manager_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  manager_employees Employees[] @relation("EmployeesManager")
+
+  @@map("employees")
+}

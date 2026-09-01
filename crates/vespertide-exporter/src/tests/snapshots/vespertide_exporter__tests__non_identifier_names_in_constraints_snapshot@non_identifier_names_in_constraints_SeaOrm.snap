@@ -1,0 +1,29 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "membership")]
+pub struct Model {
+    #[sea_orm(primary_key, auto_increment = false, column_name = "1tenant_id")]
+    pub x1tenant_id: i32,
+    #[sea_orm(primary_key, auto_increment = false, column_name = "2user_id")]
+    pub x2user_id: i32,
+    #[sea_orm(column_name = "user-email")]
+    pub user_email: String,
+    #[sea_orm(indexed, column_name = "3created")]
+    pub x3created: String,
+}
+
+// Index definitions (SeaORM uses Statement builders externally)
+// (unnamed) on [3created]
+
+/// Composite unique constraints — declare in migrations or use Statement builder.
+pub const COMPOSITE_UNIQUES: &[&[&str]] = &[
+    &["user-email", "1tenant_id"],
+];
+vespera::schema_type!(Schema from Model, name = "MembershipSchema");
+impl ActiveModelBehavior for ActiveModel {}

@@ -23,6 +23,7 @@
 )]
 
 use super::{RawToken, check_expr_tokens, legend::ModIdx, legend::TokenIdx};
+use crate::tree_util::unwrap_yaml_node;
 
 #[must_use]
 pub fn classify(source: &str, tree: &tree_sitter::Tree) -> Vec<RawToken> {
@@ -76,8 +77,8 @@ fn classify_pair(pair: tree_sitter::Node<'_>, source: &[u8], ctx: Ctx, out: &mut
     if let Some(key_node) = pair.named_child(0)
         && let Some(value_node) = pair.named_child(1)
     {
-        let key_node = unwrap_yaml(key_node);
-        let value_node = unwrap_yaml(value_node);
+        let key_node = unwrap_yaml_node(key_node);
+        let value_node = unwrap_yaml_node(value_node);
         if let Some(key_text) = scalar_text(key_node, source) {
             match key_text {
                 "name" if ctx.mapping_depth == 1 && !ctx.inside_columns => {
@@ -163,12 +164,12 @@ fn classify_pair(pair: tree_sitter::Node<'_>, source: &[u8], ctx: Ctx, out: &mut
 }
 
 fn recurse_value(value: tree_sitter::Node<'_>, source: &[u8], ctx: Ctx, out: &mut Vec<RawToken>) {
-    let v = unwrap_yaml(value);
+    let v = unwrap_yaml_node(value);
 
     if ctx.inside_ref_columns && matches!(v.kind(), "block_sequence" | "flow_sequence") {
         let mut cursor = v.walk();
         for child in v.children(&mut cursor) {
-            let element = unwrap_yaml(child);
+            let element = unwrap_yaml_node(child);
             if is_scalar(element.kind()) {
                 push_scalar(element, TokenIdx::Property, ModIdx::Definition as u32, out);
             } else {
@@ -181,7 +182,7 @@ fn recurse_value(value: tree_sitter::Node<'_>, source: &[u8], ctx: Ctx, out: &mu
     if ctx.inside_enum_values_array && matches!(v.kind(), "block_sequence" | "flow_sequence") {
         let mut cursor = v.walk();
         for child in v.children(&mut cursor) {
-            let element = unwrap_yaml(child);
+            let element = unwrap_yaml_node(child);
             if is_scalar(element.kind()) {
                 push_scalar(element, TokenIdx::EnumMember, 0, out);
             } else {
@@ -197,7 +198,7 @@ fn recurse_value(value: tree_sitter::Node<'_>, source: &[u8], ctx: Ctx, out: &mu
     if ctx.inside_columns && matches!(v.kind(), "block_sequence" | "flow_sequence") {
         let mut cursor = v.walk();
         for child in v.children(&mut cursor) {
-            let element = unwrap_yaml(child);
+            let element = unwrap_yaml_node(child);
             let item_ctx = if matches!(
                 element.kind(),
                 "block_mapping" | "flow_mapping" | "block_sequence_item"
@@ -223,7 +224,7 @@ fn classify_type_value(
     ctx: Ctx,
     out: &mut Vec<RawToken>,
 ) {
-    let v = unwrap_yaml(value);
+    let v = unwrap_yaml_node(value);
     match v.kind() {
         k if is_scalar(k) => {
             push_scalar(v, TokenIdx::Type, 0, out);
@@ -240,7 +241,7 @@ fn classify_type_value(
 }
 
 fn classify_default(value: tree_sitter::Node<'_>, out: &mut Vec<RawToken>) {
-    let v = unwrap_yaml(value);
+    let v = unwrap_yaml_node(value);
     if is_scalar(v.kind()) {
         // YAML doesn't distinguish bool/null/string/number scalars by
         // tree-sitter node kind alone — treat every scalar default as a
@@ -255,7 +256,7 @@ fn emit_yaml_check_expr_tokens(
     source: &[u8],
     out: &mut Vec<RawToken>,
 ) {
-    let scalar = unwrap_yaml(value);
+    let scalar = unwrap_yaml_node(value);
     if let Some(range) = check_expr_scalar_range(scalar)
         && range.end > range.start
         && let Some(expr_text) = source
@@ -295,22 +296,6 @@ fn inner_scalar_range(node: tree_sitter::Node<'_>) -> std::ops::Range<usize> {
         }
         _ => raw,
     }
-}
-
-fn unwrap_yaml(node: tree_sitter::Node<'_>) -> tree_sitter::Node<'_> {
-    // Fused while-let so the empty-wrapper case (no usable `named_child(0)`)
-    // and the kind-mismatch case share the same loop exit — no defensive
-    // `return` line that only an (unobservable) empty tree-sitter wrapper
-    // could reach.
-    let mut current = node;
-    while matches!(current.kind(), "flow_node" | "block_node")
-        && let Some(inner) = current
-            .named_child(0)
-            .filter(|inner| inner.id() != current.id())
-    {
-        current = inner;
-    }
-    current
 }
 
 fn is_scalar(kind: &str) -> bool {
@@ -719,7 +704,7 @@ mod tests {
         let pool = ParserPool::new();
         let src = "name: \"\"\n";
         let tree = pool.parse(src, DocumentFormat::Yaml).unwrap();
-        let value = unwrap_yaml(first_pair(&tree, src).named_child(1).unwrap());
+        let value = unwrap_yaml_node(first_pair(&tree, src).named_child(1).unwrap());
         let mut out = Vec::new();
         push_scalar(value, TokenIdx::Class, 0, &mut out);
         assert!(out.is_empty());
@@ -727,7 +712,7 @@ mod tests {
         let empty = "name:\n";
         let tree = pool.parse(empty, DocumentFormat::Yaml).unwrap();
         if let Some(wrapper) = first_pair(&tree, empty).named_child(1) {
-            let _ = unwrap_yaml(wrapper);
+            let _ = unwrap_yaml_node(wrapper);
         }
     }
 }

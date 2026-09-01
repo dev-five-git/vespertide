@@ -1,0 +1,23 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlalchemy import Index, Integer, Text, UniqueConstraint
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Membership(DeclarativeBase):
+    __tablename__ = "membership"
+
+    _1tenant_id: Mapped[int] = mapped_column("1tenant_id", Integer, primary_key=True)
+    _2user_id: Mapped[int] = mapped_column("2user_id", Integer, primary_key=True)
+    user_email: Mapped[str] = mapped_column("user-email", Text, nullable=False)
+    _3created: Mapped[str] = mapped_column("3created", Text, nullable=False)
+
+    __table_args__ = (
+        Index(None, "3created"),
+        UniqueConstraint("user-email", "1tenant_id"),
+    )

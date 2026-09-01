@@ -22,8 +22,8 @@ pub fn compute_full(
 
     let data = store.docs_iter_for_uri(uri, |state| {
         let text = state.text();
-        let mut raw = super::classify(text, format, state.tree.as_ref());
-        super::encode(&mut raw, &state.doc)
+        let raw = super::classify(text, format, state.tree.as_ref());
+        super::encode(&raw, &state.doc)
     })?;
     let token_count = data.len();
     let uri_text = uri.as_str();
@@ -57,8 +57,8 @@ pub fn compute_range(
         let start = crate::position::lsp_position_to_byte(&state.doc, lsp_range.start);
         let end = crate::position::lsp_position_to_byte(&state.doc, lsp_range.end);
         let raw = super::classify(text, format, state.tree.as_ref());
-        let mut filtered = super::filter_range(raw, start..end);
-        super::encode(&mut filtered, &state.doc)
+        let filtered = super::filter_range(raw, start..end);
+        super::encode(&filtered, &state.doc)
     })?;
     let token_count = data.len();
     let uri_text = uri.as_str();

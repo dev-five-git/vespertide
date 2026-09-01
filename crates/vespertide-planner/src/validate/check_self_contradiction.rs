@@ -118,7 +118,7 @@ fn find_contradiction(expr: &CheckExpr) -> Option<Contradiction> {
             // Pairwise contradiction check within the same column.
             for i in 0..preds.len() {
                 for j in (i + 1)..preds.len() {
-                    if let Some(c) = check_pair(&column, preds[i], preds[j]) {
+                    if let Some(c) = check_pair(column, preds[i], preds[j]) {
                         return Some(c);
                     }
                 }
@@ -165,13 +165,13 @@ fn flatten_and(parts: &[CheckExpr]) -> Vec<&CheckExpr> {
 /// Bucket `Compare` / `In` / `Between` / `IsNull` predicates by the
 /// column they reference. Predicates that don't directly reference a
 /// single column (And/Or/Not/Unparseable) are skipped.
-fn group_predicates_by_column<'a>(flat: &[&'a CheckExpr]) -> Vec<(String, Vec<&'a CheckExpr>)> {
-    let mut groups: Vec<(String, Vec<&'a CheckExpr>)> = Vec::new();
+fn group_predicates_by_column<'a>(flat: &[&'a CheckExpr]) -> Vec<(&'a str, Vec<&'a CheckExpr>)> {
+    let mut groups: Vec<(&'a str, Vec<&'a CheckExpr>)> = Vec::new();
     for pred in flat {
         // `if let` (not `let … else { continue; }`) so the skip path folds
         // into the loop tail — LLVM coverage mis-attributes a bare `continue`.
         if let Some(col) = predicate_column(pred) {
-            if let Some((_, existing)) = groups.iter_mut().find(|(c, _)| c == &col) {
+            if let Some((_, existing)) = groups.iter_mut().find(|(c, _)| *c == col) {
                 existing.push(pred);
             } else {
                 groups.push((col, vec![pred]));
@@ -181,12 +181,12 @@ fn group_predicates_by_column<'a>(flat: &[&'a CheckExpr]) -> Vec<(String, Vec<&'
     groups
 }
 
-fn predicate_column(expr: &CheckExpr) -> Option<String> {
+fn predicate_column(expr: &CheckExpr) -> Option<&str> {
     match expr {
         CheckExpr::Compare { column, .. }
         | CheckExpr::In { column, .. }
         | CheckExpr::Between { column, .. }
-        | CheckExpr::IsNull { column, .. } => Some(column.clone()),
+        | CheckExpr::IsNull { column, .. } => Some(column),
         _ => None,
     }
 }
@@ -225,17 +225,18 @@ fn check_pair(column: &str, a: &CheckExpr, b: &CheckExpr) -> Option<Contradictio
         });
     }
     // IsNull (positive) vs Compare on same column: AND is unsatisfiable.
-    if let Some((isnull_neg, isnull_form, other_form)) = is_null_vs_other(column, a, b) {
-        // Only positive `IS NULL` is contradictory with a non-null
-        // comparison; `IS NOT NULL` is the *expected* companion of a
-        // Compare and never contradicts.
-        if !isnull_neg {
-            return Some(Contradiction {
-                column: column.to_string(),
-                first: isnull_form,
-                second: other_form,
-            });
-        }
+    // Only positive `IS NULL` is contradictory with a non-null comparison;
+    // `IS NOT NULL` is the *expected* companion of a Compare and never
+    // contradicts — display Strings are built only once that (rare)
+    // contradiction is confirmed.
+    if let Some((isnull_neg, op, value)) = is_null_vs_other(a, b)
+        && !isnull_neg
+    {
+        return Some(Contradiction {
+            column: column.to_string(),
+            first: format_is_null(column, isnull_neg),
+            second: format_compare(column, op, &value.display_value()),
+        });
     }
     None
 }
@@ -250,17 +251,17 @@ fn compare_pair_contradicts(
     op_b: Op,
     vb: &Literal,
 ) -> Option<(String, String)> {
-    let cmp = literal_compare(va, vb)?; // Need ordered literals.
+    let cmp = va.cmp_value(vb)?; // Need ordered literals.
 
     // Equality conflict: col = X AND col = Y where X != Y.
     if op_a == Op::Eq && op_b == Op::Eq && cmp != Ordering::Equal {
-        return Some((format_literal(va), format_literal(vb)));
+        return Some((va.display_value(), vb.display_value()));
     }
     // Equality vs negation: col = X AND col != X.
     if (op_a == Op::Eq && op_b == Op::Ne || op_a == Op::Ne && op_b == Op::Eq)
         && cmp == Ordering::Equal
     {
-        return Some((format_literal(va), format_literal(vb)));
+        return Some((va.display_value(), vb.display_value()));
     }
 
     // Range impossibility: at most one direction each.
@@ -271,64 +272,31 @@ fn compare_pair_contradicts(
         (Op::Lt | Op::Le, Op::Gt | Op::Ge) => (op_b, vb, op_a, va),
         _ => return None,
     };
-    let lower_vs_upper = literal_compare(lower_val, upper_val)?;
+    let lower_vs_upper = lower_val.cmp_value(upper_val)?;
     let strict_boundary = lower_op == Op::Gt || upper_op == Op::Lt;
     let unsatisfiable = matches!(lower_vs_upper, Ordering::Greater)
         || strict_boundary && lower_vs_upper == Ordering::Equal;
     if unsatisfiable {
-        Some((format_literal(va), format_literal(vb)))
+        Some((va.display_value(), vb.display_value()))
     } else {
         None
     }
 }
 
 /// When one of `(a, b)` is `IsNull(negated)` and the other is any
-/// `Compare`, return the IsNull's `negated` flag plus formatted
-/// labels for the user. Returns `None` otherwise.
-fn is_null_vs_other(column: &str, a: &CheckExpr, b: &CheckExpr) -> Option<(bool, String, String)> {
+/// `Compare`, return the structural facts: the IsNull's `negated`
+/// flag plus the Compare's op and literal. Returns `None` otherwise.
+/// The caller formats display labels only after a contradiction is
+/// confirmed, so the common healthy `IS NOT NULL AND col > X` shape
+/// allocates nothing here.
+fn is_null_vs_other<'a>(a: &'a CheckExpr, b: &'a CheckExpr) -> Option<(bool, Op, &'a Literal)> {
     // Normalise to (IsNull, Compare) ordering so the body is written once.
-    let (negated, op, value) = match (a, b) {
+    match (a, b) {
         (CheckExpr::IsNull { negated, .. }, CheckExpr::Compare { op, value, .. })
         | (CheckExpr::Compare { op, value, .. }, CheckExpr::IsNull { negated, .. }) => {
-            (*negated, *op, value)
+            Some((*negated, *op, value))
         }
-        _ => return None,
-    };
-    Some((
-        negated,
-        format_is_null(column, negated),
-        format_compare(column, op, &format_literal(value)),
-    ))
-}
-
-fn literal_compare(a: &Literal, b: &Literal) -> Option<Ordering> {
-    match (a, b) {
-        (Literal::Integer(x), Literal::Integer(y)) => Some(x.cmp(y)),
-        (Literal::Float(x), Literal::Float(y)) => x.partial_cmp(y),
-        (Literal::Integer(x), Literal::Float(y)) => i64_to_f64(*x).partial_cmp(y),
-        (Literal::Float(x), Literal::Integer(y)) => x.partial_cmp(&i64_to_f64(*y)),
-        (Literal::String(x), Literal::String(y)) => Some(x.cmp(y)),
-        (Literal::Bool(x), Literal::Bool(y)) => Some(x.cmp(y)),
-        // Mixed / Null: can't conclude.
         _ => None,
-    }
-}
-
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "F-novel-1 self-contradiction comparison: rounding integers beyond 2^53 acceptable; conservative comparator silently skips ambiguous cases"
-)]
-fn i64_to_f64(v: i64) -> f64 {
-    v as f64
-}
-
-fn format_literal(lit: &Literal) -> String {
-    match lit {
-        Literal::Integer(i) => i.to_string(),
-        Literal::Float(f) => f.to_string(),
-        Literal::String(s) => s.clone(),
-        Literal::Bool(b) => b.to_string(),
-        Literal::Null => "NULL".to_string(),
     }
 }
 
@@ -355,17 +323,8 @@ fn format_is_null(column: &str, negated: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vespertide_core::{
-        CheckViolationStrategy, ColumnDef, ColumnType, SimpleColumnType, TableDef,
-    };
-
-    fn check(name: &str, expr: &str) -> TableConstraint {
-        TableConstraint::Check {
-            name: name.to_string(),
-            expr: expr.to_string(),
-            strategy: CheckViolationStrategy::default(),
-        }
-    }
+    use crate::test_support::check;
+    use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType, TableDef};
 
     fn table(checks: Vec<TableConstraint>) -> TableDef {
         TableDef {
@@ -807,51 +766,58 @@ mod tests {
         assert!(validate_self_contradiction(&t).is_err());
     }
 
-    /// L276-277, L283, L285, L286: direct unit tests for private
-    /// helpers (`i64_to_f64` reached via 266/267 above; `format_literal`
-    /// Float / Bool / Null arms via direct call).
+    /// Pin every reachable arm of `Literal::display_value` (the unified
+    /// fault-message formatter on `check_expr_parser::Literal`). Float /
+    /// Bool / Null arms aren't reached by the public flow because the
+    /// production path filters them upstream, so this is the canonical
+    /// regression test for those arms.
     #[test]
-    fn format_literal_covers_all_arms() {
-        assert_eq!(format_literal(&Literal::Integer(7)), "7");
-        assert_eq!(format_literal(&Literal::Float(1.5)), "1.5");
-        assert_eq!(format_literal(&Literal::String("'x'".into())), "'x'");
-        assert_eq!(format_literal(&Literal::Bool(true)), "true");
-        assert_eq!(format_literal(&Literal::Null), "NULL");
+    fn display_value_covers_all_arms() {
+        assert_eq!(Literal::Integer(7).display_value(), "7");
+        assert_eq!(Literal::Float(1.5).display_value(), "1.5");
+        assert_eq!(Literal::String("'x'".into()).display_value(), "'x'");
+        assert_eq!(Literal::Bool(true).display_value(), "true");
+        assert_eq!(Literal::Null.display_value(), "NULL");
     }
 
-    /// Direct unit test for literal_compare's reachable arms — lock
-    /// the Float/Float, Int/Float, Float/Int, Bool/Bool, String/String
-    /// behaviour and the mixed-type None fallthrough.
+    /// Lock every reachable arm of `Literal::cmp_value` (the unified
+    /// CHECK comparator) — `Integer/Integer`, `Float/Float`,
+    /// `Integer/Float`, `Float/Integer`, `String/String`, `Bool/Bool`,
+    /// and the mixed-type / Null silent-`None` fallthrough.
     #[test]
-    fn literal_compare_covers_all_reachable_arms() {
+    fn cmp_value_covers_all_reachable_arms() {
         use std::cmp::Ordering;
         assert_eq!(
-            literal_compare(&Literal::Integer(1), &Literal::Integer(2)),
+            Literal::Integer(1).cmp_value(&Literal::Integer(2)),
             Some(Ordering::Less)
         );
         assert_eq!(
-            literal_compare(&Literal::Float(1.0), &Literal::Float(2.0)),
+            Literal::Float(1.0).cmp_value(&Literal::Float(2.0)),
             Some(Ordering::Less)
         );
         assert_eq!(
-            literal_compare(&Literal::Integer(1), &Literal::Float(2.0)),
+            Literal::Integer(1).cmp_value(&Literal::Float(2.0)),
             Some(Ordering::Less)
         );
         assert_eq!(
-            literal_compare(&Literal::Float(2.0), &Literal::Integer(1)),
+            Literal::Float(2.0).cmp_value(&Literal::Integer(1)),
             Some(Ordering::Greater)
         );
         assert_eq!(
-            literal_compare(&Literal::String("a".into()), &Literal::String("b".into())),
+            Literal::String("a".into()).cmp_value(&Literal::String("b".into())),
             Some(Ordering::Less)
         );
         assert_eq!(
-            literal_compare(&Literal::Bool(false), &Literal::Bool(true)),
+            Literal::Bool(false).cmp_value(&Literal::Bool(true)),
             Some(Ordering::Less)
         );
         // Mixed-type returns None.
-        assert!(literal_compare(&Literal::Integer(1), &Literal::String("a".into())).is_none());
-        assert!(literal_compare(&Literal::Null, &Literal::Integer(1)).is_none());
+        assert!(
+            Literal::Integer(1)
+                .cmp_value(&Literal::String("a".into()))
+                .is_none()
+        );
+        assert!(Literal::Null.cmp_value(&Literal::Integer(1)).is_none());
     }
 
     /// L238: `_ => false,` inside the (lower_op, upper_op) match.
@@ -891,11 +857,10 @@ mod tests {
         );
     }
 
-    /// L254 / L257 `return None;` `let-else` guards inside
-    /// is_null_vs_other are provably unreachable: the outer match at
-    /// L248-252 already restricts (a, b) to (IsNull, Compare) or
-    /// (Compare, IsNull). After normalisation, the destructuring let
-    /// patterns cannot fail. Direct unit-test pins this invariant.
+    /// is_null_vs_other normalises (a, b) to (IsNull, Compare) ordering
+    /// and returns the structural facts (negated flag, op, literal)
+    /// without formatting. Direct unit-test pins both orderings and the
+    /// `_ => None` fallthrough.
     #[test]
     fn is_null_vs_other_normalises_both_orderings() {
         let isnull = CheckExpr::IsNull {
@@ -908,18 +873,18 @@ mod tests {
             value: Literal::Integer(5),
         };
         // (IsNull, Compare) order
-        let res = is_null_vs_other("x", &isnull, &compare);
-        assert!(res.is_some());
-        // (Compare, IsNull) order — swap arm at L250
-        let res = is_null_vs_other("x", &compare, &isnull);
-        assert!(res.is_some());
+        let res = is_null_vs_other(&isnull, &compare);
+        assert_eq!(res, Some((false, Op::Eq, &Literal::Integer(5))));
+        // (Compare, IsNull) order — swap arm
+        let res = is_null_vs_other(&compare, &isnull);
+        assert_eq!(res, Some((false, Op::Eq, &Literal::Integer(5))));
         // Neither is IsNull/Compare combo — None via the `_ => None` arm
         let in_expr = CheckExpr::In {
             column: "x".into(),
             values: vec![Literal::Integer(1)],
             negated: false,
         };
-        assert!(is_null_vs_other("x", &compare, &in_expr).is_none());
+        assert!(is_null_vs_other(&compare, &in_expr).is_none());
     }
 
     // ── Coverage-closure: defensive arms in find_contradiction & friends ──
@@ -970,10 +935,10 @@ mod tests {
             column: "d".into(),
             negated: false,
         };
-        assert_eq!(predicate_column(&cmp).as_deref(), Some("a"));
-        assert_eq!(predicate_column(&in_e).as_deref(), Some("b"));
-        assert_eq!(predicate_column(&bw).as_deref(), Some("c"));
-        assert_eq!(predicate_column(&isn).as_deref(), Some("d"));
+        assert_eq!(predicate_column(&cmp), Some("a"));
+        assert_eq!(predicate_column(&in_e), Some("b"));
+        assert_eq!(predicate_column(&bw), Some("c"));
+        assert_eq!(predicate_column(&isn), Some("d"));
         // `_ => None`: And node.
         let and = CheckExpr::And(vec![cmp.clone()]);
         assert!(predicate_column(&and).is_none());

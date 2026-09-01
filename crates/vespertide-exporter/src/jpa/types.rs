@@ -16,12 +16,6 @@ pub(super) struct UsedImports {
 }
 
 impl UsedImports {
-    pub(super) fn merge(&mut self, other: Self) {
-        self.java_time_types.extend(other.java_time_types);
-        self.needs_uuid |= other.needs_uuid;
-        self.needs_big_decimal |= other.needs_big_decimal;
-    }
-
     pub(super) fn add_column_type(&mut self, col_type: &ColumnType) {
         match col_type {
             ColumnType::Simple(ty) => match ty {

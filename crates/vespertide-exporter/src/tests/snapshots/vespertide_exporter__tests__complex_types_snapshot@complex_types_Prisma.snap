@@ -1,0 +1,14 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 143
+expression: rendered
+---
+model ComplexTypes {
+  id Int @id
+  varchar_col String
+  char_col String
+  numeric_col Decimal
+  custom_col Unsupported("CUSTOM_TYPE")
+
+  @@map("complex_types")
+}

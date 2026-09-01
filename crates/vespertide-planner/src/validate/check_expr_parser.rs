@@ -124,6 +124,76 @@ pub enum Literal {
     Null,
 }
 
+impl Literal {
+    /// Total/partial order over comparable literal kinds.
+    ///
+    /// Returns `None` for mixed-kind pairs or anything involving `Null`
+    /// where no answer is sound. The conservative behaviour (silent-pass
+    /// on ambiguity) is shared by every CHECK validator that needs to
+    /// reason about ordering — F-novel-1 (self-contradiction), F29
+    /// (strengthening), and any future caller. Single source of truth for
+    /// `(Integer, Integer)` / `(Float, Float)` / mixed numeric /
+    /// `(String, String)` / `(Bool, Bool)` orderings.
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "shared CHECK comparator: rounding integers beyond 2^53 acceptable; conservative comparator silently skips ambiguous cases"
+    )]
+    #[must_use]
+    pub(super) fn cmp_value(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (Literal::Integer(a), Literal::Integer(b)) => Some(a.cmp(b)),
+            (Literal::Float(a), Literal::Float(b)) => a.partial_cmp(b),
+            (Literal::Integer(a), Literal::Float(b)) => (*a as f64).partial_cmp(b),
+            (Literal::Float(a), Literal::Integer(b)) => a.partial_cmp(&(*b as f64)),
+            (Literal::String(a), Literal::String(b)) => Some(a.cmp(b)),
+            (Literal::Bool(a), Literal::Bool(b)) => Some(a.cmp(b)),
+            // Mixed kinds / Null: cannot conclude.
+            _ => None,
+        }
+    }
+
+    /// Approximate literal equality: numeric literals compare across the
+    /// Integer/Float divide (`1` equals `1.0`) with epsilon tolerance for
+    /// floats. Deliberately distinct from `cmp_value(..) == Some(Equal)`,
+    /// which is exact — two floats less than `f64::EPSILON` apart are
+    /// `approx_eq` but not `cmp_value`-equal. Single source of truth for
+    /// `Literal`-vs-`Literal` equality across CHECK validators (F29
+    /// strengthening today; any future caller).
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "shared CHECK literal equality: rounding integers beyond 2^53 acceptable; conservative validators silently skip ambiguous cases"
+    )]
+    #[must_use]
+    pub(super) fn approx_eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Literal::Integer(x), Literal::Integer(y)) => x == y,
+            (Literal::Float(x), Literal::Float(y)) => (x - y).abs() < f64::EPSILON,
+            (Literal::Integer(x), Literal::Float(y)) => (*x as f64 - y).abs() < f64::EPSILON,
+            (Literal::Float(x), Literal::Integer(y)) => (x - *y as f64).abs() < f64::EPSILON,
+            (Literal::String(x), Literal::String(y)) => x == y,
+            (Literal::Bool(x), Literal::Bool(y)) => x == y,
+            (Literal::Null, Literal::Null) => true,
+            _ => false,
+        }
+    }
+
+    /// Render the literal as the canonical surface form used in CHECK
+    /// fault messages. `Null` renders as the SQL keyword `NULL`; every
+    /// other variant renders via its natural `Display` form. Single
+    /// source of truth for fault-message rendering across the
+    /// self-contradiction and type-mismatch validators.
+    #[must_use]
+    pub(super) fn display_value(&self) -> String {
+        match self {
+            Literal::Integer(i) => i.to_string(),
+            Literal::Float(f) => f.to_string(),
+            Literal::String(s) => s.clone(),
+            Literal::Bool(b) => b.to_string(),
+            Literal::Null => "NULL".to_string(),
+        }
+    }
+}
+
 // Bound recursive grouping so hostile CHECK strings cannot overflow
 // planner/LSP stacks; unsupported shapes conservatively become Unparseable.
 const MAX_CHECK_EXPR_DEPTH: usize = 64;
@@ -201,7 +271,7 @@ pub fn parse(expr: &str) -> CheckExpr {
     if trimmed.is_empty() {
         return CheckExpr::Unparseable;
     }
-    let Some(tokens) = tokenize(trimmed) else {
+    let Some(tokens) = tokenize_spanned(trimmed) else {
         return CheckExpr::Unparseable;
     };
     let mut parser = Parser {
@@ -420,10 +490,6 @@ fn tokenize_spanned(input: &str) -> Option<Vec<SpannedToken>> {
     Some(out)
 }
 
-fn tokenize(input: &str) -> Option<Vec<Token>> {
-    tokenize_spanned(input).map(|tokens| tokens.into_iter().map(|st| st.token).collect())
-}
-
 /// True when the next token sits in a position that may legally
 /// hold a literal (start of input, after an operator, after `(`,
 /// after `,`, after `BETWEEN`/`AND`/`OR`/`NOT`/`IN`/`IS`). Used to
@@ -458,24 +524,40 @@ fn parse_number_token(raw: &str) -> Option<Token> {
 }
 
 fn classify_word(word: &str) -> Token {
-    match word.to_ascii_uppercase().as_str() {
-        "AND" => Token::Keyword(Keyword::And),
-        "OR" => Token::Keyword(Keyword::Or),
-        "NOT" => Token::Keyword(Keyword::Not),
-        "IN" => Token::Keyword(Keyword::In),
-        "BETWEEN" => Token::Keyword(Keyword::Between),
-        "IS" => Token::Keyword(Keyword::Is),
-        "NULL" => Token::Keyword(Keyword::Null),
-        "TRUE" => Token::Keyword(Keyword::True),
-        "FALSE" => Token::Keyword(Keyword::False),
-        _ => Token::Ident(word.to_string()),
+    // Case-insensitive keyword recognition without allocating: identifiers
+    // (the common token) fall straight through to the `Token::Ident` arm with
+    // no `to_ascii_uppercase` String churn on the hot path.
+    if word.eq_ignore_ascii_case("AND") {
+        Token::Keyword(Keyword::And)
+    } else if word.eq_ignore_ascii_case("OR") {
+        Token::Keyword(Keyword::Or)
+    } else if word.eq_ignore_ascii_case("NOT") {
+        Token::Keyword(Keyword::Not)
+    } else if word.eq_ignore_ascii_case("IN") {
+        Token::Keyword(Keyword::In)
+    } else if word.eq_ignore_ascii_case("BETWEEN") {
+        Token::Keyword(Keyword::Between)
+    } else if word.eq_ignore_ascii_case("IS") {
+        Token::Keyword(Keyword::Is)
+    } else if word.eq_ignore_ascii_case("NULL") {
+        Token::Keyword(Keyword::Null)
+    } else if word.eq_ignore_ascii_case("TRUE") {
+        Token::Keyword(Keyword::True)
+    } else if word.eq_ignore_ascii_case("FALSE") {
+        Token::Keyword(Keyword::False)
+    } else {
+        Token::Ident(word.to_string())
     }
 }
 
 // -- Parser ----------------------------------------------------------------
 
 struct Parser {
-    tokens: Vec<Token>,
+    /// Spanned tokens straight from [`tokenize_spanned`] — the parser
+    /// only ever inspects `.token` (via [`Parser::peek`]), so holding the
+    /// spanned form avoids re-collecting a second span-stripped `Vec` on
+    /// every parse.
+    tokens: Vec<SpannedToken>,
     pos: usize,
     depth: usize,
 }
@@ -486,7 +568,7 @@ impl Parser {
     }
 
     fn peek(&self) -> Option<&Token> {
-        self.tokens.get(self.pos)
+        self.tokens.get(self.pos).map(|st| &st.token)
     }
 
     fn eat_keyword(&mut self, kw: Keyword) -> bool {

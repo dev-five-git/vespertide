@@ -1,0 +1,22 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlmodel import Field, SQLModel
+from sqlalchemy import UniqueConstraint
+
+
+class Membership(SQLModel, table=True):
+    __tablename__ = "membership"
+
+    x1tenant_id: int = Field(primary_key=True, sa_column_kwargs={"name": "1tenant_id"})
+    x2user_id: int = Field(primary_key=True, sa_column_kwargs={"name": "2user_id"})
+    user_email: str = Field(sa_column_kwargs={"name": "user-email"})
+    x3created: str = Field(index=True, sa_column_kwargs={"name": "3created"})
+
+    __table_args__ = (
+        UniqueConstraint("user-email", "1tenant_id"),
+    )

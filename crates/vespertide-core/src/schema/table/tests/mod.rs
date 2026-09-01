@@ -774,7 +774,7 @@ fn normalize_inline_unique_with_array_existing_constraint() {
     let unique_constraint = &normalized.constraints[0];
     assert!(matches!(
         unique_constraint,
-        TableConstraint::Unique { name: Some(n), columns: _, .. }
+        TableConstraint::Unique { name: Some(n), .. }
             if n == "uq_group"
     ));
     if let TableConstraint::Unique { columns, .. } = unique_constraint {

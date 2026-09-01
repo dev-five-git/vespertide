@@ -1,0 +1,23 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "src")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub a_id: i32,
+    pub b_id: i32,
+    pub solo: i32,
+    #[sea_orm(belongs_to, relation_enum = "A", from = "(a_id, b_id)", to = "(a, b)")]
+    pub target: HasOne<super::target::Entity>,
+    #[sea_orm(belongs_to, relation_enum = "Solo", from = "solo", to = "u")]
+    pub solo_1: HasOne<super::target::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "SrcSchema");
+impl ActiveModelBehavior for ActiveModel {}

@@ -1,0 +1,12 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model JsonStruct {
+  id Int
+  json_data Json
+  jsonb_data Unsupported("JSONB")
+  jsonb_nullable Unsupported("jsonb")?
+
+  @@map("json_struct")
+}

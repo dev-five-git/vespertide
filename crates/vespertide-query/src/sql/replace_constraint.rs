@@ -1,11 +1,8 @@
-use sea_query::{Alias, ForeignKey, Query, Table};
+use sea_query::{Alias, ForeignKey};
 
 use vespertide_core::{TableConstraint, TableDef};
 
-use super::helpers::{
-    build_sqlite_temp_table_create, recreate_indexes_after_rebuild, to_sea_fk_action,
-};
-use super::rename_table::build_rename_table;
+use super::helpers::{build_sqlite_table_rebuild, require_table_in_schema, to_sea_fk_action};
 use super::types::{BuiltQuery, DatabaseBackend};
 use crate::error::QueryError;
 
@@ -187,68 +184,28 @@ fn build_sqlite_constraint_replace(
     current_schema: &[TableDef],
     pending_constraints: &[TableConstraint],
 ) -> Result<Vec<BuiltQuery>, QueryError> {
-    let table_def = current_schema
-        .iter()
-        .find(|t| t.name == table)
-        .ok_or_else(|| {
-            QueryError::SchemaError(format!(
-                "Table '{table}' not found in current schema. SQLite requires current schema \
-                 information to replace constraints."
-            ))
-        })?;
+    let table_def = require_table_in_schema(
+        current_schema,
+        table,
+        "SQLite requires current schema information to replace constraints",
+    )?;
 
-    // Build new constraints: replace old constraint with new one
+    // Build new constraints: replace old constraint with new one.
     let new_constraints: Vec<TableConstraint> = table_def
         .constraints
         .iter()
         .map(|c| if c == from { to.clone() } else { c.clone() })
         .collect();
 
-    let temp_table = format!("{table}_temp");
-
-    // 1. Create temporary table with replaced constraint
-    let create_query = build_sqlite_temp_table_create(
+    Ok(build_sqlite_table_rebuild(
         backend,
-        &temp_table,
         table,
         &table_def.columns,
         &new_constraints,
-    );
-
-    // 2. Copy data (all columns)
-    let column_aliases: Vec<Alias> = table_def
-        .columns
-        .iter()
-        .map(|c| Alias::new(&c.name))
-        .collect();
-    let mut select_query = Query::select();
-    for col_alias in &column_aliases {
-        select_query.column(col_alias.clone());
-    }
-    select_query.from(Alias::new(table));
-
-    let insert_stmt = Query::insert()
-        .into_table(Alias::new(&temp_table))
-        .columns(column_aliases.clone())
-        .select_from(select_query)
-        .unwrap()
-        .to_owned();
-    let insert_query = BuiltQuery::Insert(Box::new(insert_stmt));
-
-    // 3. Drop original table
-    let drop_table = Table::drop().table(Alias::new(table)).to_owned();
-    let drop_query = BuiltQuery::DropTable(Box::new(drop_table));
-
-    // 4. Rename temporary table to original name
-    let rename_query = build_rename_table(&temp_table, table);
-
-    // 5. Recreate indexes (both regular and UNIQUE)
-    let index_queries =
-        recreate_indexes_after_rebuild(table, &table_def.constraints, pending_constraints);
-
-    let mut queries = vec![create_query, insert_query, drop_query, rename_query];
-    queries.extend(index_queries);
-    Ok(queries)
+        &table_def.columns,
+        &table_def.constraints,
+        pending_constraints,
+    ))
 }
 
 #[cfg(test)]

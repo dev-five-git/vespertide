@@ -1,0 +1,14 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 159
+expression: rendered
+---
+model Logs {
+  id Int @id @default(autoincrement())
+  active Boolean @default(true)
+  created_at DateTime @default(now())
+  score Float @default(1.5)
+  tag String @default(dbgenerated("UNKNOWN_EXPR"))
+
+  @@map("logs")
+}

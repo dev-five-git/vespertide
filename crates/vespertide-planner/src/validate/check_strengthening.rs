@@ -123,11 +123,21 @@ pub fn find_check_strengthenings(
     baseline: &[TableDef],
 ) -> Vec<CheckStrengtheningWarning> {
     let baseline_checks = build_baseline_check_map(baseline);
-    let removed_in_plan = build_removed_in_plan_map(plan);
+    // Running `(table, constraint_name) -> expr` map of Checks removed by an
+    // *earlier* action in the plan (module doc: an AddConstraint only pairs
+    // with a preceding RemoveConstraint, so an Add-before-Remove plan whose
+    // final state is "constraint removed" never warns).
+    let mut removed_in_plan: HashMap<(&str, &str), &str> = HashMap::new();
 
     let mut out = Vec::new();
     for (idx, action) in plan.actions.iter().enumerate() {
         match action {
+            MigrationAction::RemoveConstraint {
+                table,
+                constraint: TableConstraint::Check { name, expr, .. },
+            } => {
+                removed_in_plan.insert((table.as_str(), name.as_str()), expr.as_str());
+            }
             MigrationAction::ReplaceConstraint {
                 table,
                 from:
@@ -164,23 +174,23 @@ pub fn find_check_strengthenings(
                         ..
                     },
             } => {
-                let key = (table.to_string(), name.clone());
+                let key = (table.as_str(), name.as_str());
                 // Source 2: same-plan RemoveConstraint wins over baseline
                 // because it represents the user's *explicit* intent in
                 // this plan, while baseline match is inferred.
                 let old_expr_opt = removed_in_plan
                     .get(&key)
-                    .cloned()
-                    .or_else(|| baseline_checks.get(&key).cloned());
+                    .or_else(|| baseline_checks.get(&key))
+                    .copied();
                 let Some(old_expr) = old_expr_opt else {
                     continue;
                 };
-                if let Some(kind) = classify_strengthening(&old_expr, new_expr) {
+                if let Some(kind) = classify_strengthening(old_expr, new_expr) {
                     out.push(CheckStrengtheningWarning {
                         action_index: idx,
                         table: table.to_string(),
                         constraint_name: name.clone(),
-                        old_expr,
+                        old_expr: old_expr.to_string(),
                         new_expr: new_expr.clone(),
                         kind,
                     });
@@ -192,27 +202,16 @@ pub fn find_check_strengthenings(
     out
 }
 
-fn build_baseline_check_map(baseline: &[TableDef]) -> HashMap<(String, String), String> {
+/// Borrow-keyed `(table, constraint_name) -> expr` map over the baseline.
+/// Keys and values borrow the input; owned strings are produced only when
+/// a warning actually fires.
+fn build_baseline_check_map(baseline: &[TableDef]) -> HashMap<(&str, &str), &str> {
     let mut out = HashMap::new();
     for table in baseline {
         for constraint in &table.constraints {
             if let TableConstraint::Check { name, expr, .. } = constraint {
-                out.insert((table.name.to_string(), name.clone()), expr.clone());
+                out.insert((table.name.as_str(), name.as_str()), expr.as_str());
             }
-        }
-    }
-    out
-}
-
-fn build_removed_in_plan_map(plan: &MigrationPlan) -> HashMap<(String, String), String> {
-    let mut out = HashMap::new();
-    for action in &plan.actions {
-        if let MigrationAction::RemoveConstraint {
-            table,
-            constraint: TableConstraint::Check { name, expr, .. },
-        } = action
-        {
-            out.insert((table.to_string(), name.clone()), expr.clone());
         }
     }
     out
@@ -228,9 +227,15 @@ fn classify_strengthening(
     if old_expr_str.trim() == new_expr_str.trim() {
         return None;
     }
+    // Parse old first and short-circuit: when the old CHECK is outside
+    // the recognized grammar the classification is `None` regardless of
+    // the new expression, so its lex+parse is skipped entirely.
     let old = parse(old_expr_str);
+    if matches!(old, CheckExpr::Unparseable) {
+        return None;
+    }
     let new = parse(new_expr_str);
-    if matches!(old, CheckExpr::Unparseable) || matches!(new, CheckExpr::Unparseable) {
+    if matches!(new, CheckExpr::Unparseable) {
         return None;
     }
     if old == new {
@@ -326,12 +331,12 @@ fn compare_strictness(
     op2: Op,
     v2: &Literal,
 ) -> Option<CheckStrengtheningKind> {
-    if op1 == op2 && literal_equals(v1, v2) {
+    if op1 == op2 && v1.approx_eq(v2) {
         return None; // identical
     }
     // Same operator family, tighter literal:
     if op1 == op2 {
-        let cmp = literal_compare(v1, v2)?;
+        let cmp = v1.cmp_value(v2)?;
         let tighter = match op1 {
             Op::Gt | Op::Ge => cmp == Ordering::Less, // newer literal is larger
             Op::Lt | Op::Le => cmp == Ordering::Greater, // newer literal is smaller
@@ -345,7 +350,7 @@ fn compare_strictness(
         return None;
     }
     // Boundary operator tightening with same literal:
-    if literal_equals(v1, v2) {
+    if v1.approx_eq(v2) {
         match (op1, op2) {
             (Op::Ge, Op::Gt) | (Op::Le, Op::Lt) => {
                 return Some(CheckStrengtheningKind::OperatorTightened);
@@ -368,7 +373,7 @@ fn in_is_strict_subset(subset: &[Literal], superset: &[Literal]) -> bool {
     }
     subset
         .iter()
-        .all(|s| superset.iter().any(|o| literal_equals(s, o)))
+        .all(|s| superset.iter().any(|o| s.approx_eq(o)))
 }
 
 /// True when the new BETWEEN range is strictly inside the old range:
@@ -380,10 +385,10 @@ fn between_is_narrower(
     new_low: &Literal,
     new_high: &Literal,
 ) -> bool {
-    let Some(lo_cmp) = literal_compare(old_low, new_low) else {
+    let Some(lo_cmp) = old_low.cmp_value(new_low) else {
         return false;
     };
-    let Some(hi_cmp) = literal_compare(old_high, new_high) else {
+    let Some(hi_cmp) = old_high.cmp_value(new_high) else {
         return false;
     };
     // old_low <= new_low (new low is tighter or equal)
@@ -394,50 +399,11 @@ fn between_is_narrower(
     lo_ok && hi_ok && any_strict
 }
 
-fn literal_equals(a: &Literal, b: &Literal) -> bool {
-    match (a, b) {
-        (Literal::Integer(x), Literal::Integer(y)) => x == y,
-        (Literal::Float(x), Literal::Float(y)) => (x - y).abs() < f64::EPSILON,
-        (Literal::Integer(x), Literal::Float(y)) => (i64_to_f64(*x) - y).abs() < f64::EPSILON,
-        (Literal::Float(x), Literal::Integer(y)) => (x - i64_to_f64(*y)).abs() < f64::EPSILON,
-        (Literal::String(x), Literal::String(y)) => x == y,
-        (Literal::Bool(x), Literal::Bool(y)) => x == y,
-        (Literal::Null, Literal::Null) => true,
-        _ => false,
-    }
-}
-
-fn literal_compare(a: &Literal, b: &Literal) -> Option<Ordering> {
-    match (a, b) {
-        (Literal::Integer(x), Literal::Integer(y)) => Some(x.cmp(y)),
-        (Literal::Float(x), Literal::Float(y)) => x.partial_cmp(y),
-        (Literal::Integer(x), Literal::Float(y)) => i64_to_f64(*x).partial_cmp(y),
-        (Literal::Float(x), Literal::Integer(y)) => x.partial_cmp(&i64_to_f64(*y)),
-        (Literal::String(x), Literal::String(y)) => Some(x.cmp(y)),
-        _ => None,
-    }
-}
-
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "F29 strictness comparison: rounding integers beyond 2^53 acceptable; F29 silent-passes on ambiguity"
-)]
-fn i64_to_f64(v: i64) -> f64 {
-    v as f64
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vespertide_core::{CheckViolationStrategy, MigrationAction, MigrationPlan, TableDef};
-
-    fn check(name: &str, expr: &str) -> TableConstraint {
-        TableConstraint::Check {
-            name: name.to_string(),
-            expr: expr.to_string(),
-            strategy: CheckViolationStrategy::default(),
-        }
-    }
+    use crate::test_support::{add_check, check, plan};
+    use vespertide_core::{MigrationAction, TableDef};
 
     fn baseline_with_check(table: &str, name: &str, expr: &str) -> Vec<TableDef> {
         vec![TableDef {
@@ -446,23 +412,6 @@ mod tests {
             columns: Vec::new(),
             constraints: vec![check(name, expr)],
         }]
-    }
-
-    fn plan(actions: Vec<MigrationAction>) -> MigrationPlan {
-        MigrationPlan {
-            id: String::new(),
-            comment: None,
-            created_at: None,
-            version: 0,
-            actions,
-        }
-    }
-
-    fn add_check(table: &str, name: &str, expr: &str) -> MigrationAction {
-        MigrationAction::AddConstraint {
-            table: table.into(),
-            constraint: check(name, expr),
-        }
     }
 
     fn remove_check(table: &str, name: &str, expr: &str) -> MigrationAction {
@@ -823,6 +772,19 @@ mod tests {
         assert_eq!(warnings[0].kind, CheckStrengtheningKind::BoundaryTightened);
     }
 
+    /// Action order matters: an `AddConstraint` only pairs with an *earlier*
+    /// `RemoveConstraint` (module doc, source 2). Add-before-Remove means the
+    /// plan's final state is "constraint removed" — no strengthening warning.
+    #[test]
+    fn add_then_remove_same_name_does_not_warn() {
+        let p = plan(vec![
+            add_check("t", "chk_age", "age > 18"),
+            remove_check("t", "chk_age", "age > 0"),
+        ]);
+        let warnings = find_check_strengthenings(&p, &[]);
+        assert!(warnings.is_empty());
+    }
+
     // -- Conservative behaviour ------------------------------------------
 
     #[test]
@@ -1090,29 +1052,22 @@ mod tests {
         assert_eq!(warnings[0].kind, CheckStrengtheningKind::BoundaryTightened);
     }
 
-    /// L276-280: literal_equals — direct unit test pinning every
-    /// reachable arm including Bool/Bool (L279) and Null/Null (L280).
-    /// L297-298 `i64_to_f64` is exercised via L276-277 (Int/Float
-    /// cross-arms).
+    /// `Literal::approx_eq` (the shared epsilon literal-equality SoT in
+    /// `check_expr_parser`) — direct unit test pinning every reachable
+    /// arm including Bool/Bool, Null/Null, and the Int/Float cross-arms.
     #[test]
-    fn literal_equals_covers_all_reachable_arms() {
-        assert!(literal_equals(&Literal::Integer(5), &Literal::Integer(5)));
-        assert!(literal_equals(&Literal::Float(1.5), &Literal::Float(1.5)));
-        // Cross-numeric arms (L276-277) exercise i64_to_f64 (L297-298).
-        assert!(literal_equals(&Literal::Integer(5), &Literal::Float(5.0)));
-        assert!(literal_equals(&Literal::Float(5.0), &Literal::Integer(5)));
-        assert!(literal_equals(
-            &Literal::String("a".into()),
-            &Literal::String("a".into())
-        ));
-        assert!(literal_equals(&Literal::Bool(true), &Literal::Bool(true)));
-        assert!(literal_equals(&Literal::Null, &Literal::Null));
+    fn literal_approx_eq_covers_all_reachable_arms() {
+        assert!(Literal::Integer(5).approx_eq(&Literal::Integer(5)));
+        assert!(Literal::Float(1.5).approx_eq(&Literal::Float(1.5)));
+        // Cross-numeric arms exercise the i64 → f64 epsilon comparison.
+        assert!(Literal::Integer(5).approx_eq(&Literal::Float(5.0)));
+        assert!(Literal::Float(5.0).approx_eq(&Literal::Integer(5)));
+        assert!(Literal::String("a".into()).approx_eq(&Literal::String("a".into())));
+        assert!(Literal::Bool(true).approx_eq(&Literal::Bool(true)));
+        assert!(Literal::Null.approx_eq(&Literal::Null));
         // Mixed-type fallthrough returns false.
-        assert!(!literal_equals(
-            &Literal::Integer(1),
-            &Literal::String("1".into())
-        ));
-        assert!(!literal_equals(&Literal::Bool(true), &Literal::Null));
+        assert!(!Literal::Integer(1).approx_eq(&Literal::String("1".into())));
+        assert!(!Literal::Bool(true).approx_eq(&Literal::Null));
     }
 
     /// L249: `if subset.is_empty() { return false; }` is a defensive

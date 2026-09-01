@@ -7,11 +7,20 @@ Core data structures for schema definition and migration planning.
 ```
 src/
 ├── lib.rs              # Re-exports all public types
-├── action.rs           # MigrationAction (14 variants), MigrationPlan (1236 lines; scheduled split)
+├── action/             # MigrationAction (15 variants), MigrationPlan
+│   ├── mod.rs          #   Variant definitions + plan struct (937 lines)
+│   ├── display.rs      #   Human-readable rendering of actions
+│   ├── prefix.rs       #   Table-name prefixing (uses TableName::with_prefix)
+│   ├── narrowing_strategy.rs # Type-narrowing strategy enum + helpers
+│   └── remap_mapping_serde.rs # RemapEnumValues mapping (de)serialization
 ├── migration.rs        # MigrationError, MigrationOptions
 └── schema/
     ├── column.rs       # ColumnDef, ColumnType, SimpleColumnType, ComplexColumnType
-    ├── table.rs        # TableDef, normalize() method
+    ├── table/          # TableDef + normalize()
+    │   ├── mod.rs      #   TableDef definition + re-exports (49 lines)
+    │   ├── normalize.rs#   Inline→table-level constraint conversion
+    │   ├── normalize_proptest.rs # Property-based tests for normalize()
+    │   └── validation.rs # Structural validation (duplicate columns, etc.)
     ├── constraint.rs   # TableConstraint (5 variants)
     ├── foreign_key.rs  # ForeignKeySyntax for inline FK definition
     ├── primary_key.rs  # PrimaryKeySyntax, PrimaryKeyDef
@@ -72,5 +81,5 @@ MigrationAction::AddColumn { table, column, fill_with }
 - Model and migration serialization supports both JSON and YAML.
 - Prefer typed `MigrationAction` enums; `MigrationAction::RawSql` exists as a documented emergency escape hatch, but is not recommended for normal use.
 - Shared proptest strategies live behind the `arbitrary` feature. Run property tests with `cargo test -p vespertide-core --features arbitrary`.
-- Every `.rs` file must stay ≤ 1000 lines (CI enforced); current hotspots include `action.rs` (1236 lines) and `schema/table.rs` (1526 lines).
+- Every production-only `.rs` file must stay ≤ 1000 lines, files carrying inline `#[cfg(test)] mod tests` ≤ 1200 lines (CI enforced via `scripts/check-line-budget.sh`); the current `action/mod.rs` (937 lines) is the near-ceiling file in this crate. `action.rs` and `schema/table.rs` were already split into the directories shown above.
 - Workspace lints warn on unsafe code and Clippy all: `unsafe_code = "warn"`, `clippy::all = { level = "warn", priority = -1 }`.

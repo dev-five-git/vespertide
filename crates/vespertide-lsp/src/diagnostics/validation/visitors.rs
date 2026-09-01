@@ -4,8 +4,9 @@ use crate::diagnostics::{DomainDiagnostic, Severity};
 use super::types::find_value_for_key;
 use super::types::{
     EnumValueDescriptor, KNOWN_SIMPLE_TYPES, collect_enum_value_descriptors, find_pair_with_key,
-    is_pair_node, pair_key_text, scalar_text, strip_quotes_str, unwrap_yaml_node,
+    pair_key_text, scalar_text, strip_quotes_str, unwrap_yaml_node,
 };
+use crate::tree_util::is_pair;
 
 pub(in crate::diagnostics) fn collect_all(
     tree: &tree_sitter::Tree,
@@ -92,7 +93,7 @@ impl<'source, 'tree> FusedCollector<'source, 'tree> {
         node: tree_sitter::Node<'tree>,
     ) -> Option<tree_sitter::Node<'tree>> {
         if self.columns.is_some()
-            || !is_pair_node(node)
+            || !is_pair(node)
             || pair_key_text(node, self.source).is_none_or(|key| key != "columns")
         {
             return None;
@@ -101,50 +102,6 @@ impl<'source, 'tree> FusedCollector<'source, 'tree> {
         let value = node.named_child(1)?;
         self.columns = Some(value);
         Some(value)
-    }
-}
-
-#[cfg(test)]
-pub(in crate::diagnostics) fn collect_syntax_errors(
-    tree: &tree_sitter::Tree,
-    out: &mut Vec<DomainDiagnostic>,
-) {
-    let root = tree.root_node();
-    if root.has_error() {
-        walk_for_errors(root, out);
-    }
-}
-
-/// Tree-sitter-based pre-pass that flags unknown column types with a
-/// precise byte range pointing at the offending `type` value. Runs before
-/// serde so users see the squiggle on the right line even when serde's
-/// untagged-enum error reports a misleading position.
-#[cfg(test)]
-pub(in crate::diagnostics) fn collect_unknown_column_types(
-    tree: &tree_sitter::Tree,
-    source: &str,
-    out: &mut Vec<DomainDiagnostic>,
-) {
-    let source_bytes = source.as_bytes();
-    let Some(columns) = find_value_for_key(tree.root_node(), source_bytes, "columns") else {
-        return;
-    };
-
-    walk_column_objects(columns, source_bytes, out);
-}
-
-#[cfg(test)]
-fn walk_column_objects(
-    node: tree_sitter::Node<'_>,
-    source: &[u8],
-    out: &mut Vec<DomainDiagnostic>,
-) {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if matches!(child.kind(), "object" | "block_mapping") {
-            inspect_column_type(child, source, out);
-        }
-        walk_column_objects(child, source, out);
     }
 }
 
@@ -184,31 +141,6 @@ fn inspect_column_type(
                 });
             }
         }
-    }
-}
-
-/// Tree-sitter-based pre-pass that flags two columns sharing a `name`.
-/// Pinpoints the SECOND (and later) occurrence so the user sees the
-/// squiggle on the offending column, not on the table.
-///
-/// Critically, we visit ONLY the direct elements of the `columns` array.
-/// A naive recursive walk would dive into nested objects (e.g. integer
-/// enum members like `{"name":"low","value":0}` inside `type.values`) and
-/// mistakenly compare their `name` against the column names.
-#[cfg(test)]
-pub(in crate::diagnostics) fn collect_duplicate_column_names(
-    tree: &tree_sitter::Tree,
-    source: &str,
-    out: &mut Vec<DomainDiagnostic>,
-) {
-    let source_bytes = source.as_bytes();
-    let Some(columns_raw) = find_value_for_key(tree.root_node(), source_bytes, "columns") else {
-        return;
-    };
-
-    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    for column in direct_column_objects(columns_raw) {
-        inspect_column_name(column, source_bytes, &mut seen, out);
     }
 }
 
@@ -268,47 +200,6 @@ fn inspect_column_name(
                 });
             }
         }
-    }
-}
-
-/// Tree-sitter-based pre-pass for COMPLEX (object-form) column types.
-///
-/// Catches things serde either silently allows or reports at a misleading
-/// byte position:
-///   * `kind` is missing / empty / unknown.
-///   * `varchar` / `char` without `length`.
-///   * `numeric` without `precision` or `scale`.
-///   * `enum` without `name`, without `values`, with an empty `values`, or
-///     with duplicate string variants / duplicate integer variant names.
-///   * `custom` without `custom_type`.
-///
-/// Each diagnostic gets a precise byte range covering the offending pair so
-/// the squiggle lands on the right line.
-#[cfg(test)]
-pub(in crate::diagnostics) fn collect_complex_type_violations(
-    tree: &tree_sitter::Tree,
-    source: &str,
-    out: &mut Vec<DomainDiagnostic>,
-) {
-    let source_bytes = source.as_bytes();
-    let Some(columns) = find_value_for_key(tree.root_node(), source_bytes, "columns") else {
-        return;
-    };
-    walk_columns_for_complex_type(columns, source_bytes, out);
-}
-
-#[cfg(test)]
-fn walk_columns_for_complex_type(
-    node: tree_sitter::Node<'_>,
-    source: &[u8],
-    out: &mut Vec<DomainDiagnostic>,
-) {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if matches!(child.kind(), "object" | "block_mapping") {
-            inspect_complex_type(child, source, out);
-        }
-        walk_columns_for_complex_type(child, source, out);
     }
 }
 
@@ -439,8 +330,12 @@ fn check_enum_shape(
         return;
     }
 
-    let values_pair = values_pair.unwrap();
-    if let Some(values_value_raw) = values_pair.named_child(1) {
+    // `missing` is empty here, so the `values_pair.is_none()` branch above did
+    // not fire and the pair is present. Folded into the `named_child` let-chain
+    // rather than a `let ... else`, whose `else` arm would be unreachable.
+    if let Some(values_pair) = values_pair
+        && let Some(values_value_raw) = values_pair.named_child(1)
+    {
         let values_value = unwrap_yaml_node(values_value_raw);
         if !matches!(
             values_value.kind(),
@@ -535,31 +430,142 @@ fn push_complex(
 }
 
 #[cfg(test)]
-fn walk_for_errors(node: tree_sitter::Node<'_>, out: &mut Vec<DomainDiagnostic>) {
-    if node.is_error() || node.is_missing() {
-        out.push(DomainDiagnostic {
-            byte_range: node.byte_range(),
-            severity: Severity::Error,
-            message: if node.is_missing() {
-                format!("Missing {}", node.kind())
-            } else {
-                "Syntax error".to_string()
-            },
-            code: "syntax-error".to_string(),
-        });
-        return;
-    }
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        walk_for_errors(child, out);
-    }
-}
-
-#[cfg(test)]
-mod tests {
+pub(in crate::diagnostics) mod tests {
     use super::*;
     use crate::test_support::parse_json as parse;
+
+    #[cfg(test)]
+    pub(in crate::diagnostics) fn collect_syntax_errors(
+        tree: &tree_sitter::Tree,
+        out: &mut Vec<DomainDiagnostic>,
+    ) {
+        let root = tree.root_node();
+        if root.has_error() {
+            walk_for_errors(root, out);
+        }
+    }
+
+    /// Tree-sitter-based pre-pass that flags unknown column types with a
+    /// precise byte range pointing at the offending `type` value. Runs before
+    /// serde so users see the squiggle on the right line even when serde's
+    /// untagged-enum error reports a misleading position.
+    #[cfg(test)]
+    pub(in crate::diagnostics) fn collect_unknown_column_types(
+        tree: &tree_sitter::Tree,
+        source: &str,
+        out: &mut Vec<DomainDiagnostic>,
+    ) {
+        let source_bytes = source.as_bytes();
+        let Some(columns) = find_value_for_key(tree.root_node(), source_bytes, "columns") else {
+            return;
+        };
+
+        walk_column_objects(columns, source_bytes, out);
+    }
+
+    #[cfg(test)]
+    fn walk_column_objects(
+        node: tree_sitter::Node<'_>,
+        source: &[u8],
+        out: &mut Vec<DomainDiagnostic>,
+    ) {
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if matches!(child.kind(), "object" | "block_mapping") {
+                inspect_column_type(child, source, out);
+            }
+            walk_column_objects(child, source, out);
+        }
+    }
+
+    /// Tree-sitter-based pre-pass that flags two columns sharing a `name`.
+    /// Pinpoints the SECOND (and later) occurrence so the user sees the
+    /// squiggle on the offending column, not on the table.
+    ///
+    /// Critically, we visit ONLY the direct elements of the `columns` array.
+    /// A naive recursive walk would dive into nested objects (e.g. integer
+    /// enum members like `{"name":"low","value":0}` inside `type.values`) and
+    /// mistakenly compare their `name` against the column names.
+    #[cfg(test)]
+    pub(in crate::diagnostics) fn collect_duplicate_column_names(
+        tree: &tree_sitter::Tree,
+        source: &str,
+        out: &mut Vec<DomainDiagnostic>,
+    ) {
+        let source_bytes = source.as_bytes();
+        let Some(columns_raw) = find_value_for_key(tree.root_node(), source_bytes, "columns")
+        else {
+            return;
+        };
+
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for column in direct_column_objects(columns_raw) {
+            inspect_column_name(column, source_bytes, &mut seen, out);
+        }
+    }
+
+    /// Tree-sitter-based pre-pass for COMPLEX (object-form) column types.
+    ///
+    /// Catches things serde either silently allows or reports at a misleading
+    /// byte position:
+    ///   * `kind` is missing / empty / unknown.
+    ///   * `varchar` / `char` without `length`.
+    ///   * `numeric` without `precision` or `scale`.
+    ///   * `enum` without `name`, without `values`, with an empty `values`, or
+    ///     with duplicate string variants / duplicate integer variant names.
+    ///   * `custom` without `custom_type`.
+    ///
+    /// Each diagnostic gets a precise byte range covering the offending pair so
+    /// the squiggle lands on the right line.
+    #[cfg(test)]
+    pub(in crate::diagnostics) fn collect_complex_type_violations(
+        tree: &tree_sitter::Tree,
+        source: &str,
+        out: &mut Vec<DomainDiagnostic>,
+    ) {
+        let source_bytes = source.as_bytes();
+        let Some(columns) = find_value_for_key(tree.root_node(), source_bytes, "columns") else {
+            return;
+        };
+        walk_columns_for_complex_type(columns, source_bytes, out);
+    }
+
+    #[cfg(test)]
+    fn walk_columns_for_complex_type(
+        node: tree_sitter::Node<'_>,
+        source: &[u8],
+        out: &mut Vec<DomainDiagnostic>,
+    ) {
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if matches!(child.kind(), "object" | "block_mapping") {
+                inspect_complex_type(child, source, out);
+            }
+            walk_columns_for_complex_type(child, source, out);
+        }
+    }
+
+    #[cfg(test)]
+    fn walk_for_errors(node: tree_sitter::Node<'_>, out: &mut Vec<DomainDiagnostic>) {
+        if node.is_error() || node.is_missing() {
+            out.push(DomainDiagnostic {
+                byte_range: node.byte_range(),
+                severity: Severity::Error,
+                message: if node.is_missing() {
+                    format!("Missing {}", node.kind())
+                } else {
+                    "Syntax error".to_string()
+                },
+                code: "syntax-error".to_string(),
+            });
+            return;
+        }
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            walk_for_errors(child, out);
+        }
+    }
 
     fn first_column<'tree>(
         tree: &'tree tree_sitter::Tree,
@@ -726,6 +732,25 @@ mod tests {
             out.iter()
                 .any(|diag| diag.message.contains("requires field: name")),
             "got: {out:?}"
+        );
+    }
+
+    /// Every other `collect_complex_type_violations` test above feeds JSON, so
+    /// `walk_columns_for_complex_type` only ever matched the `"object"` arm and
+    /// its `"block_mapping"` sibling — the YAML shape — was never taken. Models
+    /// are a first-class YAML format, so the walker has to be exercised on a
+    /// `block_mapping` tree too.
+    #[test]
+    fn complex_type_walk_reaches_yaml_block_mapping_columns() {
+        let src = "name: u\ncolumns:\n  - name: c\n    type:\n      kind: custom\n";
+        let tree = crate::test_support::parse_yaml(src);
+        let mut out = Vec::new();
+
+        collect_complex_type_violations(&tree, src, &mut out);
+
+        assert!(
+            out.iter().any(|diag| diag.message.contains("custom_type")),
+            "YAML block_mapping column should reach inspect_complex_type; got: {out:?}"
         );
     }
 

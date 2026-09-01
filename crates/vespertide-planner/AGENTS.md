@@ -6,9 +6,20 @@ Schema diffing engine - compares baseline vs target schema to emit typed migrati
 
 ```
 src/
-├── diff.rs      # 4739 lines, scheduled for split - Schema comparison, topological sort
-├── validate.rs  # 2299 lines, scheduled for split - Schema/plan validation
-├── apply.rs     # 1617 lines, scheduled for split - Apply actions to in-memory schema
+├── diff/        # Schema comparison, topological sort
+│   ├── mod.rs   #   Public entry diff_schemas() (91 lines)
+│   ├── tables.rs#   CreateTable / DeleteTable detection
+│   ├── columns.rs#  Column-level add/modify/delete diffing
+│   ├── constraints.rs # PK / Unique / FK / Check / Index diffing
+│   └── ordering.rs # Topological sort by FK dependencies (Kahn's algorithm)
+├── validate/    # Schema/plan validation (mod.rs 67 lines + 24 per-fault validator modules)
+├── apply/       # Apply actions to in-memory schema
+│   ├── mod.rs   #   Public entry apply_action() (76 lines)
+│   ├── column_ops.rs   # AddColumn / RenameColumn / DeleteColumn / ModifyColumn*
+│   ├── constraint_ops.rs # AddConstraint / RemoveConstraint / ReplaceConstraint
+│   ├── table_ops.rs    # CreateTable / DeleteTable / RenameTable
+│   └── raw_sql.rs      # RawSql no-op (opaque to baseline replay)
+├── drop_resolution.rs  # Interactive rename-vs-drop resolution for DeleteColumn/Table
 ├── schema.rs    # Replay migrations → baseline schema
 ├── plan.rs      # High-level planning API
 └── error.rs     # PlannerError enum
@@ -18,12 +29,12 @@ src/
 
 | Task | File | Key Functions |
 |------|------|---------------|
-| Compare schemas | `diff.rs` | `diff_schemas()` |
+| Compare schemas | `diff/mod.rs` | `diff_schemas()` |
 | Replay migrations | `schema.rs` | `schema_from_plans()` |
 | One-shot planning | `plan.rs` | `plan_next_migration()` |
-| Apply single action | `apply.rs` | `apply_action()` |
-| Validate schema | `validate.rs` | `validate_schema()`, `validate_migration_plan()` |
-| FK dependency sort | `diff.rs` | `topological_sort_tables()`, `sort_delete_tables()` |
+| Apply single action | `apply/mod.rs` | `apply_action()` |
+| Validate schema | `validate/mod.rs` | `validate_schema()`, `validate_migration_plan()` |
+| FK dependency sort | `diff/ordering.rs` | `topological_sort_tables()`, `sort_delete_tables()` |
 
 ## ALGORITHM NOTES
 
@@ -87,5 +98,5 @@ Statically analysable faults that **are** detected here:
 
 - YAML and JSON are both fully supported for models and migrations.
 - Prefer typed `MigrationAction` enums; `RawSql` exists as a documented emergency escape hatch, but is opaque to baseline replay and not recommended for normal use.
-- Every `.rs` file must stay ≤ 1000 lines (CI enforced); current planner hotspots are `diff.rs` (4739), `validate.rs` (2299), and `apply.rs` (1617).
+- Two-tier line policy (CI-enforced via `scripts/check-line-budget.sh`): production-only `.rs` ≤ 1000 lines, files carrying inline `#[cfg(test)] mod tests` ≤ 1200 lines. The previously oversized `diff.rs`, `validate.rs`, and `apply.rs` have all been split into the directories shown above; the near-ceiling files now are `validate/check_expr_parser.rs` (~1199 lines, inline tests) and `drop_resolution.rs` (~1186 lines, inline tests).
 - Workspace lints warn on unsafe code and Clippy all: `unsafe_code = "warn"`, `clippy::all = { level = "warn", priority = -1 }`.

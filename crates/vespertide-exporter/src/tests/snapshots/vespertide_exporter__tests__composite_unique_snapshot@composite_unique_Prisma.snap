@@ -1,0 +1,12 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model CompositeUnique {
+  id Int @id
+  tenant_id Int
+  name String
+
+  @@unique([tenant_id, name], map: "uq_composite_unique__uq_tenant_name")
+  @@map("composite_unique")
+}

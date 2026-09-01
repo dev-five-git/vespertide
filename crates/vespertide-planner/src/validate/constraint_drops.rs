@@ -16,7 +16,10 @@
 //! `ReplaceConstraint` is the explicit "I am swapping this constraint for
 //! another" action and is therefore considered safe.
 
-use vespertide_core::{ConstraintKind, MigrationAction, MigrationPlan, TableConstraint};
+use vespertide_core::{
+    ConstraintKind, MigrationAction, MigrationPlan, TableConstraint,
+    schema::names::join_column_names,
+};
 
 /// One `RemoveConstraint` action that drops an integrity-preserving
 /// constraint with no `ReplaceConstraint` counterpart in the same plan.
@@ -91,11 +94,11 @@ fn warning_for_action(idx: usize, action: &MigrationAction) -> Option<Constraint
 fn constraint_label(constraint: &TableConstraint) -> String {
     match constraint {
         TableConstraint::PrimaryKey { columns, .. } => {
-            format!("PRIMARY KEY ({})", join_columns(columns))
+            format!("PRIMARY KEY ({})", join_column_names(columns, ", "))
         }
         TableConstraint::Unique { name, columns, .. } => match name {
-            Some(n) => format!("{n} UNIQUE ({})", join_columns(columns)),
-            None => format!("UNIQUE ({})", join_columns(columns)),
+            Some(n) => format!("{n} UNIQUE ({})", join_column_names(columns, ", ")),
+            None => format!("UNIQUE ({})", join_column_names(columns, ", ")),
         },
         TableConstraint::ForeignKey {
             name,
@@ -103,26 +106,21 @@ fn constraint_label(constraint: &TableConstraint) -> String {
             ref_table,
             ..
         } => match name {
-            Some(n) => format!("{n} FK ({}) -> {ref_table}", join_columns(columns)),
-            None => format!("FK ({}) -> {ref_table}", join_columns(columns)),
+            Some(n) => format!(
+                "{n} FK ({}) -> {ref_table}",
+                join_column_names(columns, ", ")
+            ),
+            None => format!("FK ({}) -> {ref_table}", join_column_names(columns, ", ")),
         },
         TableConstraint::Check { name, expr, .. } => format!("{name} CHECK ({expr})"),
         TableConstraint::Index { name, columns } => match name {
-            Some(n) => format!("{n} INDEX ({})", join_columns(columns)),
-            None => format!("INDEX ({})", join_columns(columns)),
+            Some(n) => format!("{n} INDEX ({})", join_column_names(columns, ", ")),
+            None => format!("INDEX ({})", join_column_names(columns, ", ")),
         },
         // reason: unreachable - exhaustive over current TableConstraint variants; fallback required only for #[non_exhaustive] future variants
         #[cfg(not(tarpaulin_include))]
         _ => format!("{:?}", constraint.kind()),
     }
-}
-
-fn join_columns(columns: &[vespertide_core::ColumnName]) -> String {
-    columns
-        .iter()
-        .map(vespertide_core::ColumnName::as_str)
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 #[cfg(test)]
@@ -153,16 +151,6 @@ mod private_helpers {
             columns: vec!["email".into(), "tenant_id".into()],
         };
         assert_eq!(constraint_label(&c), "INDEX (email, tenant_id)");
-    }
-
-    /// `join_columns` over an empty slice returns the empty string
-    /// (covers the `Vec<_>::join` empty-input arm via every label that
-    /// uses zero columns, but the helper has its own trivial contract
-    /// worth pinning).
-    #[rstest]
-    fn join_columns_empty_returns_empty_string() {
-        let cols: Vec<vespertide_core::ColumnName> = vec![];
-        assert_eq!(join_columns(&cols), "");
     }
 
     #[rstest]

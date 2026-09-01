@@ -1,0 +1,24 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "1users")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    #[sea_orm(column_name = "1st_place")]
+    pub x1st_place: Option<i32>,
+    #[sea_orm(column_name = "user-id")]
+    pub user_id: Option<String>,
+    #[sea_orm(column_name = "1st_owner_id")]
+    pub x1st_owner_id: Option<i32>,
+    #[sea_orm(belongs_to, from = "x1st_owner_id", to = "id")]
+    pub x1st_owner: HasOne<super::x1users::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "1usersSchema");
+impl ActiveModelBehavior for ActiveModel {}

@@ -1,15 +1,15 @@
-use std::collections::{HashMap, HashSet};
-
 use super::enums::render_enum;
 use super::types::{UsedTypes, column_type_to_python, column_type_to_sqlalchemy};
 use crate::parallel_config::{
     PYTHON_EXPORT_PAR_TABLE_MIN_LEN, SQLALCHEMY_EXPORT_PAR_TABLE_THRESHOLD,
 };
+use crate::utils::common::{join_qualified_refs, join_quoted, push_attr};
 use crate::utils::python::collect_composite_fks;
 use rayon::prelude::*;
 use vespertide_core::schema::column::{ColumnType, ComplexColumnType, EnumValues};
 use vespertide_core::schema::constraint::TableConstraint;
 use vespertide_core::{ColumnDef, TableDef};
+use vespertide_naming::{IdentifierStart, sanitize_identifier};
 
 pub fn render_entity(table: &TableDef) -> Result<String, String> {
     let mut used_types = UsedTypes::default();
@@ -74,9 +74,12 @@ fn render_entity_part(table: &TableDef, used_types: &mut UsedTypes<'static>) -> 
 
     let composite_fks = collect_composite_fks(table);
 
+    // Collect single-column foreign key targets once; the import flag below and
+    // the per-column render lookups both read from this single scan.
+    let fk_info = crate::constraint_scan::single_column_fk_targets(&table.constraints);
+
     // Check for single-column foreign keys
-    let has_single_fk = table.constraints.iter().any(|c| matches!(c, TableConstraint::ForeignKey { columns, ref_columns, .. } if columns.len() == 1 && ref_columns.len() == 1));
-    if has_single_fk {
+    if !fk_info.is_empty() {
         used_types.sa_types.insert("ForeignKey");
     }
 
@@ -118,7 +121,9 @@ fn render_entity_part(table: &TableDef, used_types: &mut UsedTypes<'static>) -> 
     }
 
     // Class definition
-    let class_name = to_pascal_case(&table.name);
+    // `__tablename__` carries the table name, so the class name only has to be
+    // valid Python.
+    let class_name = sanitize_identifier(&to_pascal_case(&table.name), IdentifierStart::Underscore);
 
     // Add table description as docstring
     if let Some(ref desc) = table.description {
@@ -132,62 +137,10 @@ fn render_entity_part(table: &TableDef, used_types: &mut UsedTypes<'static>) -> 
     lines.push(String::new());
 
     // Collect primary key columns; lookup-only, ordering unused.
-    let pk_columns: HashSet<String> = table
-        .constraints
-        .iter()
-        .filter_map(|c| {
-            if let TableConstraint::PrimaryKey { columns, .. } = c {
-                Some(columns.clone())
-            } else {
-                None
-            }
-        })
-        .flatten()
-        .map(|col| col.to_string())
-        .collect();
+    let pk_columns = crate::constraint_scan::primary_key_columns(&table.constraints);
 
     // Collect unique columns (single-column unique constraints); lookup-only, ordering unused.
-    let unique_columns: HashSet<String> = table
-        .constraints
-        .iter()
-        .filter_map(|c| {
-            if let TableConstraint::Unique { columns, .. } = c {
-                if columns.len() == 1 {
-                    Some(columns[0].to_string())
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    // Collect foreign key info; lookup-only, ordering unused.
-    let fk_info: HashMap<String, (String, String)> = table
-        .constraints
-        .iter()
-        .filter_map(|c| {
-            if let TableConstraint::ForeignKey {
-                columns,
-                ref_table,
-                ref_columns,
-                ..
-            } = c
-            {
-                if columns.len() == 1 && ref_columns.len() == 1 {
-                    Some((
-                        columns[0].to_string(),
-                        (ref_table.to_string(), ref_columns[0].to_string()),
-                    ))
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        })
-        .collect();
+    let unique_columns = crate::constraint_scan::single_column_uniques(&table.constraints);
 
     // Render columns
     for col in &table.columns {
@@ -206,7 +159,7 @@ fn render_entity_part(table: &TableDef, used_types: &mut UsedTypes<'static>) -> 
         .iter()
         .filter_map(|c| {
             if let TableConstraint::Index { name, columns } = c {
-                Some((name.clone(), columns.clone()))
+                Some((name, columns))
             } else {
                 None
             }
@@ -220,7 +173,7 @@ fn render_entity_part(table: &TableDef, used_types: &mut UsedTypes<'static>) -> 
         .filter_map(|c| {
             if let TableConstraint::Unique { name, columns, .. } = c {
                 if columns.len() > 1 {
-                    Some((name.clone(), columns.clone()))
+                    Some((name, columns))
                 } else {
                     None
                 }
@@ -234,12 +187,8 @@ fn render_entity_part(table: &TableDef, used_types: &mut UsedTypes<'static>) -> 
         lines.push(String::new());
         lines.push("    __table_args__ = (".into());
 
-        for (name, columns) in &indexes {
-            let cols_str = columns
-                .iter()
-                .map(|c| format!("\"{c}\""))
-                .collect::<Vec<_>>()
-                .join(", ");
+        for &(name, columns) in &indexes {
+            let cols_str = join_quoted(columns);
             if let Some(idx_name) = name {
                 lines.push(format!("        Index(\"{idx_name}\", {cols_str}),"));
             } else {
@@ -247,12 +196,8 @@ fn render_entity_part(table: &TableDef, used_types: &mut UsedTypes<'static>) -> 
             }
         }
 
-        for (name, columns) in &composite_uniques {
-            let cols_str = columns
-                .iter()
-                .map(|c| format!("\"{c}\""))
-                .collect::<Vec<_>>()
-                .join(", ");
+        for &(name, columns) in &composite_uniques {
+            let cols_str = join_quoted(columns);
             if let Some(uq_name) = name {
                 lines.push(format!(
                     "        UniqueConstraint({cols_str}, name=\"{uq_name}\"),"
@@ -263,18 +208,8 @@ fn render_entity_part(table: &TableDef, used_types: &mut UsedTypes<'static>) -> 
         }
 
         for fk in &composite_fks {
-            let local_cols = fk
-                .local_cols
-                .iter()
-                .map(|col| format!("\"{col}\""))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let ref_cols = fk
-                .ref_cols
-                .iter()
-                .map(|col| format!("\"{}.{}\"", fk.ref_table, col))
-                .collect::<Vec<_>>()
-                .join(", ");
+            let local_cols = join_quoted(&fk.local_cols);
+            let ref_cols = join_qualified_refs(fk.ref_table, &fk.ref_cols);
             lines.push(format!(
                 "        ForeignKeyConstraint([{local_cols}], [{ref_cols}]),"
             ));
@@ -337,7 +272,7 @@ fn render_column(
     col: &ColumnDef,
     is_pk: bool,
     is_unique: bool,
-    fk_info: Option<&(String, String)>,
+    fk_info: Option<&(&str, &str)>,
 ) {
     // Add column comment
     if let Some(ref comment) = col.comment {
@@ -347,32 +282,42 @@ fn render_column(
     let python_type = column_type_to_python(&col.r#type, col.nullable);
     let sa_type = column_type_to_sqlalchemy(&col.r#type);
 
-    let mut attrs: Vec<String> = Vec::new();
+    // Build the comma-separated attribute list directly into one buffer
+    // (preserving the exact fragment order) instead of collecting a
+    // `Vec<String>` + `.join(", ")`.
+    let mut attrs = String::new();
 
     // Add SQLAlchemy type
-    attrs.push(sa_type);
+    push_attr(&mut attrs, &sa_type);
 
     // Foreign key
     if let Some((ref_table, ref_col)) = fk_info {
-        attrs.push(format!("ForeignKey(\"{ref_table}.{ref_col}\")"));
+        push_attr(
+            &mut attrs,
+            &format!("ForeignKey(\"{ref_table}.{ref_col}\")"),
+        );
     }
 
     // Primary key
     if is_pk {
-        attrs.push("primary_key=True".into());
+        push_attr(&mut attrs, "primary_key=True");
     }
 
     // Nullable
     if !is_pk {
-        attrs.push(format!(
-            "nullable={}",
-            if col.nullable { "True" } else { "False" }
-        ));
+        push_attr(
+            &mut attrs,
+            if col.nullable {
+                "nullable=True"
+            } else {
+                "nullable=False"
+            },
+        );
     }
 
     // Unique
     if is_unique && !is_pk {
-        attrs.push("unique=True".into());
+        push_attr(&mut attrs, "unique=True");
     }
 
     // Default value
@@ -382,50 +327,31 @@ fn render_column(
         let escaped = default_str.replace('"', "\\\"");
         // Check if it's a function call or literal
         if default_str.contains('(') {
-            attrs.push(format!("server_default=text(\"{escaped}\")"));
+            push_attr(&mut attrs, &format!("server_default=text(\"{escaped}\")"));
         } else if default_str.starts_with('\'') || default_str.starts_with('"') {
-            attrs.push(format!("server_default={default_str}"));
+            push_attr(&mut attrs, &format!("server_default={default_str}"));
         } else {
-            attrs.push(format!("server_default=\"{escaped}\""));
+            push_attr(&mut attrs, &format!("server_default=\"{escaped}\""));
         }
     }
 
-    let attrs_str = attrs.join(", ");
+    // A renamed attribute no longer points at its column by name, so pass the
+    // column name positionally whenever the two differ. `attrs` is a single
+    // buffer (see `push_attr`), so the positional name is spliced in at the
+    // front instead of `Vec::insert(0, ..)`; output is byte-identical to
+    // prepending the fragment and re-joining with ", ".
+    let attr_name = sanitize_identifier(col.name.as_str(), IdentifierStart::Underscore);
+    if attr_name != col.name.as_str() {
+        attrs.insert_str(0, &format!("\"{}\", ", col.name));
+    }
+
     lines.push(format!(
-        "    {}: Mapped[{}] = mapped_column({})",
-        col.name, python_type, attrs_str
+        "    {attr_name}: Mapped[{python_type}] = mapped_column({attrs})"
     ));
 }
 
-pub(super) fn to_pascal_case(s: &str) -> String {
-    s.split('_')
-        .map(|word| {
-            let mut chars = word.chars();
-            match chars.next() {
-                None => String::new(),
-                Some(first) => first.to_uppercase().chain(chars).collect(),
-            }
-        })
-        .collect()
-}
-
-pub(super) fn to_screaming_snake_case(s: &str) -> String {
-    let mut result = String::new();
-    for (i, ch) in s.chars().enumerate() {
-        if ch.is_uppercase() && i > 0 {
-            result.push('_');
-        }
-        result.push(ch.to_ascii_uppercase());
-    }
-    // Replace any non-alphanumeric with underscore
-    result
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect()
-}
+// Naming helpers shared with the `SQLModel` exporter — both Python ORMs
+// produce identical PascalCase class names, so the implementation lives in
+// `crate::python_naming` and we re-export it here to keep every existing
+// `super::render::to_*` path working without churn.
+pub(super) use crate::python_naming::to_pascal_case;

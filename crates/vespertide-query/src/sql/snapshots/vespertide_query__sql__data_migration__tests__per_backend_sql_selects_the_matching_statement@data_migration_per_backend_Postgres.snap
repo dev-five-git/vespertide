@@ -1,0 +1,5 @@
+---
+source: crates/vespertide-query/src/sql/data_migration.rs
+expression: "queries[0].build(backend)"
+---
+UPDATE t SET j = jsonb_build_object('ko', c)

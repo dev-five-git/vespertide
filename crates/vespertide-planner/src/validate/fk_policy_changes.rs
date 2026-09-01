@@ -14,7 +14,10 @@
 //! between `None` and `Some(NoAction)` is therefore not flagged, but any
 //! transition that changes observable behaviour is.
 
-use vespertide_core::{MigrationAction, MigrationPlan, ReferenceAction, TableConstraint};
+use vespertide_core::{
+    MigrationAction, MigrationPlan, ReferenceAction, TableConstraint,
+    schema::names::names_to_strings,
+};
 
 /// A single FK constraint whose `on_delete` or `on_update` policy is being
 /// changed by a `ReplaceConstraint` action in the migration plan.
@@ -133,9 +136,9 @@ fn warning_for_action(idx: usize, action: &MigrationAction) -> Option<FkPolicyCh
         action_index: idx,
         table: table.to_string(),
         constraint_name,
-        columns: columns.iter().map(ToString::to_string).collect(),
+        columns: names_to_strings(columns),
         ref_table: ref_table.to_string(),
-        ref_columns: ref_columns.iter().map(ToString::to_string).collect(),
+        ref_columns: names_to_strings(ref_columns),
         on_delete_change,
         on_update_change,
     })

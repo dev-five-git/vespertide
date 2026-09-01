@@ -24,6 +24,8 @@
 
 use vespertide_core::{ColumnType, MigrationAction, MigrationPlan, SimpleColumnType, TableDef};
 
+use crate::drop_resolution::find_baseline_column;
+
 /// Direction of a `timestamp` ⇄ `timestamptz` conversion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimezoneConversionDirection {
@@ -104,12 +106,7 @@ fn warning_for_action(
     else {
         return None;
     };
-    let old_type = baseline
-        .iter()
-        .find(|t| t.name == *table)?
-        .columns
-        .iter()
-        .find(|c| c.name == *column)?
+    let old_type = find_baseline_column(baseline, table.as_str(), column.as_str())?
         .r#type
         .clone();
     let direction = classify_direction(&old_type, new_type)?;

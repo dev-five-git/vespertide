@@ -12,11 +12,11 @@
 //! ```
 //! where `SymbolKey: Hash + Eq + Copy`.
 
-use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, VecDeque};
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex, OnceLock};
 
+use rustc_hash::FxHasher;
 use tower_lsp_server::ls_types::Uri;
 
 use crate::store::DocumentStore;
@@ -87,6 +87,14 @@ where
             .inner
             .lock()
             .expect("RingCache lock poisoned — invariant: compute_fn must not panic");
+        // Re-check after the unlocked compute: another thread may have missed
+        // on the same key concurrently and already inserted. Returning the
+        // canonical `Arc` (and dropping our duplicate computation) keeps
+        // `insertion_order` free of duplicate keys — a duplicate would shrink
+        // effective capacity and evict a recently re-inserted hot entry early.
+        if let Some(existing) = inner.entries.get(&key) {
+            return Arc::clone(existing);
+        }
         if inner.entries.len() >= N
             && let Some(oldest) = inner.insertion_order.pop_front()
         {
@@ -110,7 +118,11 @@ where
 }
 
 pub(crate) fn hash_text(text: &str) -> u64 {
-    let mut h = DefaultHasher::new();
+    // FxHasher (not SipHash): cache keys are in-memory only and tolerate the
+    // 64-bit-hash + length collision model by design (see module docs); FxHash
+    // is markedly faster at digesting whole-document byte streams on the
+    // per-keystroke cache path.
+    let mut h = FxHasher::default();
     h.write(text.as_bytes());
     h.finish()
 }
@@ -156,7 +168,9 @@ pub(crate) fn docstore_fingerprint(docs: &DocumentStore) -> u64 {
     let (fingerprint, entries) = compute_docstore_fingerprint(docs);
     *docstore_fingerprint_cache()
         .lock()
-        .expect("RingCache lock poisoned — invariant: compute_fn must not panic") =
+        .expect(
+            "docstore fingerprint cache lock poisoned — invariant: fingerprint computation must not panic",
+        ) =
         Some(CachedDocstoreFingerprint {
             docs_addr,
             len: entries.len(),
@@ -169,7 +183,9 @@ pub(crate) fn docstore_fingerprint(docs: &DocumentStore) -> u64 {
 fn cached_docstore_fingerprint(docs: &DocumentStore, docs_addr: usize) -> Option<u64> {
     let cache = docstore_fingerprint_cache()
         .lock()
-        .expect("RingCache lock poisoned — invariant: compute_fn must not panic");
+        .expect(
+            "docstore fingerprint cache lock poisoned — invariant: fingerprint computation must not panic",
+        );
     let cached = cache.as_ref()?;
     if cached.docs_addr != docs_addr || cached.len != docs.len() {
         return None;
@@ -188,7 +204,9 @@ fn cached_docstore_fingerprint(docs: &DocumentStore, docs_addr: usize) -> Option
 }
 
 fn compute_docstore_fingerprint(docs: &DocumentStore) -> (u64, Vec<DocstoreFingerprintEntry>) {
-    let mut h = DefaultHasher::new();
+    // FxHasher to match `hash_text`'s digest model and speed up the workspace
+    // fingerprint over every open document's text on the hot cache path.
+    let mut h = FxHasher::default();
     let mut entries = Vec::with_capacity(docs.len());
     docs.for_each(|uri, state| {
         let text = state.text();
@@ -266,6 +284,40 @@ mod tests {
             vec![]
         });
         assert_eq!(counter.load(Ordering::SeqCst), 4);
+    }
+
+    #[test]
+    fn ring_cache_concurrent_miss_returns_canonical_arc() {
+        // Deterministic double-compute: the barrier inside `compute_fn` can
+        // only release once BOTH threads have missed and entered compute
+        // (a thread that hit the cache would never reach the barrier, and
+        // the winner cannot insert while blocked on it). The loser must then
+        // discard its value and return the winner's canonical `Arc`, leaving
+        // `insertion_order` without a duplicate key.
+        let cache: Arc<RingCache<u64, Vec<i32>, 4>> = Arc::new(RingCache::new());
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let compute_calls = Arc::new(AtomicUsize::new(0));
+        let handles: Vec<_> = (0..2)
+            .map(|i| {
+                let cache = Arc::clone(&cache);
+                let barrier = Arc::clone(&barrier);
+                let compute_calls = Arc::clone(&compute_calls);
+                std::thread::spawn(move || {
+                    cache.get_or_compute(1, || {
+                        compute_calls.fetch_add(1, Ordering::SeqCst);
+                        barrier.wait();
+                        vec![i]
+                    })
+                })
+            })
+            .collect();
+        let results: Vec<Arc<Vec<i32>>> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        // Both threads genuinely computed (the race happened) …
+        assert_eq!(compute_calls.load(Ordering::SeqCst), 2);
+        // … yet both callers share the single canonical cached value.
+        assert!(Arc::ptr_eq(&results[0], &results[1]));
+        let again = cache.get_or_compute(1, || unreachable!("must be cached"));
+        assert!(Arc::ptr_eq(&results[0], &again));
     }
 
     #[test]

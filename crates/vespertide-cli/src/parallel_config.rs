@@ -1,6 +1,7 @@
 //! Empirically tuned Rayon thresholds.
 //!
-//! See `docs/PARALLELIZATION.md` for the Wave 6 measurement notes.
+//! Measured during the Wave 6 parallelization pass via the criterion
+//! benchmarks in `crates/*/benches/`.
 //!
 //! CLI export iterates at most four ORM variants, but per-table render work is
 //! CPU-bound. Wave 6 kept the Wave 1 threshold unchanged.

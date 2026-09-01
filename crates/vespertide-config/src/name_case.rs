@@ -11,21 +11,6 @@ pub enum NameCase {
 }
 
 impl NameCase {
-    /// Returns true when snake case.
-    pub fn is_snake(self) -> bool {
-        matches!(self, NameCase::Snake)
-    }
-
-    /// Returns true when camel case.
-    pub fn is_camel(self) -> bool {
-        matches!(self, NameCase::Camel)
-    }
-
-    /// Returns true when pascal case.
-    pub fn is_pascal(self) -> bool {
-        matches!(self, NameCase::Pascal)
-    }
-
     /// Returns the serde `rename_all` attribute value for this case.
     pub fn serde_rename_all(self) -> &'static str {
         match self {

@@ -182,6 +182,103 @@ impl_name_newtype!(TableName);
 impl_name_newtype!(ColumnName);
 impl_name_newtype!(IndexName);
 
+impl TableName {
+    /// Prepend `prefix` to this table name in place, reusing the existing
+    /// `String` allocation when capacity allows. No-op when
+    /// `prefix.is_empty()`.
+    ///
+    /// Unifies the two pre-existing prepend patterns in
+    /// `vespertide-core` (`action/prefix.rs`'s private `add_prefix` and
+    /// `schema/constraint.rs`'s open-coded
+    /// `format!("{prefix}{table}").into()`) — every "prefix a `TableName`"
+    /// site now reads the same way and avoids the fresh `format!`
+    /// allocation the latter shape always paid.
+    ///
+    /// ```rust
+    /// use vespertide_core::schema::names::TableName;
+    ///
+    /// let prefixed = TableName::new("user").with_prefix("tenant_");
+    /// assert_eq!(prefixed.as_str(), "tenant_user");
+    ///
+    /// // Empty prefix is a pure no-op.
+    /// let unchanged = TableName::new("user").with_prefix("");
+    /// assert_eq!(unchanged.as_str(), "user");
+    /// ```
+    #[must_use]
+    pub fn with_prefix(self, prefix: &str) -> Self {
+        if prefix.is_empty() {
+            return self;
+        }
+        let mut s = self.0;
+        s.insert_str(0, prefix);
+        Self(s)
+    }
+}
+
+/// Convert any slice of stringy items (typically a `Vec<ColumnName>`) into
+/// a `Vec<String>` — hoisted out of 14+ verbatim
+/// `xxx.iter().map(ToString::to_string).collect()` chains across the planner
+/// and query crates.
+///
+/// The generic bound `T: ToString` keeps the helper usable with both the
+/// 0.2.0 [`ColumnName`] newtype (where `Display` produces the bare
+/// identifier) and the older `&str` / `String` aliases that still sit
+/// behind a few `Vec<&&str>` collect call sites.
+///
+/// ```rust
+/// use vespertide_core::schema::names::{ColumnName, names_to_strings};
+///
+/// let cols: Vec<ColumnName> = vec!["a".into(), "b".into()];
+/// assert_eq!(names_to_strings(&cols), vec!["a".to_string(), "b".to_string()]);
+///
+/// // Works with `&str` slices too — same `ToString` bound, no allocation
+/// // change versus the inline pattern.
+/// let strs = ["x", "y", "z"];
+/// assert_eq!(names_to_strings(&strs), vec!["x".to_string(), "y".to_string(), "z".to_string()]);
+///
+/// // Empty slice is the canonical empty `Vec<String>`.
+/// let empty: Vec<ColumnName> = vec![];
+/// assert_eq!(names_to_strings(&empty), Vec::<String>::new());
+/// ```
+#[must_use]
+pub fn names_to_strings<T: ToString>(names: &[T]) -> Vec<String> {
+    names.iter().map(ToString::to_string).collect()
+}
+
+/// Join a slice of [`ColumnName`]s with a separator using a single buffer
+/// — no intermediate `Vec<String>` allocation.
+///
+/// Mirrors the buffer-push pattern used by
+/// `vespertide_query::sql::helpers::quote_idents`. Folds four open-coded
+/// `cols.iter().map(...).collect::<Vec<_>>().join(sep)` callsites in
+/// `vespertide-planner::validate::*` into a single shared helper.
+///
+/// ```rust
+/// use vespertide_core::schema::names::{ColumnName, join_column_names};
+///
+/// let cols: Vec<ColumnName> = vec!["a".into(), "b".into(), "c".into()];
+/// assert_eq!(join_column_names(&cols, ", "), "a, b, c");
+/// assert_eq!(join_column_names(&cols, "_"), "a_b_c");
+/// assert_eq!(join_column_names(&[], ", "), "");
+/// ```
+#[must_use]
+pub fn join_column_names(columns: &[ColumnName], separator: &str) -> String {
+    // Pre-size exactly: sum of column-name lengths plus one separator between
+    // each adjacent pair. Finishes matching the buffer-push pattern this
+    // helper's doc-comment claims to follow — `quote_ident` already pre-sizes
+    // via `out.reserve(name.len() + 2)`. Output stays byte-identical.
+    let cap = columns.iter().map(|c| c.as_str().len()).sum::<usize>()
+        + separator.len() * columns.len().saturating_sub(1);
+    let mut out = String::with_capacity(cap);
+    for (i, c) in columns.iter().enumerate() {
+        if i > 0 {
+            out.push_str(separator);
+        }
+        out.push_str(c.as_str());
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     //! Coverage-closure tests for the `impl_name_newtype!` expansions.
@@ -234,5 +331,87 @@ mod tests {
         let name = IndexName::new("ix_orders__id");
         let s: String = String::from(name);
         assert_eq!(s, "ix_orders__id");
+    }
+
+    #[test]
+    fn into_inner_consumes_newtype_back_into_string() {
+        // Covers the `into_inner` macro-expansion lines. `String::from` goes
+        // through the separate `From<$ty> for String` impl, so the tests above
+        // do not reach this body; call it explicitly on each newtype.
+        assert_eq!(TableName::new("user").into_inner(), "user");
+        assert_eq!(ColumnName::new("email").into_inner(), "email");
+        assert_eq!(
+            IndexName::new("ix_user__email").into_inner(),
+            "ix_user__email"
+        );
+    }
+
+    #[test]
+    fn with_prefix_empty_is_a_no_op() {
+        // Covers the `prefix.is_empty()` early return in `TableName::with_prefix`.
+        // Only the doctest exercised it, and doctests do not run under tarpaulin.
+        let unchanged = TableName::new("user").with_prefix("");
+        assert_eq!(unchanged.as_str(), "user");
+    }
+
+    #[test]
+    fn with_prefix_prepends_in_place() {
+        // Sibling of the empty case: the non-empty branch must actually prepend.
+        let prefixed = TableName::new("user").with_prefix("tenant_");
+        assert_eq!(prefixed.as_str(), "tenant_user");
+    }
+
+    #[test]
+    fn join_column_names_empty_returns_empty_string() {
+        // Empty-slice path: `for ... in []` never runs, returns the
+        // pristine `String::new()`. Locks the empty-input contract that
+        // the deleted `validate::constraint_drops::join_columns` helper
+        // used to assert directly.
+        let cols: Vec<ColumnName> = vec![];
+        assert_eq!(join_column_names(&cols, ", "), "");
+        assert_eq!(join_column_names(&cols, "_"), "");
+    }
+
+    #[test]
+    fn join_column_names_comma_separator() {
+        // The validate-diagnostic site shape: `"a, b, c"`. Single-column
+        // case must skip the separator entirely (no leading `", "`).
+        let cols: Vec<ColumnName> = vec!["a".into(), "b".into(), "c".into()];
+        assert_eq!(join_column_names(&cols, ", "), "a, b, c");
+
+        let single: Vec<ColumnName> = vec!["only".into()];
+        assert_eq!(join_column_names(&single, ", "), "only");
+    }
+
+    #[test]
+    fn join_column_names_underscore_separator() {
+        // The `ix_{table}__{cols}` index-name builder shape: `"fk_id"`.
+        // Locks the separator variation against the validate
+        // `build_suggested_index_name` callsite.
+        let cols: Vec<ColumnName> = vec!["fk".into(), "id".into()];
+        assert_eq!(join_column_names(&cols, "_"), "fk_id");
+
+        let composite: Vec<ColumnName> = vec!["tenant_id".into(), "user_id".into()];
+        assert_eq!(join_column_names(&composite, "_"), "tenant_id_user_id");
+    }
+
+    /// `names_to_strings` empty-slice produces an empty `Vec<String>`. Locks
+    /// the same empty-input contract previously baked into the inline
+    /// `xxx.iter().map(ToString::to_string).collect()` form at every replaced
+    /// callsite.
+    #[test]
+    fn names_to_strings_empty_returns_empty_vec() {
+        let cols: Vec<ColumnName> = vec![];
+        assert_eq!(names_to_strings(&cols), Vec::<String>::new());
+    }
+
+    /// `names_to_strings` on a populated slice produces the canonical
+    /// per-element `to_string()` output in source order — the contract every
+    /// planner / query crate call site silently depended on.
+    #[test]
+    fn names_to_strings_two_element_case() {
+        let cols: Vec<ColumnName> = vec!["a".into(), "b".into()];
+        let out = names_to_strings(&cols);
+        assert_eq!(out, vec!["a".to_string(), "b".to_string()]);
     }
 }

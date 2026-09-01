@@ -165,10 +165,10 @@ pub(super) fn workspace_fixture() -> WorkspaceFixture {
     fs::write(&outside_path, "not a model").unwrap();
 
     WorkspaceFixture {
-        root_uri: Backend::path_to_uri(root).unwrap(),
-        user_uri: Backend::path_to_uri(&user_path).unwrap(),
-        post_uri: Backend::path_to_uri(&post_path).unwrap(),
-        outside_uri: Backend::path_to_uri(&outside_path).unwrap(),
+        root_uri: crate::position::path_to_uri(root).unwrap(),
+        user_uri: crate::position::path_to_uri(&user_path).unwrap(),
+        post_uri: crate::position::path_to_uri(&post_path).unwrap(),
+        outside_uri: crate::position::path_to_uri(&outside_path).unwrap(),
         _tmp: tmp,
     }
 }

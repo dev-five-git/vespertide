@@ -107,10 +107,10 @@ fuzz_target!(|data: &[u8]| {
         // -------------------------------------------------------------
         // Cursor-free capabilities
         // -------------------------------------------------------------
-        let _ = compute_diagnostics(&text, format, tree.as_ref(), &index);
+        let _ = compute_diagnostics(&text, format, tree.as_ref());
         let _ = format_text(&text, format);
         let _ = compute_document_symbols(&text, tree.as_ref());
-        let _ = compute_folding_ranges(&text, tree.as_ref());
+        let _ = compute_folding_ranges(tree.as_ref());
 
         // workspace_symbols: empty query + a query derived from input.
         let _ = compute_workspace_symbols("", &docs, None);
@@ -126,67 +126,35 @@ fuzz_target!(|data: &[u8]| {
         // -------------------------------------------------------------
         let offsets = cursor_offsets(data, text_len);
         for &byte_offset in &offsets {
-            let _ = compute_hover(&text, format, tree.as_ref(), &index, &docs, byte_offset);
-            let _ = compute_definition(&text, format, tree.as_ref(), &index, &docs, byte_offset);
+            let _ = compute_hover(&text, tree.as_ref(), &index, &docs, byte_offset);
+            let _ = compute_definition(&text, tree.as_ref(), &index, &docs, byte_offset);
             let _ = compute_completion(&text, format, tree.as_ref(), &index, &docs, byte_offset);
             let _ = compute_document_highlight(&text, tree.as_ref(), byte_offset);
-            let _ = compute_selection_ranges(&text, tree.as_ref(), byte_offset);
+            let _ = compute_selection_ranges(tree.as_ref(), byte_offset);
 
             // references — both include and exclude declaration variants.
-            let _ = compute_references(
-                &text,
-                format,
-                tree.as_ref(),
-                &uri,
-                &index,
-                &docs,
-                None,
-                byte_offset,
-                true,
-            );
-            let _ = compute_references(
-                &text,
-                format,
-                tree.as_ref(),
-                &uri,
-                &index,
-                &docs,
-                None,
-                byte_offset,
-                false,
-            );
+            let _ = compute_references(&text, tree.as_ref(), &uri, &docs, None, byte_offset, true);
+            let _ = compute_references(&text, tree.as_ref(), &uri, &docs, None, byte_offset, false);
 
             // prepare_rename + rename. Use a deterministic-but-derived
             // new name so we exercise the identifier validator with
             // varying lengths instead of a constant.
-            let _ = prepare_rename(&text, format, tree.as_ref(), &uri, byte_offset);
+            let _ = prepare_rename(&text, tree.as_ref(), byte_offset);
             let new_name_seed = data
                 .iter()
                 .fold(0u32, |acc, b| acc.wrapping_add(u32::from(*b)));
             let new_name = format!("renamed_{new_name_seed:x}");
             let _ = compute_rename(
                 &text,
-                format,
                 tree.as_ref(),
                 &uri,
-                &index,
                 &docs,
                 None,
                 byte_offset,
                 &new_name,
             );
             // Empty rename — must safely return `None`, not panic.
-            let _ = compute_rename(
-                &text,
-                format,
-                tree.as_ref(),
-                &uri,
-                &index,
-                &docs,
-                None,
-                byte_offset,
-                "",
-            );
+            let _ = compute_rename(&text, tree.as_ref(), &uri, &docs, None, byte_offset, "");
         }
 
         // completion_with_workspace_tables exercises the same code path

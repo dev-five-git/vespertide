@@ -1,0 +1,23 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+enum ProductCategory {
+  ELECTRONICS @map("electronics")
+  CLOTHING @map("clothing")
+  FOOD @map("food")
+}
+
+enum AvailabilityStatus {
+  IN_STOCK @map("in_stock")
+  OUT_OF_STOCK @map("out_of_stock")
+  PRE_ORDER @map("pre_order")
+}
+
+model Products {
+  id Int
+  category ProductCategory
+  availability AvailabilityStatus
+
+  @@map("products")
+}

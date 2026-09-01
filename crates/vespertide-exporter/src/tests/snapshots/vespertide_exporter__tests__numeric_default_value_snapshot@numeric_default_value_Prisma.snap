@@ -1,0 +1,10 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model Products {
+  id Int
+  price Decimal @default(0)
+
+  @@map("products")
+}

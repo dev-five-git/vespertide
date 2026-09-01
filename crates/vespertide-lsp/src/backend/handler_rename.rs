@@ -22,7 +22,7 @@ use tower_lsp_server::ls_types::{
 };
 
 use super::Backend;
-use super::helpers::{byte_to_ls_position, domain_edits_to_lsp};
+use super::helpers::{byte_range_to_ls, domain_edits_to_lsp};
 use crate::parser::DocumentFormat;
 
 #[cfg(not(tarpaulin_include))]
@@ -63,14 +63,14 @@ pub(super) async fn prepare_rename_impl(
     let uri = params.text_document.uri;
     let pos_ls = params.position;
     let pos_lsp = crate::position::ls_to_lsp_position(pos_ls);
-    let Some(format) = DocumentFormat::from_uri(&uri) else {
+    if DocumentFormat::from_uri(&uri).is_none() {
         return Ok(None);
-    };
+    }
 
     let domain = backend.store.docs_iter_for_uri(&uri, |state| {
         let text = state.text();
         let byte = crate::position::lsp_position_to_byte(&state.doc, pos_lsp);
-        crate::rename::prepare(text, format, state.tree.as_ref(), &uri, byte)
+        crate::rename::prepare(text, state.tree.as_ref(), byte)
     });
     let Some(Some(domain)) = domain else {
         log_prepare_rename_not_renameable(&uri);
@@ -79,9 +79,8 @@ pub(super) async fn prepare_rename_impl(
 
     let range = backend
         .store
-        .docs_iter_for_uri(&uri, |state| Range {
-            start: byte_to_ls_position(&state.doc, domain.byte_range.start),
-            end: byte_to_ls_position(&state.doc, domain.byte_range.end),
+        .docs_iter_for_uri(&uri, |state| {
+            byte_range_to_ls(&state.doc, &domain.byte_range)
         })
         .unwrap_or(Range {
             start: Position {
@@ -110,19 +109,17 @@ pub(super) async fn rename_impl(
     let pos_ls = params.text_document_position.position;
     let pos_lsp = crate::position::ls_to_lsp_position(pos_ls);
     let new_name = params.new_name;
-    let Some(format) = DocumentFormat::from_uri(&uri) else {
+    if DocumentFormat::from_uri(&uri).is_none() {
         return Ok(None);
-    };
+    }
 
     let domain = backend.store.docs_iter_for_uri(&uri, |state| {
         let text = state.text();
         let byte = crate::position::lsp_position_to_byte(&state.doc, pos_lsp);
         crate::rename::compute(
             text,
-            format,
             state.tree.as_ref(),
             &uri,
-            backend.index.as_ref(),
             backend.store.as_ref(),
             Some(backend.workspace_tables.as_ref()),
             byte,
@@ -160,9 +157,5 @@ pub(super) fn lowered_rename_changes(
         changes.insert(target_uri, text_edits);
     }
 
-    if changes.is_empty() {
-        None
-    } else {
-        Some(changes)
-    }
+    (!changes.is_empty()).then_some(changes)
 }

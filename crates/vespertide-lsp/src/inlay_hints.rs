@@ -355,37 +355,7 @@ fn find_value_for_key<'tree>(
     None
 }
 
-fn find_pair_with_key<'tree>(
-    object: tree_sitter::Node<'tree>,
-    source: &[u8],
-    target_key: &str,
-) -> Option<tree_sitter::Node<'tree>> {
-    let mut cursor = object.walk();
-    object.children(&mut cursor).find(|&child| {
-        matches!(child.kind(), "pair" | "block_mapping_pair")
-            && child
-                .named_child(0)
-                .and_then(|key| std::str::from_utf8(&source[key.byte_range()]).ok())
-                .map(strip_quotes)
-                == Some(target_key)
-    })
-}
-
-fn unwrap_yaml_node(node: tree_sitter::Node<'_>) -> tree_sitter::Node<'_> {
-    // Fused while-let so the empty-wrapper case (no usable `named_child(0)`)
-    // and the kind-mismatch case share the same loop exit — no defensive
-    // `return` line that only an (unobservable) empty tree-sitter wrapper
-    // could reach.
-    let mut current = node;
-    while matches!(current.kind(), "flow_node" | "block_node")
-        && let Some(inner) = current
-            .named_child(0)
-            .filter(|inner| inner.id() != current.id())
-    {
-        current = inner;
-    }
-    current
-}
+use crate::tree_util::{find_pair_with_key, unwrap_yaml_node};
 
 fn ranges_overlap(a: &Range<usize>, b: &Range<usize>) -> bool {
     a.start < b.end && b.start < a.end

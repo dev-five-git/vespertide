@@ -1,0 +1,8 @@
+---
+source: crates/vespertide-query/src/sql/add_column.rs
+expression: sql
+---
+;
+ALTER TABLE `subscription` ADD COLUMN `metric` ENUM('MONTHLY_QUOTA', 'SEAT');
+UPDATE `subscription` SET `metric` = (CASE WHEN plan_key::text = 'API' THEN 'MONTHLY_QUOTA' ELSE 'SEAT' END)::billing_metric;
+ALTER TABLE `subscription` MODIFY COLUMN `metric` ENUM('MONTHLY_QUOTA', 'SEAT') NOT NULL

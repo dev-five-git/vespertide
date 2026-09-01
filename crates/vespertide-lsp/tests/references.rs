@@ -56,10 +56,8 @@ fn references_for_table_find_cross_file_ref_table_usages() {
     let pos = user_src.find(r#""name":"user""#).unwrap() + 9;
     let refs = compute_references(
         user_src,
-        DocumentFormat::Json,
         Some(&user_tree),
         &user_uri,
-        &idx,
         &docs,
         None,
         pos,
@@ -127,10 +125,8 @@ fn references_for_column_find_cross_file_ref_columns_only_for_matching_table() {
     let pos = user_src.find(r#""name":"email""#).unwrap() + 10;
     let refs = compute_references(
         user_src,
-        DocumentFormat::Json,
         Some(&user_tree),
         &user_uri,
-        &idx,
         &docs,
         None,
         pos,
@@ -188,10 +184,8 @@ fn references_include_disk_only_target_files() {
     let pos = user_src.find(r#""name":"user""#).unwrap() + 9;
     let refs = compute_references(
         user_src,
-        DocumentFormat::Json,
         Some(&user_tree),
         &user_uri,
-        &idx,
         &docs,
         Some(&disk),
         pos,
@@ -235,10 +229,8 @@ fn references_yaml_cross_file_table() {
     let pos = user_src.find("name: user").unwrap() + 6;
     let refs = compute_references(
         user_src,
-        DocumentFormat::Yaml,
         Some(&user_tree),
         &user_uri,
-        &idx,
         &docs,
         None,
         pos,

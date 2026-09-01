@@ -1,0 +1,22 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model x1users {
+  x1id Int @id @map("1id")
+  email String
+  x1st_owner_posts Posts[] @relation("Posts1stOwner")
+  x2nd_owner_posts Posts[] @relation("Posts2ndOwner")
+
+  @@map("1users")
+}
+
+model Posts {
+  id Int @id
+  x1st_owner_id Int? @map("1st_owner_id")
+  x1st_owner x1users? @relation("Posts1stOwner", fields: [x1st_owner_id], references: [x1id], onDelete: NoAction, onUpdate: NoAction)
+  x2nd_owner_id Int? @map("2nd_owner_id")
+  x2nd_owner x1users? @relation("Posts2ndOwner", fields: [x2nd_owner_id], references: [x1id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("posts")
+}

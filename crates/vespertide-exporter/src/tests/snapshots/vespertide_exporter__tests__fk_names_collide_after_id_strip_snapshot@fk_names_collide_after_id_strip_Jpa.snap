@@ -1,0 +1,42 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "target")
+public class Target {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @Column(name = "alt", nullable = false, unique = true)
+    private Integer alt;
+
+    protected Target() {
+    }
+}
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "src")
+public class Src {
+
+    @Id
+    @Column(name = "pk")
+    private Integer pk;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "a_id")
+    private Target a;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "a")
+    private Target a;
+
+    protected Src() {
+    }
+}

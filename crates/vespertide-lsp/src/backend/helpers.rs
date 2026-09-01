@@ -47,14 +47,12 @@ pub(super) fn domain_to_lsp(
     });
 
     let text_edit = item.replace_range_bytes.as_ref().map(|range| {
-        let start = byte_to_ls_position(doc, range.start);
-        let end = byte_to_ls_position(doc, range.end);
         let new_text = item
             .insert_text
             .clone()
             .unwrap_or_else(|| item.label.clone());
         CompletionTextEdit::Edit(TextEdit {
-            range: Range { start, end },
+            range: byte_range_to_ls(doc, range),
             new_text,
         })
     });
@@ -88,6 +86,26 @@ pub(super) fn byte_to_ls_position(
     crate::position::lsp_to_ls_position(crate::position::byte_to_lsp_position(doc, byte_offset))
 }
 
+/// Lower a byte-offset range to an LSP [`Range`] via UTF-16-aware position
+/// conversion. This is the single place the start/end pair lowering lives —
+/// every handler that turns a domain `byte_range` into a wire `Range` goes
+/// through here.
+pub(super) fn byte_range_to_ls(
+    doc: &lsp_textdocument::FullTextDocument,
+    range: &std::ops::Range<usize>,
+) -> Range {
+    Range {
+        start: byte_to_ls_position(doc, range.start),
+        end: byte_to_ls_position(doc, range.end),
+    }
+}
+
+/// `None` when the collected result set is empty, so handlers can answer
+/// `Ok(None)` instead of shipping an empty payload over the wire.
+pub(super) fn non_empty<T>(v: Vec<T>) -> Option<Vec<T>> {
+    if v.is_empty() { None } else { Some(v) }
+}
+
 /// Best-effort filesystem path normalization for workspace dedup.
 ///
 /// 1. `std::fs::canonicalize` when the file exists — that is the most
@@ -106,6 +124,24 @@ pub(super) fn normalize_path(path: &std::path::Path) -> std::path::PathBuf {
     }
 }
 
+/// Read a disk-only file into a transient UTF-16-aware document, guessing
+/// the language id from the file extension. Shared fallback for symbol,
+/// reference, and rename lowering when the target URI is not an open
+/// document. Returns `None` when the URI has no path or the read fails.
+fn disk_document(uri: &Uri) -> Option<lsp_textdocument::FullTextDocument> {
+    let path = crate::position::uri_to_path(uri)?;
+    let text = std::fs::read_to_string(&path).ok()?;
+    let language_id = match path.extension().and_then(|e| e.to_str()) {
+        Some("yaml" | "yml") => "yaml",
+        _ => "json",
+    };
+    Some(lsp_textdocument::FullTextDocument::new(
+        language_id.to_string(),
+        1,
+        text,
+    ))
+}
+
 /// Lower a domain symbol into LSP `SymbolInformation`, resolving the byte
 /// range via either the open document or the on-disk file.
 #[expect(
@@ -116,25 +152,15 @@ pub(super) fn symbol_to_lsp(
     symbol: &crate::symbols::DomainSymbol,
     backend: &Backend,
 ) -> Option<SymbolInformation> {
-    let range = backend.store.docs_iter_for_uri(&symbol.uri, |state| Range {
-        start: byte_to_ls_position(&state.doc, symbol.byte_range.start),
-        end: byte_to_ls_position(&state.doc, symbol.byte_range.end),
+    let range = backend.store.docs_iter_for_uri(&symbol.uri, |state| {
+        byte_range_to_ls(&state.doc, &symbol.byte_range)
     });
     let range = if let Some(r) = range {
         r
     } else {
         // Disk-only file — read it once to get a UTF-16-aware doc.
-        let path = crate::position::uri_to_path(&symbol.uri)?;
-        let text = std::fs::read_to_string(&path).ok()?;
-        let language_id = match path.extension().and_then(|e| e.to_str()) {
-            Some("yaml" | "yml") => "yaml",
-            _ => "json",
-        };
-        let doc = lsp_textdocument::FullTextDocument::new(language_id.to_string(), 1, text);
-        Range {
-            start: byte_to_ls_position(&doc, symbol.byte_range.start),
-            end: byte_to_ls_position(&doc, symbol.byte_range.end),
-        }
+        let doc = disk_document(&symbol.uri)?;
+        byte_range_to_ls(&doc, &symbol.byte_range)
     };
 
     Some(SymbolInformation {
@@ -164,10 +190,7 @@ pub(super) fn domain_edits_to_lsp(
         domain_edits
             .iter()
             .map(|edit| TextEdit {
-                range: Range {
-                    start: byte_to_ls_position(doc, edit.byte_range.start),
-                    end: byte_to_ls_position(doc, edit.byte_range.end),
-                },
+                range: byte_range_to_ls(doc, &edit.byte_range),
                 new_text: edit.new_text.clone(),
             })
             .collect()
@@ -180,13 +203,7 @@ pub(super) fn domain_edits_to_lsp(
         return Some(edits);
     }
 
-    let path = crate::position::uri_to_path(target_uri)?;
-    let text = std::fs::read_to_string(&path).ok()?;
-    let language_id = match path.extension().and_then(|e| e.to_str()) {
-        Some("yaml" | "yml") => "yaml",
-        _ => "json",
-    };
-    let doc = lsp_textdocument::FullTextDocument::new(language_id.to_string(), 1, text);
+    let doc = disk_document(target_uri)?;
     Some(to_lsp(&doc))
 }
 
@@ -200,13 +217,9 @@ pub(super) fn domain_reference_to_location(
     reference: &crate::references::DomainReference,
     backend: &Backend,
 ) -> Option<Location> {
-    if let Some(range) = backend
-        .store
-        .docs_iter_for_uri(&reference.uri, |state| Range {
-            start: byte_to_ls_position(&state.doc, reference.byte_range.start),
-            end: byte_to_ls_position(&state.doc, reference.byte_range.end),
-        })
-    {
+    if let Some(range) = backend.store.docs_iter_for_uri(&reference.uri, |state| {
+        byte_range_to_ls(&state.doc, &reference.byte_range)
+    }) {
         return Some(Location {
             uri: reference.uri.clone(),
             range,
@@ -214,18 +227,9 @@ pub(super) fn domain_reference_to_location(
     }
 
     // Disk-only file — read source on demand.
-    let path = crate::position::uri_to_path(&reference.uri)?;
-    let text = std::fs::read_to_string(&path).ok()?;
-    let language_id = match path.extension().and_then(|e| e.to_str()) {
-        Some("yaml" | "yml") => "yaml",
-        _ => "json",
-    };
-    let doc = lsp_textdocument::FullTextDocument::new(language_id.to_string(), 1, text);
+    let doc = disk_document(&reference.uri)?;
     Some(Location {
         uri: reference.uri.clone(),
-        range: Range {
-            start: byte_to_ls_position(&doc, reference.byte_range.start),
-            end: byte_to_ls_position(&doc, reference.byte_range.end),
-        },
+        range: byte_range_to_ls(&doc, &reference.byte_range),
     })
 }

@@ -220,25 +220,67 @@ mod tests {
             assert!(int_vals.is_integer());
         }
 
-        #[test]
-        fn test_enum_values_variant_names_string() {
-            let vals = EnumValues::String(vec!["pending".into(), "active".into()]);
-            assert_eq!(vals.variant_names(), vec!["pending", "active"]);
-        }
-
-        #[test]
-        fn test_enum_values_variant_names_integer() {
-            let vals = EnumValues::Integer(vec![
-                NumValue {
-                    name: "Low".into(),
-                    value: 0,
-                },
-                NumValue {
-                    name: "High".into(),
-                    value: 10,
-                },
-            ]);
-            assert_eq!(vals.variant_names(), vec!["Low", "High"]);
+        #[rstest]
+        // String match: exact-string check against each variant.
+        #[case::string_match(
+            EnumValues::String(vec!["active".into(), "pending".into()]),
+            "active",
+            true,
+        )]
+        #[case::string_miss(
+            EnumValues::String(vec!["active".into(), "pending".into()]),
+            "banned",
+            false,
+        )]
+        // Integer enum, numeric input: parses as i64 then matches `NumValue::value`.
+        #[case::integer_numeric_match(
+            EnumValues::Integer(vec![
+                NumValue { name: "Low".into(),  value: 0  },
+                NumValue { name: "High".into(), value: 10 },
+            ]),
+            "10",
+            true,
+        )]
+        #[case::integer_numeric_miss(
+            EnumValues::Integer(vec![
+                NumValue { name: "Low".into(),  value: 0  },
+                NumValue { name: "High".into(), value: 10 },
+            ]),
+            "99",
+            false,
+        )]
+        // Integer enum, value beyond i32::MAX: must still parse (i64) and match.
+        #[case::integer_numeric_beyond_i32(
+            EnumValues::Integer(vec![
+                NumValue { name: "small".into(), value: 1             },
+                NumValue { name: "big".into(),   value: 3_000_000_000 },
+            ]),
+            "3000000000",
+            true,
+        )]
+        // Integer enum, non-numeric input: falls back to matching `NumValue::name`.
+        #[case::integer_name_match(
+            EnumValues::Integer(vec![
+                NumValue { name: "Low".into(),  value: 0  },
+                NumValue { name: "High".into(), value: 10 },
+            ]),
+            "High",
+            true,
+        )]
+        #[case::integer_name_miss(
+            EnumValues::Integer(vec![
+                NumValue { name: "Low".into(),  value: 0  },
+                NumValue { name: "High".into(), value: 10 },
+            ]),
+            "Unknown",
+            false,
+        )]
+        fn contains_value_matches_variants_per_enum_kind(
+            #[case] values: EnumValues,
+            #[case] candidate: &str,
+            #[case] expected: bool,
+        ) {
+            assert_eq!(values.contains_value(candidate), expected);
         }
 
         #[test]
@@ -269,45 +311,47 @@ mod tests {
             assert_eq!(non_empty_int.len(), 2);
         }
 
-        #[test]
-        fn test_enum_values_to_sql_values_string() {
-            let vals = EnumValues::String(vec!["active".into(), "pending".into()]);
-            assert_eq!(vals.to_sql_values(), vec!["'active'", "'pending'"]);
-        }
-
-        #[test]
-        fn to_sql_values_escapes_single_quotes() {
-            let vals =
-                EnumValues::String(vec!["O'Brien".into(), "Smith".into(), "'leading".into()]);
-            let sql = vals.to_sql_values();
-
-            assert!(
-                sql.iter().any(|s| s == "'O''Brien'"),
-                "single quote inside value must be doubled"
-            );
-            assert!(
-                sql.iter().any(|s| s == "'''leading'"),
-                "leading single quote must be doubled"
-            );
-            assert!(
-                sql.iter().any(|s| s == "'Smith'"),
-                "values without quotes are unchanged"
-            );
-        }
-
-        #[test]
-        fn test_enum_values_to_sql_values_integer() {
-            let vals = EnumValues::Integer(vec![
-                NumValue {
-                    name: "Low".into(),
-                    value: 0,
-                },
-                NumValue {
-                    name: "High".into(),
-                    value: 10,
-                },
-            ]);
-            assert_eq!(vals.to_sql_values(), vec!["0", "10"]);
+        #[rstest]
+        // Locks the buffer-push helper's expected output across every arm.
+        // Prior versions also cross-checked against a now-deleted
+        // `to_sql_values() -> Vec<String>` pipeline; the case data below is
+        // the actual contract.
+        #[case::string_two_variants(
+            EnumValues::String(vec!["active".into(), "pending".into()]),
+            ", ",
+            "'active', 'pending'",
+        )]
+        #[case::string_single_quote_escape(
+            EnumValues::String(vec!["O'Brien".into(), "'leading".into()]),
+            ", ",
+            "'O''Brien', '''leading'",
+        )]
+        #[case::integer_two_variants(
+            EnumValues::Integer(vec![
+                NumValue { name: "low".into(),  value: 0  },
+                NumValue { name: "high".into(), value: 10 },
+            ]),
+            ", ",
+            "0, 10",
+        )]
+        #[case::string_empty(EnumValues::String(vec![]), ", ", "")]
+        #[case::integer_empty(EnumValues::Integer(vec![]), ", ", "")]
+        #[case::string_single_variant(
+            EnumValues::String(vec!["only".into()]),
+            ", ",
+            "'only'",
+        )]
+        #[case::alt_separator(
+            EnumValues::String(vec!["a".into(), "b".into(), "c".into()]),
+            "_",
+            "'a'_'b'_'c'",
+        )]
+        fn sql_values_joined_locks_expected_output(
+            #[case] vals: EnumValues,
+            #[case] separator: &str,
+            #[case] expected: &str,
+        ) {
+            assert_eq!(vals.sql_values_joined(separator), expected);
         }
 
         #[test]
@@ -532,6 +576,38 @@ mod tests {
             #[case] expected: &str,
         ) {
             assert_eq!(column_type.sql_type(), expected);
+        }
+
+        #[rstest]
+        #[case(SimpleColumnType::SmallInt, "small_int")]
+        #[case(SimpleColumnType::Integer, "integer")]
+        #[case(SimpleColumnType::BigInt, "big_int")]
+        #[case(SimpleColumnType::Real, "real")]
+        #[case(SimpleColumnType::DoublePrecision, "double_precision")]
+        #[case(SimpleColumnType::Text, "text")]
+        #[case(SimpleColumnType::Boolean, "boolean")]
+        #[case(SimpleColumnType::Date, "date")]
+        #[case(SimpleColumnType::Time, "time")]
+        #[case(SimpleColumnType::Timestamp, "timestamp")]
+        #[case(SimpleColumnType::Timestamptz, "timestamptz")]
+        #[case(SimpleColumnType::Interval, "interval")]
+        #[case(SimpleColumnType::Bytea, "bytea")]
+        #[case(SimpleColumnType::Uuid, "uuid")]
+        #[case(SimpleColumnType::Json, "json")]
+        #[case(SimpleColumnType::Inet, "inet")]
+        #[case(SimpleColumnType::Cidr, "cidr")]
+        #[case(SimpleColumnType::Macaddr, "macaddr")]
+        #[case(SimpleColumnType::Xml, "xml")]
+        fn test_simple_column_type_model_name_matches_serde_wire_format(
+            #[case] column_type: SimpleColumnType,
+            #[case] expected: &str,
+        ) {
+            assert_eq!(column_type.model_name(), expected);
+            // model_name() must agree with the serde wire format byte-for-byte.
+            assert_eq!(
+                serde_json::to_value(column_type).unwrap(),
+                serde_json::Value::String(expected.to_string())
+            );
         }
 
         #[rstest]

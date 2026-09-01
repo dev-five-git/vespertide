@@ -1,0 +1,15 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+enum StatusType {
+  ACTIVE @map("active")
+  INACTIVE @map("inactive")
+}
+
+model NullableEnum {
+  id Int @id
+  status StatusType?
+
+  @@map("nullable_enum")
+}

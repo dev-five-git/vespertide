@@ -76,8 +76,8 @@ pub fn find_between_boundary_reversals(table: &TableDef) -> Vec<PlannerError> {
                 table: table.name.to_string(),
                 column,
                 check_name: name.clone(),
-                low: format_literal(&low),
-                high: format_literal(&high),
+                low: low.display_value(),
+                high: high.display_value(),
             });
         }
     }
@@ -105,50 +105,25 @@ fn collect_reversed_between(expr: &CheckExpr, out: &mut Vec<(String, Literal, Li
     }
 }
 
+/// Thin BETWEEN-specific delegate over the shared [`Literal::cmp_value`] SoT.
+///
+/// F-novel-15 intentionally treats `BETWEEN TRUE AND FALSE` as silently
+/// passing (a Bool BETWEEN has no actionable ordering for a CHECK boundary
+/// reversal). The shared SoT does return `Some(Ordering)` for `(Bool, Bool)`
+/// because the strengthening / self-contradiction validators need it, so we
+/// guard that one pair here and forward everything else.
 fn literal_compare(a: &Literal, b: &Literal) -> Option<Ordering> {
-    match (a, b) {
-        (Literal::Integer(x), Literal::Integer(y)) => Some(x.cmp(y)),
-        (Literal::Float(x), Literal::Float(y)) => x.partial_cmp(y),
-        (Literal::Integer(x), Literal::Float(y)) => i64_to_f64(*x).partial_cmp(y),
-        (Literal::Float(x), Literal::Integer(y)) => x.partial_cmp(&i64_to_f64(*y)),
-        (Literal::String(x), Literal::String(y)) => Some(x.cmp(y)),
-        // Mixed / Bool / Null: cannot order without ambiguity.
-        _ => None,
+    if matches!((a, b), (Literal::Bool(_), Literal::Bool(_))) {
+        return None;
     }
-}
-
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "F-novel-15 BETWEEN boundary comparison: rounding integers beyond 2^53 acceptable; conservative comparator silently skips ambiguous cases anyway"
-)]
-fn i64_to_f64(v: i64) -> f64 {
-    v as f64
-}
-
-fn format_literal(lit: &Literal) -> String {
-    match lit {
-        Literal::Integer(i) => i.to_string(),
-        Literal::Float(f) => f.to_string(),
-        Literal::String(s) => s.clone(),
-        Literal::Bool(b) => b.to_string(),
-        Literal::Null => "NULL".to_string(),
-    }
+    a.cmp_value(b)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vespertide_core::{
-        CheckViolationStrategy, ColumnDef, ColumnType, SimpleColumnType, TableDef,
-    };
-
-    fn check_constraint(name: &str, expr: &str) -> TableConstraint {
-        TableConstraint::Check {
-            name: name.to_string(),
-            expr: expr.to_string(),
-            strategy: CheckViolationStrategy::default(),
-        }
-    }
+    use crate::test_support::check;
+    use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType, TableDef};
 
     fn table_with_check(name: &str, check_expr: &str) -> TableDef {
         TableDef {
@@ -167,7 +142,7 @@ mod tests {
                 index: None,
                 foreign_key: None,
             }],
-            constraints: vec![check_constraint("chk_test", check_expr)],
+            constraints: vec![check("chk_test", check_expr)],
         }
     }
 
@@ -317,8 +292,8 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![
-                check_constraint("chk_first", "age BETWEEN 100 AND 0"),
-                check_constraint("chk_second", "score BETWEEN 50 AND 10"),
+                check("chk_first", "age BETWEEN 100 AND 0"),
+                check("chk_second", "score BETWEEN 50 AND 10"),
             ],
         };
         let err = validate_between_boundary_order(&table).unwrap_err();
@@ -347,8 +322,8 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![
-                check_constraint("chk_first", "age BETWEEN 100 AND 0"),
-                check_constraint("chk_second", "score BETWEEN 50 AND 10"),
+                check("chk_first", "age BETWEEN 100 AND 0"),
+                check("chk_second", "score BETWEEN 50 AND 10"),
             ],
         };
 
@@ -387,7 +362,7 @@ mod tests {
                 index: None,
                 foreign_key: None,
             }],
-            constraints: vec![check_constraint(
+            constraints: vec![check(
                 "chk_or_both",
                 "age BETWEEN 100 AND 0 OR score BETWEEN 50 AND 10",
             )],
@@ -432,8 +407,8 @@ mod tests {
                 foreign_key: None,
             }],
             constraints: vec![
-                check_constraint("chk_valid", "age BETWEEN 0 AND 100"),
-                check_constraint("chk_reversed", "score BETWEEN 50 AND 10"),
+                check("chk_valid", "age BETWEEN 0 AND 100"),
+                check("chk_reversed", "score BETWEEN 50 AND 10"),
             ],
         };
 
@@ -445,10 +420,15 @@ mod tests {
         ));
     }
 
+    /// F-novel-15 renders the reversed boundaries via the shared
+    /// [`Literal::display_value`] SoT (the same renderer the self-contradiction
+    /// and strengthening validators use). Pin the labels for the two variants
+    /// the parser never produces directly for a numeric BETWEEN so any future
+    /// drift in the shared renderer surfaces here too.
     #[test]
     fn literal_formatting_covers_bool_and_null_labels() {
-        assert_eq!(format_literal(&Literal::Bool(true)), "true");
-        assert_eq!(format_literal(&Literal::Null), "NULL");
+        assert_eq!(Literal::Bool(true).display_value(), "true");
+        assert_eq!(Literal::Null.display_value(), "NULL");
     }
 
     /// L99: `literal_compare(Float, Integer)` arm. Existing tests

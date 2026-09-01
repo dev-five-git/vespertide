@@ -1,6 +1,7 @@
 //! Empirically tuned Rayon thresholds.
 //!
-//! See `docs/PARALLELIZATION.md` for the Wave 6 measurement notes.
+//! Measured during the Wave 6 parallelization pass via the criterion
+//! benchmarks in `crates/*/benches/`.
 
 /// `build_plan_queries` pays an up-front schema-preparation cost before the
 /// per-action Rayon phase. It did not win through 1,000 actions, so ordinary

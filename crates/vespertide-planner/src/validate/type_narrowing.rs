@@ -24,6 +24,8 @@ use vespertide_core::{
     ColumnType, ComplexColumnType, MigrationAction, MigrationPlan, SimpleColumnType, TableDef,
 };
 
+use crate::drop_resolution::find_baseline_column;
+
 /// A single column whose `ModifyColumnType` action narrows the storable
 /// value range. Returned by [`find_type_narrowings`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -192,12 +194,7 @@ fn warning_for_action(
     else {
         return None;
     };
-    let old_type = baseline
-        .iter()
-        .find(|t| t.name == *table)?
-        .columns
-        .iter()
-        .find(|c| c.name == *column)?
+    let old_type = find_baseline_column(baseline, table.as_str(), column.as_str())?
         .r#type
         .clone();
     let kind = is_narrowing(&old_type, new_type)?;

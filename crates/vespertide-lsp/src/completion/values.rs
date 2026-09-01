@@ -634,12 +634,9 @@ fn parse_table(text: &str) -> Option<vespertide_core::TableDef> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::completion_labels;
     use super::*;
     use rstest::rstest;
-
-    fn completion_labels(items: &[DomainCompletion]) -> Vec<&str> {
-        items.iter().map(|item| item.label.as_str()).collect()
-    }
 
     #[rstest]
     #[case::complex_enum(Some("enum"), &["alpha", "beta"], &["'alpha'", "'beta'"], &["now()"])]

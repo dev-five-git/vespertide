@@ -26,8 +26,8 @@ pub fn render_entity_with_config_and_paths(
         relation_field_defs_with_schema(table, schema, module_paths, crate_prefix);
 
     // Build sets of columns with single-column unique constraints and indexes
-    let unique_columns = single_column_unique_set(&table.constraints);
-    let indexed_columns = single_column_index_set(&table.constraints);
+    let unique_columns = crate::constraint_scan::single_column_uniques(&table.constraints);
+    let indexed_columns = crate::constraint_scan::single_column_indexes(&table.constraints);
 
     // Check if any columns use enum types (enums derive Serialize/Deserialize)
     let has_enums = table.columns.iter().any(|c| {
@@ -44,14 +44,19 @@ pub fn render_entity_with_config_and_paths(
     }
     lines.push(String::new());
 
-    // Generate Enum definitions first
-    let mut processed_enums = HashSet::new();
-    for column in &table.columns {
-        if let ColumnType::Complex(ComplexColumnType::Enum { name, values }) = &column.r#type {
-            // Avoid duplicate enum definitions if multiple columns use the same enum
-            if !processed_enums.contains(name) {
-                render_enum(&mut lines, &table.name, name, values, config);
-                processed_enums.insert(name.clone());
+    // Generate Enum definitions first. Reuse the already-computed `has_enums`
+    // flag: enum-free tables (the common case) skip the `HashSet` allocation
+    // and the second column walk entirely. Output is byte-identical — with no
+    // enum columns the loop body never fires and no lines are pushed.
+    if has_enums {
+        let mut processed_enums = HashSet::new();
+        for column in &table.columns {
+            if let ColumnType::Complex(ComplexColumnType::Enum { name, values }) = &column.r#type {
+                // Avoid duplicate enum definitions if multiple columns use the same enum
+                if !processed_enums.contains(name) {
+                    render_enum(&mut lines, &table.name, name, values, config);
+                    processed_enums.insert(name.clone());
+                }
             }
         }
     }
@@ -136,39 +141,13 @@ pub fn render_entity_with_config_and_paths(
     lines.join("\n")
 }
 
-/// Build a set of column names that have single-column unique constraints.
-pub(super) fn single_column_unique_set(constraints: &[TableConstraint]) -> HashSet<String> {
-    let mut unique_cols = HashSet::new();
-    for constraint in constraints {
-        if let TableConstraint::Unique { columns, .. } = constraint
-            && columns.len() == 1
-        {
-            unique_cols.insert(columns[0].to_string());
-        }
-    }
-    unique_cols
-}
-
-/// Build a set of column names that have single-column indexes from constraints.
-pub(super) fn single_column_index_set(constraints: &[TableConstraint]) -> HashSet<String> {
-    let mut indexed_cols = HashSet::new();
-    for constraint in constraints {
-        if let TableConstraint::Index { columns, .. } = constraint
-            && columns.len() == 1
-        {
-            indexed_cols.insert(columns[0].to_string());
-        }
-    }
-    indexed_cols
-}
-
 pub(super) fn render_column(
     lines: &mut Vec<String>,
     column: &ColumnDef,
-    primary_keys: &HashSet<String>,
+    primary_keys: &HashSet<&str>,
     composite_pk: bool,
-    unique_columns: &HashSet<String>,
-    indexed_columns: &HashSet<String>,
+    unique_columns: &HashSet<&str>,
+    indexed_columns: &HashSet<&str>,
 ) {
     let is_pk = primary_keys.contains(column.name.as_str());
     let is_unique = unique_columns.contains(column.name.as_str());
@@ -182,44 +161,51 @@ pub(super) fn render_column(
         }
     }
 
-    // Build attribute parts
-    let mut attrs: Vec<String> = Vec::new();
+    // Build attribute parts in a single buffer via the shared `push_attr`
+    // helper (comma-separated, no intermediate `Vec<String>`). Output is
+    // byte-identical to the previous `Vec<String>` + `.join(", ")`.
+    let mut attrs = String::new();
 
     if is_pk {
-        attrs.push("primary_key".into());
+        crate::utils::common::push_attr(&mut attrs, "primary_key");
         // Only show auto_increment = false for integer types that support auto_increment
         if composite_pk && column.r#type.supports_auto_increment() {
-            attrs.push("auto_increment = false".into());
+            crate::utils::common::push_attr(&mut attrs, "auto_increment = false");
         }
     }
 
     if is_unique && !is_pk {
         // unique is redundant if it's already a primary key
-        attrs.push("unique".into());
+        crate::utils::common::push_attr(&mut attrs, "unique");
     }
 
     if is_indexed && !is_pk && !is_unique {
         // indexed is redundant if it's already a primary key or unique
-        attrs.push("indexed".into());
+        crate::utils::common::push_attr(&mut attrs, "indexed");
     }
 
     if has_default && let Some(ref default_val) = column.default {
         // Format the default value for SeaORM
         let formatted = format_default_value(default_val, &column.r#type);
-        attrs.push(formatted);
+        crate::utils::common::push_attr(&mut attrs, &formatted);
     }
 
     // For custom types, add column_type attribute with the custom type value
     if let ColumnType::Complex(ComplexColumnType::Custom { custom_type }) = &column.r#type {
-        attrs.push(format!("column_type = \"{custom_type}\""));
+        crate::utils::common::push_attr(&mut attrs, &format!("column_type = \"{custom_type}\""));
+    }
+
+    let field_name = sanitize_field_name(&column.name);
+    // Renaming the field detaches it from the column it maps to, so name the
+    // column explicitly whenever the two differ.
+    if field_name != column.name.as_str() {
+        crate::utils::common::push_attr(&mut attrs, &format!("column_name = \"{}\"", column.name));
     }
 
     // Output attribute if any
     if !attrs.is_empty() {
-        lines.push(format!("    #[sea_orm({})]", attrs.join(", ")));
+        lines.push(format!("    #[sea_orm({attrs})]"));
     }
-
-    let field_name = sanitize_field_name(&column.name);
 
     let ty = match &column.r#type {
         ColumnType::Complex(ComplexColumnType::Enum { name, .. }) => {
@@ -232,7 +218,7 @@ pub(super) fn render_column(
         }
         // JSONB custom type should use Json rust type
         ColumnType::Complex(ComplexColumnType::Custom { custom_type })
-            if custom_type.to_uppercase() == "JSONB" =>
+            if custom_type.eq_ignore_ascii_case("JSONB") =>
         {
             if column.nullable {
                 "Option<Json>".to_string()
@@ -245,18 +231,11 @@ pub(super) fn render_column(
 
     lines.push(format!("    pub {field_name}: {ty},"));
 }
-pub(super) fn primary_key_columns(table: &TableDef) -> HashSet<String> {
+pub(super) fn primary_key_columns(table: &TableDef) -> HashSet<&str> {
     use vespertide_core::schema::primary_key::PrimaryKeySyntax;
-    let mut keys = HashSet::new();
 
-    // First, check table-level constraints
-    for constraint in &table.constraints {
-        if let TableConstraint::PrimaryKey { columns, .. } = constraint {
-            for col in columns {
-                keys.insert(col.to_string());
-            }
-        }
-    }
+    // Table-level constraints via the shared scan (single source of truth).
+    let mut keys = crate::constraint_scan::primary_key_columns(&table.constraints);
 
     // Then, check inline primary_key on columns
     // This handles cases where primary_key is defined inline but not yet normalized
@@ -264,65 +243,53 @@ pub(super) fn primary_key_columns(table: &TableDef) -> HashSet<String> {
         if let Some(PrimaryKeySyntax::Bool(true) | PrimaryKeySyntax::Object(_)) =
             &column.primary_key
         {
-            keys.insert(column.name.to_string());
+            keys.insert(column.name.as_str());
         }
     }
 
     keys
 }
 pub(super) fn render_indexes_and_uniques(lines: &mut Vec<String>, constraints: &[TableConstraint]) {
-    let index_constraints: Vec<_> = constraints
+    // Classify without materializing throwaway `Vec`s: the two flags drive the
+    // section headers and the inline `filter_map` loops below iterate the
+    // constraints directly. A composite unique is one with more than one column.
+    let has_index = constraints
         .iter()
-        .filter_map(|c| {
-            if let TableConstraint::Index { name, columns } = c {
-                Some((name, columns))
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    let composite_uniques: Vec<_> = constraints
+        .any(|c| matches!(c, TableConstraint::Index { .. }));
+    let has_composite_unique = constraints
         .iter()
-        .filter_map(|c| {
-            if let TableConstraint::Unique { name, columns, .. } = c {
-                if columns.len() > 1 {
-                    Some((name, columns))
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        })
-        .collect();
+        .any(|c| matches!(c, TableConstraint::Unique { columns, .. } if columns.len() > 1));
 
-    if index_constraints.is_empty() && composite_uniques.is_empty() {
+    if !has_index && !has_composite_unique {
         return;
     }
 
-    if !index_constraints.is_empty() {
+    if has_index {
         lines.push("// Index definitions (SeaORM uses Statement builders externally)".into());
-        for (name, columns) in index_constraints {
-            let cols = columns.join(", ");
+        for (name, columns) in constraints.iter().filter_map(|c| match c {
+            TableConstraint::Index { name, columns } => Some((name, columns)),
+            _ => None,
+        }) {
+            let cols = vespertide_core::schema::names::join_column_names(columns, ", ");
             let idx_name = name.clone().unwrap_or_else(|| "(unnamed)".to_string());
             lines.push(format!("// {idx_name} on [{cols}]"));
         }
     }
 
-    if !composite_uniques.is_empty() {
+    if has_composite_unique {
         lines.push(String::new());
         lines.push(
             "/// Composite unique constraints — declare in migrations or use Statement builder."
                 .into(),
         );
         lines.push("pub const COMPOSITE_UNIQUES: &[&[&str]] = &[".into());
-        for (name, columns) in composite_uniques {
-            let cols_str = columns
-                .iter()
-                .map(|c| format!("\"{c}\""))
-                .collect::<Vec<_>>()
-                .join(", ");
+        for (name, columns) in constraints.iter().filter_map(|c| match c {
+            TableConstraint::Unique { name, columns, .. } if columns.len() > 1 => {
+                Some((name, columns))
+            }
+            _ => None,
+        }) {
+            let cols_str = crate::utils::common::join_quoted(columns);
             let comment = name
                 .as_deref()
                 .map(|n| format!(" // {n}"))

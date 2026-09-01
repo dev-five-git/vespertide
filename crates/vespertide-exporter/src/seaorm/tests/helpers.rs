@@ -79,12 +79,14 @@ fn test_rust_type(#[case] col_type: ColumnType, #[case] nullable: bool, #[case] 
 
 #[rstest]
 #[case("normal_name", "normal_name")]
-#[case("123name", "_123name")]
+// `_123name` would make `DeriveEntityModel` build the `Column` variant
+// `123name`, which is not a valid identifier, so the escape is a letter.
+#[case("123name", "x123name")]
 #[case("name-with-dash", "name_with_dash")]
 #[case("name.with.dot", "name_with_dot")]
 #[case("name with space", "name_with_space")]
 #[case("name  with  multiple  spaces", "name__with__multiple__spaces")]
-#[case(" name_with_leading_space", "_name_with_leading_space")]
+#[case(" name_with_leading_space", "x_name_with_leading_space")]
 #[case("name_with_trailing_space ", "name_with_trailing_space_")]
 #[case("", "_col")]
 #[case("a", "a")]
@@ -168,9 +170,11 @@ fn test_generate_relation_enum_name(#[case] columns: Vec<String>, #[case] expect
     assert_eq!(generate_relation_enum_name(&columns), expected);
 }
 
+/// The name becomes a `Relation` enum variant, so a non-ASCII column has to
+/// come back as something Rust can actually declare.
 #[test]
-fn test_generate_relation_enum_name_unicode_without_panicking() {
-    assert_eq!(generate_relation_enum_name(&["📊_stats_id"]), "📊Stats");
+fn test_generate_relation_enum_name_escapes_non_ascii() {
+    assert_eq!(generate_relation_enum_name(&["📊_stats_id"]), "X_Stats");
 }
 
 #[rstest]

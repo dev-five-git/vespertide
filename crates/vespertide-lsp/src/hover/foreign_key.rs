@@ -2,6 +2,7 @@
 
 use crate::store::DocumentStore;
 use crate::text_util::strip_quotes;
+use crate::tree_util::is_pair;
 use crate::workspace_index::WorkspaceIndex;
 use crate::workspace_tables::WorkspaceTables;
 
@@ -86,10 +87,6 @@ fn column_summary(table: &vespertide_core::TableDef) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     format!("columns: {columns}")
-}
-
-fn is_pair(node: tree_sitter::Node<'_>) -> bool {
-    matches!(node.kind(), "pair" | "block_mapping_pair")
 }
 
 #[cfg(test)]

@@ -1,0 +1,7 @@
+---
+source: crates/vespertide-query/src/sql/add_column.rs
+expression: sql
+---
+ALTER TABLE "subscription" ADD COLUMN "os_tags" json;
+UPDATE "subscription" SET "os_tags" = CASE WHEN device_os = 'win' THEN json_build_array('WINDOWS', device_family::text) ELSE '[]'::json END;
+ALTER TABLE "subscription" ALTER COLUMN "os_tags" TYPE json, ALTER COLUMN "os_tags" SET NOT NULL

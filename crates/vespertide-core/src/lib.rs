@@ -9,8 +9,11 @@ pub mod action;
 pub mod arbitrary;
 pub mod migration;
 pub mod schema;
+pub mod sql_escape;
 
-pub use action::{MigrationAction, MigrationPlan, NarrowingStrategy};
+pub use action::{
+    DataMigrationSql, MigrationAction, MigrationPlan, NarrowingStrategy, leading_ddl_keyword,
+};
 pub use migration::{MigrationError, MigrationOptions};
 pub use schema::{
     CheckViolationStrategy, ColumnDef, ColumnName, ColumnType, ComplexColumnType, ConstraintKind,
@@ -18,3 +21,4 @@ pub use schema::{
     PrimaryKeyAdditionStrategy, ReferenceAction, SimpleColumnType, StrOrBoolOrArray, StringOrBool,
     TableConstraint, TableDef, TableName, TableValidationError, UniqueConstraintStrategy,
 };
+pub use sql_escape::escape_sql_string_literal;

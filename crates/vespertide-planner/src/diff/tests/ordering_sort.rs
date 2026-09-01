@@ -228,6 +228,17 @@ mod topo_and_delete_sort_tests {
         MigrationAction::DeleteTable { table: name.into() }
     }
 
+    // An action `sort_delete_tables` must never touch, tagged by column name so
+    // the assertions can prove it stayed in its original slot.
+    fn marker(column: &str) -> MigrationAction {
+        MigrationAction::ModifyColumnDefault {
+            table: "unrelated".into(),
+            column: column.into(),
+            new_default: None,
+            backfill: None,
+        }
+    }
+
     // A standalone table `a` plus a `b <-> c` FK cycle. The error must list
     // ONLY the cyclic tables (b, c), proving the `!result.iter().any(name ==
     // t.name)` "not-yet-placed" filter. The `delete !` mutant and the `== ->
@@ -323,6 +334,104 @@ mod topo_and_delete_sort_tests {
         assert!(
             matches!(&actions[0], MigrationAction::ModifyColumnType { .. }),
             "type change must stay first when old default is not removed"
+        );
+        assert!(matches!(
+            &actions[1],
+            MigrationAction::ModifyColumnDefault { .. }
+        ));
+    }
+
+    // Three FK-chained deletes (c -> b -> a) that neither start at slot 0 nor
+    // occupy contiguous slots: inert actions sit before and between them. The
+    // delete payloads must be permuted among exactly their own slots (1, 3, 4)
+    // into dependent-first order while the inert actions stay put. Pins the
+    // rank-space permutation apply — any confusion between a delete's rank
+    // (0..3) and its slot (1, 3, 4) either displaces an inert action or drops
+    // a delete on the floor.
+    #[test]
+    fn sort_delete_permutes_only_delete_slots_in_a_three_table_chain() {
+        let a = pk_table("a", None);
+        let b = pk_table("b", Some("a"));
+        let c = pk_table("c", Some("b"));
+        let mut all: BTreeMap<&str, &TableDef> = BTreeMap::new();
+        all.insert("a", &a);
+        all.insert("b", &b);
+        all.insert("c", &c);
+
+        let mut actions = vec![
+            marker("first"),
+            delete("a"),
+            marker("middle"),
+            delete("b"),
+            delete("c"),
+        ];
+        sort_delete_tables(&mut actions, &all);
+
+        // Dependents first: c (FK-> b), then b (FK-> a), then a.
+        assert_eq!(extract_delete_table_name(&actions[1]), "c");
+        assert_eq!(extract_delete_table_name(&actions[3]), "b");
+        assert_eq!(extract_delete_table_name(&actions[4]), "a");
+
+        // The non-delete actions never move.
+        assert!(matches!(
+            &actions[0],
+            MigrationAction::ModifyColumnDefault { column, .. } if column.as_str() == "first"
+        ));
+        assert!(matches!(
+            &actions[2],
+            MigrationAction::ModifyColumnDefault { column, .. } if column.as_str() == "middle"
+        ));
+    }
+
+    // The old default ('archived') belongs to NEITHER the old nor the new enum
+    // — a stale default left behind by a hand edit. Dropping 'inactive' does
+    // not remove the *default's* value, so the default change carries no
+    // ordering dependency and the actions must stay as-is. Pins the
+    // `from_values` membership half of `string_enum_value_removed`: an
+    // `any(|v| v != needle)` mutant classifies every non-member default as
+    // removed and reorders the pair.
+    #[test]
+    fn enum_default_reorder_skips_when_old_default_is_not_an_enum_member() {
+        use crate::diff::ordering::sort_enum_default_dependencies;
+        use vespertide_core::{ComplexColumnType, DefaultValue, EnumValues};
+
+        let old_enum = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "e".into(),
+            values: EnumValues::String(vec!["active".into(), "inactive".into()]),
+        });
+        let new_enum = ColumnType::Complex(ComplexColumnType::Enum {
+            name: "e".into(),
+            values: EnumValues::String(vec!["active".into()]),
+        });
+
+        let mut from_col = col("status", old_enum);
+        from_col.default = Some(DefaultValue::String("'archived'".into()));
+        let from_table = table("t", vec![from_col], vec![]);
+        let mut from_map: BTreeMap<&str, &TableDef> = BTreeMap::new();
+        from_map.insert("t", &from_table);
+
+        let mut actions = vec![
+            MigrationAction::ModifyColumnType {
+                table: "t".into(),
+                column: "status".into(),
+                new_type: new_enum,
+                fill_with: None,
+                narrowing_strategy: None,
+                timezone: None,
+            },
+            MigrationAction::ModifyColumnDefault {
+                table: "t".into(),
+                column: "status".into(),
+                new_default: Some("'active'".into()),
+                backfill: None,
+            },
+        ];
+
+        sort_enum_default_dependencies(&mut actions, &from_map);
+
+        assert!(
+            matches!(&actions[0], MigrationAction::ModifyColumnType { .. }),
+            "type change must stay first when the old default is not an enum member"
         );
         assert!(matches!(
             &actions[1],

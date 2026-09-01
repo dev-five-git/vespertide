@@ -14,6 +14,8 @@ use std::sync::RwLock;
 use tower_lsp_server::ls_types::Uri;
 use tree_sitter::{Node, Tree};
 
+use crate::text_util::strip_json_quotes;
+
 /// Snapshot returned by [`WorkspaceIndex::lookup`]; not held across mutations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TableLocation {
@@ -34,10 +36,21 @@ struct WorkspaceIndexInner {
     by_uri: BTreeMap<Uri, String>,
 }
 
+const LOCK_POISONED_MSG: &str =
+    "workspace_index lock poisoned — invariant: no panic while holding lock";
+
 impl WorkspaceIndex {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    fn read_inner(&self) -> std::sync::RwLockReadGuard<'_, WorkspaceIndexInner> {
+        self.inner.read().expect(LOCK_POISONED_MSG)
+    }
+
+    fn write_inner(&self) -> std::sync::RwLockWriteGuard<'_, WorkspaceIndexInner> {
+        self.inner.write().expect(LOCK_POISONED_MSG)
     }
 
     /// Upsert: parse the document's top-level `name` field and update both
@@ -47,10 +60,7 @@ impl WorkspaceIndex {
     /// Panics if the internal lock is poisoned (process-wide invariant).
     pub fn upsert(&self, uri: &Uri, source: &str, tree: &Tree) -> Option<String> {
         let new_name = extract_top_level_name(source, tree);
-        let mut inner = self
-            .inner
-            .write()
-            .expect("workspace_index lock poisoned — invariant: no panic while holding lock");
+        let mut inner = self.write_inner();
         let old = inner.by_uri.get(uri).cloned();
         if let Some(old_name) = &old {
             // Only remove the by_name entry if it still points to this URI
@@ -76,10 +86,7 @@ impl WorkspaceIndex {
     /// # Panics
     /// Panics if the internal lock is poisoned.
     pub fn remove(&self, uri: &Uri) {
-        let mut inner = self
-            .inner
-            .write()
-            .expect("workspace_index lock poisoned — invariant: no panic while holding lock");
+        let mut inner = self.write_inner();
         if let Some(name) = inner.by_uri.remove(uri)
             && inner.by_name.get(&name) == Some(uri)
         {
@@ -93,10 +100,7 @@ impl WorkspaceIndex {
     /// Panics if the internal lock is poisoned.
     #[must_use]
     pub fn lookup(&self, table_name: &str) -> Option<TableLocation> {
-        let inner = self
-            .inner
-            .read()
-            .expect("workspace_index lock poisoned — invariant: no panic while holding lock");
+        let inner = self.read_inner();
         inner
             .by_name
             .get(table_name)
@@ -109,10 +113,7 @@ impl WorkspaceIndex {
     /// Panics if the internal lock is poisoned.
     #[must_use]
     pub fn tables(&self) -> Vec<String> {
-        let inner = self
-            .inner
-            .read()
-            .expect("workspace_index lock poisoned — invariant: no panic while holding lock");
+        let inner = self.read_inner();
         inner.by_name.keys().cloned().collect()
     }
 
@@ -122,17 +123,16 @@ impl WorkspaceIndex {
     /// Panics if the internal lock is poisoned.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.inner
-            .read()
-            .expect("workspace_index lock poisoned — invariant: no panic while holding lock")
-            .by_name
-            .len()
+        self.read_inner().by_name.len()
     }
 
     /// `true` if no tables are indexed.
+    ///
+    /// # Panics
+    /// Panics if the internal lock is poisoned.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.read_inner().by_name.is_empty()
     }
 }
 
@@ -144,21 +144,8 @@ impl WorkspaceIndex {
 /// `columns` before `name` — that polluted the workspace index with column
 /// names like `id` and `media_id` as if they were tables.
 fn extract_top_level_name(source: &str, tree: &Tree) -> Option<String> {
-    let mapping = find_outer_mapping(tree.root_node())?;
+    let mapping = crate::tree_util::find_outer_mapping(tree.root_node())?;
     find_direct_name_value(mapping, source.as_bytes())
-}
-
-fn find_outer_mapping(node: Node<'_>) -> Option<Node<'_>> {
-    if matches!(node.kind(), "object" | "block_mapping" | "flow_mapping") {
-        return Some(node);
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if let Some(found) = find_outer_mapping(child) {
-            return Some(found);
-        }
-    }
-    None
 }
 
 fn find_direct_name_value(mapping: Node<'_>, source: &[u8]) -> Option<String> {
@@ -170,7 +157,7 @@ fn find_direct_name_value(mapping: Node<'_>, source: &[u8]) -> Option<String> {
             return source
                 .get(value.byte_range())
                 .and_then(|text| std::str::from_utf8(text).ok())
-                .map(|text| strip_quotes(text).to_string());
+                .map(|text| strip_json_quotes(text).to_string());
         }
     }
     None
@@ -183,18 +170,13 @@ fn is_name_key_node(node: Node<'_>, source: &[u8]) -> bool {
             .named_child(0)
             .and_then(|key| source.get(key.byte_range()))
             .and_then(|text| std::str::from_utf8(text).ok())
-            .is_some_and(|key_str| strip_quotes(key_str.trim()) == "name")
+            .is_some_and(|key_str| strip_json_quotes(key_str.trim()) == "name")
 }
 
 fn find_value_sibling(pair_node: Node<'_>) -> Option<Node<'_>> {
     // JSON pair: key, ":", value → value is named_child(1)
     // YAML block_mapping_pair: key, ":", value → value is named_child(1)
     pair_node.named_child(1)
-}
-
-fn strip_quotes(s: &str) -> &str {
-    let s = s.trim();
-    s.trim_start_matches('"').trim_end_matches('"')
 }
 
 #[cfg(test)]
@@ -332,6 +314,19 @@ mod tests {
         idx.upsert(&uri("scalar.yaml"), src, &tree);
 
         assert!(idx.is_empty());
+    }
+
+    #[test]
+    fn is_empty_tracks_population() {
+        let idx = WorkspaceIndex::new();
+        assert!(idx.is_empty());
+
+        let pool = ParserPool::new();
+        let src = r#"{"name":"user"}"#;
+        let tree = pool.parse(src, DocumentFormat::Json).unwrap();
+        idx.upsert(&uri("user.json"), src, &tree);
+
+        assert!(!idx.is_empty());
     }
 
     #[test]

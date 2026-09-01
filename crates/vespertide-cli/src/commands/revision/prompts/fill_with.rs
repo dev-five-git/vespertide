@@ -53,12 +53,12 @@ pub(in crate::commands::revision) fn print_fill_with_header() {
         "⚠".bright_yellow(),
         "The following columns require fill_with values:".bright_yellow()
     );
-    println!("{}", "─".repeat(60).bright_black());
+    super::print_section_rule();
 }
 
 /// Print the footer for `fill_with` prompts.
 pub(in crate::commands::revision) fn print_fill_with_footer() {
-    println!("{}", "─".repeat(60).bright_black());
+    super::print_section_rule();
 }
 
 /// Print a `fill_with` item and return the formatted prompt.
@@ -136,6 +136,8 @@ pub(in crate::commands::revision) fn prompt_enum_value_bare(
 
 /// Strip SQL single-quotes from an enum value string.
 /// `BTreeMap` stores bare enum names; the SQL layer handles quoting via `Expr::val()`.
+/// A quoted value gets escaped twice and lands in the column as `'active'`, which
+/// `PostgreSQL` rejects with `invalid input value for enum`.
 pub(in crate::commands::revision) fn strip_enum_quotes(value: &str) -> String {
     value
         .trim_start_matches('\'')
@@ -233,8 +235,9 @@ where
     let mut remaining = Vec::new();
 
     for item in missing.drain(..) {
-        if item.has_foreign_key && !delete_set.contains(&(item.table.clone(), item.column.clone()))
-        {
+        let key = (item.table.clone(), item.column.clone());
+        let in_delete_set = delete_set.contains(&key);
+        if item.has_foreign_key && !in_delete_set {
             // FK column without CLI arg — prompt user
             println!(
                 "  {} {}.{} has a foreign key constraint — fill_with may not work.",
@@ -243,12 +246,12 @@ where
                 item.column.bright_green()
             );
             if prompt_fn(&item.table, &item.column)? {
-                to_delete.push((item.table.clone(), item.column.clone()));
+                to_delete.push(key);
             } else {
                 remaining.push(item);
             }
-        } else if delete_set.contains(&(item.table.clone(), item.column.clone())) {
-            to_delete.push((item.table.clone(), item.column.clone()));
+        } else if in_delete_set {
+            to_delete.push(key);
         } else {
             remaining.push(item);
         }
@@ -289,6 +292,9 @@ where
 /// The original ordering of `remaining_values` is preserved for every entry
 /// other than the suggestion (which is hoisted to the top), so non-suggested
 /// options remain in a predictable order.
+///
+/// Every value passes through [`strip_enum_quotes`], so the returned mappings
+/// hold bare labels no matter what `enum_prompt_fn` returns.
 pub(in crate::commands::revision) fn collect_enum_fill_with_values<E>(
     missing: &[EnumFillWithRequired],
     enum_prompt_fn: E,
@@ -303,7 +309,7 @@ where
         "\u{26a0}".bright_yellow(),
         "The following enum value removals require replacement mappings:".bright_yellow()
     );
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
 
     for item in missing {
         println!(
@@ -332,12 +338,12 @@ where
             }
             let ordered = reorder_with_suggestion(&item.remaining_values, suggestion.as_deref());
             let value = enum_prompt_fn(&prompt, &ordered)?;
-            mappings.insert(removed.clone(), value);
+            mappings.insert(removed.clone(), strip_enum_quotes(&value));
         }
         results.push((item.action_index, mappings));
     }
 
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
     Ok(results)
 }
 

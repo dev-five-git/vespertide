@@ -139,12 +139,10 @@ pub(super) fn lookup_baseline_column<'a>(
         .and_then(|table| table.columns.iter().find(|c| c.name == column_name))
 }
 
-/// Render a column type as a human-readable string.
+/// Render a column type in the model-file (wire-format) spelling,
+/// e.g. `integer`, `varchar(32)` — not the Rust `Debug` form.
 pub(super) fn render_column_type(t: &ColumnType) -> String {
-    match t {
-        ColumnType::Simple(st) => format!("{st:?}"),
-        ColumnType::Complex(ct) => format!("{ct:?}"),
-    }
+    t.display_label()
 }
 
 /// Render a default value as a human-readable string.
@@ -379,7 +377,7 @@ mod tests {
             length: 32,
         }));
 
-        assert!(rendered.contains("Varchar"));
+        assert_eq!(rendered, "varchar(32)");
     }
 
     #[test]

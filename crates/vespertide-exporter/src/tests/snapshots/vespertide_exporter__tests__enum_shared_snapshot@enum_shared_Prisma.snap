@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+enum DocStatus {
+  DRAFT @map("draft")
+  PUBLISHED @map("published")
+  ARCHIVED @map("archived")
+}
+
+model Documents {
+  id Int
+  status DocStatus
+  review_status DocStatus?
+
+  @@map("documents")
+}

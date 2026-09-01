@@ -1,0 +1,13 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model Articles {
+  id Int @id
+  title String
+  created_at DateTime
+
+  @@index([created_at], map: "ix_articles__idx_articles_created_at")
+  @@index([title], map: "ix_articles__title")
+  @@map("articles")
+}

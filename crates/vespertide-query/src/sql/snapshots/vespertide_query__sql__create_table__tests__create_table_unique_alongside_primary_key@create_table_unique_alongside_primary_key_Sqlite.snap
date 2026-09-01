@@ -1,0 +1,6 @@
+---
+source: crates/vespertide-query/src/sql/create_table.rs
+expression: sql
+---
+CREATE TABLE "users" ( "id" integer, "email" text, PRIMARY KEY ("id") )
+CREATE UNIQUE INDEX "uq_users__uq_email" ON "users" ("email")

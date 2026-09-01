@@ -1,0 +1,31 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "membership", indexes = {
+    @Index(columnList = "3created")
+}, uniqueConstraints = {
+    @UniqueConstraint(columnNames = {"user-email", "1tenant_id"})
+})
+public class Membership {
+
+    @Id
+    @Column(name = "1tenant_id")
+    private Integer _1tenantId;
+
+    @Id
+    @Column(name = "2user_id")
+    private Integer _2userId;
+
+    @Column(name = "user-email", nullable = false, columnDefinition = "TEXT")
+    private String user_email;
+
+    @Column(name = "3created", nullable = false, columnDefinition = "TEXT")
+    private String _3created;
+
+    protected Membership() {
+    }
+}

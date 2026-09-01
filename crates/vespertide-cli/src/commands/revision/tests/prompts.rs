@@ -557,6 +557,25 @@ fn test_collect_enum_fill_with_values_single_removal() {
 }
 
 #[test]
+fn test_collect_enum_fill_with_values_strips_quotes_from_prompt_result() {
+    use vespertide_planner::EnumFillWithRequired;
+
+    let missing = vec![EnumFillWithRequired {
+        action_index: 0,
+        table: "plan".to_string(),
+        column: "sheet_policy".to_string(),
+        removed_values: vec!["OVER_500".to_string()],
+        remaining_values: vec!["FIXED".to_string(), "NEGOTIATION".to_string()],
+    }];
+
+    let quoting_enum =
+        |_prompt: &str, values: &[String]| -> Result<String> { Ok(format!("'{}'", values[0])) };
+
+    let collected = collect_enum_fill_with_values(&missing, quoting_enum).unwrap();
+    assert_eq!(collected[0].1.get("OVER_500"), Some(&"FIXED".to_string()));
+}
+
+#[test]
 fn test_collect_enum_fill_with_values_multiple_removals() {
     use vespertide_planner::EnumFillWithRequired;
 

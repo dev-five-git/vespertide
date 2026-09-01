@@ -1,0 +1,11 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model User {
+  id String @id
+  created_by_user_settings Settings? @relation("SettingsCreatedByUser")
+  updated_by_user_settings Settings? @relation("SettingsUpdatedByUser")
+
+  @@map("user")
+}

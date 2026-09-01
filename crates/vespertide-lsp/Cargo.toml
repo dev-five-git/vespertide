@@ -1,6 +1,6 @@
 [package]
 name = "vespertide-lsp"
-version = "0.2.1"
+version = "0.3.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -22,8 +22,11 @@ path = "src/main.rs"
 # LSP framework - tower-lsp-server (community fork; tower-lsp 0.20 is abandoned)
 tower-lsp-server = "=0.23.0"
 
-# Async runtime
-tokio = { version = "1", features = ["full"] }
+# Async runtime. Only the multi-thread runtime (#[tokio::main]), the proc-macro
+# attrs, and stdin/stdout are used directly here; tower-lsp-server pulls in any
+# further tokio features it needs transitively. Avoiding "full" trims the LSP
+# binary's build (drops net/time/process/signal/fs/sync codegen we never touch).
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std"] }
 
 # Tree-sitter parsers (used from Wave 2+)
 tree-sitter = "0.26"
@@ -57,8 +60,14 @@ vespertide-planner = { workspace = true }
 vespertide-loader = { workspace = true }
 
 [dev-dependencies]
-insta = { version = "1.47", features = ["json", "yaml"] }
+insta = { version = "1.48", features = ["json", "yaml"] }
 proptest = "1"
 rstest = "0.26"
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
+criterion = { version = "0.8", features = ["html_reports"] }
+futures = "0.3"
+
+[[bench]]
+name = "workspace_fanout"
+harness = false

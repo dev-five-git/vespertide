@@ -8,6 +8,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::SystemTime;
 use tree_sitter::Tree;
@@ -18,6 +19,11 @@ use vespertide_core::TableDef;
 #[derive(Debug, Default)]
 pub struct WorkspaceTables {
     inner: RwLock<Inner>,
+    /// Monotonic counter bumped every time `inner`'s table set is replaced by
+    /// `refresh()`. Consumers (the diagnostics workspace-table cache) read this
+    /// as part of their cache key to detect disk-side changes in O(1) without
+    /// hashing the whole table set. See `generation()`.
+    generation: AtomicU64,
 }
 
 #[derive(Debug, Default)]
@@ -44,9 +50,20 @@ struct CachedTree {
     format: DocumentFormat,
 }
 
+const LOCK_POISONED_MSG: &str =
+    "workspace_tables lock poisoned — invariant: no panic while holding lock";
+
 impl WorkspaceTables {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    fn read_inner(&self) -> std::sync::RwLockReadGuard<'_, Inner> {
+        self.inner.read().expect(LOCK_POISONED_MSG)
+    }
+
+    fn write_inner(&self) -> std::sync::RwLockWriteGuard<'_, Inner> {
+        self.inner.write().expect(LOCK_POISONED_MSG)
     }
 
     /// Walk up from `start` looking for `vespertide.json`, then load all models.
@@ -67,50 +84,46 @@ impl WorkspaceTables {
                 collect_models(&models_dir, &mut by_name, &mut path_by_name);
                 let count = by_name.len();
 
-                *self.inner.write().expect(
-                    "workspace_tables lock poisoned — invariant: no panic while holding lock",
-                ) = Inner {
+                *self.write_inner() = Inner {
                     root: Some(root),
                     by_name,
                     path_by_name,
                     tree_cache: BTreeMap::new(),
                 };
+                // Bump AFTER the write completes so a concurrent reader that
+                // observes the new generation is guaranteed (via the lock) to
+                // see the new table set.
+                self.generation.fetch_add(1, Ordering::Relaxed);
 
                 count > 0
             } else {
                 false
             }
         } else {
-            *self.inner.write().expect(
-                "workspace_tables lock poisoned — invariant: no panic while holding lock",
-            ) = Inner::default();
+            *self.write_inner() = Inner::default();
+            self.generation.fetch_add(1, Ordering::Relaxed);
             false
         }
     }
 
+    /// Monotonic generation counter, incremented whenever `refresh()` replaces
+    /// the in-memory table set. Cheap (`Relaxed` atomic load) cache-key input
+    /// for consumers that must invalidate when disk-discovered tables change.
+    #[must_use]
+    pub fn generation(&self) -> u64 {
+        self.generation.load(Ordering::Relaxed)
+    }
+
     pub fn get(&self, name: &str) -> Option<TableDef> {
-        self.inner
-            .read()
-            .expect("workspace_tables lock poisoned — invariant: no panic while holding lock")
-            .by_name
-            .get(name)
-            .cloned()
+        self.read_inner().by_name.get(name).cloned()
     }
 
     pub fn names(&self) -> Vec<String> {
-        self.inner
-            .read()
-            .expect("workspace_tables lock poisoned — invariant: no panic while holding lock")
-            .by_name
-            .keys()
-            .cloned()
-            .collect()
+        self.read_inner().by_name.keys().cloned().collect()
     }
 
     pub fn all(&self) -> Vec<(String, TableDef)> {
-        self.inner
-            .read()
-            .expect("workspace_tables lock poisoned — invariant: no panic while holding lock")
+        self.read_inner()
             .by_name
             .iter()
             .map(|(name, table)| (name.clone(), table.clone()))
@@ -118,11 +131,7 @@ impl WorkspaceTables {
     }
 
     pub fn root(&self) -> Option<PathBuf> {
-        self.inner
-            .read()
-            .expect("workspace_tables lock poisoned — invariant: no panic while holding lock")
-            .root
-            .clone()
+        self.read_inner().root.clone()
     }
 
     /// Look up the on-disk file path that declared `table_name`. Cached at
@@ -130,12 +139,7 @@ impl WorkspaceTables {
     /// `media.json`, `media.vespertide.json`, or `models/whatever.json`
     /// regardless of the filename convention.
     pub fn model_path(&self, table_name: &str) -> Option<PathBuf> {
-        self.inner
-            .read()
-            .expect("workspace_tables lock poisoned — invariant: no panic while holding lock")
-            .path_by_name
-            .get(table_name)
-            .cloned()
+        self.read_inner().path_by_name.get(table_name).cloned()
     }
 
     /// Lookup or parse on-demand.
@@ -155,10 +159,7 @@ impl WorkspaceTables {
         let format = format_for_path(path);
 
         {
-            let inner = self
-                .inner
-                .read()
-                .expect("workspace_tables lock poisoned — invariant: no panic while holding lock");
+            let inner = self.read_inner();
             if let Some(entry) = inner.tree_cache.get(path)
                 && entry.mtime == mtime
                 && entry.format == format
@@ -174,10 +175,7 @@ impl WorkspaceTables {
         let tree_arc = Arc::new(tree);
 
         {
-            let mut inner = self
-                .inner
-                .write()
-                .expect("workspace_tables lock poisoned — invariant: no panic while holding lock");
+            let mut inner = self.write_inner();
             inner.tree_cache.insert(
                 path.to_path_buf(),
                 CachedTree {

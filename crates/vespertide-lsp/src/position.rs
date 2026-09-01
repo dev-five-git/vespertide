@@ -56,6 +56,27 @@ pub fn ls_to_lsp_range(r: tower_lsp_server::ls_types::Range) -> lsp_types::Range
     }
 }
 
+/// Build a `file://...` URI from a local filesystem path.
+///
+/// Counterpart to [`uri_to_path`]: normalises Windows backslashes to
+/// forward slashes and ensures the path component starts with `/` so
+/// the resulting URI is well-formed (`file:///c:/...` on Windows,
+/// `file:///abs/path` on POSIX). Returns `None` only when the path
+/// is so degenerate that `Uri::from_str` rejects the result.
+///
+/// This is the single canonical inverse of [`uri_to_path`]; the LSP
+/// crate previously carried five near-identical copies (one per module
+/// that needed to lower a discovered disk path back to an LSP URI).
+#[must_use]
+pub fn path_to_uri(path: &std::path::Path) -> Option<Uri> {
+    use std::str::FromStr as _;
+    let mut path_text = path.to_string_lossy().replace('\\', "/");
+    if !path_text.starts_with('/') {
+        path_text = format!("/{path_text}");
+    }
+    Uri::from_str(&format!("file://{path_text}")).ok()
+}
+
 /// Convert a `file://` URI into a local filesystem path.
 ///
 /// Handles percent-encoding (VS Code sends `file:///c%3A/...`, Zed sends
@@ -307,5 +328,40 @@ mod tests {
         assert!(!has_windows_drive_prefix("/usr/local"));
         assert!(!has_windows_drive_prefix("ab"));
         assert!(!has_windows_drive_prefix(""));
+    }
+
+    /// Single canonical test for `path_to_uri`. Previously this same
+    /// assertion was copy-pasted into three modules (`drift::compute`,
+    /// `references::search`, `symbols`) — each guarding its own private
+    /// copy of the helper. With the helper hoisted here, one test covers
+    /// every prior call site.
+    #[rstest]
+    #[case::relative("models/user.json", "models/user.json")]
+    #[case::posix_absolute_like("/abs/path/file.json", "/abs/path/file.json")]
+    #[case::windows_backslashes("C:\\Users\\x\\m.json", "C:/Users/x/m.json")]
+    fn path_to_uri_normalises_and_prepends_leading_slash(
+        #[case] input: &str,
+        #[case] expected_tail: &str,
+    ) {
+        let uri = path_to_uri(std::path::Path::new(input)).expect("uri");
+        let text = uri.as_str();
+
+        assert!(text.starts_with("file:///"), "got: {text}");
+        assert!(text.ends_with(expected_tail), "got: {text}");
+    }
+
+    /// Round-trip with [`uri_to_path`] on a POSIX-like path: lowering then
+    /// raising must round-trip when the input was already `file://`-shaped.
+    #[test]
+    fn path_to_uri_then_uri_to_path_round_trips_posix_like_path() {
+        let original = std::path::PathBuf::from("/tmp/round_trip.json");
+        let uri = path_to_uri(&original).expect("uri");
+        let path = uri_to_path(&uri).expect("path");
+
+        // On Windows the round-trip lossy-converts separators; assert by
+        // string-tail rather than exact equality so the test is platform-
+        // independent.
+        let text = path.to_string_lossy().replace('\\', "/");
+        assert!(text.ends_with("/tmp/round_trip.json"), "got: {text}");
     }
 }

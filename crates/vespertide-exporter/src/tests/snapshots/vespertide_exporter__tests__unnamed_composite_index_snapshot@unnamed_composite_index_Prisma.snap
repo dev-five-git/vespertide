@@ -1,0 +1,12 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model UnnamedIndex {
+  id Int @id
+  col_a Int
+  col_b Int
+
+  @@index([col_a, col_b], map: "ix_unnamed_index__col_a_col_b")
+  @@map("unnamed_index")
+}

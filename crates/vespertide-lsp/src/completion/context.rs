@@ -6,6 +6,9 @@ use vespertide_planner::{CheckToken, CheckTokenKind, lex_check_expr};
 
 use crate::check_expr_range::expr_inner_range;
 use crate::text_util::strip_quotes;
+use crate::tree_util::{
+    direct_child_value, enclosing_pair_with_key, is_inside_constraints, is_pair,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Context {
@@ -151,7 +154,7 @@ fn check_expr_context(
         return None;
     }
 
-    let expr_value = expr_pair.named_child(1).map(unwrap_flow_node)?;
+    let expr_value = expr_pair.named_child(1).map(unwrap_yaml_node)?;
     let inner = expr_inner_range(expr_value)?;
     if byte_offset < inner.start || byte_offset > inner.end {
         return None;
@@ -243,23 +246,12 @@ fn keyword_expects_operand(keyword: &str) -> bool {
         .any(|expected| keyword.eq_ignore_ascii_case(expected))
 }
 
-fn is_inside_constraints(node: tree_sitter::Node<'_>, source: &str) -> bool {
-    let mut current = node.parent();
-    while let Some(candidate) = current {
-        if is_pair(candidate) && key_text(candidate, source) == Some("constraints") {
-            return true;
-        }
-        current = candidate.parent();
-    }
-    false
-}
-
 fn current_table_columns(node: tree_sitter::Node<'_>, source: &str) -> Vec<String> {
     let root = document_value(node);
     if let Some(columns_value_raw) = find_pair_with_key(root, source, "columns")
         .and_then(|columns_pair| columns_pair.named_child(1))
     {
-        collect_column_names(unwrap_flow_node(columns_value_raw), source)
+        collect_column_names(unwrap_yaml_node(columns_value_raw), source)
     } else {
         Vec::new()
     }
@@ -270,7 +262,7 @@ fn document_value(mut node: tree_sitter::Node<'_>) -> tree_sitter::Node<'_> {
         node = parent;
     }
 
-    node.named_child(0).map_or(node, unwrap_flow_node)
+    node.named_child(0).map_or(node, unwrap_yaml_node)
 }
 
 fn collect_column_names(columns_value: tree_sitter::Node<'_>, source: &str) -> Vec<String> {
@@ -281,7 +273,7 @@ fn collect_column_names(columns_value: tree_sitter::Node<'_>, source: &str) -> V
     ) {
         let mut cursor = columns_value.walk();
         for raw_child in columns_value.children(&mut cursor) {
-            let child = unwrap_flow_node(raw_child);
+            let child = unwrap_yaml_node(raw_child);
             if let Some(column_object) = column_object_from_sequence_child(child)
                 && let Some(name) = string_value_for_key(column_object, source, "name")
                 && !name.is_empty()
@@ -301,7 +293,7 @@ fn column_object_from_sequence_child(
         "block_sequence_item" => {
             let mut cursor = child.walk();
             child.children(&mut cursor).find_map(|raw_inner| {
-                let inner = unwrap_flow_node(raw_inner);
+                let inner = unwrap_yaml_node(raw_inner);
                 matches!(inner.kind(), "object" | "block_mapping" | "flow_mapping").then_some(inner)
             })
         }
@@ -315,7 +307,7 @@ fn string_value_for_key<'source>(
     key: &str,
 ) -> Option<&'source str> {
     let pair = find_pair_with_key(object, source, key)?;
-    let value = pair.named_child(1).map(unwrap_flow_node)?;
+    let value = pair.named_child(1).map(unwrap_yaml_node)?;
     source.get(value.byte_range()).map(strip_quotes)
 }
 
@@ -338,7 +330,7 @@ fn analyze_sibling_type(
         .and_then(|column_object| find_pair_with_key(column_object, source, "type"))
         .and_then(|type_pair| type_pair.named_child(1))
     {
-        let effective = unwrap_flow_node(type_value);
+        let effective = unwrap_yaml_node(type_value);
         match effective.kind() {
             "string"
             | "double_quote_scalar"
@@ -351,7 +343,7 @@ fn analyze_sibling_type(
             "object" | "block_mapping" | "flow_mapping" => {
                 let kind = find_pair_with_key(effective, source, "kind")
                     .and_then(|pair| pair.named_child(1))
-                    .map(unwrap_flow_node)
+                    .map(unwrap_yaml_node)
                     .and_then(|node| source.get(node.byte_range()))
                     .map(|raw| strip_quotes(raw).to_string());
 
@@ -369,25 +361,7 @@ fn analyze_sibling_type(
     }
 }
 
-/// tree-sitter-yaml wraps scalars in `flow_node` (inline values) and
-/// multi-line mappings/sequences in `block_node`. Both are pure wrappers
-/// over their first named child — peel them so downstream `match`es see
-/// the real kind. We loop to handle the (rare) double-wrapping case.
-/// JSON's grammar has no such wrapper, so this is a no-op there.
-fn unwrap_flow_node(node: tree_sitter::Node<'_>) -> tree_sitter::Node<'_> {
-    // Fused while-let so the empty-wrapper case shares the same exit as the
-    // kind-mismatch case — no defensive `return current` branch dependent on
-    // tree-sitter-yaml producing empty wrappers.
-    let mut current = node;
-    while matches!(current.kind(), "flow_node" | "block_node")
-        && let Some(inner) = current
-            .named_child(0)
-            .filter(|inner| inner.id() != current.id())
-    {
-        current = inner;
-    }
-    current
-}
+use crate::tree_util::unwrap_yaml_node;
 
 /// Walk up to the smallest enclosing object that lives inside a `columns`
 /// array — i.e. the column object the cursor belongs to.
@@ -421,14 +395,14 @@ fn collect_enum_values(type_object: tree_sitter::Node<'_>, source: &str) -> Vec<
     if let Some(values_array_raw) = find_pair_with_key(type_object, source, "values")
         .and_then(|values_pair| values_pair.named_child(1))
     {
-        let values_array = unwrap_flow_node(values_array_raw);
+        let values_array = unwrap_yaml_node(values_array_raw);
         if matches!(
             values_array.kind(),
             "array" | "block_sequence" | "flow_sequence"
         ) {
             let mut cursor = values_array.walk();
             for raw_child in values_array.children(&mut cursor) {
-                let child = unwrap_flow_node(raw_child);
+                let child = unwrap_yaml_node(raw_child);
                 match child.kind() {
                     "string"
                     | "double_quote_scalar"
@@ -444,7 +418,7 @@ fn collect_enum_values(type_object: tree_sitter::Node<'_>, source: &str) -> Vec<
                         if let Some(name_pair) = find_pair_with_key(child, source, "name")
                             && let Some(name_value_raw) = name_pair.named_child(1)
                         {
-                            let name_value = unwrap_flow_node(name_value_raw);
+                            let name_value = unwrap_yaml_node(name_value_raw);
                             if let Some(raw) = source.get(name_value.byte_range()) {
                                 out.push(strip_quotes(raw).to_string());
                             }
@@ -456,7 +430,7 @@ fn collect_enum_values(type_object: tree_sitter::Node<'_>, source: &str) -> Vec<
                     "block_sequence_item" => {
                         let mut inner_cursor = child.walk();
                         for inner in child.children(&mut inner_cursor) {
-                            let inner = unwrap_flow_node(inner);
+                            let inner = unwrap_yaml_node(inner);
                             if let Some(raw) = source.get(inner.byte_range())
                                 && matches!(
                                     inner.kind(),
@@ -620,39 +594,12 @@ fn collect_key_path(node: tree_sitter::Node<'_>, source: &str) -> Vec<String> {
 fn sibling_ref_table(node: tree_sitter::Node<'_>, source: &str) -> Option<String> {
     let ref_columns_pair = enclosing_pair_with_key(node, source, "ref_columns")?;
     let parent = ref_columns_pair.parent()?;
-    direct_child_value(parent, source, "ref_table").map(ToString::to_string)
-}
-
-fn enclosing_pair_with_key<'tree>(
-    node: tree_sitter::Node<'tree>,
-    source: &str,
-    expected: &str,
-) -> Option<tree_sitter::Node<'tree>> {
-    let mut current = Some(node);
-
-    while let Some(candidate) = current {
-        if is_pair(candidate) && key_text(candidate, source) == Some(expected) {
-            return Some(candidate);
-        }
-        current = candidate.parent();
-    }
-
-    None
-}
-
-fn direct_child_value<'source>(
-    node: tree_sitter::Node<'_>,
-    source: &'source str,
-    expected_key: &str,
-) -> Option<&'source str> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if is_pair(child) && key_text(child, source) == Some(expected_key) {
-            return value_text(child, source);
-        }
-    }
-
-    None
+    // Hoisted `direct_child_value` returns the verbatim value-side slice
+    // (quotes preserved), so strip them here to match the previous
+    // private-helper contract that already stripped via `value_text`.
+    direct_child_value(parent, source, "ref_table")
+        .map(strip_quotes)
+        .map(ToString::to_string)
 }
 
 fn key_text<'source>(
@@ -661,14 +608,6 @@ fn key_text<'source>(
 ) -> Option<&'source str> {
     let key = pair_node.named_child(0)?;
     source.get(key.byte_range()).map(strip_quotes)
-}
-
-fn value_text<'source>(
-    pair_node: tree_sitter::Node<'_>,
-    source: &'source str,
-) -> Option<&'source str> {
-    let value = pair_node.named_child(1)?;
-    source.get(value.byte_range()).map(strip_quotes)
 }
 
 fn node_at_byte(tree: &tree_sitter::Tree, byte_offset: usize) -> tree_sitter::Node<'_> {
@@ -682,10 +621,6 @@ fn node_at_byte(tree: &tree_sitter::Tree, byte_offset: usize) -> tree_sitter::No
         .min(root.end_byte().saturating_sub(1));
     let end = byte_offset.min(root.end_byte());
     root.descendant_for_byte_range(start, end).unwrap_or(root)
-}
-
-fn is_pair(node: tree_sitter::Node<'_>) -> bool {
-    matches!(node.kind(), "pair" | "block_mapping_pair")
 }
 
 #[cfg(test)]
@@ -714,9 +649,7 @@ mod tests {
         super::super::compute(src, format, Some(&tree), &idx, &docs, pos)
     }
 
-    fn completion_labels(items: &[super::super::DomainCompletion]) -> Vec<&str> {
-        items.iter().map(|item| item.label.as_str()).collect()
-    }
+    use super::super::completion_labels;
 
     fn assert_label_expectations(
         labels: &[&str],
@@ -994,7 +927,7 @@ mod tests {
         let src = "name: u\ncolumns:\n  - name: amount\n    type: integer\nconstraints:\n  - type: check\n    expr: amount > 0\n";
         let tree = parse(src, DocumentFormat::Yaml);
         let columns_pair = find_pair_recursive(tree.root_node(), src, "columns").unwrap();
-        let columns_value = unwrap_flow_node(columns_pair.named_child(1).unwrap());
+        let columns_value = unwrap_yaml_node(columns_pair.named_child(1).unwrap());
         let names = collect_column_names(columns_value, src);
 
         assert_eq!(names, vec!["amount".to_string()]);

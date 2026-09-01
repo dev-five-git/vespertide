@@ -29,7 +29,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use vespertide_core::{ColumnName, MigrationAction, MigrationPlan, TableConstraint, TableDef};
+use vespertide_core::{
+    ColumnName, MigrationAction, MigrationPlan, TableConstraint, TableDef,
+    schema::names::join_column_names,
+};
 
 use crate::error::PlannerError;
 
@@ -96,11 +99,12 @@ pub fn find_constraint_type_changes(
 /// Scan the plan for any PRIMARY KEY removal that is not paired with an
 /// add (or a table drop). Each unpaired drop yields one
 /// [`PlannerError::PrimaryKeyRemovedWithoutReplacement`].
+///
+/// Pure plan-only analysis: the baseline schema is never consulted because
+/// every signal — PK adds, PK drops, and table drops — is already encoded
+/// in `plan.actions`.
 #[must_use]
-pub fn find_primary_key_removals(
-    plan: &MigrationPlan,
-    _baseline: &[TableDef],
-) -> Vec<PlannerError> {
+pub fn find_primary_key_removals(plan: &MigrationPlan) -> Vec<PlannerError> {
     // Collect the tables that gain a PRIMARY KEY in this plan (either via
     // AddConstraint or as part of a CreateTable). These can absorb PK
     // removals on the same table.
@@ -146,14 +150,9 @@ pub fn find_primary_key_removals(
         if tables_dropped.contains(table_str) || tables_gaining_pk.contains(table_str) {
             continue;
         }
-        let cols = columns
-            .iter()
-            .map(ColumnName::to_string)
-            .collect::<Vec<_>>()
-            .join(", ");
         out.push(PlannerError::PrimaryKeyRemovedWithoutReplacement {
             table: table_str.to_string(),
-            columns: cols,
+            columns: join_column_names(columns, ", "),
         });
     }
     out
@@ -176,7 +175,7 @@ struct ConstraintKey {
 
 impl ConstraintKey {
     fn new(table: &str, mut columns: Vec<String>) -> Self {
-        columns.sort();
+        columns.sort_unstable();
         Self {
             table: table.to_string(),
             columns,
@@ -221,16 +220,9 @@ fn render_fk_hint(baseline: &[TableDef], target_table: &str, target_columns: &[S
                 if ref_set != target_set {
                     continue;
                 }
-                let label = name.clone().unwrap_or_else(|| {
-                    format!(
-                        "({})",
-                        columns
-                            .iter()
-                            .map(ColumnName::as_str)
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )
-                });
+                let label = name
+                    .clone()
+                    .unwrap_or_else(|| format!("({})", join_column_names(columns, ", ")));
                 hits.push(format!("{}.{}", table.name.as_str(), label));
             }
         }
@@ -248,7 +240,7 @@ fn render_fk_hint(baseline: &[TableDef], target_table: &str, target_columns: &[S
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{pk, table};
+    use crate::test_support::{pk, plan, table};
     use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType, TableName};
 
     fn col(name: &str) -> ColumnDef {
@@ -279,16 +271,6 @@ mod tests {
             on_delete: None,
             on_update: None,
             orphan_strategy: vespertide_core::ForeignKeyOrphanStrategy::default(),
-        }
-    }
-
-    fn plan(actions: Vec<MigrationAction>) -> MigrationPlan {
-        MigrationPlan {
-            id: String::new(),
-            comment: None,
-            created_at: None,
-            version: 1,
-            actions,
         }
     }
 
@@ -441,10 +423,9 @@ mod tests {
     /// Case 7: Bare RemoveConstraint(PK) without any AddConstraint(PK).
     #[test]
     fn case_07_pk_removal_no_replacement() {
-        let baseline = vec![table("user", vec![col("id")], vec![pk(vec!["id"])])];
         let p = plan(vec![remove("user", pk(vec!["id"]))]);
 
-        let errs = find_primary_key_removals(&p, &baseline);
+        let errs = find_primary_key_removals(&p);
         assert_eq!(errs.len(), 1);
         assert!(matches!(
             &errs[0],
@@ -458,7 +439,6 @@ mod tests {
     /// the CreateTable arm (a `-> true` mutant would absorb the removal).
     #[test]
     fn create_table_without_pk_does_not_absorb_pk_removal() {
-        let baseline = vec![table("user", vec![col("id")], vec![pk(vec!["id"])])];
         let p = plan(vec![
             MigrationAction::CreateTable {
                 table: "user".into(),
@@ -468,7 +448,7 @@ mod tests {
             remove("user", pk(vec!["id"])),
         ]);
 
-        let errs = find_primary_key_removals(&p, &baseline);
+        let errs = find_primary_key_removals(&p);
         assert_eq!(
             errs.len(),
             1,
@@ -480,17 +460,12 @@ mod tests {
     /// (legitimate PK replacement).
     #[test]
     fn case_08_pk_removal_with_replacement() {
-        let baseline = vec![table(
-            "user",
-            vec![col("id"), col("uuid")],
-            vec![pk(vec!["id"])],
-        )];
         let p = plan(vec![
             remove("user", pk(vec!["id"])),
             add("user", pk(vec!["uuid"])),
         ]);
 
-        let errs = find_primary_key_removals(&p, &baseline);
+        let errs = find_primary_key_removals(&p);
         assert!(errs.is_empty());
     }
 
@@ -498,7 +473,6 @@ mod tests {
     /// going away).
     #[test]
     fn case_09_pk_removal_with_table_drop() {
-        let baseline = vec![table("user", vec![col("id")], vec![pk(vec!["id"])])];
         let p = plan(vec![
             remove("user", pk(vec!["id"])),
             MigrationAction::DeleteTable {
@@ -506,23 +480,19 @@ mod tests {
             },
         ]);
 
-        let errs = find_primary_key_removals(&p, &baseline);
+        let errs = find_primary_key_removals(&p);
         assert!(errs.is_empty());
     }
 
     /// Case 10: multiple unpaired PK removals → multiple errors.
     #[test]
     fn case_10_multiple_pk_removals_no_replacement() {
-        let baseline = vec![
-            table("a", vec![col("id")], vec![pk(vec!["id"])]),
-            table("b", vec![col("id")], vec![pk(vec!["id"])]),
-        ];
         let p = plan(vec![
             remove("a", pk(vec!["id"])),
             remove("b", pk(vec!["id"])),
         ]);
 
-        let errs = find_primary_key_removals(&p, &baseline);
+        let errs = find_primary_key_removals(&p);
         assert_eq!(errs.len(), 2);
     }
 
@@ -542,7 +512,7 @@ mod tests {
         ]);
 
         let type_change_errs = find_constraint_type_changes(&p, &baseline);
-        let pk_removal_errs = find_primary_key_removals(&p, &baseline);
+        let pk_removal_errs = find_primary_key_removals(&p);
 
         assert_eq!(type_change_errs.len(), 1, "A/B detector must fire");
         assert_eq!(
@@ -556,7 +526,6 @@ mod tests {
     /// (e.g. table recreation flow). No error.
     #[test]
     fn case_12_pk_removal_absorbed_by_create_table() {
-        let baseline = vec![table("user", vec![col("id")], vec![pk(vec!["id"])])];
         let p = plan(vec![
             remove("user", pk(vec!["id"])),
             MigrationAction::CreateTable {
@@ -566,7 +535,7 @@ mod tests {
             },
         ]);
 
-        let errs = find_primary_key_removals(&p, &baseline);
+        let errs = find_primary_key_removals(&p);
         assert!(errs.is_empty(), "expected absorbed PK, got: {errs:?}");
     }
 

@@ -1,0 +1,13 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+assertion_line: 153
+expression: rendered
+---
+model Articles {
+  id Int @id @default(autoincrement())
+  published Boolean @default(false)
+  view_count Int @default(0)
+  status String @default("draft")
+
+  @@map("articles")
+}

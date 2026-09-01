@@ -17,6 +17,7 @@ use std::ops::Range;
 
 use crate::parser::DocumentFormat;
 use crate::rename::DomainTextEdit;
+use crate::text_util::{node_text, strip_json_quotes};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DomainCodeAction {
@@ -94,6 +95,11 @@ fn check_expr_actions(
 /// lexicographically, anything mixed or non-orderable (bool/null) skipped.
 /// `NOT BETWEEN` is skipped — a reversed `NOT BETWEEN` is always-true and
 /// therefore harmless.
+/// Fixed title for the reversed-`BETWEEN` swap refactor. Hoisted to a
+/// module-scope constant so the string literal is not re-materialised on each
+/// match found by the scan loop below.
+const SWAP_REVERSED_BETWEEN_TITLE: &str = "Swap reversed BETWEEN bounds";
+
 fn swap_reversed_between(expr_text: &str, base: usize) -> Vec<DomainCodeAction> {
     use vespertide_planner::{CheckTokenKind, lex_check_expr};
 
@@ -128,7 +134,7 @@ fn swap_reversed_between(expr_text: &str, base: usize) -> Vec<DomainCodeAction> 
             && literal_greater(low_text, high_text)
         {
             out.push(DomainCodeAction {
-                title: "Swap reversed BETWEEN bounds".to_string(),
+                title: SWAP_REVERSED_BETWEEN_TITLE.to_string(),
                 kind: CodeActionKind::Refactor,
                 edits: vec![
                     DomainTextEdit {
@@ -228,7 +234,7 @@ fn type_conversions(column: tree_sitter::Node<'_>, source: &[u8]) -> Vec<DomainC
             .get(type_value.byte_range())
             .and_then(|bytes| std::str::from_utf8(bytes).ok())
     {
-        match strip_quotes(text) {
+        match strip_json_quotes(text) {
             // Variable-width strings: offer varchar(255).
             "text" | "varchar" | "char" => {
                 out.push(replace_type_action(
@@ -280,7 +286,7 @@ fn enum_extraction(column: tree_sitter::Node<'_>, source: &[u8]) -> Vec<DomainCo
         .filter(|default_value| default_value.kind() == "string")
         .and_then(|default_value| source.get(default_value.byte_range()))
         .and_then(|bytes| std::str::from_utf8(bytes).ok())
-        .map(strip_quotes)
+        .map(strip_json_quotes)
         // Look for `'literal'` pattern — SQL single-quote literal inside JSON string.
         .and_then(|default_text| {
             default_text
@@ -299,7 +305,7 @@ fn enum_extraction(column: tree_sitter::Node<'_>, source: &[u8]) -> Vec<DomainCo
             .and_then(|p| p.named_child(1))
             .and_then(|v| source.get(v.byte_range()))
             .and_then(|bytes| std::str::from_utf8(bytes).ok())
-            .map_or("status", strip_quotes)
+            .map_or("status", strip_json_quotes)
             .to_string();
 
         let enum_name = format!("{column_name}_kind");
@@ -349,7 +355,7 @@ fn toggle_bool_flag(
 ) -> Option<DomainCodeAction> {
     if let Some(pair) = find_pair(column, source, flag) {
         let value = pair.named_child(1)?;
-        let value_text = std::str::from_utf8(&source[value.byte_range()]).ok()?;
+        let value_text = node_text(value, source)?;
         if value_text.trim() == "true" {
             return Some(DomainCodeAction {
                 title: title_when_removing.to_string(),
@@ -380,7 +386,7 @@ fn toggle_nullable(column: tree_sitter::Node<'_>, source: &[u8]) -> Option<Domai
     let pair = find_pair(column, source, "nullable");
     if let Some(pair) = pair {
         let value = pair.named_child(1)?;
-        let value_text = std::str::from_utf8(&source[value.byte_range()]).ok()?;
+        let value_text = node_text(value, source)?;
         let (next_value, title) = match value_text.trim() {
             "true" => ("false", "Make column NOT NULL"),
             "false" => ("true", "Allow NULL"),
@@ -439,8 +445,8 @@ fn is_inside_columns_array(node: tree_sitter::Node<'_>, source: &[u8]) -> bool {
     while let Some(candidate) = current {
         if candidate.kind() == "pair"
             && let Some(key) = candidate.named_child(0)
-            && let Ok(text) = std::str::from_utf8(&source[key.byte_range()])
-            && strip_quotes(text) == "columns"
+            && let Some(text) = node_text(key, source)
+            && strip_json_quotes(text) == "columns"
         {
             return true;
         }
@@ -459,8 +465,8 @@ fn find_pair<'tree>(
         child.kind() == "pair"
             && child
                 .named_child(0)
-                .and_then(|key| std::str::from_utf8(&source[key.byte_range()]).ok())
-                .map(strip_quotes)
+                .and_then(|key| node_text(key, source))
+                .map(strip_json_quotes)
                 == Some(target_key)
     })
 }
@@ -471,7 +477,7 @@ fn insert_pair_edit(
     new_key: &str,
     new_value: &str,
 ) -> Option<DomainTextEdit> {
-    let object_text = std::str::from_utf8(&source[column.byte_range()]).ok()?;
+    let object_text = node_text(column, source)?;
     let close_idx = object_text.rfind('}')?;
     let absolute_close = column.start_byte() + close_idx;
 
@@ -498,7 +504,7 @@ fn remove_pair_edit(
 ) -> Option<DomainTextEdit> {
     // Decide which neighbouring comma to consume so the resulting JSON has
     // no `,,` or trailing `,}`.
-    let object_text = std::str::from_utf8(&source[column.byte_range()]).ok()?;
+    let object_text = node_text(column, source)?;
     let object_start = column.start_byte();
     let pair_start = pair.start_byte() - object_start;
     let pair_end = pair.end_byte() - object_start;
@@ -531,10 +537,6 @@ fn remove_pair_edit(
         byte_range: removed_start..removed_end,
         new_text: String::new(),
     })
-}
-
-fn strip_quotes(text: &str) -> &str {
-    text.trim().trim_start_matches('"').trim_end_matches('"')
 }
 
 #[cfg(test)]
@@ -572,9 +574,7 @@ mod tests {
             .expect("primary_key remove action missing");
         let edit = &action.edits[0];
         // Confirm the edit produces a valid object when applied.
-        let mut after = String::from(&src[..edit.byte_range.start]);
-        after.push_str(&edit.new_text);
-        after.push_str(&src[edit.byte_range.end..]);
+        let after = crate::test_support::apply_text_edit(src, edit);
         assert!(serde_json::from_str::<serde_json::Value>(&after).is_ok());
         assert!(!after.contains("primary_key"));
     }
@@ -620,9 +620,7 @@ mod tests {
             .find(|a| a.title == "Convert to varchar(255)")
             .expect("text → varchar action");
         let edit = &convert.edits[0];
-        let mut after = String::from(&src[..edit.byte_range.start]);
-        after.push_str(&edit.new_text);
-        after.push_str(&src[edit.byte_range.end..]);
+        let after = crate::test_support::apply_text_edit(src, edit);
         assert!(after.contains(r#""kind":"varchar""#));
         serde_json::from_str::<serde_json::Value>(&after).expect("valid JSON");
     }
@@ -690,9 +688,7 @@ mod tests {
             .find(|a| a.title == "Add foreign_key skeleton")
             .expect("foreign_key skeleton action");
         let edit = &fk.edits[0];
-        let mut after = String::from(&src[..edit.byte_range.start]);
-        after.push_str(&edit.new_text);
-        after.push_str(&src[edit.byte_range.end..]);
+        let after = crate::test_support::apply_text_edit(src, edit);
         assert!(after.contains(r#""foreign_key""#));
         serde_json::from_str::<serde_json::Value>(&after).expect("valid JSON");
     }
@@ -729,15 +725,10 @@ mod tests {
     // hard-error diagnostic.
 
     /// Apply `action`'s edits to `src` (front-to-back safe) and return the
-    /// resulting document.
+    /// resulting document. Thin wrapper around the shared
+    /// [`crate::test_support::apply_text_edits`] helper.
     fn apply(src: &str, action: &DomainCodeAction) -> String {
-        let mut edits = action.edits.clone();
-        edits.sort_by_key(|e| std::cmp::Reverse(e.byte_range.start));
-        let mut out = src.to_string();
-        for e in &edits {
-            out.replace_range(e.byte_range.clone(), &e.new_text);
-        }
-        out
+        crate::test_support::apply_text_edits(src, &action.edits)
     }
 
     #[test]

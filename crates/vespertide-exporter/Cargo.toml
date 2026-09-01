@@ -1,6 +1,6 @@
 [package]
 name = "vespertide-exporter"
-version = "0.2.1"
+version = "0.3.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -17,12 +17,17 @@ vespertide-core = { workspace = true }
 vespertide-config = { workspace = true }
 vespertide-naming = { workspace = true }
 thiserror = "2"
+clap = { version = "4", features = ["derive"], optional = true }
+
+[features]
+cli = ["dep:clap"]
 
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports"] }
 rstest = "0.26"
-insta = { version = "1.47", features = ["yaml"] }
+insta = { version = "1.48", features = ["yaml"] }
 proptest = "1"
+vespertide-core = { workspace = true, features = ["arbitrary"] }
 
 [[bench]]
 name = "codegen_benchmarks"

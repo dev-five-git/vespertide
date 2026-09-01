@@ -170,25 +170,12 @@ pub fn find_primary_key_additions(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{col_int, plan};
     use rstest::rstest;
     use vespertide_core::{
-        ColumnDef, ColumnType, MigrationAction, MigrationPlan, PrimaryKeyAdditionStrategy,
-        SimpleColumnType, TableConstraint, TableDef, TableName,
+        ColumnDef, MigrationAction, PrimaryKeyAdditionStrategy, TableConstraint, TableDef,
+        TableName,
     };
-
-    fn col(name: &str, nullable: bool) -> ColumnDef {
-        ColumnDef {
-            name: name.into(),
-            r#type: ColumnType::Simple(SimpleColumnType::Integer),
-            nullable,
-            default: None,
-            comment: None,
-            primary_key: None,
-            unique: None,
-            index: None,
-            foreign_key: None,
-        }
-    }
 
     fn table(name: &str, cols: Vec<ColumnDef>, constraints: Vec<TableConstraint>) -> TableDef {
         TableDef {
@@ -210,21 +197,11 @@ mod tests {
         }
     }
 
-    fn plan(actions: Vec<MigrationAction>) -> MigrationPlan {
-        MigrationPlan {
-            id: "test".into(),
-            version: 1,
-            comment: None,
-            created_at: None,
-            actions,
-        }
-    }
-
     #[rstest]
     fn case_01_single_existing_not_null_no_unique_flagged() {
         let baseline = vec![table(
             "users",
-            vec![col("id", false), col("email", false)],
+            vec![col_int("id", false), col_int("email", false)],
             vec![],
         )];
         let p = plan(vec![add_pk("users", &["email"])]);
@@ -241,7 +218,7 @@ mod tests {
     fn case_02_single_existing_nullable_flagged_with_nullable_list() {
         let baseline = vec![table(
             "users",
-            vec![col("id", false), col("email", true)],
+            vec![col_int("id", false), col_int("email", true)],
             vec![],
         )];
         let p = plan(vec![add_pk("users", &["email"])]);
@@ -253,7 +230,7 @@ mod tests {
 
     #[rstest]
     fn case_03_new_column_skipped() {
-        let baseline = vec![table("users", vec![col("id", false)], vec![])];
+        let baseline = vec![table("users", vec![col_int("id", false)], vec![])];
         let p = plan(vec![add_pk("users", &["new_col"])]);
         let ws = find_primary_key_additions(&p, &baseline);
         assert!(ws.is_empty());
@@ -261,7 +238,7 @@ mod tests {
 
     #[rstest]
     fn case_04_mixed_new_existing_skipped() {
-        let baseline = vec![table("users", vec![col("id", false)], vec![])];
+        let baseline = vec![table("users", vec![col_int("id", false)], vec![])];
         let p = plan(vec![add_pk("users", &["id", "new_col"])]);
         let ws = find_primary_key_additions(&p, &baseline);
         assert!(ws.is_empty());
@@ -279,7 +256,7 @@ mod tests {
     fn case_06_composite_pk_existing_columns_flagged() {
         let baseline = vec![table(
             "audit",
-            vec![col("team_id", true), col("member_id", false)],
+            vec![col_int("team_id", true), col_int("member_id", false)],
             vec![],
         )];
         let p = plan(vec![add_pk("audit", &["team_id", "member_id"])]);
@@ -298,7 +275,7 @@ mod tests {
     fn case_07_existing_unique_covers_pk_skipped() {
         let baseline = vec![table(
             "users",
-            vec![col("id", false), col("email", false)],
+            vec![col_int("id", false), col_int("email", false)],
             vec![TableConstraint::Unique {
                 name: Some("uq_email".into()),
                 columns: vec!["email".into()],
@@ -318,7 +295,7 @@ mod tests {
         // F5 should still flag for NULL handling.
         let baseline = vec![table(
             "users",
-            vec![col("id", false), col("email", true)],
+            vec![col_int("id", false), col_int("email", true)],
             vec![TableConstraint::Unique {
                 name: Some("uq_email".into()),
                 columns: vec!["email".into()],
@@ -337,9 +314,9 @@ mod tests {
 
     #[rstest]
     fn case_09_inline_pk_baseline_is_detected_as_single_pk() {
-        let mut id = col("id", false);
+        let mut id = col_int("id", false);
         id.primary_key = Some(vespertide_core::schema::primary_key::PrimaryKeySyntax::Bool(true));
-        let baseline = vec![table("users", vec![id, col("email", false)], vec![])];
+        let baseline = vec![table("users", vec![id, col_int("email", false)], vec![])];
         let p = plan(vec![add_pk("users", &["email"])]);
 
         let ws = find_primary_key_additions(&p, &baseline);
@@ -357,7 +334,7 @@ mod tests {
     fn case_10_non_unique_constraints_skipped_in_any_closure() {
         let baseline = vec![table(
             "users",
-            vec![col("id", false), col("email", false)],
+            vec![col_int("id", false), col_int("email", false)],
             vec![
                 // L125 wildcard arm: Check returns `false` from the
                 // closure so `iter().any(...)` keeps scanning.
@@ -399,7 +376,7 @@ mod tests {
     fn case_11_only_non_unique_constraints_still_warns_via_wildcard() {
         let baseline = vec![table(
             "users",
-            vec![col("id", false), col("email", false)],
+            vec![col_int("id", false), col_int("email", false)],
             vec![
                 // Only non-Unique constraint — every iter.any() step
                 // takes L125's `_ => false` branch.

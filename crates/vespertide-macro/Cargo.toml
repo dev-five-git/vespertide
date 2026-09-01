@@ -1,6 +1,6 @@
 [package]
 name = "vespertide-macro"
-version = "0.2.1"
+version = "0.3.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -20,21 +20,35 @@ vespertide-config = { workspace = true }
 vespertide-loader = { workspace = true }
 vespertide-query = { workspace = true }
 vespertide-planner = { workspace = true }
-syn = { version = "2.0", features = ["parsing", "proc-macro", "full"] }
+# Only LitStr/Ident/Token/parse are used (no Expr/Item/Stmt), so the heavy
+# "full" syntax-tree feature is intentionally omitted to cut macro-crate build time.
+syn = { version = "3.0", features = ["parsing", "proc-macro"] }
 proc-macro2 = "1.0"
 quote = "1"
 proc-macro-crate = "3.5.0"
 
 [dev-dependencies]
 tempfile = "3"
+# `runtime-macros` (test-only coverage driver) under-declares its syn features:
+# it asks for `parsing`/`visit`/`extra-traits` but uses `syn::Item`, `syn::Macro`,
+# `syn::parse_file` and `syn::visit::visit_file`, all of which are gated behind
+# `full`. It is pinned to `syn` 2.x, so the missing feature has to be supplied on
+# a 2.x entry — cargo unifies features per resolved version, and the production
+# dependency above is on 3.x. This renamed dev-dependency is never imported; it
+# exists solely so feature unification reaches runtime-macros' `syn`, keeping the
+# production `syn` lean (parsing+proc-macro only).
+syn_2_for_runtime_macros = { package = "syn", version = "2.0", features = [
+    "full",
+    "visit",
+] }
 runtime-macros = "1.1"
-trybuild = { version = "1.0.116", features = ["diff"] }
+trybuild = { version = "1.0.120", features = ["diff"] }
 # `serial_test::serial` for tests that mutate the process-global
 # `CARGO_MANIFEST_DIR` env var (4 tests in src/tests/mod.rs). Without this,
 # cargo's parallel test threads race on the env var and tests intermittently
 # observe a missing/wrong path — surfaced by the `Parallelism (RAYON_NUM_THREADS=1)`
 # CI job because rayon=1 changes the timing window enough to expose the race.
-serial_test = "3.5"
+serial_test = "4.0"
 
 [lints]
 workspace = true

@@ -1,5 +1,5 @@
 ---
-source: crates/vespertide-exporter/src/tests.rs
+source: crates/vespertide-exporter/src/tests/mod.rs
 expression: rendered
 ---
 from __future__ import annotations
@@ -12,8 +12,8 @@ from sqlmodel import Field, SQLModel
 class EventSeverity(str, enum.Enum):
     INFO_LEVEL = "info-level"
     WARNING_LEVEL = "warning_level"
-    E_R_R_O_R__L_E_V_E_L = "ERROR_LEVEL"
-    1CRITICAL = "1critical"
+    ERROR_LEVEL = "ERROR_LEVEL"
+    _1CRITICAL = "1critical"
 
 class Events(SQLModel, table=True):
     __tablename__ = "events"

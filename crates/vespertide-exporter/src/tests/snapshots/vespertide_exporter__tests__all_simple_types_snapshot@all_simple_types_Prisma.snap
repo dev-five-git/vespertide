@@ -1,0 +1,27 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model AllTypes {
+  id Int @id
+  small Int
+  big BigInt
+  real_num Float
+  double_num Float
+  text_col String
+  bool_col Boolean
+  date_col DateTime
+  time_col DateTime
+  ts_col DateTime
+  tstz_col DateTime
+  interval_col String
+  bytea_col Bytes
+  uuid_col String
+  json_col Json
+  inet_col String
+  cidr_col String
+  macaddr_col String
+  xml_col String
+
+  @@map("all_types")
+}

@@ -278,6 +278,38 @@
         }
       ]
     },
+    "DataMigrationSql": {
+      "description": "The SQL body of a [`MigrationAction::DataMigration`], either one portable\nstatement or one statement per backend.\n\nThe wire format is untagged, so both shapes are written naturally in a\nmigration file:\n\n```json\n{ \"type\": \"data_migration\", \"sql\": \"UPDATE product SET price = 0 WHERE price IS NULL\" }\n```\n\n```json\n{\n  \"type\": \"data_migration\",\n  \"sql\": {\n    \"postgres\": \"UPDATE t SET j = jsonb_build_object('ko', c)\",\n    \"mysql\":    \"UPDATE t SET j = JSON_OBJECT('ko', c)\",\n    \"sqlite\":   \"UPDATE t SET j = json_object('ko', c)\"\n  }\n}\n```\n\nAll three backend keys are required in the per-backend form. A missing key\nwould silently emit nothing for that backend — exactly the class of silent\ndata loss this action exists to prevent.\n\n[`MigrationAction::DataMigration`]: super::MigrationAction::DataMigration",
+      "anyOf": [
+        {
+          "description": "One portable statement executed verbatim on every backend.",
+          "type": "string"
+        },
+        {
+          "description": "One statement per backend, for data changes that cannot be expressed\nportably (JSON constructors, string functions, upsert syntax, …).",
+          "type": "object",
+          "properties": {
+            "mysql": {
+              "description": "Statement emitted for `MySQL`.",
+              "type": "string"
+            },
+            "postgres": {
+              "description": "Statement emitted for `PostgreSQL`.",
+              "type": "string"
+            },
+            "sqlite": {
+              "description": "Statement emitted for `SQLite`.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "postgres",
+            "mysql",
+            "sqlite"
+          ]
+        }
+      ]
+    },
     "DefaultValue": {
       "description": "A column default value that can be a boolean, integer, float, or SQL expression string.\n\nIn JSON model files the `\"default\"` field accepts any of these forms:\n- `true` / `false` — boolean literal.\n- `0`, `42` — integer literal.\n- `0.0`, `1.5` — floating-point literal.\n- `\"'pending'\"` — SQL string literal (note the inner single quotes).\n- `\"NOW()\"` — SQL function call (no surrounding quotes).\n\nUse [`DefaultValue::to_sql`] to convert to the SQL representation for DDL generation.\n\n`StringOrBool` is a backwards-compatibility alias for this type.\n\nThis enum is `#[non_exhaustive]`: new variants may be added in future releases.\nDownstream `match` expressions should include a wildcard arm.",
       "anyOf": [
@@ -431,7 +463,7 @@
       ]
     },
     "MigrationAction": {
-      "description": "A single schema change produced by the planner and consumed by the SQL generator.\n\nThe planner emits a `Vec<MigrationAction>` when diffing two schemas. The SQL generator\n(`vespertide-query`) translates each action into backend-specific DDL statements.\n\nPrefer typed actions over [`MigrationAction::RawSql`]. Raw SQL is an emergency escape hatch:\nit is not portable across backends and is skipped during baseline replay, which means the\nplanner cannot reason about it.\n\nThis enum is `#[non_exhaustive]`: new variants may be added in future releases.\nDownstream `match` expressions should include a wildcard arm.",
+      "description": "A single schema change produced by the planner and consumed by the SQL generator.\n\nThe planner emits a `Vec<MigrationAction>` when diffing two schemas. The SQL generator\n(`vespertide-query`) translates each action into backend-specific DDL statements.\n\nPrefer typed actions over [`MigrationAction::RawSql`]. Raw SQL is an emergency escape hatch:\nit is not portable across backends and is skipped during baseline replay, which means the\nplanner cannot reason about it. For SQL that only changes *data*, use\n[`MigrationAction::DataMigration`] instead: it is skipped by replay too, but by contract\nrather than by ignorance.\n\nThis enum is `#[non_exhaustive]`: new variants may be added in future releases.\nDownstream `match` expressions should include a wildcard arm.",
       "oneOf": [
         {
           "description": "Create a new table with the given columns and constraints (`CREATE TABLE`).",
@@ -563,7 +595,7 @@
               "$ref": "#/$defs/ColumnName"
             },
             "fill_with": {
-              "description": "Mapping of removed enum values to replacement values for safe enum value removal.\ne.g., `{\"cancelled\": \"'pending'\"}` generates an `UPDATE` before the type change.",
+              "description": "Mapping of removed enum values to replacement values for safe enum value removal.\nBoth sides are **bare** enum labels — write them exactly as they appear in the enum\n`values` list, with no surrounding SQL quotes. The SQL generator binds them as data\nvalues and adds the quoting itself.\ne.g., `{\"cancelled\": \"pending\"}` generates an `UPDATE` before the type change.\nA legacy pre-quoted replacement (`\"'pending'\"`) still works: one outer quote layer is\nstripped with a warning.",
               "type": [
                 "object",
                 "null"
@@ -828,7 +860,7 @@
           ]
         },
         {
-          "description": "Execute a raw SQL statement verbatim.\n\n**Emergency escape hatch only.** Raw SQL is not portable across backends and is invisible\nto baseline replay, so the planner cannot reason about schema state after this action.\nUse typed actions whenever possible.",
+          "description": "Execute a raw SQL statement verbatim.\n\n**Emergency escape hatch only.** Raw SQL is not portable across backends and is invisible\nto baseline replay, so the planner cannot reason about schema state after this action.\nUse typed actions whenever possible.\n\nFor SQL that changes **data only**, use [`MigrationAction::DataMigration`] instead. Both\nare skipped by baseline replay, but `raw_sql` is skipped because its effect is *unknown*\nwhile `data_migration` is skipped because *changing no schema* is its enforced contract.\nUsing `raw_sql` for DDL silently drops that schema change from the reconstructed baseline,\nafter which `vespertide diff` reports the same already-applied changes forever.",
           "type": "object",
           "properties": {
             "sql": {
@@ -837,6 +869,31 @@
             "type": {
               "type": "string",
               "const": "raw_sql"
+            }
+          },
+          "required": [
+            "type",
+            "sql"
+          ]
+        },
+        {
+          "description": "Execute a **data-only** statement verbatim (`UPDATE` / `INSERT` / `DELETE` / …).\n\nThis is the typed home for backfills that the schema-coupled facilities cannot express:\nconditional updates of *existing* columns, correlated-subquery backfills, and data\nreshaping during a format change. Unlike `AddColumn.fill_with` (which only fires for a\nnewly added NOT NULL column with no default) or `ModifyColumnDefault.backfill` (one\ncolumn, one value, every row), `data_migration` carries an arbitrary DML statement and\nis not tied to any schema change.\n\n**Contract: this action changes no schema.** Baseline replay skips it — not because its\neffect is unknown, as with [`MigrationAction::RawSql`], but because \"no schema change\"\nis guaranteed. The guarantee is enforced: a statement whose first token is `CREATE`,\n`ALTER`, `DROP`, or `TRUNCATE` is rejected at load and plan time.\n\nThe SQL is emitted byte-for-byte as written — no case folding, cast rewriting, or\nreformatting. Set `sql` to a single string for portable SQL, or to an object keyed by\n`postgres` / `mysql` / `sqlite` when the statement cannot be portable. A `description`\nis optional but strongly encouraged: it is what `vespertide diff` shows for this action.",
+          "type": "object",
+          "properties": {
+            "description": {
+              "description": "Why this data change exists, shown in `vespertide diff` output.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "sql": {
+              "description": "The statement(s) to run, emitted verbatim. See [`DataMigrationSql`].",
+              "$ref": "#/$defs/DataMigrationSql"
+            },
+            "type": {
+              "type": "string",
+              "const": "data_migration"
             }
           },
           "required": [

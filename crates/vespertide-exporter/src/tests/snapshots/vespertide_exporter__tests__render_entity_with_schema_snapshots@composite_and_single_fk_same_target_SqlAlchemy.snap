@@ -1,0 +1,22 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlalchemy import ForeignKey, ForeignKeyConstraint, Integer
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Src(DeclarativeBase):
+    __tablename__ = "src"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    a_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    b_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    solo: Mapped[int] = mapped_column(Integer, ForeignKey("target.u"), nullable=False)
+
+    __table_args__ = (
+        ForeignKeyConstraint(["a_id", "b_id"], ["target.a", "target.b"]),
+    )

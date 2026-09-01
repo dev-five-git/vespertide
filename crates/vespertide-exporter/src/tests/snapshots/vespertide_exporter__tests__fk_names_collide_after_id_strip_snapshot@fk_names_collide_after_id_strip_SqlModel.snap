@@ -1,0 +1,23 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from typing import Optional
+
+from sqlmodel import Field, SQLModel
+
+
+class Target(SQLModel, table=True):
+    __tablename__ = "target"
+
+    id: int = Field(primary_key=True)
+    alt: int = Field(unique=True)
+
+class Src(SQLModel, table=True):
+    __tablename__ = "src"
+
+    pk: int = Field(primary_key=True)
+    a_id: Optional[int] = Field(default=None, foreign_key="target.id")
+    a: Optional[int] = Field(default=None, foreign_key="target.alt")

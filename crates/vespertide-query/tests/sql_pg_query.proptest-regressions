@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 0ec68d5c1070055735e7241790245a65e294dc41483dd006ba9aa52b08e1ae78 # shrinks to table = TableDef { name: "a", description: None, columns: [], constraints: [] }
+cc 2a6614799d2d7415c9c2e03117c0a1383eaef4a4f2e082ebb4f46f3b1cf46115 # shrinks to table = TableDef { name: "a", description: None, columns: [ColumnDef { name: "a", type: Simple(SmallInt), nullable: false, default: Some(String("do")), comment: None, primary_key: None, unique: None, index: None, foreign_key: None }], constraints: [] }

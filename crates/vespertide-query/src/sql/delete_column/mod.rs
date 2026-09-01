@@ -1,9 +1,8 @@
-use sea_query::{Alias, Index};
-
 use vespertide_core::{ColumnType, ComplexColumnType, TableConstraint, TableDef};
 
 use self::direct::build_direct_delete_column;
 use self::sqlite_rebuild::build_delete_column_sqlite_temp_table;
+use super::helpers::build_drop_index_query;
 use super::types::{BuiltQuery, DatabaseBackend};
 
 mod direct;
@@ -75,7 +74,9 @@ fn sqlite_constraint_handling(
             // SQLite can't DROP COLUMN if a CHECK references it — use temp table.
             TableConstraint::Check { expr, .. } => {
                 // Check if the expression references the column (e.g. "status" IN (...)).
-                if expr.contains(&format!("\"{column}\"")) || expr.contains(column) {
+                // Deliberately conservative bare-substring heuristic: it also matches the
+                // quoted form `"col"`, so false positives only cost an unnecessary rebuild.
+                if expr.contains(column) {
                     return Some(build_delete_column_sqlite_temp_table(
                         table,
                         column,
@@ -104,20 +105,12 @@ fn sqlite_constraint_handling(
                     columns,
                     name.as_deref(),
                 );
-                let drop_idx = Index::drop()
-                    .name(&index_name)
-                    .table(Alias::new(table))
-                    .to_owned();
-                stmts.push(BuiltQuery::DropIndex(Box::new(drop_idx)));
+                stmts.push(build_drop_index_query(table, &index_name));
             }
             TableConstraint::Index { name, columns } => {
                 let index_name =
                     vespertide_naming::build_index_name(table, columns, name.as_deref());
-                let drop_idx = Index::drop()
-                    .name(&index_name)
-                    .table(Alias::new(table))
-                    .to_owned();
-                stmts.push(BuiltQuery::DropIndex(Box::new(drop_idx)));
+                stmts.push(build_drop_index_query(table, &index_name));
             }
             _ => {
                 unreachable!("TableConstraint is #[non_exhaustive]; all variants are matched above")
@@ -132,7 +125,7 @@ fn sqlite_constraint_handling(
 mod tests {
     use super::*;
     use crate::sql::types::DatabaseBackend;
-    use crate::test_support::col;
+    use crate::test_support::{col, joined_sql, joined_sql_semicolon};
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
     use vespertide_core::{ComplexColumnType, SimpleColumnType};
@@ -418,11 +411,7 @@ mod tests {
             result.len()
         );
 
-        let all_sql: Vec<String> = result
-            .iter()
-            .map(|q| q.build(DatabaseBackend::Sqlite))
-            .collect();
-        let combined_sql = all_sql.join("\n");
+        let combined_sql = joined_sql(DatabaseBackend::Sqlite, &result);
 
         // Verify temp table creation
         assert!(
@@ -493,11 +482,7 @@ mod tests {
             &[],
         );
 
-        let all_sql: Vec<String> = result
-            .iter()
-            .map(|q| q.build(DatabaseBackend::Sqlite))
-            .collect();
-        let combined_sql = all_sql.join("\n");
+        let combined_sql = joined_sql(DatabaseBackend::Sqlite, &result);
 
         // Should preserve other columns
         assert!(combined_sql.contains("\"id\""), "Should preserve id column");
@@ -600,11 +585,7 @@ mod tests {
             result.len()
         );
 
-        let all_sql: Vec<String> = result
-            .iter()
-            .map(|q| q.build(DatabaseBackend::Sqlite))
-            .collect();
-        let combined_sql = all_sql.join("\n");
+        let combined_sql = joined_sql(DatabaseBackend::Sqlite, &result);
 
         assert!(
             combined_sql.contains("order_items_temp"),
@@ -720,11 +701,7 @@ mod tests {
             &[],
         );
 
-        let all_sql: Vec<String> = result
-            .iter()
-            .map(|q| q.build(DatabaseBackend::Sqlite))
-            .collect();
-        let combined_sql = all_sql.join("\n");
+        let combined_sql = joined_sql(DatabaseBackend::Sqlite, &result);
 
         // Should use temp table approach (FK triggers it)
         assert!(
@@ -755,14 +732,6 @@ mod tests {
 
     // ==================== Snapshot Tests ====================
 
-    fn build_sql_snapshot(result: &[BuiltQuery], backend: DatabaseBackend) -> String {
-        result
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<_>>()
-            .join(";\n")
-    }
-
     #[rstest]
     #[case::postgres("postgres", DatabaseBackend::Postgres)]
     #[case::mysql("mysql", DatabaseBackend::MySql)]
@@ -789,7 +758,7 @@ mod tests {
         }];
 
         let result = build_delete_column(backend, "users", "email", None, &schema, &[]);
-        let sql = build_sql_snapshot(&result, backend);
+        let sql = joined_sql_semicolon(backend, &result);
 
         with_settings!({ snapshot_path => "../snapshots", snapshot_suffix => format!("delete_column_with_unique_{}", title) }, {
             assert_snapshot!(sql);
@@ -822,7 +791,7 @@ mod tests {
         }];
 
         let result = build_delete_column(backend, "posts", "created_at", None, &schema, &[]);
-        let sql = build_sql_snapshot(&result, backend);
+        let sql = joined_sql_semicolon(backend, &result);
 
         with_settings!({ snapshot_path => "../snapshots", snapshot_suffix => format!("delete_column_with_index_{}", title) }, {
             assert_snapshot!(sql);
@@ -857,7 +826,7 @@ mod tests {
         }];
 
         let result = build_delete_column(backend, "orders", "user_id", None, &schema, &[]);
-        let sql = build_sql_snapshot(&result, backend);
+        let sql = joined_sql_semicolon(backend, &result);
 
         with_settings!({ snapshot_path => "../snapshots", snapshot_suffix => format!("delete_column_with_fk_{}", title) }, {
             assert_snapshot!(sql);
@@ -888,7 +857,7 @@ mod tests {
         }];
 
         let result = build_delete_column(backend, "order_items", "product_id", None, &schema, &[]);
-        let sql = build_sql_snapshot(&result, backend);
+        let sql = joined_sql_semicolon(backend, &result);
 
         with_settings!({ snapshot_path => "../snapshots", snapshot_suffix => format!("delete_column_with_pk_{}", title) }, {
             assert_snapshot!(sql);
@@ -934,7 +903,7 @@ mod tests {
         }];
 
         let result = build_delete_column(backend, "orders", "user_id", None, &schema, &[]);
-        let sql = build_sql_snapshot(&result, backend);
+        let sql = joined_sql_semicolon(backend, &result);
 
         with_settings!({ snapshot_path => "../snapshots", snapshot_suffix => format!("delete_column_with_fk_and_index_{}", title) }, {
             assert_snapshot!(sql);
@@ -992,11 +961,7 @@ mod tests {
             result.len()
         );
 
-        let all_sql: Vec<String> = result
-            .iter()
-            .map(|q| q.build(DatabaseBackend::Sqlite))
-            .collect();
-        let combined_sql = all_sql.join("\n");
+        let combined_sql = joined_sql(DatabaseBackend::Sqlite, &result);
 
         // Verify temp table approach
         assert!(
@@ -1099,11 +1064,7 @@ mod tests {
         }];
 
         let queries = build_delete_column(backend, "people", "age", None, &schema, &[]);
-        let sql = queries
-            .iter()
-            .map(|q| q.build(backend))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let sql = joined_sql(backend, &queries);
 
         if backend == DatabaseBackend::Sqlite {
             assert!(

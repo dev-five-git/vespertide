@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use clap::ValueEnum;
 use vespertide_core::schema::foreign_key::ForeignKeySyntax;
+use vespertide_core::schema::names::names_to_strings;
 use vespertide_core::schema::primary_key::PrimaryKeySyntax;
 use vespertide_core::{ColumnDef, ReferenceAction, StrOrBoolOrArray, TableConstraint, TableDef};
 
@@ -106,18 +107,31 @@ pub(super) fn filter_tables_with_warnings(
     };
 
     let adjacency = build_fk_adjacency(&tables);
+    // Layered BFS: each round expands only the names discovered in the
+    // previous round instead of re-scanning (and re-cloning) all of `kept`,
+    // so every node's adjacency is walked at most once regardless of depth.
+    // The discovered-neighbor frontier borrows `&str` into the owned `String`s
+    // that live in `adjacency`, so only the `kept` set membership needs an
+    // owned clone (the frontier itself no longer clones every neighbor name).
+    // The seed must be a snapshot detached from `kept` so the frontier borrow
+    // does not collide with the `kept.insert` below; `seed_names` owns it.
+    let seed_names: Vec<String> = kept.iter().cloned().collect();
+    let mut frontier: Vec<&str> = seed_names.iter().map(String::as_str).collect();
     for _ in 0..depth {
-        let frontier: Vec<String> = kept.iter().cloned().collect();
+        if frontier.is_empty() {
+            break;
+        }
+        let mut next: Vec<&str> = Vec::new();
         for name in frontier {
-            if let Some(neighbors) = adjacency.get(&name) {
-                kept.extend(
-                    neighbors
-                        .iter()
-                        .filter(|neighbor| all_names.contains(*neighbor))
-                        .cloned(),
-                );
+            if let Some(neighbors) = adjacency.get(name) {
+                for neighbor in neighbors {
+                    if all_names.contains(neighbor) && kept.insert(neighbor.clone()) {
+                        next.push(neighbor.as_str());
+                    }
+                }
             }
         }
+        frontier = next;
     }
 
     for name in exclude {
@@ -195,9 +209,9 @@ pub(super) fn collect_foreign_key_relations(tables: &[TableDef]) -> BTreeSet<For
                 };
                 relations.insert(build_foreign_key_relation(
                     table,
-                    column_names_to_strings(columns),
+                    names_to_strings(columns),
                     ref_table.to_string(),
-                    column_names_to_strings(ref_columns),
+                    names_to_strings(ref_columns),
                     on_delete.clone(),
                     on_update.clone(),
                     parent_table,
@@ -247,39 +261,17 @@ pub(super) fn is_foreign_key_column(table: &TableDef, column_name: &str) -> bool
 }
 
 pub(super) fn column_markers(table: &TableDef, column: &ColumnDef) -> String {
-    let mut markers = Vec::new();
-    if is_primary_key_column(table, &column.name) {
-        markers.push("PK");
-    }
-    if is_foreign_key_column(table, &column.name) {
-        markers.push("FK");
-    }
-
-    if markers.is_empty() {
-        String::new()
-    } else {
-        format!(" ({})", markers.join(", "))
-    }
-}
-
-pub(super) fn sanitize_identifier(input: &str) -> String {
-    let mut identifier = String::new();
-
-    for (index, ch) in input.chars().enumerate() {
-        if ch == '_' || ch.is_ascii_alphanumeric() {
-            if index == 0 && ch.is_ascii_digit() {
-                identifier.push('_');
-            }
-            identifier.push(ch);
-        } else {
-            identifier.push('_');
-        }
-    }
-
-    if identifier.is_empty() {
-        "_".to_string()
-    } else {
-        identifier
+    // The marker set is at most two fixed strings ("PK", "FK"), so the output is
+    // exactly one of four values. A direct match returning a &'static str for the
+    // three non-empty cases removes the Vec + join + format! allocations.
+    match (
+        is_primary_key_column(table, &column.name),
+        is_foreign_key_column(table, &column.name),
+    ) {
+        (true, true) => " (PK, FK)".to_string(),
+        (true, false) => " (PK)".to_string(),
+        (false, true) => " (FK)".to_string(),
+        (false, false) => String::new(),
     }
 }
 
@@ -305,7 +297,7 @@ fn inline_foreign_key_relation(
         }
         ForeignKeySyntax::Object(definition) => (
             definition.ref_table.to_string(),
-            column_names_to_strings(&definition.ref_columns),
+            names_to_strings(&definition.ref_columns),
             definition.on_delete.clone(),
             definition.on_update.clone(),
         ),
@@ -424,12 +416,12 @@ fn are_columns_unique(table: &TableDef, columns: &[String]) -> bool {
 fn primary_key_columns(table: &TableDef) -> Vec<String> {
     if let Some(columns) = table.constraints.iter().find_map(|constraint| {
         if let TableConstraint::PrimaryKey { columns, .. } = constraint {
-            Some(columns.clone())
+            Some(columns.as_slice())
         } else {
             None
         }
     }) {
-        return column_names_to_strings(&columns);
+        return names_to_strings(columns);
     }
 
     table
@@ -446,7 +438,7 @@ fn foreign_key_column_groups(table: &TableDef) -> Vec<Vec<String>> {
         if let TableConstraint::ForeignKey { columns, .. } = constraint
             && !groups.iter().any(|group| same_column_set(group, columns))
         {
-            groups.push(column_names_to_strings(columns));
+            groups.push(names_to_strings(columns));
         }
     }
 
@@ -515,16 +507,14 @@ fn is_nullable_column(table: &TableDef, column_name: &str) -> bool {
 }
 
 fn same_column_set<T: AsRef<str>, U: AsRef<str>>(left: &[T], right: &[U]) -> bool {
+    // Differing lengths can never yield equal sets, so skip building both
+    // BTreeSets on the common mismatched-arity case (e.g. single-col vs composite).
+    if left.len() != right.len() {
+        return false;
+    }
     let left: BTreeSet<&str> = left.iter().map(AsRef::as_ref).collect();
     let right: BTreeSet<&str> = right.iter().map(AsRef::as_ref).collect();
     left == right
-}
-
-fn column_names_to_strings<T: AsRef<str>>(columns: &[T]) -> Vec<String> {
-    columns
-        .iter()
-        .map(|column| column.as_ref().to_string())
-        .collect()
 }
 
 fn normalized_filter_names(names: &[String]) -> Vec<String> {

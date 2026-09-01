@@ -40,6 +40,7 @@ fn is_missing_pk(err: &PlannerError) -> bool {
 mod check_default;
 mod constraint_drops;
 mod dangling_fk_drops;
+mod data_migration_ddl;
 mod enum_fill_with;
 mod fill_with;
 mod fk_policy_changes;

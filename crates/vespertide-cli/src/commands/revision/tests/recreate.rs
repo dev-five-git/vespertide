@@ -7,7 +7,7 @@ async fn cmd_revision_writes_migration() {
     let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
     let cfg = write_config();
-    write_model("users");
+    write_simple_id_model("users");
     std_fs::create_dir_all(cfg.migrations_dir()).unwrap();
 
     cmd_revision("init".into(), vec![], vec![]).await.unwrap();
@@ -36,7 +36,7 @@ async fn cmd_revision_writes_yaml_when_configured() {
     let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
     let cfg = write_config_with_format(Some(FileFormat::Yaml));
-    write_model("users");
+    write_simple_id_model("users");
     // ensure migrations dir absent to exercise create_dir_all branch
     if cfg.migrations_dir().exists() {
         std_fs::remove_dir_all(cfg.migrations_dir()).unwrap();

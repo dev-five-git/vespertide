@@ -1,0 +1,42 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "target")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    #[sea_orm(unique)]
+    pub alt: i32,
+    #[sea_orm(has_many, relation_enum = "Src", via_rel = "A")]
+    pub a_srcs: HasMany<super::src::Entity>,
+    #[sea_orm(has_many, relation_enum = "A", via_rel = "A")]
+    pub a_srcs_1: HasMany<super::src::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "TargetSchema");
+impl ActiveModelBehavior for ActiveModel {}
+
+
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "src")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub pk: i32,
+    pub a_id: Option<i32>,
+    pub a: Option<i32>,
+    #[sea_orm(belongs_to, relation_enum = "A", from = "a_id", to = "id")]
+    pub a_1: HasOne<super::target::Entity>,
+    #[sea_orm(belongs_to, relation_enum = "ASrc", from = "a", to = "alt")]
+    pub a_2: HasOne<super::target::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "SrcSchema");
+impl ActiveModelBehavior for ActiveModel {}

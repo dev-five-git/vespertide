@@ -1,8 +1,10 @@
 pub mod add_column;
 pub mod add_constraint;
 pub mod create_table;
+pub mod data_migration;
 pub mod delete_column;
 pub mod delete_table;
+pub(crate) mod fill_with;
 pub mod helpers;
 pub mod modify_column_comment;
 pub mod modify_column_default;
@@ -16,7 +18,7 @@ pub mod rename_table;
 pub mod replace_constraint;
 pub mod types;
 
-pub use helpers::*;
+pub use helpers::{quote_ident, quote_idents};
 pub use types::{BuiltQuery, DatabaseBackend, RawSql};
 
 use crate::error::QueryError;
@@ -24,8 +26,9 @@ use vespertide_core::{MigrationAction, TableConstraint, TableDef};
 
 use self::{
     add_column::build_add_column, add_constraint::build_add_constraint,
-    create_table::build_create_table, delete_column::build_delete_column,
-    delete_table::build_delete_table, modify_column_comment::build_modify_column_comment,
+    create_table::build_create_table, data_migration::build_data_migration,
+    delete_column::build_delete_column, delete_table::build_delete_table,
+    modify_column_comment::build_modify_column_comment,
     modify_column_default::build_modify_column_default,
     modify_column_nullable::build_modify_column_nullable,
     remap_enum_values::build_remap_enum_values, remove_constraint::build_remove_constraint,
@@ -52,7 +55,7 @@ pub fn build_action_queries(
 /// to avoid recreating indexes that will be created by future `AddConstraint` actions.
 #[expect(
     clippy::too_many_lines,
-    reason = "flat 14-variant MigrationAction dispatcher kept inline so the variant→builder mapping stays auditable; extracting individual arms scatters the routing logic"
+    reason = "flat 16-variant MigrationAction dispatcher kept inline so the variant→builder mapping stays auditable; extracting individual arms scatters the routing logic"
 )]
 pub fn build_action_queries_with_pending(
     backend: DatabaseBackend,
@@ -88,11 +91,8 @@ pub fn build_action_queries_with_pending(
 
         MigrationAction::DeleteColumn { table, column } => {
             // Find the column type from current schema for enum DROP TYPE support
-            let column_type = current_schema
-                .iter()
-                .find(|t| t.name == *table)
-                .and_then(|t| t.columns.iter().find(|c| c.name == *column))
-                .map(|c| &c.r#type);
+            let column_type =
+                helpers::find_column_in_schema(current_schema, table, column).map(|c| &c.r#type);
             Ok(build_delete_column(
                 backend,
                 table,
@@ -158,17 +158,19 @@ pub fn build_action_queries_with_pending(
             table,
             column,
             new_comment,
-        } => build_comment_action_queries(
+        } => build_modify_column_comment(
             backend,
             table,
             column,
-            new_comment.as_ref(),
+            new_comment.as_deref(),
             current_schema,
         ),
 
         MigrationAction::RenameTable { from, to } => Ok(vec![build_rename_table(from, to)]),
 
         MigrationAction::RawSql { sql } => Ok(vec![BuiltQuery::Raw(RawSql::uniform(sql.clone()))]),
+
+        MigrationAction::DataMigration { sql, .. } => Ok(build_data_migration(sql)),
 
         MigrationAction::AddConstraint { .. }
         | MigrationAction::RemoveConstraint { .. }
@@ -184,22 +186,6 @@ pub fn build_action_queries_with_pending(
 
         _ => unreachable!("MigrationAction is #[non_exhaustive]; all variants are matched above"),
     }
-}
-
-fn build_comment_action_queries(
-    backend: DatabaseBackend,
-    table: &str,
-    column: &str,
-    new_comment: Option<&String>,
-    current_schema: &[TableDef],
-) -> Result<Vec<BuiltQuery>, QueryError> {
-    build_modify_column_comment(
-        backend,
-        table,
-        column,
-        new_comment.map(String::as_str),
-        current_schema,
-    )
 }
 
 fn build_constraint_action_queries(

@@ -97,28 +97,12 @@ pub fn find_addcolumn_fk_nullable_violations(plan: &MigrationPlan) -> Vec<Planne
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{col_int, plan};
     use rstest::rstest;
     use vespertide_core::schema::foreign_key::{ForeignKeyDef, ForeignKeySyntax};
     use vespertide_core::{
-        ColumnDef, ColumnName, ColumnType, MigrationAction, MigrationPlan, SimpleColumnType,
-        StringOrBool, TableConstraint, TableName,
+        ColumnDef, ColumnName, MigrationAction, StringOrBool, TableConstraint, TableName,
     };
-
-    /// Minimal `ColumnDef` constructor with all inline-constraint fields
-    /// defaulted to `None`. Tests override what they need.
-    fn col(name: &str, nullable: bool) -> ColumnDef {
-        ColumnDef {
-            name: name.into(),
-            r#type: ColumnType::Simple(SimpleColumnType::Integer),
-            nullable,
-            default: None,
-            comment: None,
-            primary_key: None,
-            unique: None,
-            index: None,
-            foreign_key: None,
-        }
-    }
 
     fn add_column(table: &str, column: ColumnDef, fill: Option<&str>) -> MigrationAction {
         MigrationAction::AddColumn {
@@ -158,20 +142,10 @@ mod tests {
         })
     }
 
-    fn plan(actions: Vec<MigrationAction>) -> MigrationPlan {
-        MigrationPlan {
-            id: "test".into(),
-            version: 1,
-            comment: None,
-            created_at: None,
-            actions,
-        }
-    }
-
     #[rstest]
     fn case_01_nullable_true_fill_inline_fk_ok() {
         // nullable: true + fill_with + inline FK -> no violation
-        let mut c = col("user_id", true);
+        let mut c = col_int("user_id", true);
         c.foreign_key = Some(fk_def("users", &["id"]));
         let p = plan(vec![add_column("posts", c, Some("1"))]);
         assert!(find_addcolumn_fk_nullable_violations(&p).is_empty());
@@ -180,7 +154,7 @@ mod tests {
     #[rstest]
     fn case_02_nullable_false_fill_inline_fk_violation() {
         // nullable: false + fill_with + inline FK -> violation
-        let mut c = col("user_id", false);
+        let mut c = col_int("user_id", false);
         c.foreign_key = Some(fk_def("users", &["id"]));
         let p = plan(vec![add_column("posts", c, Some("1"))]);
         let errs = find_addcolumn_fk_nullable_violations(&p);
@@ -200,7 +174,7 @@ mod tests {
     fn paired_fk_on_other_column_does_not_flag_unrelated_addcolumn() {
         // AddColumn `a` (non-nullable, has fill, NO inline FK) on `posts`,
         // plus an out-of-line FK that covers a DIFFERENT column `b`.
-        let c = col("a", false);
+        let c = col_int("a", false);
         let p = plan(vec![
             add_column("posts", c, Some("1")),
             add_constraint_fk("posts", &["b"], "users", &["id"]),
@@ -214,7 +188,7 @@ mod tests {
     #[rstest]
     fn case_03_nullable_false_default_inline_fk_violation() {
         // nullable: false + default + inline FK -> violation
-        let mut c = col("user_id", false);
+        let mut c = col_int("user_id", false);
         c.default = Some(StringOrBool::String("1".into()));
         c.foreign_key = Some(fk_def("users", &["id"]));
         let p = plan(vec![add_column("posts", c, None)]);
@@ -225,7 +199,7 @@ mod tests {
     #[rstest]
     fn case_04_nullable_false_fill_no_fk_ok() {
         // nullable: false + fill_with + no FK -> not a F3 case, no violation
-        let c = col("name", false);
+        let c = col_int("name", false);
         let p = plan(vec![add_column("posts", c, Some("'unknown'"))]);
         assert!(find_addcolumn_fk_nullable_violations(&p).is_empty());
     }
@@ -233,7 +207,7 @@ mod tests {
     #[rstest]
     fn case_05_paired_addconstraint_fk_violation() {
         // nullable: false + fill_with + separate AddConstraint(FK) -> violation
-        let c = col("user_id", false);
+        let c = col_int("user_id", false);
         let p = plan(vec![
             add_column("posts", c, Some("1")),
             add_constraint_fk("posts", &["user_id"], "users", &["id"]),
@@ -245,7 +219,7 @@ mod tests {
     #[rstest]
     fn case_06_paired_addconstraint_fk_nullable_ok() {
         // nullable: true + paired FK -> ok
-        let c = col("user_id", true);
+        let c = col_int("user_id", true);
         let p = plan(vec![
             add_column("posts", c, Some("1")),
             add_constraint_fk("posts", &["user_id"], "users", &["id"]),
@@ -257,7 +231,7 @@ mod tests {
     fn case_07_nullable_false_no_fill_no_default_ok() {
         // nullable: false but no fill_with/default -> separate fault (F1
         // via find_missing_fill_with). Not F3 Edge #1.
-        let mut c = col("user_id", false);
+        let mut c = col_int("user_id", false);
         c.foreign_key = Some(fk_def("users", &["id"]));
         let p = plan(vec![add_column("posts", c, None)]);
         assert!(find_addcolumn_fk_nullable_violations(&p).is_empty());
@@ -267,11 +241,11 @@ mod tests {
     fn case_08_composite_fk_one_violating() {
         // composite FK over two new columns, one violating nullable invariant
         let bad = {
-            let mut c = col("col_a", false);
+            let mut c = col_int("col_a", false);
             c.default = Some(StringOrBool::String("1".into()));
             c
         };
-        let good = col("col_b", true);
+        let good = col_int("col_b", true);
         let p = plan(vec![
             add_column("posts", bad, None),
             add_column("posts", good, None),

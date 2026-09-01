@@ -1,0 +1,18 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from typing import Optional
+
+from sqlmodel import Field, SQLModel
+
+
+class x1users(SQLModel, table=True):
+    __tablename__ = "1users"
+
+    id: int = Field(primary_key=True)
+    x1st_place: Optional[int] = Field(default=None, sa_column_kwargs={"name": "1st_place"})
+    user_id: Optional[str] = Field(default=None, sa_column_kwargs={"name": "user-id"})
+    x1st_owner_id: Optional[int] = Field(default=None, foreign_key="1users.id", sa_column_kwargs={"name": "1st_owner_id"})

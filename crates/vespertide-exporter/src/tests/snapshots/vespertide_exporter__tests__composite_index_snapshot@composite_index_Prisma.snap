@@ -1,0 +1,12 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model CompositeIndex {
+  id Int @id
+  tenant_id Int
+  name String
+
+  @@index([tenant_id, name], map: "ix_composite_index__idx_tenant_name")
+  @@map("composite_index")
+}

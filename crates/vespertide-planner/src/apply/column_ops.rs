@@ -4,6 +4,7 @@ use vespertide_core::{
     ColumnDef, ColumnName, ColumnType, ComplexColumnType, EnumValues, TableConstraint, TableDef,
 };
 
+use super::find_table_mut;
 use crate::error::PlannerError;
 
 pub(super) fn add_column(
@@ -25,7 +26,7 @@ pub(super) fn add_column(
         let table_to_normalize = std::mem::replace(
             tbl,
             TableDef {
-                name: table.to_string().into(),
+                name: table.into(),
                 description: None,
                 columns: Vec::new(),
                 constraints: Vec::new(),
@@ -143,16 +144,6 @@ pub(super) fn modify_column_comment(
 ) -> Result<(), PlannerError> {
     find_column_mut(schema, table, column)?.comment = new_comment.cloned();
     Ok(())
-}
-
-fn find_table_mut<'a>(
-    schema: &'a mut [TableDef],
-    table: &str,
-) -> Result<&'a mut TableDef, PlannerError> {
-    schema
-        .iter_mut()
-        .find(|t| t.name == table)
-        .ok_or_else(|| PlannerError::TableNotFound(table.to_string()))
 }
 
 fn find_column_mut<'a>(

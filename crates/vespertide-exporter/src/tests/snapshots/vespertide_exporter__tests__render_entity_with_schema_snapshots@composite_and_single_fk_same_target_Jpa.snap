@@ -1,0 +1,27 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "src")
+public class Src {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @Column(name = "a_id", nullable = false)
+    private Integer aId;
+
+    @Column(name = "b_id", nullable = false)
+    private Integer bId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "solo", nullable = false)
+    private Target solo;
+
+    protected Src() {
+    }
+}

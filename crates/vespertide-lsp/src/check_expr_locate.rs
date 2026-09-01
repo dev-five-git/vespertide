@@ -15,18 +15,15 @@ use std::ops::Range;
 use tree_sitter::{Node, Tree};
 
 use crate::text_util::strip_quotes;
+use crate::tree_util::{ancestor_pair, node_at_byte};
 
 /// Cursor-based result of [`find_check_expr_at`]: the CHECK `expr` string
-/// the cursor sits in, the inner byte range of its predicate text, and the
-/// name of the owning table.
+/// the cursor sits in and the inner byte range of its predicate text.
 pub(crate) struct CheckExprAt {
     /// Byte range of the CHECK predicate text inside the document,
     /// excluding surrounding quotes / YAML block-scalar indicators.
     /// Same range [`crate::check_expr_range::expr_inner_range`] returns.
     pub inner: Range<usize>,
-    /// Owning table (the outermost mapping's `name` value).
-    #[expect(dead_code, reason = "field reserved for future use")]
-    pub table: String,
 }
 
 /// If `byte_offset` lands inside a table-level CHECK `expr` string,
@@ -41,7 +38,7 @@ pub(crate) fn find_check_expr_at(
     let node = node_at_byte(tree, byte_offset)?;
     let string_node = enclosing_string(node)?;
 
-    let pair = enclosing_pair(string_node)?;
+    let pair = ancestor_pair(string_node)?;
     let key = pair.named_child(0)?;
     let key_text = std::str::from_utf8(source.get(key.byte_range())?).ok()?;
     if strip_quotes(key_text) != "expr" {
@@ -57,9 +54,8 @@ pub(crate) fn find_check_expr_at(
     }
 
     let inner = crate::check_expr_range::expr_inner_range(string_node)?;
-    let table = owning_table_name(source, pair)?;
 
-    Some(CheckExprAt { inner, table })
+    Some(CheckExprAt { inner })
 }
 
 /// True when `expr_pair` (a pair whose key is `expr`) belongs to a CHECK
@@ -70,42 +66,6 @@ pub(crate) fn find_check_expr_at(
 /// this helper only inspects the sibling `type` value.
 pub(crate) fn is_check_constraint_pair(source: &[u8], expr_pair: Node<'_>) -> bool {
     sibling_value(source, expr_pair, "type").is_some_and(|v| v == "check")
-}
-
-/// The owning table name — the document's outermost mapping's `name`
-/// value. Walks up from `node` to the outermost `object`/`block_mapping`/
-/// `flow_mapping` and returns its direct `name` child's stripped scalar.
-pub(crate) fn owning_table_name(source: &[u8], node: Node<'_>) -> Option<String> {
-    let mut current = node.parent();
-    let mut outer = None;
-    while let Some(candidate) = current {
-        if matches!(
-            candidate.kind(),
-            "object" | "block_mapping" | "flow_mapping"
-        ) {
-            outer = Some(candidate);
-        }
-        current = candidate.parent();
-    }
-    let outer = outer?;
-    let mut cursor = outer.walk();
-    for child in outer.children(&mut cursor) {
-        if matches!(child.kind(), "pair" | "block_mapping_pair")
-            && let Some(key) = child.named_child(0)
-            && let Some(key_text) = source
-                .get(key.byte_range())
-                .and_then(|bytes| std::str::from_utf8(bytes).ok())
-            && strip_quotes(key_text) == "name"
-        {
-            let value = child.named_child(1)?;
-            let actual = peel_wrapper(value);
-            let text = source
-                .get(actual.byte_range())
-                .and_then(|bytes| std::str::from_utf8(bytes).ok())?;
-            return Some(strip_quotes(text).to_string());
-        }
-    }
-    None
 }
 
 // ---------------------------------------------------------------------------
@@ -147,18 +107,6 @@ fn peel_wrapper(node: Node<'_>) -> Node<'_> {
     }
 }
 
-/// Closest ancestor `pair` / `block_mapping_pair`.
-fn enclosing_pair(node: Node<'_>) -> Option<Node<'_>> {
-    let mut current = node.parent();
-    while let Some(candidate) = current {
-        if matches!(candidate.kind(), "pair" | "block_mapping_pair") {
-            return Some(candidate);
-        }
-        current = candidate.parent();
-    }
-    None
-}
-
 /// Closest ancestor that is a JSON / YAML string scalar. Stops at
 /// structural boundaries (arrays, objects, mappings, pairs) so a cursor
 /// that lives between strings does not accidentally bind to a string
@@ -181,23 +129,6 @@ fn enclosing_string(node: Node<'_>) -> Option<Node<'_>> {
         current = candidate.parent();
     }
     None
-}
-
-/// Descend from the root to the deepest node whose byte range contains
-/// `byte_offset`.
-fn node_at_byte(tree: &Tree, byte_offset: usize) -> Option<Node<'_>> {
-    let root = tree.root_node();
-    let mut current = root;
-    'outer: loop {
-        let mut cursor = current.walk();
-        for child in current.children(&mut cursor) {
-            if child.byte_range().contains(&byte_offset) {
-                current = child;
-                continue 'outer;
-            }
-        }
-        return Some(current);
-    }
 }
 
 #[cfg(test)]
@@ -239,24 +170,10 @@ mod tests {
     }
 
     #[test]
-    fn owning_table_name_skips_non_name_keys_and_returns_none_without_name() {
-        let src = r#"{"comment":"x","constraints":[{"type":"check","expr":"age > 0"}]}"#;
-        let tree = parse(src);
-        let expr_pair = find_pair(tree.root_node(), src.as_bytes(), "expr").unwrap();
-
-        assert!(owning_table_name(src.as_bytes(), expr_pair).is_none());
-    }
-
-    #[test]
-    fn owning_table_name_and_sibling_value_skip_invalid_utf8_keys() {
+    fn sibling_value_skips_invalid_utf8_type_key() {
         let src = r#"{"name":"u","constraints":[{"type":"check","expr":"age > 0"}]}"#;
         let tree = parse(src);
         let expr_pair = find_pair(tree.root_node(), src.as_bytes(), "expr").unwrap();
-        let mut bad = src.as_bytes().to_vec();
-        let name_key = src.find("name").unwrap();
-        bad[name_key] = 0xff;
-
-        assert!(owning_table_name(&bad, expr_pair).is_none());
 
         let type_key = src.find("type").unwrap();
         let mut bad_type = src.as_bytes().to_vec();
@@ -278,7 +195,7 @@ mod tests {
         let tree = parse(r#"{"name":"u"}"#);
         let root = tree.root_node();
 
-        assert!(enclosing_pair(root).is_none());
+        assert!(ancestor_pair(root).is_none());
         assert!(enclosing_string(root).is_none());
     }
 

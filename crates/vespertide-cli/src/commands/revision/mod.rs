@@ -88,7 +88,7 @@ fn ensure_no_dangling_fk_drops(plan: &MigrationPlan, baseline_schema: &[TableDef
 fn ensure_no_f12_errors(plan: &MigrationPlan, baseline_schema: &[TableDef]) -> Result<()> {
     let mut f12_errors: Vec<PlannerError> = Vec::new();
     f12_errors.extend(find_constraint_type_changes(plan, baseline_schema));
-    f12_errors.extend(find_primary_key_removals(plan, baseline_schema));
+    f12_errors.extend(find_primary_key_removals(plan));
     if !f12_errors.is_empty() {
         let err = single_or_multiple_error(f12_errors);
         anyhow::bail!("{err}");
@@ -601,7 +601,7 @@ where
     println!(
         "{} {}",
         "Created migration:".bright_green().bold(),
-        format!("{}", path.display()).bright_white()
+        path.display().to_string().bright_white()
     );
     println!(
         "  {} {}",

@@ -1,7 +1,7 @@
-use vespertide_core::{MigrationAction, MigrationPlan, TableConstraint, TableDef};
+use vespertide_core::{MigrationPlan, TableDef};
 use vespertide_planner::apply_action;
 
-use super::{PlanQueries, action_target_table};
+use super::{PlanQueries, pending_constraints_for_action};
 use crate::DatabaseBackend;
 use crate::error::QueryError;
 use crate::sql::build_action_queries_with_pending;
@@ -51,101 +51,11 @@ pub(super) fn build_plan_queries_sequentially(
     Ok(queries)
 }
 
-fn pending_constraints_for_action(
-    plan: &MigrationPlan,
-    action_index: usize,
-    action: &MigrationAction,
-) -> Vec<TableConstraint> {
-    let Some(table) = action_target_table(action) else {
-        return vec![];
-    };
-
-    plan.actions[action_index + 1..]
-        .iter()
-        .filter_map(|a| {
-            if let MigrationAction::AddConstraint {
-                table: t,
-                constraint,
-            } = a
-                && t == table
-                && matches!(
-                    constraint,
-                    TableConstraint::Index { .. } | TableConstraint::Unique { .. }
-                )
-            {
-                Some(constraint.clone())
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
+    use super::super::test_support::*;
     use super::{build_plan_queries_sequentially, pending_constraints_for_action};
-    use crate::DatabaseBackend;
-    use crate::sql::BuiltQuery;
-    use vespertide_core::{
-        ColumnDef, ColumnType, ForeignKeyOrphanStrategy, MigrationAction, MigrationPlan,
-        ReferenceAction, SimpleColumnType, TableConstraint, TableDef,
-    };
-
-    fn nn_col(name: &str, ty: SimpleColumnType) -> ColumnDef {
-        ColumnDef::new(name, ColumnType::Simple(ty), false)
-    }
-
-    fn index(name: Option<&str>, column: &str) -> TableConstraint {
-        TableConstraint::Index {
-            name: name.map(Into::into),
-            columns: vec![column.into()],
-        }
-    }
-
-    fn foreign_key() -> TableConstraint {
-        TableConstraint::ForeignKey {
-            name: Some("fk_u__pk".into()),
-            columns: vec!["pk".into()],
-            ref_table: "other".into(),
-            ref_columns: vec!["id".into()],
-            on_delete: Some(ReferenceAction::Cascade),
-            on_update: None,
-            orphan_strategy: ForeignKeyOrphanStrategy::default(),
-        }
-    }
-
-    fn table(name: &str, constraints: Vec<TableConstraint>) -> TableDef {
-        TableDef {
-            name: name.into(),
-            description: None,
-            columns: vec![nn_col("pk", SimpleColumnType::Integer)],
-            constraints,
-        }
-    }
-
-    fn schema_u_with_constraints(constraints: Vec<TableConstraint>) -> Vec<TableDef> {
-        vec![table("u", constraints)]
-    }
-
-    fn schema_u_and_v_with_u_constraints(constraints: Vec<TableConstraint>) -> Vec<TableDef> {
-        vec![table("u", constraints), table("v", vec![])]
-    }
-
-    fn add_required_column(table: &str, column: &str) -> MigrationAction {
-        MigrationAction::AddColumn {
-            table: table.into(),
-            column: Box::new(nn_col(column, SimpleColumnType::Integer)),
-            fill_with: None,
-        }
-    }
-
-    fn sqlite_sql(queries: &[BuiltQuery]) -> String {
-        queries
-            .iter()
-            .map(|q| q.build(DatabaseBackend::Sqlite))
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
+    use vespertide_core::{MigrationAction, MigrationPlan};
 
     /// The pending scan must start after the current action. If it starts at
     /// `i`, an `AddConstraint(Index)` sees itself as pending.

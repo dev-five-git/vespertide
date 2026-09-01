@@ -1,0 +1,43 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "1users")]
+pub struct Model {
+    #[sea_orm(primary_key, column_name = "1id")]
+    pub x1id: i32,
+    pub email: String,
+    #[sea_orm(has_many, relation_enum = "Posts", via_rel = "X1stOwner")]
+    pub x1st_owner_posts: HasMany<super::posts::Entity>,
+    #[sea_orm(has_many, relation_enum = "X2ndOwner", via_rel = "X2ndOwner")]
+    pub x2nd_owner_posts: HasMany<super::posts::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "1usersSchema");
+impl ActiveModelBehavior for ActiveModel {}
+
+
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "posts")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    #[sea_orm(column_name = "1st_owner_id")]
+    pub x1st_owner_id: Option<i32>,
+    #[sea_orm(column_name = "2nd_owner_id")]
+    pub x2nd_owner_id: Option<i32>,
+    #[sea_orm(belongs_to, relation_enum = "X1stOwner", from = "x1st_owner_id", to = "x1id")]
+    pub x1st_owner: HasOne<super::x1users::Entity>,
+    #[sea_orm(belongs_to, relation_enum = "X2ndOwner", from = "x2nd_owner_id", to = "x1id")]
+    pub x2nd_owner: HasOne<super::x1users::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "PostsSchema");
+impl ActiveModelBehavior for ActiveModel {}

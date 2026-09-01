@@ -9,7 +9,9 @@ use vespertide_planner::{
     find_type_narrowings, plan_next_migration, render_reference_action, schema_from_plans,
 };
 
+use super::raw_sql_warning::emit_raw_sql_replay_warning;
 use crate::utils::{load_config, load_migrations, load_models};
+use vespertide_core::action::{sql_preview, truncate_comment};
 use vespertide_core::{MigrationAction, MigrationPlan, TableDef};
 
 pub async fn cmd_diff() -> Result<()> {
@@ -19,6 +21,10 @@ pub async fn cmd_diff() -> Result<()> {
 
     let plan = plan_next_migration(&current_models, &applied_plans)
         .map_err(|e| anyhow::anyhow!("planning error: {e}"))?;
+
+    // Emitted before the action list: when replay was incomplete the list
+    // itself is untrustworthy, so the caveat has to arrive first.
+    emit_raw_sql_replay_warning(&applied_plans);
 
     if plan.actions.is_empty() {
         println!(
@@ -485,14 +491,9 @@ fn format_action(action: &MigrationAction) -> String {
             ..
         } => {
             let comment_display = new_comment.as_deref().unwrap_or("(none)");
-            let truncated = if comment_display.chars().count() > 30 {
-                format!(
-                    "{}...",
-                    comment_display.chars().take(27).collect::<String>()
-                )
-            } else {
-                comment_display.to_string()
-            };
+            // Shared 30-char display budget — single source of truth in
+            // `vespertide_core::action::truncate_comment`.
+            let truncated = truncate_comment(comment_display);
             format!(
                 "{} {}.{} {} '{}'",
                 "Modify column comment:".bright_yellow(),
@@ -516,6 +517,16 @@ fn format_action(action: &MigrationAction) -> String {
                 "{} {}",
                 "Execute raw SQL:".bright_yellow(),
                 sql.bright_cyan()
+            )
+        }
+        MigrationAction::DataMigration { sql, description } => {
+            let summary = description
+                .clone()
+                .unwrap_or_else(|| sql_preview(sql.postgres()));
+            format!(
+                "{} {}",
+                "Data migration:".bright_yellow(),
+                summary.bright_cyan()
             )
         }
         MigrationAction::AddConstraint { constraint, .. } => {

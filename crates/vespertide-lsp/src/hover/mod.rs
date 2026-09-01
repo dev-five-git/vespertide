@@ -6,8 +6,8 @@ mod foreign_key;
 
 use std::ops::Range;
 
-use crate::parser::DocumentFormat;
 use crate::store::DocumentStore;
+use crate::tree_util::node_at_byte;
 use crate::workspace_index::WorkspaceIndex;
 use crate::workspace_tables::WorkspaceTables;
 
@@ -24,13 +24,12 @@ pub struct DomainHover {
 #[must_use]
 pub fn compute(
     text: &str,
-    format: DocumentFormat,
     tree: Option<&tree_sitter::Tree>,
     index: &WorkspaceIndex,
     docs: &DocumentStore,
     byte_offset: usize,
 ) -> Option<DomainHover> {
-    compute_with_workspace_tables(text, format, tree, index, docs, None, byte_offset)
+    compute_with_workspace_tables(text, tree, index, docs, None, byte_offset)
 }
 
 /// Compute hover with optional disk-discovered tables. When provided, FK
@@ -38,14 +37,12 @@ pub fn compute(
 #[must_use]
 pub fn compute_with_workspace_tables(
     text: &str,
-    format: DocumentFormat,
     tree: Option<&tree_sitter::Tree>,
     index: &WorkspaceIndex,
     docs: &DocumentStore,
     disk_tables: Option<&WorkspaceTables>,
     byte_offset: usize,
 ) -> Option<DomainHover> {
-    let _ = format;
     let tree = tree?;
     let node = node_at_byte(tree, byte_offset)?;
 
@@ -65,21 +62,6 @@ pub fn compute_with_workspace_tables(
     column::try_hover(node, text)
 }
 
-fn node_at_byte(tree: &tree_sitter::Tree, byte_offset: usize) -> Option<tree_sitter::Node<'_>> {
-    let root = tree.root_node();
-    let mut current = root;
-    'outer: loop {
-        let mut cursor = current.walk();
-        for child in current.children(&mut cursor) {
-            if child.byte_range().contains(&byte_offset) {
-                current = child;
-                continue 'outer;
-            }
-        }
-        return Some(current);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,7 +76,7 @@ mod tests {
         let docs = DocumentStore::new();
         let src = r#"{"name": "user"}"#;
         let tree = pool.parse(src, DocumentFormat::Json);
-        let hover = compute(src, DocumentFormat::Json, tree.as_ref(), &idx, &docs, 0);
+        let hover = compute(src, tree.as_ref(), &idx, &docs, 0);
         // First char is `{` — no hover content. Some impls may return generic
         // hover; OK either way as long as there is no panic.
         let _ = hover;
@@ -103,9 +85,9 @@ mod tests {
     #[test]
     fn hover_on_ref_table_falls_back_to_disk_when_target_is_closed() {
         use std::fs;
-        use std::str::FromStr;
         use tempfile::tempdir;
-        use tower_lsp_server::ls_types::Uri;
+
+        use crate::test_support::uri;
 
         let tmp = tempdir().unwrap();
         let models_dir = tmp.path().join("models");
@@ -121,14 +103,13 @@ mod tests {
         let docs = DocumentStore::new();
         // article.vespertide.json references media via FK. Media is on disk, NOT open.
         let article_src = r#"{"name":"article","columns":[{"name":"media_id","type":"uuid","foreign_key":{"ref_table":"media","ref_columns":["id"]}}]}"#;
-        let article_uri = Uri::from_str("file:///article.vespertide.json").unwrap();
+        let article_uri = uri("article.vespertide.json");
         let article_tree = pool.parse(article_src, DocumentFormat::Json).unwrap();
         idx.upsert(&article_uri, article_src, &article_tree);
 
         let pos = article_src.find(r#""ref_table":"media""#).unwrap() + 14;
         let hover = super::compute_with_workspace_tables(
             article_src,
-            DocumentFormat::Json,
             Some(&article_tree),
             &idx,
             &docs,
@@ -156,14 +137,13 @@ mod tests {
 
     #[test]
     fn yaml_hover_on_ref_table_previews_target_columns() {
-        use std::str::FromStr;
-        use tower_lsp_server::ls_types::Uri;
+        use crate::test_support::uri;
 
         let pool = ParserPool::new();
         let idx = WorkspaceIndex::new();
         let docs = DocumentStore::new();
 
-        let user_uri = Uri::from_str("file:///user.yaml").unwrap();
+        let user_uri = uri("user.yaml");
         let user_src = "name: user\ncolumns:\n  - name: id\n    type: integer\n    nullable: false\n    primary_key: true\n  - name: email\n    type: text\n    nullable: false\n";
         let user_tree = pool.parse(user_src, DocumentFormat::Yaml).unwrap();
         idx.upsert(&user_uri, user_src, &user_tree);
@@ -177,15 +157,8 @@ mod tests {
         let post_src = "name: post\ncolumns:\n  - name: author_id\n    type: integer\n    foreign_key:\n      ref_table: user\n      ref_columns: [id]\n";
         let post_tree = pool.parse(post_src, DocumentFormat::Yaml);
         let pos = post_src.find("ref_table: user").unwrap() + 12;
-        let hover = compute(
-            post_src,
-            DocumentFormat::Yaml,
-            post_tree.as_ref(),
-            &idx,
-            &docs,
-            pos,
-        )
-        .expect("YAML hover should resolve ref_table");
+        let hover = compute(post_src, post_tree.as_ref(), &idx, &docs, pos)
+            .expect("YAML hover should resolve ref_table");
 
         assert!(
             hover.markdown.contains("user"),
@@ -207,7 +180,7 @@ mod tests {
         let src = r#"{"name":"user","columns":[{"name":"id","type":"integer","nullable":false,"primary_key":true}]}"#;
         let tree = pool.parse(src, DocumentFormat::Json);
         let pos = src.find(r#""name":"id""#).unwrap() + 5;
-        let hover = compute(src, DocumentFormat::Json, tree.as_ref(), &idx, &docs, pos);
+        let hover = compute(src, tree.as_ref(), &idx, &docs, pos);
         assert!(hover.is_some(), "hover on column should return Some");
     }
 }

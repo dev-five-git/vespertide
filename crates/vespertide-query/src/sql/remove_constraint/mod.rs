@@ -2,12 +2,16 @@ mod mysql;
 mod postgres;
 mod sqlite;
 
-use sea_query::Alias;
-
 use vespertide_core::{TableConstraint, TableDef};
 
 use super::types::{BuiltQuery, DatabaseBackend};
 use crate::error::QueryError;
+
+// Re-export the canonical `DROP INDEX` builder from `sql::helpers` so
+// the SQLite fallback below and the `TableConstraint::Index` arms in
+// `mysql.rs` / `postgres.rs` keep resolving `super::build_drop_index_query`
+// unchanged. The implementation now lives in one place.
+pub(super) use super::helpers::build_drop_index_query;
 
 pub fn build_remove_constraint(
     backend: DatabaseBackend,
@@ -49,11 +53,7 @@ fn build_drop_index(
     };
 
     let index_name = vespertide_naming::build_index_name(table, columns, name.as_deref());
-    let idx_drop = sea_query::Index::drop()
-        .table(Alias::new(table))
-        .name(&index_name)
-        .to_owned();
-    Ok(vec![BuiltQuery::DropIndex(Box::new(idx_drop))])
+    Ok(vec![build_drop_index_query(table, &index_name)])
 }
 
 fn constraint_kind(constraint: &TableConstraint) -> &'static str {
@@ -71,6 +71,7 @@ fn constraint_kind(constraint: &TableConstraint) -> &'static str {
 mod tests {
     use super::*;
     use crate::sql::types::DatabaseBackend;
+    use crate::test_support::joined_sql;
     use insta::{assert_snapshot, with_settings};
     use rstest::rstest;
     use vespertide_core::{
@@ -159,12 +160,10 @@ mod tests {
         constraint: &TableConstraint,
         schema: &[TableDef],
     ) -> String {
-        build_remove_constraint(backend, table_name, constraint, schema, &[])
-            .unwrap()
-            .iter()
-            .map(|query| query.build(backend))
-            .collect::<Vec<_>>()
-            .join("\n")
+        joined_sql(
+            backend,
+            &build_remove_constraint(backend, table_name, constraint, schema, &[]).unwrap(),
+        )
     }
 
     fn assert_rendered(

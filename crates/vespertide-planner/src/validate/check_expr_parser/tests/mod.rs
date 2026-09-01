@@ -945,7 +945,7 @@ fn classify_word_and_keyword_direct_branch() {
 #[test]
 fn eat_keyword_false_branch_leaves_position_unchanged() {
     let mut parser = Parser {
-        tokens: vec![Token::Keyword(Keyword::And)],
+        tokens: vec![spanned(Token::Keyword(Keyword::And))],
         pos: 0,
         depth: 0,
     };

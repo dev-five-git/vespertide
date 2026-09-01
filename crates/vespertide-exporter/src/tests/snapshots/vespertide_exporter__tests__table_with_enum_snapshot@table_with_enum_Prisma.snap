@@ -1,0 +1,16 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+enum OrderStatus {
+  PENDING @map("pending")
+  SHIPPED @map("shipped")
+  DELIVERED @map("delivered")
+}
+
+model Orders {
+  id Int
+  status OrderStatus
+
+  @@map("orders")
+}

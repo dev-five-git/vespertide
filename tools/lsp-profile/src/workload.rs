@@ -153,7 +153,7 @@ pub fn run(scenario: &Scenario) -> Result<Vec<PhaseTiming>> {
 
     let opened_uris = docs.open_uris();
     let timings = vec![
-        run_diagnostics_phase(&docs, &index, &opened_uris),
+        run_diagnostics_phase(&docs, &opened_uris),
         run_completion_phase(&docs, &index, &opened_uris),
         run_semantic_tokens_phase(&docs, &opened_uris),
         run_workspace_symbols_phase(&docs, &disk_tables),
@@ -260,7 +260,6 @@ pub fn run_realistic(scenario: &Scenario) -> Result<Vec<PhaseTiming>> {
 
             record_realistic_diagnostics(
                 &docs,
-                &index,
                 &opened_uris,
                 &mut metrics,
                 did_change_started,
@@ -283,7 +282,6 @@ pub fn run_realistic(scenario: &Scenario) -> Result<Vec<PhaseTiming>> {
 
 fn record_realistic_diagnostics(
     docs: &DocumentStore,
-    index: &WorkspaceIndex,
     opened_uris: &[Uri],
     metrics: &mut RealisticMetrics,
     did_change_started: Instant,
@@ -296,7 +294,7 @@ fn record_realistic_diagnostics(
         let call_started = Instant::now();
         let items = docs
             .docs_iter_for_uri(uri, |state| {
-                compute_diagnostics_shared(state.text(), state.format, state.tree.as_ref(), index)
+                compute_diagnostics_shared(state.text(), state.format, state.tree.as_ref())
                     .len()
             })
             .unwrap_or_default();
@@ -453,11 +451,7 @@ fn update_doc_and_index(
     Ok(())
 }
 
-fn run_diagnostics_phase(
-    docs: &DocumentStore,
-    index: &WorkspaceIndex,
-    opened_uris: &[Uri],
-) -> PhaseTiming {
+fn run_diagnostics_phase(docs: &DocumentStore, opened_uris: &[Uri]) -> PhaseTiming {
     let started = Instant::now();
     let mut diagnostic_count = 0;
 
@@ -465,7 +459,7 @@ fn run_diagnostics_phase(
         for uri in opened_uris {
             diagnostic_count += docs
                 .docs_iter_for_uri(uri, |state| {
-                    compute_diagnostics_shared(state.text(), state.format, state.tree.as_ref(), index)
+                    compute_diagnostics_shared(state.text(), state.format, state.tree.as_ref())
                         .len()
                 })
                 .unwrap_or_default();

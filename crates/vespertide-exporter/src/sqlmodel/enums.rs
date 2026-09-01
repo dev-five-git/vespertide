@@ -1,54 +1,11 @@
-use vespertide_core::schema::column::EnumValues;
+// Naming helpers shared with the `SQLAlchemy` exporter — both Python ORMs
+// produce identical PascalCase class names, so the implementation lives in
+// `crate::python_naming` and we re-export it here to keep every existing
+// `super::enums::to_*` path working without churn.
+pub(super) use crate::python_naming::to_pascal_case;
 
-pub(super) fn render_enum(lines: &mut Vec<String>, name: &str, values: &EnumValues) {
-    let class_name = to_pascal_case(name);
-
-    match values {
-        EnumValues::String(vals) => {
-            lines.push(format!("class {class_name}(str, enum.Enum):"));
-            for val in vals {
-                let variant_name = to_screaming_snake_case(val);
-                lines.push(format!("    {variant_name} = \"{val}\""));
-            }
-        }
-        EnumValues::Integer(vals) => {
-            lines.push(format!("class {class_name}(enum.IntEnum):"));
-            for val in vals {
-                lines.push(format!("    {} = {}", val.name, val.value));
-            }
-        }
-    }
-}
-
-pub(super) fn to_pascal_case(s: &str) -> String {
-    s.split('_')
-        .map(|word| {
-            let mut chars = word.chars();
-            match chars.next() {
-                None => String::new(),
-                Some(first) => first.to_uppercase().chain(chars).collect(),
-            }
-        })
-        .collect()
-}
-
-pub(super) fn to_screaming_snake_case(s: &str) -> String {
-    let mut result = String::new();
-    for (i, ch) in s.chars().enumerate() {
-        if ch.is_uppercase() && i > 0 {
-            result.push('_');
-        }
-        result.push(ch.to_ascii_uppercase());
-    }
-    // Replace any non-alphanumeric with underscore
-    result
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect()
-}
+// `render_enum` is shared verbatim with the SQLAlchemy backend — both Python
+// ORMs emit an identical Python `enum` class, so the single implementation
+// lives in `crate::utils::python`. The naming re-export above stays because
+// `sqlmodel/render.rs` still resolves `super::enums::to_pascal_case`.
+pub(super) use crate::utils::python::render_enum;

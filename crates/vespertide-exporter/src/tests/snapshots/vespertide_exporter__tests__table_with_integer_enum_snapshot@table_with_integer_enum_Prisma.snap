@@ -1,0 +1,16 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+enum PriorityLevel {
+  LOW // = 0
+  MEDIUM // = 10
+  HIGH // = 20
+}
+
+model Tasks {
+  id Int @id
+  priority PriorityLevel
+
+  @@map("tasks")
+}

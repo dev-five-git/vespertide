@@ -1,0 +1,22 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model Target {
+  id Int @id
+  alt Int @unique(map: "uq_target__alt")
+  a_src Src[] @relation("SrcA")
+  a_src_rel Src[] @relation("SrcA2")
+
+  @@map("target")
+}
+
+model Src {
+  pk Int @id
+  a_id Int?
+  a_rel Target? @relation("SrcA", fields: [a_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  a Int?
+  a_rel2 Target? @relation("SrcA2", fields: [a], references: [alt], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("src")
+}

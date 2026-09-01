@@ -47,12 +47,11 @@ constraints:
 #[test]
 fn json_check_diagnostics_and_semantic_tokens_render_user_visible_output() {
     let pool = ParserPool::new();
-    let index = WorkspaceIndex::new();
     let tree = pool
         .parse(JSON_MODEL, DocumentFormat::Json)
         .expect("JSON model parses");
 
-    let diagnostics = compute_diagnostics(JSON_MODEL, DocumentFormat::Json, Some(&tree), &index);
+    let diagnostics = compute_diagnostics(JSON_MODEL, DocumentFormat::Json, Some(&tree));
     let tokens = classify(JSON_MODEL, DocumentFormat::Json, Some(&tree));
     let valid_expr_range = source_range(JSON_MODEL, "age > 0 AND age < 150");
     let valid_tokens = tokens_in_range(&tokens, valid_expr_range.clone());
@@ -132,12 +131,11 @@ fn json_check_diagnostics_and_semantic_tokens_render_user_visible_output() {
 #[test]
 fn yaml_check_type_mismatch_and_tokens_render_user_visible_output() {
     let pool = ParserPool::new();
-    let index = WorkspaceIndex::new();
     let tree = pool
         .parse(YAML_MODEL, DocumentFormat::Yaml)
         .expect("YAML model parses");
 
-    let diagnostics = compute_diagnostics(YAML_MODEL, DocumentFormat::Yaml, Some(&tree), &index);
+    let diagnostics = compute_diagnostics(YAML_MODEL, DocumentFormat::Yaml, Some(&tree));
     let tokens = classify(YAML_MODEL, DocumentFormat::Yaml, Some(&tree));
     let expr_range = source_range(YAML_MODEL, "age = 'abc'");
     let expr_tokens = tokens_in_range(&tokens, expr_range);
@@ -391,7 +389,7 @@ fn h_s1_hover_on_check_expr_real_surface() {
         "cursor byte must be on `>` operator"
     );
 
-    let hover = compute_hover(src, DocumentFormat::Json, Some(&tree), &idx, &docs, cursor)
+    let hover = compute_hover(src, Some(&tree), &idx, &docs, cursor)
         .expect("hover should resolve inside CHECK expr");
 
     println!("=== HOVER (h_s1) ===");

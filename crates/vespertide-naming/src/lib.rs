@@ -170,6 +170,136 @@ pub fn to_pascal_case(s: &str) -> String {
     result
 }
 
+/// Convert an arbitrary schema value into `SCREAMING_SNAKE_CASE`.
+///
+/// Word boundaries are detected on the lower→upper transition rather than on
+/// character position, so a value that is already `SCREAMING_SNAKE_CASE`
+/// survives unchanged. Non-alphanumeric characters become separators and
+/// trailing separators are trimmed.
+///
+/// This is case conversion only — the result can still be an invalid identifier
+/// (a value such as `1critical` keeps its leading digit). Pass it through
+/// [`sanitize_identifier`] with the target language's rule before emitting it.
+///
+/// # Examples
+/// ```
+/// use vespertide_naming::to_screaming_snake_case;
+///
+/// assert_eq!(to_screaming_snake_case("inProgress"), "IN_PROGRESS");
+/// assert_eq!(to_screaming_snake_case("order-status"), "ORDER_STATUS");
+/// assert_eq!(to_screaming_snake_case("ERROR_LEVEL"), "ERROR_LEVEL");
+/// assert_eq!(to_screaming_snake_case("1critical"), "1CRITICAL");
+/// ```
+pub fn to_screaming_snake_case(s: &str) -> String {
+    let mut result = String::new();
+    let mut prev_lower = false;
+    for ch in s.chars() {
+        if ch.is_uppercase() && prev_lower {
+            result.push('_');
+        }
+        if ch.is_alphanumeric() {
+            result.push(ch.to_ascii_uppercase());
+            prev_lower = ch.is_lowercase();
+        } else {
+            result.push('_');
+            prev_lower = false;
+        }
+    }
+    result.trim_end_matches('_').to_string()
+}
+
+/// What a target language accepts as the first character of an identifier.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IdentifierStart {
+    /// Rust modules, Java, SQLAlchemy's Python models and ERD node ids all
+    /// accept a leading `_`.
+    Underscore,
+    /// Prisma's schema parser and Pydantic (SQLModel fields) reject a leading
+    /// `_` outright, and `SeaORM`'s `DeriveEntityModel` drops it while building
+    /// the `Column` variant name. All three need a letter instead.
+    Letter,
+}
+
+/// Rewrite `name` into an identifier the target language will accept.
+///
+/// Characters that cannot appear in an identifier become `_`, and a name that
+/// would otherwise begin with a digit gains a prefix chosen by `start`. The
+/// letter prefix follows the case of the name it precedes, so it reads the same
+/// as its surroundings in both `PascalCase` and `snake_case` output.
+///
+/// Renaming loses the database name, so a caller that gets back something other
+/// than what it passed in **must** emit the original alongside it — Prisma
+/// `@map`, `SeaORM` `column_name`, SQLAlchemy's positional column name.
+///
+/// # Examples
+/// ```
+/// use vespertide_naming::{IdentifierStart, sanitize_identifier};
+///
+/// assert_eq!(sanitize_identifier("user-id", IdentifierStart::Underscore), "user_id");
+/// assert_eq!(sanitize_identifier("1st_place", IdentifierStart::Underscore), "_1st_place");
+/// assert_eq!(sanitize_identifier("1st_place", IdentifierStart::Letter), "x1st_place");
+/// assert_eq!(sanitize_identifier("1CRITICAL", IdentifierStart::Letter), "X1CRITICAL");
+/// assert_eq!(sanitize_identifier("email", IdentifierStart::Letter), "email");
+/// ```
+pub fn sanitize_identifier(name: &str, start: IdentifierStart) -> String {
+    let mut result: String = name
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+        .collect();
+
+    let needs_prefix = match start {
+        IdentifierStart::Underscore => {
+            result.is_empty() || result.starts_with(|c: char| c.is_ascii_digit())
+        }
+        IdentifierStart::Letter => !result.starts_with(|c: char| c.is_ascii_alphabetic()),
+    };
+    if !needs_prefix {
+        return result;
+    }
+
+    let prefix = match start {
+        IdentifierStart::Underscore => '_',
+        // Match the case of the name's first letter so the escape blends into
+        // `PascalCase`, `snake_case` and `SCREAMING_SNAKE_CASE` alike.
+        IdentifierStart::Letter => {
+            if result
+                .chars()
+                .find(char::is_ascii_alphabetic)
+                .is_some_and(char::is_uppercase)
+            {
+                'X'
+            } else {
+                'x'
+            }
+        }
+    };
+    result.insert(0, prefix);
+    result
+}
+
+/// Module name for a `SeaORM` entity file.
+///
+/// The exporter writes `super::{module}::Entity` in relation fields while the
+/// CLI writes `pub mod {module};` and names the file `{module}.rs`. All three
+/// have to agree, so the rule lives here rather than in either caller.
+///
+/// Rust would accept a leading `_`, but `sea-orm` infers the `Relation` variant
+/// of a relation field from the target's module name by `PascalCase`-ing it —
+/// which drops the `_` and leaves `1users`, so the derive panics. Hence the
+/// same letter rule the entity's own fields use.
+///
+/// # Examples
+/// ```
+/// use vespertide_naming::seaorm_module_name;
+///
+/// assert_eq!(seaorm_module_name("users"), "users");
+/// assert_eq!(seaorm_module_name("1users"), "x1users");
+/// assert_eq!(seaorm_module_name("user-profile"), "user_profile");
+/// ```
+pub fn seaorm_module_name(name: &str) -> String {
+    sanitize_identifier(name, IdentifierStart::Letter)
+}
+
 /// Simple pluralization for relation field names.
 ///
 /// # Examples
@@ -205,10 +335,7 @@ pub fn pluralize(name: &str) -> String {
 /// Uses double underscore to separate table name from the rest.
 /// Format: ix_{table}__{key} or ix_{table}__{col1}_{col2}...
 pub fn build_index_name<T: AsRef<str>>(table: &str, columns: &[T], key: Option<&str>) -> String {
-    match key {
-        Some(k) => format!("ix_{table}__{k}"),
-        None => format!("ix_{}__{}", table, sort_columns_for_name(columns).join("_")),
-    }
+    build_constraint_name("ix_", table, columns, key)
 }
 
 /// Generate unique constraint name from table name, columns, and optional user-provided key.
@@ -220,10 +347,7 @@ pub fn build_unique_constraint_name<T: AsRef<str>>(
     columns: &[T],
     key: Option<&str>,
 ) -> String {
-    match key {
-        Some(k) => format!("uq_{table}__{k}"),
-        None => format!("uq_{}__{}", table, sort_columns_for_name(columns).join("_")),
-    }
+    build_constraint_name("uq_", table, columns, key)
 }
 
 /// Generate foreign key constraint name from table name, columns, and optional user-provided key.
@@ -235,23 +359,73 @@ pub fn build_foreign_key_name<T: AsRef<str>>(
     columns: &[T],
     key: Option<&str>,
 ) -> String {
-    match key {
-        Some(k) => format!("fk_{table}__{k}"),
-        None => format!("fk_{}__{}", table, sort_columns_for_name(columns).join("_")),
+    build_constraint_name("fk_", table, columns, key)
+}
+
+/// Shared body for the three constraint name builders above.
+///
+/// Folds the `{prefix}{table}__{key|sorted-columns}` template into a single
+/// pre-sized `String` so the auto-named branch ( `key.is_none()`) does only
+/// two allocations: the column-sort scratchpad (`Vec<&str>`) and the final
+/// `String`. The previous implementation went through `format!(... join("_"))`
+/// which allocated an extra intermediate `String` for the joined columns
+/// before formatting them into the final result.
+fn build_constraint_name<T: AsRef<str>>(
+    prefix: &str,
+    table: &str,
+    columns: &[T],
+    key: Option<&str>,
+) -> String {
+    if let Some(k) = key {
+        let mut out = String::with_capacity(prefix.len() + table.len() + 2 + k.len());
+        out.push_str(prefix);
+        out.push_str(table);
+        out.push_str("__");
+        out.push_str(k);
+        out
+    } else {
+        let cols_capacity: usize = columns
+            .iter()
+            .map(|c| c.as_ref().len() + 1)
+            .sum::<usize>()
+            .saturating_sub(1);
+        let mut out = String::with_capacity(prefix.len() + table.len() + 2 + cols_capacity);
+        out.push_str(prefix);
+        out.push_str(table);
+        out.push_str("__");
+        write_sorted_columns(&mut out, columns);
+        out
     }
 }
 
-fn sort_columns_for_name<T: AsRef<str>>(columns: &[T]) -> Vec<&str> {
+/// Sort the column slice into a local scratchpad and write the columns into
+/// `out` joined by `'_'`. Replaces the previous `sort_columns_for_name(...).join("_")`
+/// pair which allocated a fresh `String` for the joined columns; here the
+/// columns go directly into the caller-supplied buffer.
+fn write_sorted_columns<T: AsRef<str>>(out: &mut String, columns: &[T]) {
     let mut sorted: Vec<&str> = columns.iter().map(AsRef::as_ref).collect();
     sorted.sort_unstable();
-    sorted
+    for (i, c) in sorted.iter().enumerate() {
+        if i > 0 {
+            out.push('_');
+        }
+        out.push_str(c);
+    }
 }
 
 /// Generate CHECK constraint name for `SQLite` enum column.
 /// Uses double underscore to separate table name from the rest.
 /// Format: chk_{table}__{column}
 pub fn build_check_constraint_name(table: &str, column: &str) -> String {
-    format!("chk_{table}__{column}")
+    // Build in one exact-size allocation like the sibling constraint-name
+    // builders above, instead of routing through `format!`. Output is
+    // byte-identical: `chk_{table}__{column}` (`"chk_"` = 4 bytes, `"__"` = 2).
+    let mut out = String::with_capacity(4 + table.len() + 2 + column.len());
+    out.push_str("chk_");
+    out.push_str(table);
+    out.push_str("__");
+    out.push_str(column);
+    out
 }
 
 /// Generate enum type name with table prefix to avoid conflicts.
@@ -261,13 +435,21 @@ pub fn build_check_constraint_name(table: &str, column: &str) -> String {
 /// This prevents conflicts when multiple tables use the same enum name
 /// (e.g., "status" or "gender") with potentially different values.
 pub fn build_enum_type_name(table: &str, enum_name: &str) -> String {
-    format!("{table}_{enum_name}")
+    // Build in one exact-size allocation like the sibling constraint-name
+    // builders above, instead of routing through `format!`. Output is
+    // byte-identical: `{table}_{enum_name}` (`'_'` = 1 byte).
+    let mut out = String::with_capacity(table.len() + 1 + enum_name.len());
+    out.push_str(table);
+    out.push('_');
+    out.push_str(enum_name);
+    out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use proptest::prelude::*;
+    use rstest::rstest;
 
     // ========================================================================
     // Relation Naming Tests
@@ -470,6 +652,47 @@ mod tests {
         assert_eq!(to_pascal_case(""), "");
     }
 
+    #[rstest]
+    #[case::lowercase("pending", "PENDING")]
+    #[case::snake_case("not_started", "NOT_STARTED")]
+    #[case::camel_case("inProgress", "IN_PROGRESS")]
+    #[case::kebab_case("order-status", "ORDER_STATUS")]
+    #[case::empty("", "")]
+    // Already-uppercase input survives: a position-based word-boundary rule
+    // would explode these into `E_R_R_O_R__L_E_V_E_L` / `H_T_T_P__500`.
+    #[case::already_screaming("ERROR_LEVEL", "ERROR_LEVEL")]
+    #[case::acronym_with_digits("HTTP_500", "HTTP_500")]
+    #[case::trailing_separator("status-", "STATUS")]
+    // Case conversion only: making this a valid identifier is
+    // `sanitize_identifier`'s job, since the rule differs per language.
+    #[case::leading_digit("1critical", "1CRITICAL")]
+    fn test_to_screaming_snake_case(#[case] input: &str, #[case] expected: &str) {
+        assert_eq!(to_screaming_snake_case(input), expected);
+    }
+
+    #[rstest]
+    #[case::already_valid("email", IdentifierStart::Underscore, "email")]
+    #[case::internal_digits("table_99_ok", IdentifierStart::Underscore, "table_99_ok")]
+    #[case::hyphen("user-id", IdentifierStart::Underscore, "user_id")]
+    #[case::space("user id", IdentifierStart::Underscore, "user_id")]
+    #[case::non_ascii("사용자", IdentifierStart::Underscore, "___")]
+    #[case::leading_digit_underscore("1st_place", IdentifierStart::Underscore, "_1st_place")]
+    #[case::leading_digit_letter("1st_place", IdentifierStart::Letter, "x1st_place")]
+    // The escape follows the case of the first letter it precedes.
+    #[case::leading_digit_screaming("1CRITICAL", IdentifierStart::Letter, "X1CRITICAL")]
+    // Prisma and Pydantic reject a leading `_`, so it is escaped too.
+    #[case::existing_underscore_letter("_private", IdentifierStart::Letter, "x_private")]
+    #[case::existing_underscore_ok("_private", IdentifierStart::Underscore, "_private")]
+    #[case::empty_underscore("", IdentifierStart::Underscore, "_")]
+    #[case::empty_letter("", IdentifierStart::Letter, "x")]
+    fn test_sanitize_identifier(
+        #[case] input: &str,
+        #[case] start: IdentifierStart,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(sanitize_identifier(input, start), expected);
+    }
+
     #[test]
     fn test_pluralize() {
         assert_eq!(pluralize("inquiry"), "inquiries");
@@ -484,117 +707,60 @@ mod tests {
     // Constraint Naming Tests
     // ========================================================================
 
-    #[test]
-    fn test_build_index_name_with_key() {
-        assert_eq!(
-            build_index_name("users", &["email"], Some("email_idx")),
-            "ix_users__email_idx"
-        );
+    /// The three builders monomorphized for `&[&str]` columns.
+    /// Column strings are `'static` so the generic builders (whose column
+    /// lifetime is fixed at instantiation) can coerce to a single fn pointer.
+    type BuildFn = fn(&str, &[&'static str], Option<&str>) -> String;
+    /// The three builders monomorphized for `&[String]` columns.
+    type BuildStringFn = fn(&str, &[String], Option<&str>) -> String;
+
+    #[rstest]
+    #[case::index_with_key(build_index_name, "users", &["email"][..], Some("email_idx"), "ix_users__email_idx")]
+    #[case::index_without_key(build_index_name, "users", &["email"][..], None, "ix_users__email")]
+    #[case::index_multiple_columns(build_index_name, "users", &["first_name", "last_name"][..], None, "ix_users__first_name_last_name")]
+    #[case::unique_with_key(build_unique_constraint_name, "users", &["email"][..], Some("email_unique"), "uq_users__email_unique")]
+    #[case::unique_without_key(build_unique_constraint_name, "users", &["email"][..], None, "uq_users__email")]
+    #[case::foreign_key_with_key(build_foreign_key_name, "posts", &["user_id"][..], Some("fk_user"), "fk_posts__fk_user")]
+    #[case::foreign_key_without_key(build_foreign_key_name, "posts", &["user_id"][..], None, "fk_posts__user_id")]
+    fn constraint_name_builders_render_expected(
+        #[case] build: BuildFn,
+        #[case] table: &str,
+        #[case] columns: &[&'static str],
+        #[case] key: Option<&str>,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(build(table, columns, key), expected);
     }
 
-    #[test]
-    fn test_build_index_name_without_key() {
-        assert_eq!(
-            build_index_name("users", &["email"], None),
-            "ix_users__email"
-        );
+    /// Column order must not affect the generated name (`&[&str]` instantiation).
+    #[rstest]
+    #[case::index(build_index_name, "users", &["last_name", "first_name"][..])]
+    #[case::unique(build_unique_constraint_name, "users", &["last_name", "first_name"][..])]
+    #[case::foreign_key(build_foreign_key_name, "posts", &["tenant_id", "user_id"][..])]
+    fn constraint_name_builders_sort_str_columns_for_deterministic_name(
+        #[case] build: BuildFn,
+        #[case] table: &str,
+        #[case] columns: &[&'static str],
+    ) {
+        let mut reversed = columns.to_vec();
+        reversed.reverse();
+        assert_eq!(build(table, columns, None), build(table, &reversed, None));
     }
 
-    #[test]
-    fn test_build_index_name_multiple_columns() {
-        assert_eq!(
-            build_index_name("users", &["first_name", "last_name"], None),
-            "ix_users__first_name_last_name"
-        );
-    }
-
-    #[test]
-    fn test_build_index_name_multiple_columns_is_deterministic() {
-        assert_eq!(
-            build_index_name("users", &["last_name", "first_name"], None),
-            build_index_name("users", &["first_name", "last_name"], None)
-        );
-    }
-
-    #[test]
-    fn test_build_index_name_sorts_columns_for_deterministic_name() {
-        let columns = vec!["last_name".to_string(), "first_name".to_string()];
-        let reversed = vec!["first_name".to_string(), "last_name".to_string()];
-
-        assert_eq!(
-            build_index_name("users", &columns, None),
-            build_index_name("users", &reversed, None)
-        );
-    }
-
-    #[test]
-    fn test_build_unique_constraint_name_with_key() {
-        assert_eq!(
-            build_unique_constraint_name("users", &["email"], Some("email_unique")),
-            "uq_users__email_unique"
-        );
-    }
-
-    #[test]
-    fn test_build_unique_constraint_name_without_key() {
-        assert_eq!(
-            build_unique_constraint_name("users", &["email"], None),
-            "uq_users__email"
-        );
-    }
-
-    #[test]
-    fn test_build_unique_constraint_name_multiple_columns_is_deterministic() {
-        assert_eq!(
-            build_unique_constraint_name("users", &["last_name", "first_name"], None),
-            build_unique_constraint_name("users", &["first_name", "last_name"], None)
-        );
-    }
-
-    #[test]
-    fn test_build_unique_constraint_name_sorts_columns_for_deterministic_name() {
-        let columns = vec!["product_id".to_string(), "order_id".to_string()];
-        let reversed = vec!["order_id".to_string(), "product_id".to_string()];
-
-        assert_eq!(
-            build_unique_constraint_name("order_items", &columns, None),
-            build_unique_constraint_name("order_items", &reversed, None)
-        );
-    }
-
-    #[test]
-    fn test_build_foreign_key_name_with_key() {
-        assert_eq!(
-            build_foreign_key_name("posts", &["user_id"], Some("fk_user")),
-            "fk_posts__fk_user"
-        );
-    }
-
-    #[test]
-    fn test_build_foreign_key_name_without_key() {
-        assert_eq!(
-            build_foreign_key_name("posts", &["user_id"], None),
-            "fk_posts__user_id"
-        );
-    }
-
-    #[test]
-    fn test_build_foreign_key_name_multiple_columns_is_deterministic() {
-        assert_eq!(
-            build_foreign_key_name("posts", &["tenant_id", "user_id"], None),
-            build_foreign_key_name("posts", &["user_id", "tenant_id"], None)
-        );
-    }
-
-    #[test]
-    fn test_build_foreign_key_name_sorts_columns_for_deterministic_name() {
-        let columns = vec!["tenant_id".to_string(), "account_id".to_string()];
-        let reversed = vec!["account_id".to_string(), "tenant_id".to_string()];
-
-        assert_eq!(
-            build_foreign_key_name("memberships", &columns, None),
-            build_foreign_key_name("memberships", &reversed, None)
-        );
+    /// Column order must not affect the generated name (`&[String]` instantiation).
+    #[rstest]
+    #[case::index(build_index_name, "users", &["last_name", "first_name"][..])]
+    #[case::unique(build_unique_constraint_name, "order_items", &["product_id", "order_id"][..])]
+    #[case::foreign_key(build_foreign_key_name, "memberships", &["tenant_id", "account_id"][..])]
+    fn constraint_name_builders_sort_string_columns_for_deterministic_name(
+        #[case] build: BuildStringFn,
+        #[case] table: &str,
+        #[case] columns: &[&str],
+    ) {
+        let columns: Vec<String> = columns.iter().map(ToString::to_string).collect();
+        let mut reversed = columns.clone();
+        reversed.reverse();
+        assert_eq!(build(table, &columns, None), build(table, &reversed, None));
     }
 
     #[test]

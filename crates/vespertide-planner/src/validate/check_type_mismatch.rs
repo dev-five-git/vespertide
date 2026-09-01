@@ -132,7 +132,7 @@ fn scan_check(
     table: &str,
     check_name: &str,
     expr: &str,
-    type_map: &HashMap<(String, String), ColumnType>,
+    type_map: &HashMap<(&str, &str), &ColumnType>,
     out: &mut Vec<CheckTypeMismatchWarning>,
 ) {
     let parsed = parse(expr);
@@ -153,59 +153,60 @@ fn walk_check_expr(
     table: &str,
     check_name: &str,
     expr_text: &str,
-    type_map: &HashMap<(String, String), ColumnType>,
+    type_map: &HashMap<(&str, &str), &ColumnType>,
     out: &mut Vec<CheckTypeMismatchWarning>,
 ) {
     match expr_node {
+        // For each predicate node the column type is resolved ONCE here;
+        // unknown columns skip silently (other validators diagnose them),
+        // and `check_one` becomes a pure literal-vs-type check.
         CheckExpr::Compare { column, value, .. } => {
-            check_one(
-                action_index,
-                table,
-                check_name,
-                column,
-                value,
-                expr_text,
-                type_map,
-                out,
-            );
-        }
-        CheckExpr::In { column, values, .. } => {
-            for v in values {
+            if let Some(&col_type) = type_map.get(&(table, column.as_str())) {
                 check_one(
                     action_index,
                     table,
                     check_name,
                     column,
-                    v,
+                    col_type,
+                    value,
                     expr_text,
-                    type_map,
                     out,
                 );
+            }
+        }
+        CheckExpr::In { column, values, .. } => {
+            if let Some(&col_type) = type_map.get(&(table, column.as_str())) {
+                for v in values {
+                    check_one(
+                        action_index,
+                        table,
+                        check_name,
+                        column,
+                        col_type,
+                        v,
+                        expr_text,
+                        out,
+                    );
+                }
             }
         }
         CheckExpr::Between {
             column, low, high, ..
         } => {
-            check_one(
-                action_index,
-                table,
-                check_name,
-                column,
-                low,
-                expr_text,
-                type_map,
-                out,
-            );
-            check_one(
-                action_index,
-                table,
-                check_name,
-                column,
-                high,
-                expr_text,
-                type_map,
-                out,
-            );
+            if let Some(&col_type) = type_map.get(&(table, column.as_str())) {
+                for boundary in [low, high] {
+                    check_one(
+                        action_index,
+                        table,
+                        check_name,
+                        column,
+                        col_type,
+                        boundary,
+                        expr_text,
+                        out,
+                    );
+                }
+            }
         }
         CheckExpr::And(parts) | CheckExpr::Or(parts) => {
             for p in parts {
@@ -229,21 +230,18 @@ fn walk_check_expr(
 
 #[expect(
     clippy::too_many_arguments,
-    reason = "F-novel-4 per-literal checker threads context (table / check_name / column / literal / expr / type_map / out) through a single call; bundling into a struct would scatter the call sites without aiding clarity"
+    reason = "F-novel-4 per-literal checker threads context (table / check_name / column / col_type / literal / expr / out) through a single call; bundling into a struct would scatter the call sites without aiding clarity"
 )]
 fn check_one(
     action_index: usize,
     table: &str,
     check_name: &str,
     column: &str,
+    col_type: &ColumnType,
     literal: &Literal,
     expr_text: &str,
-    type_map: &HashMap<(String, String), ColumnType>,
     out: &mut Vec<CheckTypeMismatchWarning>,
 ) {
-    let Some(col_type) = type_map.get(&(table.to_string(), column.to_string())) else {
-        return; // unknown column - other validators handle it
-    };
     if !is_definitely_mismatch(col_type, literal) {
         return;
     }
@@ -253,23 +251,24 @@ fn check_one(
         constraint_name: check_name.to_string(),
         column: column.to_string(),
         column_type_label: column_type_label(col_type),
-        literal_text: format_literal(literal),
+        literal_text: literal.display_value(),
         literal_kind: literal_kind_name(literal).to_string(),
         expr: expr_text.to_string(),
     });
 }
 
-fn build_column_type_map(
-    plan: &MigrationPlan,
-    baseline: &[TableDef],
-) -> HashMap<(String, String), ColumnType> {
+/// Borrow-keyed lookup map: `(table, column) -> column type`, borrowing
+/// from `plan` + `baseline` so per-predicate lookups in
+/// [`walk_check_expr`] are allocation-free. Owned strings are produced
+/// only when a warning fires.
+fn build_column_type_map<'a>(
+    plan: &'a MigrationPlan,
+    baseline: &'a [TableDef],
+) -> HashMap<(&'a str, &'a str), &'a ColumnType> {
     let mut map = HashMap::new();
     for table in baseline {
         for col in &table.columns {
-            map.insert(
-                (table.name.to_string(), col.name.to_string()),
-                col.r#type.clone(),
-            );
+            map.insert((table.name.as_str(), col.name.as_str()), &col.r#type);
         }
     }
     // Plan-added tables / columns supersede baseline so a CreateTable
@@ -278,17 +277,11 @@ fn build_column_type_map(
         match action {
             MigrationAction::CreateTable { table, columns, .. } => {
                 for col in columns {
-                    map.insert(
-                        (table.to_string(), col.name.to_string()),
-                        col.r#type.clone(),
-                    );
+                    map.insert((table.as_str(), col.name.as_str()), &col.r#type);
                 }
             }
             MigrationAction::AddColumn { table, column, .. } => {
-                map.insert(
-                    (table.to_string(), column.name.to_string()),
-                    column.r#type.clone(),
-                );
+                map.insert((table.as_str(), column.name.as_str()), &column.r#type);
             }
             MigrationAction::ModifyColumnType {
                 table,
@@ -296,7 +289,7 @@ fn build_column_type_map(
                 new_type,
                 ..
             } => {
-                map.insert((table.to_string(), column.to_string()), new_type.clone());
+                map.insert((table.as_str(), column.as_str()), new_type);
             }
             _ => {}
         }
@@ -399,23 +392,10 @@ fn is_definitely_mismatch(col_type: &ColumnType, lit: &Literal) -> bool {
 }
 
 fn column_type_label(col_type: &ColumnType) -> String {
-    match col_type {
-        ColumnType::Simple(simple) => format!("{simple:?}").to_lowercase(),
-        ColumnType::Complex(complex) => complex_type_label(complex),
-    }
-}
-
-fn complex_type_label(complex: &ComplexColumnType) -> String {
-    match complex {
-        ComplexColumnType::Varchar { length } => format!("varchar({length})"),
-        ComplexColumnType::Char { length } => format!("char({length})"),
-        ComplexColumnType::Numeric { precision, scale } => format!("numeric({precision}, {scale})"),
-        ComplexColumnType::Custom { custom_type } => format!("custom({custom_type})"),
-        ComplexColumnType::Enum { name, .. } => format!("enum({name})"),
-        // reason: unreachable - exhaustive over current ComplexColumnType variants; fallback required only for #[non_exhaustive] future variants
-        #[cfg(not(tarpaulin_include))]
-        _ => "complex".to_string(),
-    }
+    // Wire-format spelling (`small_int`, not `smallint`) so the warning
+    // echoes exactly what the user wrote in the model file. Delegates to
+    // the shared renderer beside `SimpleColumnType::model_name` in core.
+    col_type.display_label()
 }
 
 fn literal_kind_name(lit: &Literal) -> &'static str {
@@ -428,36 +408,11 @@ fn literal_kind_name(lit: &Literal) -> &'static str {
     }
 }
 
-fn format_literal(lit: &Literal) -> String {
-    match lit {
-        Literal::Integer(i) => i.to_string(),
-        Literal::Float(f) => f.to_string(),
-        Literal::String(s) => s.clone(),
-        Literal::Bool(b) => b.to_string(),
-        Literal::Null => "NULL".to_string(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vespertide_core::{
-        CheckViolationStrategy, ColumnDef, ColumnType, EnumValues, SimpleColumnType, TableDef,
-    };
-
-    fn col(name: &str, ty: ColumnType) -> ColumnDef {
-        ColumnDef {
-            name: name.into(),
-            r#type: ty,
-            nullable: false,
-            default: None,
-            comment: None,
-            primary_key: None,
-            unique: None,
-            index: None,
-            foreign_key: None,
-        }
-    }
+    use crate::test_support::{add_check, check, col, plan};
+    use vespertide_core::{ColumnDef, ColumnType, EnumValues, SimpleColumnType, TableDef};
 
     fn baseline_table(table: &str, cols: Vec<ColumnDef>) -> TableDef {
         TableDef {
@@ -465,31 +420,6 @@ mod tests {
             description: None,
             columns: cols,
             constraints: Vec::new(),
-        }
-    }
-
-    fn plan(actions: Vec<MigrationAction>) -> MigrationPlan {
-        MigrationPlan {
-            id: String::new(),
-            comment: None,
-            created_at: None,
-            version: 0,
-            actions,
-        }
-    }
-
-    fn check(name: &str, expr: &str) -> TableConstraint {
-        TableConstraint::Check {
-            name: name.to_string(),
-            expr: expr.to_string(),
-            strategy: CheckViolationStrategy::default(),
-        }
-    }
-
-    fn add_check(table: &str, name: &str, expr: &str) -> MigrationAction {
-        MigrationAction::AddConstraint {
-            table: table.into(),
-            constraint: check(name, expr),
         }
     }
 
@@ -774,6 +704,21 @@ mod tests {
         assert!(find_check_type_mismatches(&p, &baseline).is_empty());
     }
 
+    /// Unknown-column skip is decided ONCE per predicate node — pin the
+    /// `In` and `Between` arms of `walk_check_expr` (not just `Compare`).
+    #[test]
+    fn unknown_column_in_list_and_between_silently_pass() {
+        let baseline = vec![baseline_table(
+            "t",
+            vec![col("age", ColumnType::Simple(SimpleColumnType::Integer))],
+        )];
+        let p = plan(vec![
+            add_check("t", "chk_in", "missing_col IN ('a', 'b')"),
+            add_check("t", "chk_between", "missing_col BETWEEN 'x' AND 'y'"),
+        ]);
+        assert!(find_check_type_mismatches(&p, &baseline).is_empty());
+    }
+
     #[test]
     fn unparseable_check_silently_passes() {
         let baseline = vec![baseline_table(
@@ -997,22 +942,22 @@ mod tests {
     }
 
     /// Direct unit test for `literal_kind_name` Null arm (line 425) and
-    /// `format_literal` Null arm (line 435): these arms are unreachable
+    /// the unified `Literal::display_value` Null arm: both are unreachable
     /// from the public flow because `is_definitely_mismatch` returns
     /// false for `Null` literals before the formatters run.
     #[rstest]
-    fn literal_kind_name_and_format_literal_cover_null_and_float_arms() {
+    fn literal_kind_name_and_display_value_cover_null_and_float_arms() {
         assert_eq!(literal_kind_name(&Literal::Integer(1)), "Integer");
         assert_eq!(literal_kind_name(&Literal::Float(1.0)), "Float");
         assert_eq!(literal_kind_name(&Literal::String("x".into())), "String");
         assert_eq!(literal_kind_name(&Literal::Bool(true)), "Bool");
         assert_eq!(literal_kind_name(&Literal::Null), "Null");
 
-        assert_eq!(format_literal(&Literal::Integer(7)), "7");
-        assert_eq!(format_literal(&Literal::Float(1.5)), "1.5");
-        assert_eq!(format_literal(&Literal::String("alice".into())), "alice");
-        assert_eq!(format_literal(&Literal::Bool(false)), "false");
-        assert_eq!(format_literal(&Literal::Null), "NULL");
+        assert_eq!(Literal::Integer(7).display_value(), "7");
+        assert_eq!(Literal::Float(1.5).display_value(), "1.5");
+        assert_eq!(Literal::String("alice".into()).display_value(), "alice");
+        assert_eq!(Literal::Bool(false).display_value(), "false");
+        assert_eq!(Literal::Null.display_value(), "NULL");
     }
 
     #[rstest]
@@ -1033,5 +978,18 @@ mod tests {
             custom_type: "TSVECTOR".into(),
         }));
         assert_eq!(label, "custom(TSVECTOR)");
+    }
+
+    #[rstest]
+    #[case::small_int(SimpleColumnType::SmallInt, "small_int")]
+    #[case::big_int(SimpleColumnType::BigInt, "big_int")]
+    #[case::double_precision(SimpleColumnType::DoublePrecision, "double_precision")]
+    fn column_type_label_uses_wire_format_for_multi_word_simple_types(
+        #[case] simple: SimpleColumnType,
+        #[case] expected: &str,
+    ) {
+        // A user who wrote `"small_int"` must be warned about `small_int`,
+        // not the Debug-derived `smallint`.
+        assert_eq!(column_type_label(&ColumnType::Simple(simple)), expected);
     }
 }

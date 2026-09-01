@@ -57,12 +57,12 @@ impl EmbeddedMigration {
     }
 
     pub const fn sql_blob(self, backend: DatabaseBackend) -> &'static str {
-        if matches!(backend, DatabaseBackend::MySql) {
-            self.mysql_sql_blob
-        } else if matches!(backend, DatabaseBackend::Sqlite) {
-            self.sqlite_sql_blob
-        } else {
-            self.postgres_sql_blob
+        match backend {
+            DatabaseBackend::MySql => self.mysql_sql_blob,
+            DatabaseBackend::Sqlite => self.sqlite_sql_blob,
+            // Postgres today, plus any future `#[non_exhaustive]` backend
+            // variants — preserves the historical Postgres fallback.
+            _ => self.postgres_sql_blob,
         }
     }
 }

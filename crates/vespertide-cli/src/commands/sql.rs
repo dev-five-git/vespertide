@@ -138,50 +138,14 @@ fn emit_sql(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::CwdGuard;
+    use crate::test_support::{CwdGuard, write_default_config, write_simple_id_model};
     use serial_test::serial;
     use std::fs;
-    use std::path::PathBuf;
     use tempfile::tempdir;
-    use vespertide_config::VespertideConfig;
     use vespertide_core::{
         ColumnDef, ColumnType, MigrationAction, MigrationPlan, SimpleColumnType, TableConstraint,
         TableDef,
     };
-
-    fn write_config() -> VespertideConfig {
-        let cfg = VespertideConfig::default();
-        let text = serde_json::to_string_pretty(&cfg).unwrap();
-        fs::write("vespertide.json", text).unwrap();
-        cfg
-    }
-
-    fn write_model(name: &str) {
-        let models_dir = PathBuf::from("models");
-        fs::create_dir_all(&models_dir).unwrap();
-        let table = TableDef {
-            name: name.into(),
-            description: None,
-            columns: vec![ColumnDef {
-                name: "id".into(),
-                r#type: ColumnType::Simple(SimpleColumnType::Integer),
-                nullable: false,
-                default: None,
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
-            }],
-            constraints: vec![TableConstraint::PrimaryKey {
-                auto_increment: false,
-                columns: vec!["id".into()],
-                strategy: vespertide_core::PrimaryKeyAdditionStrategy::default(),
-            }],
-        };
-        let path = models_dir.join(format!("{name}.json"));
-        fs::write(path, serde_json::to_string_pretty(&table).unwrap()).unwrap();
-    }
 
     #[tokio::test]
     #[serial]
@@ -189,8 +153,8 @@ mod tests {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
-        let _cfg = write_config();
-        write_model("users");
+        let _cfg = write_default_config();
+        write_simple_id_model("users");
 
         let result = cmd_sql(DatabaseBackend::Postgres, false).await;
         assert!(result.is_ok());
@@ -202,8 +166,8 @@ mod tests {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
-        let _cfg = write_config();
-        write_model("users");
+        let _cfg = write_default_config();
+        write_simple_id_model("users");
 
         let result = cmd_sql(DatabaseBackend::MySql, false).await;
         assert!(result.is_ok());
@@ -215,8 +179,8 @@ mod tests {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
-        let _cfg = write_config();
-        write_model("users");
+        let _cfg = write_default_config();
+        write_simple_id_model("users");
 
         let result = cmd_sql(DatabaseBackend::Sqlite, false).await;
         assert!(result.is_ok());
@@ -228,8 +192,8 @@ mod tests {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
-        let cfg = write_config();
-        write_model("users");
+        let cfg = write_default_config();
+        write_simple_id_model("users");
 
         let plan = MigrationPlan {
             id: String::new(),
@@ -270,8 +234,8 @@ mod tests {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
-        let cfg = write_config();
-        write_model("users");
+        let cfg = write_default_config();
+        write_simple_id_model("users");
 
         let plan = MigrationPlan {
             id: String::new(),
@@ -312,8 +276,8 @@ mod tests {
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
-        let cfg = write_config();
-        write_model("users");
+        let cfg = write_default_config();
+        write_simple_id_model("users");
 
         let plan = MigrationPlan {
             id: String::new(),
@@ -539,8 +503,8 @@ mod tests {
         // This should trigger the queries.len() > 1 branch (line 89)
         let tmp = tempdir().unwrap();
         let _guard = CwdGuard::new(&tmp.path().to_path_buf());
-        let _cfg = write_config();
-        write_model("users");
+        let _cfg = write_default_config();
+        write_simple_id_model("users");
 
         // Create a migration that adds a NOT NULL column in SQLite, which generates multiple queries
         let plan = MigrationPlan {

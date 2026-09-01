@@ -27,17 +27,8 @@ pub(crate) fn to_pascal_case_for_tests(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::enums::to_screaming_snake_case;
     use super::types::UsedTypes;
     use vespertide_core::{ColumnType, ComplexColumnType, SimpleColumnType};
-
-    #[rstest::rstest]
-    #[case("pending", "PENDING")]
-    #[case("inProgress", "IN_PROGRESS")]
-    #[case("order-status", "ORDER_STATUS")]
-    fn test_to_screaming_snake_case(#[case] input: &str, #[case] expected: &str) {
-        assert_eq!(to_screaming_snake_case(input), expected);
-    }
 
     #[test]
     fn test_used_types_tracks_import_needs() {

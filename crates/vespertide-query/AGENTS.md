@@ -7,20 +7,26 @@ Converts `MigrationAction` enums to SQL via sea-query intermediate representatio
 ```
 src/
 ├── lib.rs              # Re-exports: build_action_queries, BuiltQuery, DatabaseBackend
-├── builder.rs          # build_plan_queries() - orchestrates full plan with schema evolution
+├── builder/            # build_plan_queries() - orchestrates full plan with schema evolution
+│   ├── mod.rs          #   Re-export entry + shared helpers (pending_constraints_for_action)
+│   ├── sequential.rs   #   Single-threaded dispatch path
+│   ├── parallel.rs     #   Rayon-driven parallel path
+│   ├── transaction.rs  #   BEGIN/COMMIT wrapping
+│   └── test_support.rs #   Shared #[cfg(test)] fixtures for sequential/parallel tests
 ├── error.rs            # QueryError enum
 └── sql/
-    ├── mod.rs          # build_action_queries() dispatch - matches all 14 MigrationAction variants (1507 lines)
+    ├── mod.rs          # build_action_queries() dispatch - matches all 15 MigrationAction variants (218 lines)
     ├── types.rs        # BuiltQuery (11 variants), DatabaseBackend, RawSql
-    ├── helpers.rs      # Column type mapping, FK actions, enum handling, naming
+    ├── helpers.rs      # Column type mapping, FK actions, enum handling, naming, require_table_in_schema
     ├── create_table.rs # build_create_table(), build_create_table_for_backend()
     ├── add_column.rs   # Temp table for SQLite non-nullable/enum columns
-    ├── add_constraint.rs     # Constraint SQL generation (1356 lines)
-    ├── remove_constraint.rs  # Complex SQLite temp table workarounds (1465 lines)
-    ├── modify_column_*.rs    # type, nullable, default, comment handlers
+    ├── add_constraint/ # Constraint SQL generation (mod.rs 1086 lines + check / foreign_key / index / primary_key / unique)
+    ├── remove_constraint/ # SQLite temp-table workarounds (mod.rs 644 lines + per-backend submodules)
+    ├── modify_column_*.rs # type, nullable, default, comment handlers (modify_column_type/ is itself a directory: direct / sqlite_rebuild / fill_with)
     ├── rename_*.rs     # Simple ALTER statements
-    ├── delete_column.rs # DROP COLUMN with SQLite rebuild (1084 lines)
+    ├── delete_column/  # DROP COLUMN with SQLite rebuild (mod.rs 1068 lines + tests)
     ├── delete_*.rs     # Other DROP statements
+    ├── remap_enum_values.rs # RemapEnumValues handler (string- and integer-enum value remapping)
     └── raw_sql.rs      # RawSql emergency escape hatch
 ```
 
@@ -30,10 +36,11 @@ src/
 |------|------|--------------|
 | Add new action handler | `sql/mod.rs` | Add to `build_action_queries()` match |
 | Column type mapping | `sql/helpers.rs` | `apply_column_type_with_table()` |
-| SQLite workarounds | `sql/remove_constraint.rs` | `{table}_temp` pattern |
+| SQLite workarounds | `sql/remove_constraint/sqlite.rs` | `{table}_temp` pattern |
 | Backend-specific emergency SQL | `sql/types.rs` | `RawSql::per_backend()` |
 | Default value conversion | `sql/helpers.rs` | `convert_default_for_backend()` |
 | Enum type handling | `sql/helpers.rs` | `build_create_enum_type_sql()` |
+| Required table lookup (uniform error) | `sql/helpers.rs` | `require_table_in_schema()` |
 
 ## CONVENTIONS
 
@@ -164,9 +171,9 @@ extends. The change must include:
 
 ## NOTES
 
-- `build_action_queries()` is exhaustive for all 14 `MigrationAction` variants: CreateTable, DeleteTable, AddColumn, RenameColumn, DeleteColumn, ModifyColumnType, ModifyColumnNullable, ModifyColumnDefault, ModifyColumnComment, AddConstraint, RemoveConstraint, ReplaceConstraint, RenameTable, RawSql.
+- `build_action_queries()` is exhaustive for all 15 `MigrationAction` variants: CreateTable, DeleteTable, AddColumn, RenameColumn, DeleteColumn, ModifyColumnType, ModifyColumnNullable, ModifyColumnDefault, ModifyColumnComment, AddConstraint, RemoveConstraint, ReplaceConstraint, RemapEnumValues, RenameTable, RawSql.
 - Prefer typed `MigrationAction` enums; `RawSql` exists as a documented emergency escape hatch, but is not recommended for normal use.
 - SQLite has full feature support via temp-table-rebuild workarounds for ALTER limitations.
 - YAML and JSON are both fully supported upstream input formats.
-- Every `.rs` file must stay ≤ 1000 lines (CI enforced); current hotspots are `sql/mod.rs` (1507), `remove_constraint.rs` (1465), `add_constraint.rs` (1356), and `delete_column.rs` (1084).
+- Two-tier line policy (CI-enforced via `scripts/check-line-budget.sh`): production-only `.rs` ≤ 1000 lines, files carrying inline `#[cfg(test)] mod tests` ≤ 1200 lines. Current near-ceiling files in this crate: `add_constraint/mod.rs` (1086, inline tests), `delete_column/mod.rs` (1068, inline tests); the previously oversized `sql/mod.rs`, `remove_constraint.rs`, and `delete_column.rs` have all been split into the directories shown above.
 - Workspace lints warn on unsafe code and Clippy all: `unsafe_code = "warn"`, `clippy::all = { level = "warn", priority = -1 }`.

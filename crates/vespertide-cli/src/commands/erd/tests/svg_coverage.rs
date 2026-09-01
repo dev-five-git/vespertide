@@ -26,6 +26,55 @@ fn is_junction_table_three_way_junction_returns_true() {
     );
 }
 
+// The two length guards above short-circuit before `is_junction_table`'s final
+// `primary_key_columns.iter().all(..)` check, and every other junction fixture
+// makes that check succeed. This table clears both guards (2 PK columns, 2 FK
+// groups) but one PK column (`seq`) is NOT a foreign key, so `all(..)` returns
+// false — the only path that reaches the end of the function and still rejects.
+#[test]
+fn is_junction_table_pk_column_outside_fk_set_returns_false() {
+    let not_a_junction = table(
+        "audit_entry",
+        vec![
+            primary_key("user_id", integer())
+                .foreign_key(ForeignKeySyntax::String("user.id".into())),
+            primary_key("seq", integer()),
+            foreign_key("tag_id", "tag.id"),
+        ],
+    );
+    assert!(
+        !is_junction_table(&not_a_junction),
+        "a PK column that is not part of any FK group disqualifies the table"
+    );
+}
+
+// `detect_cardinality` classifies through `is_junction_table` first. Driving the
+// false case above through the public relation collector proves the junction
+// guard is evaluated (and rejected) rather than short-circuited away.
+#[test]
+fn detect_cardinality_skips_many_to_many_when_pk_is_not_all_fk() {
+    let user = normalize(&table("user", vec![primary_key("id", integer())]));
+    let tag = normalize(&table("tag", vec![primary_key("id", integer())]));
+    let audit = normalize(&table(
+        "audit_entry",
+        vec![
+            primary_key("user_id", integer())
+                .foreign_key(ForeignKeySyntax::String("user.id".into())),
+            primary_key("seq", integer()),
+            foreign_key("tag_id", "tag.id"),
+        ],
+    ));
+
+    let relations = collect_foreign_key_relations(&[user, tag, audit]);
+    assert!(
+        relations
+            .iter()
+            .filter(|r| r.child_table == "audit_entry")
+            .all(|r| r.cardinality != Cardinality::ManyToMany),
+        "non-junction table must not classify as M:N, got: {relations:?}"
+    );
+}
+
 // Deterministic SVG fixture — pins bezier path coords (1 decimal) and
 // cardinality labels to kill ~400 coord-arithmetic mutants in svg/edges.rs.
 // Fixture includes: parallel edges (2 FKs child→parent), curved edges,

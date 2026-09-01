@@ -3,12 +3,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use rayon::prelude::*;
 use vespertide_config::VespertideConfig;
 use vespertide_core::MigrationPlan;
 use vespertide_planner::validate_migration_plan;
 
-use crate::parallel_config::{LOAD_FILES_PAR_MIN_LEN, LOAD_FILES_PAR_THRESHOLD};
+use crate::parallel_config::map_paths_with_threshold;
 
 /// Load all migration plans from the migrations directory, sorted by version.
 pub fn load_migrations(config: &VespertideConfig) -> Result<Vec<MigrationPlan>> {
@@ -18,15 +17,7 @@ pub fn load_migrations(config: &VespertideConfig) -> Result<Vec<MigrationPlan>> 
     }
 
     let paths = collect_migration_paths(migrations_dir)?;
-    let results: Vec<Result<MigrationPlan>> = if paths.len() < LOAD_FILES_PAR_THRESHOLD {
-        paths.iter().map(|path| load_migration_file(path)).collect()
-    } else {
-        paths
-            .par_iter()
-            .with_min_len(LOAD_FILES_PAR_MIN_LEN)
-            .map(|path| load_migration_file(path))
-            .collect()
-    };
+    let results = map_paths_with_threshold(&paths, load_migration_file);
 
     let mut plans = Vec::with_capacity(results.len());
     for result in results {
@@ -61,19 +52,8 @@ pub fn load_migrations_from_dir(
         return Ok(Vec::new());
     }
 
-    let paths = collect_migration_paths_internal(&migrations_dir)?;
-    let results: Vec<Result<MigrationPlan, String>> = if paths.len() < LOAD_FILES_PAR_THRESHOLD {
-        paths
-            .iter()
-            .map(|path| load_migration_file_internal(path))
-            .collect()
-    } else {
-        paths
-            .par_iter()
-            .with_min_len(LOAD_FILES_PAR_MIN_LEN)
-            .map(|path| load_migration_file_internal(path))
-            .collect()
-    };
+    let paths = collect_migration_paths(&migrations_dir).map_err(|e| e.to_string())?;
+    let results = map_paths_with_threshold(&paths, load_migration_file_internal);
 
     let mut plans = Vec::with_capacity(results.len());
     for result in results {
@@ -92,35 +72,12 @@ fn collect_migration_paths(dir: &Path) -> Result<Vec<PathBuf>> {
     for entry in entries {
         let entry = entry.context("read directory entry")?;
         let path = entry.path();
-        if path.is_file() && has_migration_extension(&path) {
+        if path.is_file() && crate::has_supported_extension(&path) {
             paths.push(path);
         }
     }
 
     Ok(paths)
-}
-
-fn collect_migration_paths_internal(dir: &Path) -> Result<Vec<PathBuf>, String> {
-    let entries =
-        fs::read_dir(dir).map_err(|e| format!("Failed to read migrations directory: {e}"))?;
-    let mut paths = Vec::new();
-
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("Failed to read directory entry: {e}"))?;
-        let path = entry.path();
-        if path.is_file() && has_migration_extension(&path) {
-            paths.push(path);
-        }
-    }
-
-    Ok(paths)
-}
-
-fn has_migration_extension(path: &Path) -> bool {
-    matches!(
-        path.extension().and_then(|s| s.to_str()),
-        Some("json" | "yaml" | "yml")
-    )
 }
 
 fn load_migration_file(path: &Path) -> Result<MigrationPlan> {
@@ -169,41 +126,18 @@ pub fn load_migrations_at_compile_time() -> Result<Vec<MigrationPlan>, Box<dyn s
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{CwdGuard, write_default_config};
     use serial_test::serial;
     use std::env;
     use std::fs;
     use tempfile::TempDir;
 
-    struct CwdGuard {
-        original: PathBuf,
-    }
-
-    impl CwdGuard {
-        fn new(dir: &PathBuf) -> Self {
-            let original = env::current_dir().unwrap();
-            env::set_current_dir(dir).unwrap();
-            Self { original }
-        }
-    }
-
-    impl Drop for CwdGuard {
-        fn drop(&mut self) {
-            let _ = env::set_current_dir(&self.original);
-        }
-    }
-
-    fn write_config(dir: &std::path::Path) {
-        let cfg = VespertideConfig::default();
-        let text = serde_json::to_string_pretty(&cfg).unwrap();
-        fs::write(dir.join("vespertide.json"), text).unwrap();
-    }
-
     #[test]
     #[serial]
     fn test_load_migrations_returns_empty_when_no_migrations_dir() {
         let temp_dir = TempDir::new().unwrap();
-        let _guard = CwdGuard::new(&temp_dir.path().to_path_buf());
-        write_config(temp_dir.path());
+        let _guard = CwdGuard::new(temp_dir.path());
+        write_default_config(temp_dir.path().join("vespertide.json"));
 
         let result = load_migrations(&VespertideConfig::default()).unwrap();
         assert!(result.is_empty());
@@ -213,8 +147,8 @@ mod tests {
     #[serial]
     fn test_load_migrations_reads_json_and_sorts_versions() {
         let temp_dir = TempDir::new().unwrap();
-        let _guard = CwdGuard::new(&temp_dir.path().to_path_buf());
-        write_config(temp_dir.path());
+        let _guard = CwdGuard::new(temp_dir.path());
+        write_default_config(temp_dir.path().join("vespertide.json"));
         fs::create_dir_all("migrations").unwrap();
         fs::write(
             "migrations/0002_second.json",
@@ -242,8 +176,8 @@ mod tests {
     #[serial]
     fn load_migrations_ignores_non_migration_extension_files() {
         let temp_dir = TempDir::new().unwrap();
-        let _guard = CwdGuard::new(&temp_dir.path().to_path_buf());
-        write_config(temp_dir.path());
+        let _guard = CwdGuard::new(temp_dir.path());
+        write_default_config(temp_dir.path().join("vespertide.json"));
         fs::create_dir_all("migrations").unwrap();
         fs::write("migrations/notes.txt", "not a migration: {{{ invalid").unwrap();
 
@@ -403,8 +337,8 @@ actions:
     #[serial]
     fn test_load_migrations_reads_yaml_for_runtime_loader() {
         let temp_dir = TempDir::new().unwrap();
-        let _guard = CwdGuard::new(&temp_dir.path().to_path_buf());
-        write_config(temp_dir.path());
+        let _guard = CwdGuard::new(temp_dir.path());
+        write_default_config(temp_dir.path().join("vespertide.json"));
         fs::create_dir_all("migrations").unwrap();
 
         let migration_content = r"---

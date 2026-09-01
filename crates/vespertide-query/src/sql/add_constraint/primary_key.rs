@@ -68,7 +68,8 @@ fn build_pk_pre_cleanup<T: AsRef<str>>(
         #[cfg(not(tarpaulin_include))]
         _ => return vec![], // `#[non_exhaustive]` future-variant guard; unreachable today.
     };
-    let Some(old_pk_column) = try_resolve_single_pk_column(table, current_schema, new_pk_columns)
+    let Some(old_pk_column) =
+        super::try_resolve_single_pk_column(table, current_schema, new_pk_columns)
     else {
         return vec![];
     };
@@ -78,11 +79,7 @@ fn build_pk_pre_cleanup<T: AsRef<str>>(
     };
     let quoted_table = quote_ident(table, backend);
     let quoted_old_pk = quote_ident(&old_pk_column, backend);
-    let group_by = new_pk_columns
-        .iter()
-        .map(|c| quote_ident(c.as_ref(), backend))
-        .collect::<Vec<_>>()
-        .join(", ");
+    let group_by = quote_idents(new_pk_columns, backend);
     let sql = format!(
         "DELETE FROM {quoted_table} WHERE {quoted_old_pk} NOT IN (\
          SELECT {agg}({quoted_old_pk}) FROM {quoted_table} GROUP BY {group_by})"
@@ -90,50 +87,9 @@ fn build_pk_pre_cleanup<T: AsRef<str>>(
     vec![BuiltQuery::Raw(RawSql::uniform(sql))]
 }
 
-fn try_resolve_single_pk_column<T: AsRef<str>>(
-    table: &str,
-    current_schema: &[TableDef],
-    new_pk_columns: &[T],
-) -> Option<String> {
-    let table_def = current_schema.iter().find(|t| t.name.as_str() == table)?;
-
-    let pk_columns: Vec<String> = table_def
-        .constraints
-        .iter()
-        .find_map(|c| {
-            if let TableConstraint::PrimaryKey { columns, .. } = c {
-                Some(columns.iter().map(ToString::to_string).collect())
-            } else {
-                None
-            }
-        })
-        .or_else(|| {
-            let inline: Vec<String> = table_def
-                .columns
-                .iter()
-                .filter(|col| col.primary_key.is_some())
-                .map(|col| col.name.to_string())
-                .collect();
-            if inline.is_empty() {
-                None
-            } else {
-                Some(inline)
-            }
-        })?;
-
-    if pk_columns.len() != 1 {
-        return None;
-    }
-    let pk_column = pk_columns.into_iter().next().expect("len == 1");
-    let new_set: Vec<&str> = new_pk_columns.iter().map(AsRef::as_ref).collect();
-    if new_set.iter().any(|c| *c == pk_column) {
-        return None;
-    }
-    Some(pk_column)
-}
-
 #[cfg(test)]
 mod tests {
+    use super::super::try_resolve_single_pk_column;
     use super::*;
     use rstest::rstest;
     use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType};
@@ -250,5 +206,29 @@ mod tests {
         }];
         let resolved = try_resolve_single_pk_column("logs", &schema, &["id"]);
         assert!(resolved.is_none());
+    }
+
+    /// Composite PK declared *inline* (`primary_key: true` on two columns) with
+    /// no table-level PRIMARY KEY constraint. The composite test above goes
+    /// through the table-level branch, so only this one reaches the inline
+    /// branch's second `inline.next().is_some()` guard.
+    #[test]
+    fn try_resolve_single_pk_column_returns_none_for_inline_composite_pk() {
+        let pk = |name: &str| {
+            ColumnDef::new(name, ColumnType::Simple(SimpleColumnType::Integer), false)
+                .primary_key(vespertide_core::schema::primary_key::PrimaryKeySyntax::Bool(true))
+        };
+        let schema = vec![TableDef {
+            name: "memberships".into(),
+            description: None,
+            columns: vec![pk("user_id"), pk("group_id")],
+            constraints: vec![],
+        }];
+
+        let resolved = try_resolve_single_pk_column("memberships", &schema, &["joined_at"]);
+        assert!(
+            resolved.is_none(),
+            "two inline PK columns are a composite PK, not a single-column PK"
+        );
     }
 }

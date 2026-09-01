@@ -1,0 +1,11 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model User {
+  id String @id
+  preferred_user_profile Profile[] @relation("ProfilePreferredUser")
+  backup_user_profile Profile[] @relation("ProfileBackupUser")
+
+  @@map("user")
+}

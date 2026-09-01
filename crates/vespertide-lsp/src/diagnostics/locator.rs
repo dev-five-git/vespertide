@@ -4,6 +4,9 @@ use std::ops::Range;
 
 use vespertide_planner::PlannerError;
 
+use crate::text_util::{node_text, strip_json_quotes};
+use crate::tree_util::is_pair;
+
 /// Specific column field a diagnostic should attach to. The locator narrows
 /// the highlighted range from the whole column object down to this child
 /// pair so the squiggle lands on the *responsible* line.
@@ -41,21 +44,21 @@ impl ErrorLocation {
         use PlannerError::{
             AddColumnWithFkRequiresNullable, BetweenBoundaryReversed, CheckSelfContradiction,
             ColumnExists, ColumnNotFound, ConstraintColumnNotFound, ConstraintTypeChanged,
-            DanglingForeignKeyAfterDrop, DefaultViolatesCheck, DuplicateEnumValue,
-            DuplicateEnumVariantName, DuplicateTableName, EmptyConstraintColumns,
-            ForeignKeyColumnNotFound, ForeignKeyTableNotFound, IndexColumnNotFound, IndexNotFound,
-            InvalidAutoIncrement, InvalidEnumDefault, MissingFillWith, MissingPrimaryKey, Multiple,
-            PrimaryKeyColumnNullable, PrimaryKeyRemovedWithoutReplacement, TableExists,
-            TableNotFound, TableValidation,
+            DanglingForeignKeyAfterDrop, DataMigrationContainsDdl, DefaultViolatesCheck,
+            DuplicateEnumValue, DuplicateEnumVariantName, DuplicateTableName,
+            EmptyConstraintColumns, ForeignKeyColumnNotFound, ForeignKeyTableNotFound,
+            IndexColumnNotFound, IndexNotFound, InvalidAutoIncrement, InvalidEnumDefault,
+            MissingFillWith, MissingPrimaryKey, Multiple, PrimaryKeyColumnNullable,
+            PrimaryKeyRemovedWithoutReplacement, TableExists, TableNotFound, TableValidation,
         };
 
         match err {
             // Batched validation errors carry several independent violations.
             // Locator returns *one* location per call, so we recurse into the
             // first nested error to pick a sensible anchor. Per-violation
-            // diagnostics belong to the publisher (see TODO in
-            // `diagnostics::validation`): when it iterates `find_*_violations`
-            // each inner error is presented directly and this arm is bypassed.
+            // diagnostics are handled by the publisher in
+            // `diagnostics::validation`: it iterates `find_*_violations` and
+            // presents each inner error directly, so this arm is bypassed.
             Multiple(batch) => batch.0.first().and_then(Self::from_planner_error),
             // F9 dangling FK after drop: anchor on the *dropped* target so the
             // squiggle lands on the column/table the user removed. When only
@@ -80,7 +83,10 @@ impl ErrorLocation {
             | TableNotFound(table)
             | DuplicateTableName(table)
             | MissingPrimaryKey(table) => Some(Self::table(table)),
-            TableValidation(_) => None,
+            // Neither anchors to a model file: `TableValidation` carries only a
+            // message, and a `data_migration` DDL violation lives in a migration
+            // file, which the model-file locator cannot address.
+            TableValidation(_) | DataMigrationContainsDdl { .. } => None,
             // Column-anchored errors. F12 Scenario C
             // (`PrimaryKeyColumnNullable`) is a struct variant rather than
             // a tuple, so its arm is listed separately even though the
@@ -320,18 +326,7 @@ pub(crate) fn locate_top_name(
     direct_name_value_range(mapping, source_bytes)
 }
 
-fn find_outer_mapping(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
-    if matches!(node.kind(), "object" | "block_mapping" | "flow_mapping") {
-        return Some(node);
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if let Some(found) = find_outer_mapping(child) {
-            return Some(found);
-        }
-    }
-    None
-}
+use crate::tree_util::find_outer_mapping;
 
 fn direct_name_value_range(mapping: tree_sitter::Node<'_>, source: &[u8]) -> Option<Range<usize>> {
     let mut cursor = mapping.walk();
@@ -399,7 +394,7 @@ fn mapping_has_name(node: tree_sitter::Node<'_>, source: &[u8], target_name: &st
         if is_pair(child)
             && pair_key_matches(child, source, "name")
             && let Some(value) = child.named_child(1)
-            && node_text(value, source).is_some_and(|text| strip_quotes(text) == target_name)
+            && node_text(value, source).is_some_and(|text| strip_json_quotes(text) == target_name)
         {
             return true;
         }
@@ -411,33 +406,12 @@ fn is_mapping(node: tree_sitter::Node<'_>) -> bool {
     matches!(node.kind(), "object" | "block_mapping")
 }
 
-fn is_pair(node: tree_sitter::Node<'_>) -> bool {
-    matches!(node.kind(), "pair" | "block_mapping_pair")
-}
-
 fn pair_key_matches(node: tree_sitter::Node<'_>, source: &[u8], expected: &str) -> bool {
     // Fused chain so a key-less pair (no `named_child(0)`) folds into the
     // same `false` result without a separate defensive `return` line.
     node.named_child(0)
         .and_then(|key| node_text(key, source))
-        .is_some_and(|text| strip_quotes(text) == expected)
-}
-
-fn node_text<'a>(node: tree_sitter::Node<'_>, source: &'a [u8]) -> Option<&'a str> {
-    std::str::from_utf8(&source[node.byte_range()]).ok()
-}
-
-fn strip_quotes(s: &str) -> &str {
-    let trimmed = s.trim();
-    trimmed
-        .strip_prefix('"')
-        .and_then(|without_prefix| without_prefix.strip_suffix('"'))
-        .or_else(|| {
-            trimmed
-                .strip_prefix('\'')
-                .and_then(|without_prefix| without_prefix.strip_suffix('\''))
-        })
-        .unwrap_or(trimmed)
+        .is_some_and(|text| strip_json_quotes(text) == expected)
 }
 
 #[cfg(test)]

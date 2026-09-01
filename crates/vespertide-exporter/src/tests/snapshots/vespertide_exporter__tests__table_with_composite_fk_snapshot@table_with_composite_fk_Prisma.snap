@@ -1,0 +1,13 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model LineItems {
+  id Int @id
+  order_id Int
+  order_version Int
+  sku String
+  orders Orders @relation(fields: [order_id, order_version], references: [id, version], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("line_items")
+}

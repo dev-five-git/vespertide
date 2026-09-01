@@ -114,20 +114,25 @@ fn collect_unique_groups(table: &TableDef) -> (ColumnGroups, ColumnGroupOrder) {
         if let Some(ref unique_val) = col.unique {
             match unique_val {
                 StrOrBoolOrArray::Str(name) => {
-                    push_grouped_column(&mut groups, &mut order, name, &col.name);
+                    push_grouped_column(&mut groups, &mut order, name.clone(), &col.name);
                 }
                 StrOrBoolOrArray::Bool(true) => {
                     push_grouped_column(
                         &mut groups,
                         &mut order,
-                        &format!("__auto_{}", col.name),
+                        format!("__auto_{}", col.name),
                         &col.name,
                     );
                 }
                 StrOrBoolOrArray::Bool(false) => {}
                 StrOrBoolOrArray::Array(names) => {
                     for unique_name in names {
-                        push_grouped_column(&mut groups, &mut order, unique_name, &col.name);
+                        push_grouped_column(
+                            &mut groups,
+                            &mut order,
+                            unique_name.clone(),
+                            &col.name,
+                        );
                     }
                 }
             }
@@ -140,14 +145,21 @@ fn collect_unique_groups(table: &TableDef) -> (ColumnGroups, ColumnGroupOrder) {
 fn push_grouped_column(
     groups: &mut ColumnGroups,
     order: &mut Vec<String>,
-    group_name: &str,
+    group_name: String,
     column_name: &str,
 ) {
-    if !groups.contains_key(group_name) {
-        order.push(group_name.to_string());
+    // Own the key exactly once: `or_default()` needs it as the map key, and a
+    // first sighting also needs it in `order`. `groups` never stores empty
+    // vectors (a group exists only after a push below), so a Vec just created
+    // by `or_default()` is exactly the first sighting that must register in
+    // `order`. To avoid a second `.to_string()`, register in `order` before
+    // moving the key into the map on that first sighting.
+    let first_sighting = !groups.contains_key(&group_name);
+    if first_sighting {
+        order.push(group_name.clone());
     }
     groups
-        .entry(group_name.to_string())
+        .entry(group_name)
         .or_default()
         .push(column_name.into());
 }
@@ -239,15 +251,15 @@ fn parse_foreign_key_reference(
     column_name: &str,
     reference: &str,
 ) -> Result<(TableName, Vec<ColumnName>), TableValidationError> {
-    let parts: Vec<&str> = reference.split('.').collect();
-    if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
-        return Err(TableValidationError::InvalidForeignKeyFormat {
+    let (head, tail) = reference
+        .split_once('.')
+        .filter(|(head, tail)| !head.is_empty() && !tail.is_empty() && !tail.contains('.'))
+        .ok_or_else(|| TableValidationError::InvalidForeignKeyFormat {
             column_name: column_name.to_string(),
             value: reference.to_string(),
-        });
-    }
+        })?;
 
-    Ok((parts[0].into(), vec![parts[1].into()]))
+    Ok((head.into(), vec![tail.into()]))
 }
 
 fn foreign_key_constraint_exists(constraints: &[TableConstraint], column_name: &str) -> bool {
@@ -317,13 +329,13 @@ fn collect_column_indexes(
 ) -> Result<(), TableValidationError> {
     match index_val {
         StrOrBoolOrArray::Str(name) => {
-            push_checked_index(groups, order, tracker, name, column_name)
+            push_checked_index(groups, order, tracker, name.clone(), column_name)
         }
         StrOrBoolOrArray::Bool(true) => push_checked_index(
             groups,
             order,
             tracker,
-            &format!("__auto_{column_name}"),
+            format!("__auto_{column_name}"),
             column_name,
         ),
         StrOrBoolOrArray::Bool(false) => Ok(()),
@@ -346,7 +358,7 @@ fn push_index_array(
             return Err(duplicate_index(index_name, column_name));
         }
         seen_in_array.insert(index_name.clone());
-        push_checked_index(groups, order, tracker, index_name, column_name)?;
+        push_checked_index(groups, order, tracker, index_name.clone(), column_name)?;
     }
     Ok(())
 }
@@ -355,18 +367,18 @@ fn push_checked_index(
     groups: &mut ColumnGroups,
     order: &mut Vec<String>,
     tracker: &mut BTreeMap<String, BTreeSet<String>>,
-    index_name: &str,
+    index_name: String,
     column_name: &str,
 ) -> Result<(), TableValidationError> {
-    if let Some(columns) = tracker.get(index_name)
+    if let Some(columns) = tracker.get(index_name.as_str())
         && columns.contains(column_name)
     {
-        return Err(duplicate_index(index_name, column_name));
+        return Err(duplicate_index(&index_name, column_name));
     }
 
-    push_grouped_column(groups, order, index_name, column_name);
+    push_grouped_column(groups, order, index_name.clone(), column_name);
     tracker
-        .entry(index_name.to_string())
+        .entry(index_name)
         .or_default()
         .insert(column_name.to_string());
     Ok(())

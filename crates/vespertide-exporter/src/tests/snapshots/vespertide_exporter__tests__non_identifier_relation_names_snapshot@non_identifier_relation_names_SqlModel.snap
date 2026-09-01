@@ -1,0 +1,23 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from typing import Optional
+
+from sqlmodel import Field, SQLModel
+
+
+class x1users(SQLModel, table=True):
+    __tablename__ = "1users"
+
+    x1id: int = Field(primary_key=True, sa_column_kwargs={"name": "1id"})
+    email: str = Field(...)
+
+class Posts(SQLModel, table=True):
+    __tablename__ = "posts"
+
+    id: int = Field(primary_key=True)
+    x1st_owner_id: Optional[int] = Field(default=None, foreign_key="1users.1id", sa_column_kwargs={"name": "1st_owner_id"})
+    x2nd_owner_id: Optional[int] = Field(default=None, foreign_key="1users.1id", sa_column_kwargs={"name": "2nd_owner_id"})

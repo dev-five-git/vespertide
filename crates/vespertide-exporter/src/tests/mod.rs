@@ -7,16 +7,17 @@ use crate::orm::{Orm, render_entity, render_entity_with_schema};
 pub(crate) mod fixtures;
 
 /// Dispatch the per-ORM **multi-table** entry point so the cross-ORM
-/// `orm_cases!(multi ...)` arm renders a `Vec<TableDef>` schema for all four
+/// `orm_cases!(multi ...)` arm renders a `Vec<TableDef>` schema for all five
 /// ORMs through a single call. JPA's `render_entities` returns `Vec<String>`
 /// (one entry per entity); we join with `"\n"` to match the
-/// `String`-returning shape of the other three.
+/// `String`-returning shape of the other four.
 fn render_schema(orm: Orm, schema: &[TableDef]) -> Result<String, String> {
     match orm {
         Orm::SeaOrm => crate::seaorm::export(schema),
         Orm::SqlAlchemy => crate::sqlalchemy::export(schema),
         Orm::SqlModel => crate::sqlmodel::render_entities(schema),
         Orm::Jpa => crate::jpa::render_entities(schema).map(|entities| entities.join("\n")),
+        Orm::Prisma => crate::prisma::export(schema),
     }
 }
 
@@ -29,6 +30,7 @@ macro_rules! orm_cases {
         #[case::sqlalchemy(Orm::SqlAlchemy)]
         #[case::sqlmodel(Orm::SqlModel)]
         #[case::jpa(Orm::Jpa)]
+        #[case::prisma(Orm::Prisma)]
         fn $test_name(#[case] orm: Orm) {
             let table = $fixture();
             let rendered = render_entity(orm, &table).unwrap();
@@ -45,6 +47,7 @@ macro_rules! orm_cases {
         #[case::sqlalchemy(Orm::SqlAlchemy)]
         #[case::sqlmodel(Orm::SqlModel)]
         #[case::jpa(Orm::Jpa)]
+        #[case::prisma(Orm::Prisma)]
         fn $test_name(#[case] orm: Orm) {
             let schema: Vec<TableDef> = $fixture();
             let rendered = render_schema(orm, &schema).unwrap();
@@ -263,6 +266,61 @@ orm_cases!(
     "integer_enum_with_default",
     fixtures::integer_enum_with_default
 );
+// Cross-ORM comparison of identifier escaping. Each language starts identifiers
+// differently — Prisma and Pydantic reject a leading `_`, the rest accept it —
+// so the five snapshots must differ, and every one has to carry the original
+// name (`@@map` / `@map`, `column_name`, the positional column name,
+// `sa_column_kwargs`, `@Table`/`@Column`).
+orm_cases!(
+    non_identifier_names_snapshot,
+    "non_identifier_names",
+    fixtures::non_identifier_names
+);
+// Model-level constraints name their columns in a second place. Prisma's
+// `@@id` / `@@unique` / `@@index` take model field names, so an escaped column
+// has to be escaped there too; the other backends name database columns there
+// and must not be.
+orm_cases!(
+    non_identifier_names_in_constraints_snapshot,
+    "non_identifier_names_in_constraints",
+    fixtures::non_identifier_names_in_constraints
+);
+// The names a relation is derived from land in places a column name never
+// reaches: `SeaORM` reads its `Relation` variants back out of `relation_enum`
+// and out of the target's module name, and Prisma names both ends of a
+// relation. Two FKs to one table is what forces those names to be generated,
+// so this is where an unescaped one surfaces.
+orm_cases!(
+    multi non_identifier_relation_names_snapshot,
+    "non_identifier_relation_names",
+    fixtures::non_identifier_relation_names
+);
+// A composite FK becomes a relation only where the backend can express one
+// (`SeaORM`'s tuple `from`/`to`, Prisma's multi-column `fields`/`references`);
+// the Python backends keep it as a `ForeignKeyConstraint` and JPA currently
+// drops it, so the five outputs disagree in a way worth pinning.
+orm_cases!(
+    multi composite_fk_relation_snapshot,
+    "composite_fk_relation",
+    fixtures::composite_fk_relation
+);
+// `a_id` and `a` strip to the same relation segment, so relation names built
+// from it collide unless the backend disambiguates. `SeaORM` numbers its
+// relation enums; Prisma numbers the `@relation` names within a target's group.
+orm_cases!(
+    multi fk_names_collide_after_id_strip_snapshot,
+    "fk_names_collide_after_id_strip",
+    fixtures::fk_names_collide_after_id_strip
+);
+// A relation field and a column can be handed the same name. `SeaORM` and
+// Prisma emit a relation field alongside the FK column, so they have to keep
+// the two apart or the model declares the field twice; the Python backends
+// emit the column only and have nothing to collide.
+orm_cases!(
+    multi relation_name_taken_by_column_snapshot,
+    "relation_name_taken_by_column",
+    fixtures::relation_name_taken_by_column
+);
 // Cross-ORM coverage closure for the variant-name branch of
 // `seaorm/types.rs` `format_default_value` (the `else` arm inside
 // `EnumValues::Integer(int_values) =>`, lines 47-60). The existing
@@ -291,26 +349,30 @@ orm_cases!(
 );
 
 /// Dispatch the per-ORM `to_pascal_case` helper from a single entry point so
-/// the cross-ORM consolidation test can exercise all four implementations
-/// without leaking the helper as a generally-public crate API.
+/// the cross-ORM consolidation test can exercise every implementation without
+/// leaking the helper as a generally-public crate API. Prisma has no local
+/// implementation — it calls `vespertide_naming::to_pascal_case` directly, so
+/// this arm exercises the shared crate helper.
 fn to_pascal_case_for(orm: Orm, s: &str) -> String {
     match orm {
         Orm::SeaOrm => crate::seaorm::to_pascal_case_for_tests(s),
         Orm::SqlAlchemy => crate::sqlalchemy::to_pascal_case_for_tests(s),
         Orm::SqlModel => crate::sqlmodel::to_pascal_case_for_tests(s),
         Orm::Jpa => crate::jpa::to_pascal_case_for_tests(s),
+        Orm::Prisma => vespertide_naming::to_pascal_case(s),
     }
 }
 
 /// Cross-ORM `to_pascal_case` consolidation. Inputs in this matrix are
 /// restricted to ASCII with `_` as the only separator — the subset where all
-/// four ORM implementations agree.
+/// five ORM implementations agree.
 ///
 /// Divergences intentionally NOT covered here:
-/// * `-` as separator: `SeaORM` treats it as a separator, the other three
-///   ORMs leave it intact (their splits operate on `_` only).
-/// * Non-ASCII characters: `SeaORM` uses `to_ascii_uppercase`, the others
-///   use `to_uppercase` (Unicode-aware).
+/// * `-` as separator: `SeaORM` and Prisma treat it as a separator (Prisma via
+///   `vespertide_naming::to_pascal_case`), the other three ORMs leave it
+///   intact (their splits operate on `_` only).
+/// * Non-ASCII characters: `SeaORM` and Prisma use `to_ascii_uppercase`, the
+///   others use `to_uppercase` (Unicode-aware).
 /// These divergences are exercised in the per-ORM `tests.rs` files where
 /// applicable.
 #[rstest]
@@ -318,6 +380,7 @@ fn to_pascal_case_for(orm: Orm, s: &str) -> String {
 #[case::sqlalchemy(Orm::SqlAlchemy)]
 #[case::sqlmodel(Orm::SqlModel)]
 #[case::jpa(Orm::Jpa)]
+#[case::prisma(Orm::Prisma)]
 fn to_pascal_case_shared_semantics(
     #[values(
         ("", ""),
@@ -344,6 +407,7 @@ fn to_pascal_case_shared_semantics(
 #[case::sqlalchemy(Orm::SqlAlchemy)]
 #[case::sqlmodel(Orm::SqlModel)]
 #[case::jpa(Orm::Jpa)]
+#[case::prisma(Orm::Prisma)]
 fn render_entity_with_schema_snapshots(
     #[values(
         "many_to_many_article",
@@ -351,6 +415,7 @@ fn render_entity_with_schema_snapshots(
         "many_to_many_missing_target",
         "many_to_many_multiple_junctions",
         "composite_fk_parent",
+        "composite_and_single_fk_same_target",
         "not_junction_single_pk",
         "not_junction_fk_not_in_pk_other",
         "not_junction_fk_not_in_pk_another",

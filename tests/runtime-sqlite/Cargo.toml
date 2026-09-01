@@ -20,7 +20,7 @@ path = "src/lib.rs"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-sea-orm = { version = "2.0.0-rc.40", default-features = false, features = ["runtime-tokio-native-tls", "sqlx-sqlite"] }
+sea-orm = { version = "2.0.2", default-features = false, features = ["runtime-tokio-native-tls", "sqlx-sqlite"] }
 vespertide = { path = "../../crates/vespertide" }
 
 # Mirror the workspace lint policy explicitly — `[lints] workspace = true`

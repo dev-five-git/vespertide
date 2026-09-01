@@ -28,7 +28,9 @@
 
 use std::collections::HashSet;
 
-use vespertide_core::{ColumnName, MigrationAction, MigrationPlan, TableConstraint, TableDef};
+use vespertide_core::{
+    MigrationAction, MigrationPlan, TableConstraint, TableDef, schema::names::names_to_strings,
+};
 
 /// One risky FK addition needing user resolution.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -116,9 +118,9 @@ pub fn find_fk_orphan_additions(
             action_index: idx,
             table: table.to_string(),
             constraint_name: name.clone(),
-            columns: columns_to_strings(columns),
+            columns: names_to_strings(columns),
             ref_table: ref_table.to_string(),
-            ref_columns: columns_to_strings(ref_columns),
+            ref_columns: names_to_strings(ref_columns),
             all_columns_nullable,
         });
     }
@@ -126,32 +128,12 @@ pub fn find_fk_orphan_additions(
     out
 }
 
-fn columns_to_strings(cols: &[ColumnName]) -> Vec<String> {
-    cols.iter().map(ToString::to_string).collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{col_int, plan};
     use rstest::rstest;
-    use vespertide_core::{
-        ColumnDef, ColumnType, MigrationAction, MigrationPlan, SimpleColumnType, TableConstraint,
-        TableDef, TableName,
-    };
-
-    fn col(name: &str, nullable: bool) -> ColumnDef {
-        ColumnDef {
-            name: name.into(),
-            r#type: ColumnType::Simple(SimpleColumnType::Integer),
-            nullable,
-            default: None,
-            comment: None,
-            primary_key: None,
-            unique: None,
-            index: None,
-            foreign_key: None,
-        }
-    }
+    use vespertide_core::{ColumnDef, MigrationAction, TableConstraint, TableDef, TableName};
 
     fn table(name: &str, cols: Vec<ColumnDef>) -> TableDef {
         TableDef {
@@ -183,20 +165,13 @@ mod tests {
         }
     }
 
-    fn plan(actions: Vec<MigrationAction>) -> MigrationPlan {
-        MigrationPlan {
-            id: "test".into(),
-            version: 1,
-            comment: None,
-            created_at: None,
-            actions,
-        }
-    }
-
     #[rstest]
     fn case_01_existing_nullable_column_flagged_with_nullify_available() {
         // Child column exists in baseline and is nullable -> warning + NullifyOrphans valid.
-        let baseline = vec![table("posts", vec![col("id", false), col("user_id", true)])];
+        let baseline = vec![table(
+            "posts",
+            vec![col_int("id", false), col_int("user_id", true)],
+        )];
         let p = plan(vec![add_fk(
             "posts",
             Some("fk_user"),
@@ -217,7 +192,7 @@ mod tests {
         // Child column exists in baseline but is NOT NULL -> warning + only DeleteOrphans valid.
         let baseline = vec![table(
             "posts",
-            vec![col("id", false), col("user_id", false)],
+            vec![col_int("id", false), col_int("user_id", false)],
         )];
         let p = plan(vec![add_fk("posts", None, &["user_id"], "users", &["id"])]);
         let ws = find_fk_orphan_additions(&p, &baseline);
@@ -228,7 +203,7 @@ mod tests {
     #[rstest]
     fn case_03_new_column_skipped() {
         // FK references a column that doesn't yet exist in baseline -> no warning.
-        let baseline = vec![table("posts", vec![col("id", false)])];
+        let baseline = vec![table("posts", vec![col_int("id", false)])];
         let p = plan(vec![add_fk("posts", None, &["user_id"], "users", &["id"])]);
         let ws = find_fk_orphan_additions(&p, &baseline);
         assert!(ws.is_empty());
@@ -240,9 +215,9 @@ mod tests {
         let baseline = vec![table(
             "audit",
             vec![
-                col("id", false),
-                col("team_id", true),
-                col("member_id", true),
+                col_int("id", false),
+                col_int("team_id", true),
+                col_int("member_id", true),
             ],
         )];
         let p = plan(vec![add_fk(
@@ -264,7 +239,10 @@ mod tests {
     #[rstest]
     fn case_05_composite_fk_mixed_existing_and_new_skipped() {
         // Composite FK with one new column -> Edge #1's responsibility, skipped here.
-        let baseline = vec![table("audit", vec![col("id", false), col("team_id", true)])];
+        let baseline = vec![table(
+            "audit",
+            vec![col_int("id", false), col_int("team_id", true)],
+        )];
         let p = plan(vec![add_fk(
             "audit",
             None,
@@ -282,9 +260,9 @@ mod tests {
         let baseline = vec![table(
             "audit",
             vec![
-                col("id", false),
-                col("team_id", true),
-                col("member_id", false),
+                col_int("id", false),
+                col_int("team_id", true),
+                col_int("member_id", false),
             ],
         )];
         let p = plan(vec![add_fk(
@@ -304,7 +282,7 @@ mod tests {
         // FK referencing the same table - still a warning (parent_id may dangle).
         let baseline = vec![table(
             "category",
-            vec![col("id", false), col("parent_id", true)],
+            vec![col_int("id", false), col_int("parent_id", true)],
         )];
         let p = plan(vec![add_fk(
             "category",
@@ -333,7 +311,10 @@ mod tests {
     /// action variant in addition to the warned one.
     #[rstest]
     fn case_09_mixed_plan_only_emits_fk_warning_and_skips_other_actions() {
-        let baseline = vec![table("posts", vec![col("id", false), col("user_id", true)])];
+        let baseline = vec![table(
+            "posts",
+            vec![col_int("id", false), col_int("user_id", true)],
+        )];
         let p = plan(vec![
             // 0: AddConstraint Unique - not a FK, hits let-else continue
             MigrationAction::AddConstraint {
@@ -354,19 +335,5 @@ mod tests {
         let ws = find_fk_orphan_additions(&p, &baseline);
         assert_eq!(ws.len(), 1);
         assert_eq!(ws[0].action_index, 2);
-    }
-
-    /// Coverage-closure: ensure `columns_to_strings` produces the expected
-    /// owned String list, including the empty-input edge case (defensive
-    /// helper contract).
-    #[rstest]
-    fn case_10_columns_to_strings_helper_contract() {
-        let empty: Vec<ColumnName> = vec![];
-        assert!(columns_to_strings(&empty).is_empty());
-        let some: Vec<ColumnName> = vec!["a".into(), "b".into()];
-        assert_eq!(
-            columns_to_strings(&some),
-            vec!["a".to_string(), "b".to_string()]
-        );
     }
 }

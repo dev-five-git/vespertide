@@ -20,7 +20,7 @@ use super::RawToken;
 ///   * Token lengths are measured in UTF-16 code units, not bytes —
 ///     `lsp-textdocument` handles that conversion.
 #[must_use]
-pub fn encode(tokens: &mut [RawToken], doc: &FullTextDocument) -> Vec<SemanticToken> {
+pub fn encode(tokens: &[RawToken], doc: &FullTextDocument) -> Vec<SemanticToken> {
     // Resolve every byte range to (line, start_utf16, length_utf16) once.
     // Drops zero-length tokens and multi-line spans up front.
     let mut resolved: Vec<Resolved> = tokens
@@ -112,8 +112,8 @@ mod tests {
 
     #[test]
     fn empty_input_yields_empty_output() {
-        let mut tokens: Vec<RawToken> = vec![];
-        let encoded = encode(&mut tokens, &doc("{}"));
+        let tokens: Vec<RawToken> = vec![];
+        let encoded = encode(&tokens, &doc("{}"));
         assert!(encoded.is_empty());
     }
 
@@ -135,8 +135,8 @@ mod tests {
             token_type: 1,
             token_modifiers: 0,
         };
-        let mut tokens = vec![a, i];
-        let encoded = encode(&mut tokens, &doc);
+        let tokens = vec![a, i];
+        let encoded = encode(&tokens, &doc);
         assert_eq!(encoded.len(), 2);
         assert_eq!(encoded[0].delta_line, 0);
         assert_eq!(encoded[0].delta_start, 8);
@@ -162,8 +162,8 @@ mod tests {
             token_type: 1,
             token_modifiers: 0,
         };
-        let mut tokens = vec![first, second];
-        let encoded = encode(&mut tokens, &doc);
+        let tokens = vec![first, second];
+        let encoded = encode(&tokens, &doc);
         assert_eq!(encoded.len(), 2);
         assert_eq!(encoded[1].delta_line, 1);
         assert_eq!(encoded[1].delta_start, 2, "absolute when line changes");
@@ -178,8 +178,8 @@ mod tests {
             token_type: 0,
             token_modifiers: 0,
         };
-        let mut tokens = vec![span];
-        let encoded = encode(&mut tokens, &doc);
+        let tokens = vec![span];
+        let encoded = encode(&tokens, &doc);
         assert!(encoded.is_empty(), "multi-line tokens must be dropped");
     }
 
@@ -198,8 +198,8 @@ mod tests {
             token_type: 0,
             token_modifiers: 0,
         };
-        let mut tokens = vec![later, earlier];
-        let encoded = encode(&mut tokens, &doc);
+        let tokens = vec![later, earlier];
+        let encoded = encode(&tokens, &doc);
         assert_eq!(encoded.len(), 2);
         // Earlier token reported first; later is delta from it.
         assert_eq!(encoded[0].delta_start, 1);
@@ -215,8 +215,8 @@ mod tests {
             token_type: 0,
             token_modifiers: 0,
         };
-        let mut tokens = vec![twice.clone(), twice];
-        let encoded = encode(&mut tokens, &doc);
+        let tokens = vec![twice.clone(), twice];
+        let encoded = encode(&tokens, &doc);
         assert_eq!(encoded.len(), 1);
     }
 
@@ -230,8 +230,8 @@ mod tests {
             token_type: 0,
             token_modifiers: 0,
         };
-        let mut tokens = vec![token];
-        let encoded = encode(&mut tokens, &doc);
+        let tokens = vec![token];
+        let encoded = encode(&tokens, &doc);
         assert_eq!(encoded.len(), 1);
         assert_eq!(encoded[0].length, 2, "length must be in UTF-16 code units");
     }
@@ -239,13 +239,13 @@ mod tests {
     #[test]
     fn raw_token_resolves_accented_byte_range_to_utf16_position() {
         let doc = doc("éx");
-        let mut tokens = vec![RawToken {
+        let tokens = vec![RawToken {
             byte_range: 0..2,
             token_type: 2,
             token_modifiers: 0,
         }];
 
-        let encoded = encode(&mut tokens, &doc);
+        let encoded = encode(&tokens, &doc);
 
         assert_eq!(encoded.len(), 1);
         assert_eq!(encoded[0].delta_line, 0);
@@ -258,24 +258,24 @@ mod tests {
 
     #[test]
     fn zero_length_tokens_are_rejected_before_encoding() {
-        let mut tokens = vec![RawToken {
+        let tokens = vec![RawToken {
             byte_range: 1..1,
             token_type: 0,
             token_modifiers: 0,
         }];
 
-        assert!(encode(&mut tokens, &doc("abc")).is_empty());
+        assert!(encode(&tokens, &doc("abc")).is_empty());
     }
 
     #[test]
     fn sub_character_ranges_that_map_to_zero_utf16_width_are_rejected() {
         let text = "🚀";
-        let mut tokens = vec![RawToken {
+        let tokens = vec![RawToken {
             byte_range: 1..2,
             token_type: 0,
             token_modifiers: 0,
         }];
 
-        assert!(encode(&mut tokens, &doc(text)).is_empty());
+        assert!(encode(&tokens, &doc(text)).is_empty());
     }
 }

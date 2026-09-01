@@ -41,9 +41,9 @@ pub(in crate::commands::revision) fn prompt_default_change_resolution(
     warning: &DefaultChangeWarning,
 ) -> Result<Option<DefaultChoice>> {
     println!();
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
     println!("{}", format_default_change_header(warning));
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
 
     let backfill_available = warning.new_default.is_some();
 
@@ -126,9 +126,9 @@ pub(in crate::commands::revision) fn prompt_unique_additions(
     warning: &UniqueAdditionWarning,
 ) -> Result<Option<UniqueAdditionChoice>> {
     println!();
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
     println!("{}", format_unique_addition_header(warning));
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
 
     let auto_cleanup_available = matches!(warning.pk_kind, PkKind::SingleAutoCleanupCapable { .. });
 
@@ -264,9 +264,9 @@ pub(in crate::commands::revision) fn prompt_fk_orphan_additions(
     warning: &FkOrphanAdditionWarning,
 ) -> Result<Option<FkOrphanChoice>> {
     println!();
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
     println!("{}", format_fk_orphan_addition_header(warning));
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
 
     let mut labels: Vec<String> = Vec::new();
     let mut outcomes: Vec<Option<FkOrphanChoice>> = Vec::new();
@@ -379,9 +379,9 @@ pub(in crate::commands::revision) fn prompt_check_additions(
     warning: &CheckAdditionWarning,
 ) -> Result<Option<CheckViolationChoice>> {
     println!();
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
     println!("{}", format_check_addition_header(warning));
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
 
     let mut labels: Vec<String> = Vec::new();
     let mut outcomes: Vec<Option<CheckViolationChoice>> = Vec::new();
@@ -489,9 +489,9 @@ pub(in crate::commands::revision) fn prompt_pk_additions(
     warning: &PrimaryKeyAdditionWarning,
 ) -> Result<Option<PrimaryKeyAdditionChoice>> {
     println!();
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
     println!("{}", format_pk_addition_header(warning));
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
 
     let mut labels: Vec<String> = Vec::new();
     let mut outcomes: Vec<Option<PrimaryKeyAdditionChoice>> = Vec::new();
@@ -601,9 +601,9 @@ pub(in crate::commands::revision) fn prompt_cascade_reach(
     warning: &CascadeReachWarning,
 ) -> Result<Option<CascadeReachChoice>> {
     println!();
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
     println!("{}", format_cascade_reach_header(warning));
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
 
     let labels = [
         "Proceed (cascade chain is intentional)".to_string(),
@@ -648,9 +648,9 @@ pub(in crate::commands::revision) fn prompt_sequence_exhaustion(
     warning: &SequenceExhaustionWarning,
 ) -> Result<Option<SequenceExhaustionChoice>> {
     println!();
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
     println!("{}", format_sequence_exhaustion_header(warning));
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
 
     let mutable = warning_is_mutable(warning);
     let mut labels: Vec<String> = Vec::new();
@@ -831,9 +831,9 @@ pub(in crate::commands::revision) fn prompt_check_strengthening(
     warning: &CheckStrengtheningWarning,
 ) -> Result<Option<CheckStrengtheningChoice>> {
     println!();
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
     println!("{}", format_check_strengthening_header(warning));
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
 
     let labels = [
         "Proceed (existing rows already satisfy the stricter predicate)".to_string(),
@@ -900,9 +900,9 @@ pub(in crate::commands::revision) fn prompt_check_type_mismatch(
     warning: &CheckTypeMismatchWarning,
 ) -> Result<Option<CheckTypeMismatchChoice>> {
     println!();
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
     println!("{}", format_check_type_mismatch_header(warning));
-    println!("{}", "\u{2500}".repeat(60).bright_black());
+    super::print_section_rule();
 
     let labels = [
         "Proceed (literal type is intentional / backend coerces it)".to_string(),

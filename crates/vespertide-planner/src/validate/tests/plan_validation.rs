@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn validate_migration_plan_missing_fill_with() {
-    use vespertide_core::{ColumnDef, ColumnType, MigrationAction, MigrationPlan};
+    use vespertide_core::{ColumnType, MigrationAction, MigrationPlan};
 
     let plan = MigrationPlan {
         id: String::new(),
@@ -11,17 +11,7 @@ fn validate_migration_plan_missing_fill_with() {
         version: 1,
         actions: vec![MigrationAction::AddColumn {
             table: "users".into(),
-            column: Box::new(ColumnDef {
-                name: "email".into(),
-                r#type: ColumnType::Simple(SimpleColumnType::Text),
-                nullable: false,
-                default: None,
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
-            }),
+            column: Box::new(col("email", ColumnType::Simple(SimpleColumnType::Text))),
             fill_with: None,
         }],
     };
@@ -39,21 +29,11 @@ fn validate_migration_plan_missing_fill_with() {
 
 #[test]
 fn validate_migration_plan_missing_fill_with_for_not_null_add_column() {
-    use vespertide_core::{ColumnDef, ColumnType, MigrationAction, MigrationPlan};
+    use vespertide_core::{ColumnType, MigrationAction, MigrationPlan};
 
     let action = MigrationAction::AddColumn {
         table: "users".into(),
-        column: Box::new(ColumnDef {
-            name: "email".into(),
-            r#type: ColumnType::Simple(SimpleColumnType::Text),
-            nullable: false,
-            default: None,
-            comment: None,
-            primary_key: None,
-            unique: None,
-            index: None,
-            foreign_key: None,
-        }),
+        column: Box::new(col("email", ColumnType::Simple(SimpleColumnType::Text))),
         fill_with: None,
     };
     let plan = MigrationPlan {
@@ -74,7 +54,7 @@ fn validate_migration_plan_missing_fill_with_for_not_null_add_column() {
 
 #[test]
 fn validate_migration_plan_with_fill_with() {
-    use vespertide_core::{ColumnDef, ColumnType, MigrationAction, MigrationPlan};
+    use vespertide_core::{ColumnType, MigrationAction, MigrationPlan};
 
     let plan = MigrationPlan {
         id: String::new(),
@@ -83,17 +63,7 @@ fn validate_migration_plan_with_fill_with() {
         version: 1,
         actions: vec![MigrationAction::AddColumn {
             table: "users".into(),
-            column: Box::new(ColumnDef {
-                name: "email".into(),
-                r#type: ColumnType::Simple(SimpleColumnType::Text),
-                nullable: false,
-                default: None,
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
-            }),
+            column: Box::new(col("email", ColumnType::Simple(SimpleColumnType::Text))),
             fill_with: Some("default@example.com".into()),
         }],
     };
@@ -104,7 +74,7 @@ fn validate_migration_plan_with_fill_with() {
 
 #[test]
 fn validate_migration_plan_nullable_column() {
-    use vespertide_core::{ColumnDef, ColumnType, MigrationAction, MigrationPlan};
+    use vespertide_core::{ColumnType, MigrationAction, MigrationPlan};
 
     let plan = MigrationPlan {
         id: String::new(),
@@ -113,17 +83,10 @@ fn validate_migration_plan_nullable_column() {
         version: 1,
         actions: vec![MigrationAction::AddColumn {
             table: "users".into(),
-            column: Box::new(ColumnDef {
-                name: "email".into(),
-                r#type: ColumnType::Simple(SimpleColumnType::Text),
-                nullable: true,
-                default: None,
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
-            }),
+            column: Box::new(col_nullable(
+                "email",
+                ColumnType::Simple(SimpleColumnType::Text),
+            )),
             fill_with: None,
         }],
     };
@@ -144,15 +107,8 @@ fn validate_migration_plan_with_default() {
         actions: vec![MigrationAction::AddColumn {
             table: "users".into(),
             column: Box::new(ColumnDef {
-                name: "email".into(),
-                r#type: ColumnType::Simple(SimpleColumnType::Text),
-                nullable: false,
                 default: Some("default@example.com".into()),
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
+                ..col("email", ColumnType::Simple(SimpleColumnType::Text))
             }),
             fill_with: None,
         }],
@@ -421,22 +377,18 @@ fn validate_enum_add_column_invalid_default() {
         actions: vec![MigrationAction::AddColumn {
             table: "users".into(),
             column: Box::new(ColumnDef {
-                name: "status".into(),
-                r#type: ColumnType::Complex(ComplexColumnType::Enum {
-                    name: "user_status".into(),
-                    values: EnumValues::String(vec![
-                        "active".into(),
-                        "inactive".into(),
-                        "pending".into(),
-                    ]),
-                }),
-                nullable: false,
                 default: Some("invalid_value".into()),
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
+                ..col(
+                    "status",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "user_status".into(),
+                        values: EnumValues::String(vec![
+                            "active".into(),
+                            "inactive".into(),
+                            "pending".into(),
+                        ]),
+                    }),
+                )
             }),
             fill_with: None,
         }],
@@ -465,9 +417,9 @@ fn validate_enum_add_column_invalid_fill_with() {
         version: 1,
         actions: vec![MigrationAction::AddColumn {
             table: "users".into(),
-            column: Box::new(ColumnDef {
-                name: "status".into(),
-                r#type: ColumnType::Complex(ComplexColumnType::Enum {
+            column: Box::new(col(
+                "status",
+                ColumnType::Complex(ComplexColumnType::Enum {
                     name: "user_status".into(),
                     values: EnumValues::String(vec![
                         "active".into(),
@@ -475,14 +427,7 @@ fn validate_enum_add_column_invalid_fill_with() {
                         "pending".into(),
                     ]),
                 }),
-                nullable: false,
-                default: None,
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
-            }),
+            )),
             fill_with: Some("unknown_status".into()),
         }],
     };
@@ -511,22 +456,18 @@ fn validate_enum_add_column_valid_default_quoted() {
         actions: vec![MigrationAction::AddColumn {
             table: "users".into(),
             column: Box::new(ColumnDef {
-                name: "status".into(),
-                r#type: ColumnType::Complex(ComplexColumnType::Enum {
-                    name: "user_status".into(),
-                    values: EnumValues::String(vec![
-                        "active".into(),
-                        "inactive".into(),
-                        "pending".into(),
-                    ]),
-                }),
-                nullable: false,
                 default: Some("'active'".into()),
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
+                ..col(
+                    "status",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "user_status".into(),
+                        values: EnumValues::String(vec![
+                            "active".into(),
+                            "inactive".into(),
+                            "pending".into(),
+                        ]),
+                    }),
+                )
             }),
             fill_with: None,
         }],
@@ -546,22 +487,18 @@ fn validate_enum_add_column_valid_default_unquoted() {
         actions: vec![MigrationAction::AddColumn {
             table: "users".into(),
             column: Box::new(ColumnDef {
-                name: "status".into(),
-                r#type: ColumnType::Complex(ComplexColumnType::Enum {
-                    name: "user_status".into(),
-                    values: EnumValues::String(vec![
-                        "active".into(),
-                        "inactive".into(),
-                        "pending".into(),
-                    ]),
-                }),
-                nullable: false,
                 default: Some("active".into()),
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
+                ..col(
+                    "status",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "user_status".into(),
+                        values: EnumValues::String(vec![
+                            "active".into(),
+                            "inactive".into(),
+                            "pending".into(),
+                        ]),
+                    }),
+                )
             }),
             fill_with: None,
         }],
@@ -580,9 +517,9 @@ fn validate_enum_add_column_valid_fill_with() {
         version: 1,
         actions: vec![MigrationAction::AddColumn {
             table: "users".into(),
-            column: Box::new(ColumnDef {
-                name: "status".into(),
-                r#type: ColumnType::Complex(ComplexColumnType::Enum {
+            column: Box::new(col(
+                "status",
+                ColumnType::Complex(ComplexColumnType::Enum {
                     name: "user_status".into(),
                     values: EnumValues::String(vec![
                         "active".into(),
@@ -590,14 +527,7 @@ fn validate_enum_add_column_valid_fill_with() {
                         "pending".into(),
                     ]),
                 }),
-                nullable: false,
-                default: None,
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
-            }),
+            )),
             fill_with: Some("'pending'".into()),
         }],
     };
@@ -670,9 +600,9 @@ fn validate_enum_integer_add_column_valid() {
         version: 1,
         actions: vec![MigrationAction::AddColumn {
             table: "tasks".into(),
-            column: Box::new(ColumnDef {
-                name: "priority".into(),
-                r#type: ColumnType::Complex(ComplexColumnType::Enum {
+            column: Box::new(col(
+                "priority",
+                ColumnType::Complex(ComplexColumnType::Enum {
                     name: "priority_level".into(),
                     values: EnumValues::Integer(vec![
                         NumValue {
@@ -689,14 +619,7 @@ fn validate_enum_integer_add_column_valid() {
                         },
                     ]),
                 }),
-                nullable: false,
-                default: None,
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
-            }),
+            )),
             fill_with: Some("Low".into()),
         }],
     };
@@ -714,9 +637,9 @@ fn validate_enum_integer_add_column_invalid() {
         version: 1,
         actions: vec![MigrationAction::AddColumn {
             table: "tasks".into(),
-            column: Box::new(ColumnDef {
-                name: "priority".into(),
-                r#type: ColumnType::Complex(ComplexColumnType::Enum {
+            column: Box::new(col(
+                "priority",
+                ColumnType::Complex(ComplexColumnType::Enum {
                     name: "priority_level".into(),
                     values: EnumValues::Integer(vec![
                         NumValue {
@@ -733,14 +656,7 @@ fn validate_enum_integer_add_column_invalid() {
                         },
                     ]),
                 }),
-                nullable: false,
-                default: None,
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
-            }),
+            )),
             fill_with: Some("Critical".into()), // Not a valid enum name
         }],
     };
@@ -761,31 +677,27 @@ fn validate_enum_integer_add_column_invalid() {
 
 fn integer_priority_column(default: Option<DefaultValue>) -> ColumnDef {
     ColumnDef {
-        name: "priority".into(),
-        r#type: ColumnType::Complex(ComplexColumnType::Enum {
-            name: "priority_level".into(),
-            values: EnumValues::Integer(vec![
-                NumValue {
-                    name: "low".into(),
-                    value: 0,
-                },
-                NumValue {
-                    name: "normal".into(),
-                    value: 10,
-                },
-                NumValue {
-                    name: "high".into(),
-                    value: 20,
-                },
-            ]),
-        }),
-        nullable: false,
         default,
-        comment: None,
-        primary_key: None,
-        unique: None,
-        index: None,
-        foreign_key: None,
+        ..col(
+            "priority",
+            ColumnType::Complex(ComplexColumnType::Enum {
+                name: "priority_level".into(),
+                values: EnumValues::Integer(vec![
+                    NumValue {
+                        name: "low".into(),
+                        value: 0,
+                    },
+                    NumValue {
+                        name: "normal".into(),
+                        value: 10,
+                    },
+                    NumValue {
+                        name: "high".into(),
+                        value: 20,
+                    },
+                ]),
+            }),
+        )
     }
 }
 
@@ -863,18 +775,14 @@ fn validate_enum_null_value_skipped() {
         actions: vec![MigrationAction::AddColumn {
             table: "users".into(),
             column: Box::new(ColumnDef {
-                name: "status".into(),
-                r#type: ColumnType::Complex(ComplexColumnType::Enum {
-                    name: "user_status".into(),
-                    values: EnumValues::String(vec!["active".into(), "inactive".into()]),
-                }),
-                nullable: true,
                 default: Some("NULL".into()),
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
+                ..col_nullable(
+                    "status",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "user_status".into(),
+                        values: EnumValues::String(vec!["active".into(), "inactive".into()]),
+                    }),
+                )
             }),
             fill_with: None,
         }],
@@ -894,20 +802,13 @@ fn validate_enum_sql_expression_skipped() {
         version: 1,
         actions: vec![MigrationAction::AddColumn {
             table: "users".into(),
-            column: Box::new(ColumnDef {
-                name: "status".into(),
-                r#type: ColumnType::Complex(ComplexColumnType::Enum {
+            column: Box::new(col_nullable(
+                "status",
+                ColumnType::Complex(ComplexColumnType::Enum {
                     name: "user_status".into(),
                     values: EnumValues::String(vec!["active".into(), "inactive".into()]),
                 }),
-                nullable: true,
-                default: None,
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
-            }),
+            )),
             fill_with: Some("COALESCE(old_status, 'active')".into()),
         }],
     };
@@ -927,20 +828,13 @@ fn validate_enum_empty_string_fill_with_skipped() {
         version: 1,
         actions: vec![MigrationAction::AddColumn {
             table: "users".into(),
-            column: Box::new(ColumnDef {
-                name: "status".into(),
-                r#type: ColumnType::Complex(ComplexColumnType::Enum {
+            column: Box::new(col_nullable(
+                "status",
+                ColumnType::Complex(ComplexColumnType::Enum {
                     name: "user_status".into(),
                     values: EnumValues::String(vec!["active".into(), "inactive".into()]),
                 }),
-                nullable: true,
-                default: None,
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
-            }),
+            )),
             // Empty string - extract_enum_value returns None for empty trimmed values
             fill_with: Some("   ".into()),
         }],
@@ -959,18 +853,14 @@ fn string_enum_default_plan(default: &str) -> MigrationPlan {
         actions: vec![MigrationAction::AddColumn {
             table: "users".into(),
             column: Box::new(ColumnDef {
-                name: "status".into(),
-                r#type: ColumnType::Complex(ComplexColumnType::Enum {
-                    name: "user_status".into(),
-                    values: EnumValues::String(vec!["active".into(), "inactive".into()]),
-                }),
-                nullable: true,
                 default: Some(default.into()),
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
+                ..col_nullable(
+                    "status",
+                    ColumnType::Complex(ComplexColumnType::Enum {
+                        name: "user_status".into(),
+                        values: EnumValues::String(vec!["active".into(), "inactive".into()]),
+                    }),
+                )
             }),
             fill_with: None,
         }],
@@ -1000,24 +890,14 @@ fn validate_enum_rejects_unbalanced_quoted_defaults(#[case] default: &str) {
 /// user to fix-and-rerun for each one.
 #[test]
 fn validate_migration_plan_batches_multiple_violations() {
-    use vespertide_core::{ColumnDef, ColumnType, MigrationAction, MigrationPlan};
+    use vespertide_core::{ColumnType, MigrationAction, MigrationPlan};
 
     // Helper: build a NOT NULL AddColumn action without a default or
     // fill_with — guaranteed to trigger MissingFillWith.
     fn add_not_null(table: &str, column: &str) -> MigrationAction {
         MigrationAction::AddColumn {
             table: table.into(),
-            column: Box::new(ColumnDef {
-                name: column.into(),
-                r#type: ColumnType::Simple(SimpleColumnType::Text),
-                nullable: false,
-                default: None,
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
-            }),
+            column: Box::new(col(column, ColumnType::Simple(SimpleColumnType::Text))),
             fill_with: None,
         }
     }
@@ -1073,7 +953,7 @@ fn validate_migration_plan_batches_multiple_violations() {
 /// after the batch change.
 #[test]
 fn validate_migration_plan_single_violation_returns_bare_variant() {
-    use vespertide_core::{ColumnDef, ColumnType, MigrationAction, MigrationPlan};
+    use vespertide_core::{ColumnType, MigrationAction, MigrationPlan};
 
     let plan = MigrationPlan {
         id: String::new(),
@@ -1082,17 +962,7 @@ fn validate_migration_plan_single_violation_returns_bare_variant() {
         version: 1,
         actions: vec![MigrationAction::AddColumn {
             table: "users".into(),
-            column: Box::new(ColumnDef {
-                name: "email".into(),
-                r#type: ColumnType::Simple(SimpleColumnType::Text),
-                nullable: false,
-                default: None,
-                comment: None,
-                primary_key: None,
-                unique: None,
-                index: None,
-                foreign_key: None,
-            }),
+            column: Box::new(col("email", ColumnType::Simple(SimpleColumnType::Text))),
             fill_with: None,
         }],
     };

@@ -1,12 +1,10 @@
 use super::*;
-use crate::test_support::CwdGuard;
+use crate::test_support::{CwdGuard, write_default_config, write_simple_id_model};
 use colored::Colorize;
 use rstest::rstest;
 use serial_test::serial;
 use std::fs;
-use std::path::PathBuf;
 use tempfile::tempdir;
-use vespertide_config::VespertideConfig;
 use vespertide_core::{
     ColumnDef, ColumnType, MigrationPlan, ReferenceAction, SimpleColumnType, TableConstraint,
     TableDef,
@@ -14,29 +12,6 @@ use vespertide_core::{
 use vespertide_planner::{
     NarrowingKind, PolicyDelta, TimezoneConversionDirection, TimezoneConversionWarning,
 };
-
-fn write_config() {
-    let cfg = VespertideConfig::default();
-    let text = serde_json::to_string_pretty(&cfg).unwrap();
-    fs::write("vespertide.json", text).unwrap();
-}
-
-fn write_model(name: &str) {
-    let models_dir = PathBuf::from("models");
-    fs::create_dir_all(&models_dir).unwrap();
-    let table = TableDef {
-        name: name.into(),
-        description: None,
-        columns: vec![ColumnDef::new(
-            "id",
-            ColumnType::Simple(SimpleColumnType::Integer),
-            false,
-        )],
-        constraints: vec![pk_id()],
-    };
-    let path = models_dir.join(format!("{name}.json"));
-    fs::write(path, serde_json::to_string_pretty(&table).unwrap()).unwrap();
-}
 
 fn idx(name: Option<&str>, cols: &[&str]) -> TableConstraint {
     TableConstraint::Index {
@@ -198,6 +173,14 @@ fn chk_age() -> TableConstraint {
     MigrationAction::RemapEnumValues { table: "users".into(), column: "status".into(), mapping: { let mut m = std::collections::BTreeMap::new(); m.insert(0, 10); m.insert(1, 20); m } },
     format!("{} {}.{} [{}]", "Remap enum values:".bright_yellow(), "users".bright_cyan(), "status".bright_cyan().bold(), "0->10, 1->20".bright_white())
 )]
+#[case(
+    MigrationAction::DataMigration { sql: "UPDATE users SET tier = 'pro'".into(), description: Some("promote beta users".into()) },
+    format!("{} {}", "Data migration:".bright_yellow(), "promote beta users".bright_cyan())
+)]
+#[case(
+    MigrationAction::DataMigration { sql: "UPDATE users SET tier = 'pro'".into(), description: None },
+    format!("{} {}", "Data migration:".bright_yellow(), "UPDATE users SET tier = 'pro'".bright_cyan())
+)]
 #[serial]
 fn format_action_cases(#[case] action: MigrationAction, #[case] expected: String) {
     assert_eq!(format_action(&action), expected);
@@ -210,8 +193,8 @@ async fn cmd_diff_with_model_and_no_migrations() {
     let tmp = tempdir().unwrap();
     let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
-    write_config();
-    write_model("users");
+    write_default_config();
+    write_simple_id_model("users");
     fs::create_dir_all("migrations").unwrap();
 
     let result = cmd_diff().await;
@@ -225,13 +208,70 @@ async fn cmd_diff_when_no_changes() {
     let tmp = tempdir().unwrap();
     let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
-    write_config();
+    write_default_config();
     // No models, no migrations -> planner should report no actions.
     fs::create_dir_all("models").unwrap();
     fs::create_dir_all("migrations").unwrap();
 
     let result = cmd_diff().await;
     assert!(result.is_ok());
+}
+
+#[rstest]
+#[serial]
+#[tokio::test]
+async fn cmd_diff_warns_when_history_contains_raw_sql() {
+    let tmp = tempdir().unwrap();
+    let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+
+    write_default_config();
+    write_simple_id_model("users");
+    fs::create_dir_all("migrations").unwrap();
+    fs::write(
+        "migrations/0001_init.json",
+        serde_json::to_string_pretty(&MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::RawSql {
+                sql: "ALTER TABLE users ADD COLUMN legacy int".into(),
+            }],
+        })
+        .unwrap(),
+    )
+    .unwrap();
+
+    assert!(cmd_diff().await.is_ok());
+}
+
+#[rstest]
+#[serial]
+#[tokio::test]
+async fn cmd_diff_stays_quiet_when_history_uses_data_migration() {
+    let tmp = tempdir().unwrap();
+    let _guard = CwdGuard::new(&tmp.path().to_path_buf());
+
+    write_default_config();
+    write_simple_id_model("users");
+    fs::create_dir_all("migrations").unwrap();
+    fs::write(
+        "migrations/0001_init.json",
+        serde_json::to_string_pretty(&MigrationPlan {
+            id: String::new(),
+            comment: None,
+            created_at: None,
+            version: 1,
+            actions: vec![MigrationAction::DataMigration {
+                sql: "UPDATE users SET id = id".into(),
+                description: Some("no-op backfill".into()),
+            }],
+        })
+        .unwrap(),
+    )
+    .unwrap();
+
+    assert!(cmd_diff().await.is_ok());
 }
 
 #[test]
@@ -651,8 +691,8 @@ async fn cmd_diff_with_actual_change_runs_format_action_loop() {
     let tmp = tempdir().unwrap();
     let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
-    write_config();
-    write_model("books");
+    write_default_config();
+    write_simple_id_model("books");
     fs::create_dir_all("migrations").unwrap();
 
     cmd_diff().await.unwrap();
@@ -668,9 +708,9 @@ async fn cmd_diff_emits_fk_supporting_index_warning() {
     let tmp = tempdir().unwrap();
     let _guard = CwdGuard::new(&tmp.path().to_path_buf());
 
-    write_config();
+    write_default_config();
     fs::create_dir_all("migrations").unwrap();
-    let models_dir = PathBuf::from("models");
+    let models_dir = std::path::PathBuf::from("models");
     fs::create_dir_all(&models_dir).unwrap();
 
     // users.json: simple PK (table name matches fk_user's ref_table "users")
