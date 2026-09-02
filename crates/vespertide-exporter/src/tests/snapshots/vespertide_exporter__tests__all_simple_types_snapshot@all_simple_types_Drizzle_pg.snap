@@ -1,0 +1,29 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+const bytea = customType<{ data: Uint8Array }>({ dataType() { return "bytea"; } });
+
+const xml = customType<{ data: string }>({ dataType() { return "xml"; } });
+
+export const allTypes = pgTable("all_types", {
+  id: integer("id").primaryKey(),
+  small: smallint("small").notNull(),
+  big: bigint("big", { mode: "number" }).notNull(),
+  realNum: real("real_num").notNull(),
+  doubleNum: doublePrecision("double_num").notNull(),
+  textCol: text("text_col").notNull(),
+  boolCol: boolean("bool_col").notNull(),
+  dateCol: date("date_col").notNull(),
+  timeCol: time("time_col").notNull(),
+  tsCol: timestamp("ts_col").notNull(),
+  tstzCol: timestamp("tstz_col", { withTimezone: true }).notNull(),
+  intervalCol: interval("interval_col").notNull(),
+  byteaCol: bytea("bytea_col").notNull(),
+  uuidCol: uuid("uuid_col").notNull(),
+  jsonCol: json("json_col").notNull(),
+  inetCol: inet("inet_col").notNull(),
+  cidrCol: cidr("cidr_col").notNull(),
+  macaddrCol: macaddr("macaddr_col").notNull(),
+  xmlCol: xml("xml_col").notNull(),
+});

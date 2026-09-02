@@ -82,6 +82,7 @@ too_many_lines = { level = "allow", priority = 1 }            # large scenario t
 useless_vec = { level = "allow", priority = 1 }               # tests sometimes use Vec shape to mirror production APIs
 float_cmp = { level = "allow", priority = 1 }                 # SVG geometry tests assert exact constants where produced deterministically
 default_trait_access = { level = "allow", priority = 1 }      # test fixtures often rely on contextual Default for brevity
+unused_async_trait_impl = { level = "allow", priority = 1 }   # LSP handlers keep the trait's `async` signature even when they delegate synchronously
 
 [workspace.dependencies]
 rayon = "1.12"

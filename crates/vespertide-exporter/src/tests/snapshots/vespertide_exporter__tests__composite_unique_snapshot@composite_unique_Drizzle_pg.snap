@@ -1,0 +1,11 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const compositeUnique = pgTable("composite_unique", {
+  id: integer("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull(),
+  name: text("name").notNull(),
+}, (t) => [
+  uniqueIndex("uq_composite_unique__uq_tenant_name").on(t.tenantId, t.name),
+]);

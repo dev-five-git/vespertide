@@ -6,26 +6,14 @@ use vespertide_core::schema::constraint::TableConstraint;
 use vespertide_core::schema::names::ColumnName;
 use vespertide_core::schema::reference::ReferenceAction;
 use vespertide_naming::{
-    IdentifierStart, build_index_name, build_unique_constraint_name, sanitize_identifier,
-    to_pascal_case,
+    IdentifierStart, build_index_name, build_unique_constraint_name, infer_relation_field_name,
+    sanitize_identifier, to_pascal_case,
 };
 
 use super::enums::enum_variant;
 use super::types::column_type_to_prisma;
-use crate::utils::common::unquote;
-
-fn primary_key(constraints: &[TableConstraint]) -> Option<&TableConstraint> {
-    constraints
-        .iter()
-        .find(|c| matches!(c, TableConstraint::PrimaryKey { .. }))
-}
-
-pub(super) struct BackRelation {
-    pub(super) source_table: String,
-    pub(super) rel_segment: String,
-    pub(super) is_one_to_one: bool,
-    pub(super) relation_name: Option<String>,
-}
+use crate::constraint_scan::{BackRelation, collect_back_relations, fk_relation_names};
+use crate::utils::common::{claim_field_name, unquote};
 
 pub(super) fn back_rel_field(br: &BackRelation) -> (String, String) {
     let source_pascal = prisma_model_name(&br.source_table);
@@ -46,79 +34,6 @@ pub(super) fn back_rel_field(br: &BackRelation) -> (String, String) {
     (field_name, rel_type)
 }
 
-pub(super) fn collect_back_relations(target_table: &str, schema: &[TableDef]) -> Vec<BackRelation> {
-    let mut result = Vec::new();
-
-    for source in schema {
-        let fks_to_target: Vec<(usize, &[ColumnName])> = source
-            .constraints
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, c)| {
-                if let TableConstraint::ForeignKey {
-                    columns, ref_table, ..
-                } = c
-                {
-                    if ref_table.as_str() == target_table {
-                        Some((idx, columns.as_slice()))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        if fks_to_target.is_empty() {
-            continue;
-        }
-
-        let source_relation_names = fk_relation_names(source);
-        let multi_fk = fks_to_target.len() > 1;
-        let is_self_ref = source.name.as_str() == target_table;
-
-        for (constraint_idx, fk_cols) in &fks_to_target {
-            let is_one_to_one = if let [fk_col] = fk_cols {
-                source.constraints.iter().any(|c| {
-                    matches!(c, TableConstraint::Unique { columns, .. }
-                        if columns.len() == 1 && columns[0] == *fk_col)
-                })
-            } else {
-                // A composite FK is one-to-one when the source can hold at
-                // most one row per target key: its FK columns are exactly its
-                // own PK, or a composite unique covers exactly that set.
-                let fk_set: HashSet<&str> = fk_cols.iter().map(ColumnName::as_str).collect();
-                let pk_cols = primary_key(&source.constraints)
-                    .map(TableConstraint::columns)
-                    .unwrap_or_default();
-                pk_cols.len() == fk_set.len() && pk_cols.iter().all(|c| fk_set.contains(c.as_str()))
-                    || source.constraints.iter().any(|c| {
-                        matches!(c, TableConstraint::Unique { columns, .. }
-                            if columns.len() == fk_set.len()
-                                && columns.iter().all(|col| fk_set.contains(col.as_str())))
-                    })
-            };
-
-            let rel_segment = relation_segment(fk_cols);
-            let relation_name = if multi_fk || is_self_ref {
-                source_relation_names.get(constraint_idx).cloned()
-            } else {
-                None
-            };
-
-            result.push(BackRelation {
-                source_table: source.name.as_str().to_string(),
-                rel_segment,
-                is_one_to_one,
-                relation_name,
-            });
-        }
-    }
-
-    result
-}
-
 pub(super) fn render_model(
     table: &TableDef,
     schema: &[TableDef],
@@ -135,7 +50,7 @@ pub(super) fn render_model(
     let model_name = prisma_model_name(&table.name);
     lines.push(format!("model {model_name} {{"));
 
-    let pk = primary_key(&table.constraints);
+    let pk = crate::constraint_scan::primary_key(&table.constraints);
     let pk_cols = pk.map(TableConstraint::columns).unwrap_or_default();
     let pk_auto_increment = matches!(
         pk,
@@ -261,7 +176,7 @@ pub(super) fn render_model(
             } = fk
         {
             let rel_field_name = claim_field_name(
-                prisma_field_name(&infer_relation_field_name(db_name)),
+                prisma_field_name(infer_relation_field_name(db_name)),
                 &mut field_names,
             );
             let rel_model = prisma_model_name(ref_table);
@@ -524,90 +439,6 @@ fn prisma_model_name(table: &str) -> String {
 /// identifier only has to be valid.
 fn prisma_field_name(column: &str) -> String {
     sanitize_identifier(column, IdentifierStart::Letter)
-}
-
-fn infer_relation_field_name(fk_col: &str) -> String {
-    fk_col.strip_suffix("_id").unwrap_or(fk_col).to_string()
-}
-
-/// Name segment a relation derives from its FK columns.
-///
-/// Every column takes part — two composite FKs to the same target can share a
-/// first column, and a segment built from that column alone would hand both
-/// relations one name.
-fn relation_segment(columns: &[ColumnName]) -> String {
-    columns
-        .iter()
-        .map(|col| infer_relation_field_name(col.as_str()))
-        .collect::<Vec<_>>()
-        .join("_")
-}
-
-/// `@relation` name for every FK of `table`, keyed by constraint index.
-///
-/// Both ends of a relation must carry the same name, so the forward side and
-/// `collect_back_relations` derive it from the same table through this one
-/// function. Distinct columns can still strip to one segment (`a_id` and `a`
-/// both become `a`), and Prisma rejects two same-named relations between one
-/// model pair — repeats within a target's group get numbered in constraint
-/// order, which is the one order both ends share.
-fn fk_relation_names(table: &TableDef) -> HashMap<usize, String> {
-    let table_pascal = to_pascal_case(&table.name);
-    let mut used_per_target: HashMap<(&str, String), usize> = HashMap::new();
-    let mut names = HashMap::new();
-    for (idx, c) in table.constraints.iter().enumerate() {
-        let TableConstraint::ForeignKey {
-            columns, ref_table, ..
-        } = c
-        else {
-            continue;
-        };
-        let base = format!(
-            "{table_pascal}{}",
-            to_pascal_case(&relation_segment(columns))
-        );
-        let seen = used_per_target
-            .entry((ref_table.as_str(), base.clone()))
-            .or_insert(0);
-        *seen += 1;
-        let name = if *seen == 1 {
-            base
-        } else {
-            format!("{base}{seen}")
-        };
-        names.insert(idx, name);
-    }
-    names
-}
-
-/// Claim a model field name, recording it in `taken` so later fields avoid it.
-fn claim_field_name(preferred: String, taken: &mut HashSet<String>) -> String {
-    let chosen = first_unused(preferred, taken);
-    taken.insert(chosen.clone());
-    chosen
-}
-
-/// `preferred` if free, then `{preferred}_rel`, then numbered variants. `_rel`
-/// comes before the numbers so the names already emitted for FK fields that
-/// clash with their own column stay unchanged.
-fn first_unused(preferred: String, taken: &HashSet<String>) -> String {
-    if !taken.contains(&preferred) {
-        return preferred;
-    }
-
-    let suffixed = format!("{preferred}_rel");
-    if !taken.contains(&suffixed) {
-        return suffixed;
-    }
-
-    let mut index = 2;
-    loop {
-        let candidate = format!("{preferred}_rel{index}");
-        if !taken.contains(&candidate) {
-            return candidate;
-        }
-        index += 1;
-    }
 }
 
 #[cfg(test)]

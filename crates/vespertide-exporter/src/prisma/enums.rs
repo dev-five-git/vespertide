@@ -1,32 +1,33 @@
 use std::collections::{HashMap, HashSet};
 
 use vespertide_core::TableDef;
-use vespertide_core::schema::column::{ColumnType, ComplexColumnType, EnumValues};
+use vespertide_core::schema::column::EnumValues;
 use vespertide_naming::{
     IdentifierStart, build_enum_type_name, sanitize_identifier, to_pascal_case,
     to_screaming_snake_case,
 };
 
+pub(super) use crate::enum_scan::collect_table_enums;
+
 /// Bare `PascalCase` identifiers that the schema declares with more than one
 /// value set.
 ///
-/// Every other backend writes one file per table, so a repeated enum is
-/// naturally scoped; Prisma emits a single file, where reusing an identifier
-/// would silently give both tables the first table's values. Names are compared
-/// *after* the case conversion, since distinct names can collapse onto the same
-/// identifier (`doc_status` and `docStatus` are both `DocStatus`).
+/// Prisma's single file would silently give both tables the first declaration's
+/// values if it reused such an identifier. Names are compared *after* the case
+/// conversion, since distinct names can collapse onto the same identifier
+/// (`doc_status` and `docStatus` are both `DocStatus`).
 pub(super) fn ambiguous_enum_identifiers(schema: &[TableDef]) -> HashSet<String> {
     let mut declared: HashMap<String, &EnumValues> = HashMap::new();
     let mut ambiguous = HashSet::new();
     for table in schema {
         for (name, values) in collect_table_enums(table) {
-            let identifier = to_pascal_case(name);
-            if let Some(first) = declared.get(&identifier) {
+            let ident = to_pascal_case(name);
+            if let Some(first) = declared.get(&ident) {
                 if *first != values {
-                    ambiguous.insert(identifier);
+                    ambiguous.insert(ident);
                 }
             } else {
-                declared.insert(identifier, values);
+                declared.insert(ident, values);
             }
         }
     }
@@ -46,20 +47,6 @@ pub(super) fn enum_identifier(table: &str, name: &str, ambiguous: &HashSet<Strin
         bare
     };
     sanitize_identifier(&chosen, IdentifierStart::Letter)
-}
-
-/// Enum columns of a table, first declaration wins per name.
-pub(super) fn collect_table_enums(table: &TableDef) -> Vec<(&str, &EnumValues)> {
-    let mut seen = HashSet::new();
-    let mut result = Vec::new();
-    for col in &table.columns {
-        if let ColumnType::Complex(ComplexColumnType::Enum { name, values }) = &col.r#type
-            && seen.insert(name.as_str())
-        {
-            result.push((name.as_str(), values));
-        }
-    }
-    result
 }
 
 /// Prisma identifier for one enum variant.

@@ -1,0 +1,13 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+const cUSTOMTYPE = customType<{ data: string }>({ dataType() { return "CUSTOM_TYPE"; } });
+
+export const complexTypes = pgTable("complex_types", {
+  id: integer("id").primaryKey(),
+  varcharCol: varchar("varchar_col", { length: 100 }).notNull(),
+  charCol: char("char_col", { length: 10 }).notNull(),
+  numericCol: numeric("numeric_col", { precision: 10, scale: 2 }).notNull(),
+  customCol: cUSTOMTYPE("custom_col").notNull(),
+});

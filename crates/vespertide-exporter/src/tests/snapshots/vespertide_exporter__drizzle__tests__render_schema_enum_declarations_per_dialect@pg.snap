@@ -1,0 +1,19 @@
+---
+source: crates/vespertide-exporter/src/drizzle/mod.rs
+expression: rendered
+---
+import { pgTable, pgEnum, integer } from "drizzle-orm/pg-core";
+
+export const ordersStatus = pgEnum("orders_status", ["new", "paid"]);
+
+export const ticketsStatus = pgEnum("tickets_status", ["new", "paid"]);
+
+export const orders = pgTable("orders", {
+  id: integer("id").primaryKey(),
+  st: ordersStatus("st").notNull(),
+});
+
+export const tickets = pgTable("tickets", {
+  id: integer("id").primaryKey(),
+  st: ticketsStatus("st").notNull(),
+});

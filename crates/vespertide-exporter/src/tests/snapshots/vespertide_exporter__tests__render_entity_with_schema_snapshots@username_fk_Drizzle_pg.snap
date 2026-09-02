@@ -1,0 +1,14 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const session = pgTable("session", {
+  id: uuid("id").primaryKey(),
+  username: text("username").notNull(),
+}, (t) => [
+  foreignKey({ columns: [t.username], foreignColumns: [user.username], name: "fk_session__username" }),
+]);
+
+export const sessionRelations = relations(session, ({ one, many }) => ({
+  usernameUser: one(user, { fields: [session.username], references: [user.username] }),
+}));

@@ -1,0 +1,11 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const documentsDocStatus = pgEnum("documents_doc_status", ["draft", "published", "archived"]);
+
+export const documents = pgTable("documents", {
+  id: integer("id").notNull(),
+  status: documentsDocStatus("status").notNull(),
+  reviewStatus: documentsDocStatus("review_status"),
+});

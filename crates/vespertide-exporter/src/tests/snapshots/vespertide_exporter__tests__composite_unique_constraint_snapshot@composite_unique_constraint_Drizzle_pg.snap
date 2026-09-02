@@ -1,0 +1,11 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const accountAliases = pgTable("account_aliases", {
+  id: integer("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull(),
+  slug: text("slug").notNull(),
+}, (t) => [
+  uniqueIndex("uq_account_aliases__uq_account_aliases__tenant_slug").on(t.tenantId, t.slug),
+]);

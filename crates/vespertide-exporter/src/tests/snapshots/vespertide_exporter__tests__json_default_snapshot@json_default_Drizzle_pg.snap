@@ -1,0 +1,8 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const configs = pgTable("configs", {
+  id: integer("id").primaryKey(),
+  data: json("data").notNull().default(sql`'{"hello": "world"}'::json`),
+});

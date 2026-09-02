@@ -19,8 +19,8 @@ src/
     │                 #   choices_and_apply/), tests/
     ├── status.rs     # Show config and sync status
     ├── log.rs        # List applied migrations with SQL
-    ├── export/       # Export to ORM code (SeaORM/SQLAlchemy/SQLModel/JPA/Prisma) —
-    │                 #   mod.rs + tests/ (mod.rs, prisma.rs)
+    ├── export/       # Export to ORM code (SeaORM/SQLAlchemy/SQLModel/JPA/Prisma/Drizzle) —
+    │                 #   mod.rs + tests/ (mod.rs, prisma.rs, drizzle.rs)
     └── erd/          # ERD diagram export — mod.rs, mermaid.rs, dot.rs, svg/ (style, model,
                       #   layout, edges, render, util), tests/
 ```
@@ -53,7 +53,7 @@ src/
 ## NOTES
 
 - **revision/**: Most complex command — handles interactive `--fill-with` prompts for NOT NULL columns without defaults; long ago split from a single 3064-line file into `revision/{mod,parse,emit,write,timezones}.rs` + `prompts/` + `tests/`
-- **export/**: Generates the `mod.rs` chain for SeaORM exports; Python/Java ORMs skip it. Prisma takes a separate single-file path (`prisma::render_schema` → one `schema.prisma`) rather than one file per model
+- **export/**: Generates the `mod.rs` chain for SeaORM exports; Python/Java ORMs skip it. Prisma and Drizzle take separate single-file paths rather than one file per model — Prisma writes one `models.prisma`, Drizzle one file per dialect (`models.pg.ts` / `models.mysql.ts` / `models.sqlite.ts`)
 - All commands use `load_config()`, `load_models()`, `load_migrations()` from `vespertide_loader`
 - YAML and JSON are both fully supported for models and migrations; `new <name> -f yaml` creates YAML templates.
 - Prefer typed `MigrationAction` enums; `RawSql` exists as a documented emergency escape hatch, but is not recommended for normal use.

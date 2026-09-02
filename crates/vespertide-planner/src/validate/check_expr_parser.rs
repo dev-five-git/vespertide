@@ -1,7 +1,3 @@
-#![expect(
-    clippy::doc_markdown,
-    reason = "narrative prose: backend names (PostgreSQL, MySQL, SQLite) appear as plain words intentionally"
-)]
 //! Shared narrow-shape parser for CHECK constraint expressions.
 //!
 //! Built originally for fault **F86** (column default violates table

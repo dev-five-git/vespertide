@@ -1,0 +1,8 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const unknownDefaults = pgTable("unknown_defaults", {
+  id: integer("id").primaryKey(),
+  code: text("code").notNull().default(sql`gen_code()`),
+});

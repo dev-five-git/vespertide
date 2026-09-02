@@ -1,0 +1,8 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const workflowRuns = pgTable("workflow_runs", {
+  id: integer("id").primaryKey(),
+  state: integer("state").notNull(),
+});

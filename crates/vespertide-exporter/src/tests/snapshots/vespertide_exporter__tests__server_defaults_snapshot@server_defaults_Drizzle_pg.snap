@@ -1,0 +1,10 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const withDefaults = pgTable("with_defaults", {
+  id: integer("id").primaryKey(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  status: text("status").notNull().default("active"),
+  count: integer("count").notNull().default(0),
+});

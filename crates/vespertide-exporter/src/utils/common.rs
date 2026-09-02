@@ -88,6 +88,63 @@ pub(crate) fn unquote(s: &str) -> &str {
     s
 }
 
+/// Claim a relation field name, recording it in `taken` so later fields
+/// avoid it. Seed `taken` with the table's column field names first — relation
+/// names are derived from column/table names, so a relation must not take a
+/// column's name (nor an earlier relation's).
+pub(crate) fn claim_field_name(
+    preferred: String,
+    taken: &mut std::collections::HashSet<String>,
+) -> String {
+    let chosen = first_unused(preferred, taken);
+    taken.insert(chosen.clone());
+    chosen
+}
+
+/// Claim a file-scope binding name, recording it in `taken`. Unlike
+/// [`claim_field_name`], a collision takes a bare numeric suffix (`name2`,
+/// `name3`, …) — the `_rel` step is a relation-field convention that would
+/// mislead on a table or type binding.
+pub(crate) fn claim_binding(
+    preferred: String,
+    taken: &mut std::collections::HashSet<String>,
+) -> String {
+    if taken.insert(preferred.clone()) {
+        return preferred;
+    }
+    let mut n = 2usize;
+    loop {
+        let candidate = format!("{preferred}{n}");
+        if taken.insert(candidate.clone()) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
+/// `preferred` if free, then `{preferred}_rel`, then numbered variants. `_rel`
+/// comes before the numbers so the names already emitted for FK fields that
+/// clash with their own column stay unchanged.
+fn first_unused(preferred: String, taken: &std::collections::HashSet<String>) -> String {
+    if !taken.contains(&preferred) {
+        return preferred;
+    }
+
+    let suffixed = format!("{preferred}_rel");
+    if !taken.contains(&suffixed) {
+        return suffixed;
+    }
+
+    let mut index = 2;
+    loop {
+        let candidate = format!("{preferred}_rel{index}");
+        if !taken.contains(&candidate) {
+            return candidate;
+        }
+        index += 1;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
@@ -146,6 +203,16 @@ mod tests {
         let mut buf = String::new();
         push_attr(&mut buf, "String");
         assert_eq!(buf, "String");
+    }
+
+    /// Bindings suffix numerically — no `_rel` step — and each claim records
+    /// itself, so a third claimant walks past the second's suffix.
+    #[test]
+    fn claim_binding_suffixes_numerically() {
+        let mut taken = std::collections::HashSet::new();
+        assert_eq!(claim_binding("user".to_string(), &mut taken), "user");
+        assert_eq!(claim_binding("user".to_string(), &mut taken), "user2");
+        assert_eq!(claim_binding("user".to_string(), &mut taken), "user3");
     }
 
     #[rstest]

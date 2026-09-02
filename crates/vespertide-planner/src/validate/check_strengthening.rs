@@ -1,7 +1,3 @@
-#![expect(
-    clippy::doc_markdown,
-    reason = "narrative prose: backend names (PostgreSQL, MySQL, SQLite) appear as plain words intentionally"
-)]
 //! Fault **F29** - CHECK expression strengthening detection.
 //!
 //! When a migration replaces a CHECK constraint with a *strictly

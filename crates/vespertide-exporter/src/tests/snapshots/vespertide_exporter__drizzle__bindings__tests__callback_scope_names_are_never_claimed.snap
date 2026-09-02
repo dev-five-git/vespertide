@@ -1,0 +1,47 @@
+---
+source: crates/vespertide-exporter/src/drizzle/bindings.rs
+expression: rendered
+---
+import { pgTable, foreignKey, integer } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
+
+export const t2 = pgTable("t", {
+  id: integer("id").primaryKey(),
+});
+
+export const one2 = pgTable("one", {
+  id: integer("id").primaryKey(),
+});
+
+export const many2 = pgTable("many", {
+  id: integer("id").primaryKey(),
+});
+
+export const refs = pgTable("refs", {
+  id: integer("id").primaryKey(),
+  tId: integer("t_id").notNull(),
+  oneId: integer("one_id").notNull(),
+  manyId: integer("many_id").notNull(),
+}, (t) => [
+  foreignKey({ columns: [t.tId], foreignColumns: [t2.id], name: "fk_refs__t_id" }),
+  foreignKey({ columns: [t.oneId], foreignColumns: [one2.id], name: "fk_refs__one_id" }),
+  foreignKey({ columns: [t.manyId], foreignColumns: [many2.id], name: "fk_refs__many_id" }),
+]);
+
+export const t2Relations = relations(t2, ({ one, many }) => ({
+  refs: many(refs),
+}));
+
+export const one2Relations = relations(one2, ({ one, many }) => ({
+  refs: many(refs),
+}));
+
+export const many2Relations = relations(many2, ({ one, many }) => ({
+  refs: many(refs),
+}));
+
+export const refsRelations = relations(refs, ({ one, many }) => ({
+  t: one(t2, { fields: [refs.tId], references: [t2.id] }),
+  one: one(one2, { fields: [refs.oneId], references: [one2.id] }),
+  many: one(many2, { fields: [refs.manyId], references: [many2.id] }),
+}));

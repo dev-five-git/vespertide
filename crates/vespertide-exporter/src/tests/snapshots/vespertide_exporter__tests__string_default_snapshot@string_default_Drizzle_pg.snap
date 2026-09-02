@@ -1,0 +1,8 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const stringDefaults = pgTable("string_defaults", {
+  id: integer("id").primaryKey(),
+  status: text("status").notNull().default("active"),
+});

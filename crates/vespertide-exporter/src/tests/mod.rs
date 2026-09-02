@@ -6,8 +6,24 @@ use crate::orm::{Orm, render_entity, render_entity_with_schema};
 
 pub(crate) mod fixtures;
 
+/// The ORM's snapshot label.
+///
+/// Drizzle has no backend-neutral output, so the single-`String` trait path
+/// the cross-ORM harness calls renders one dialect of the three. The label
+/// says which — the other two live in `drizzle`'s own per-dialect snapshots
+/// (`render_schema_full_file_per_dialect@{pg,mysql,sqlite}`).
+fn orm_label(orm: Orm) -> String {
+    match orm {
+        Orm::Drizzle => format!(
+            "Drizzle_{}",
+            crate::drizzle::DrizzleDialect::Pg.file_suffix()
+        ),
+        other => format!("{other:?}"),
+    }
+}
+
 /// Dispatch the per-ORM **multi-table** entry point so the cross-ORM
-/// `orm_cases!(multi ...)` arm renders a `Vec<TableDef>` schema for all five
+/// `orm_cases!(multi ...)` arm renders a `Vec<TableDef>` schema for all six
 /// ORMs through a single call. JPA's `render_entities` returns `Vec<String>`
 /// (one entry per entity); we join with `"\n"` to match the
 /// `String`-returning shape of the other four.
@@ -18,6 +34,7 @@ fn render_schema(orm: Orm, schema: &[TableDef]) -> Result<String, String> {
         Orm::SqlModel => crate::sqlmodel::render_entities(schema),
         Orm::Jpa => crate::jpa::render_entities(schema).map(|entities| entities.join("\n")),
         Orm::Prisma => crate::prisma::export(schema),
+        Orm::Drizzle => crate::drizzle::export(schema),
     }
 }
 
@@ -31,10 +48,11 @@ macro_rules! orm_cases {
         #[case::sqlmodel(Orm::SqlModel)]
         #[case::jpa(Orm::Jpa)]
         #[case::prisma(Orm::Prisma)]
+        #[case::drizzle(Orm::Drizzle)]
         fn $test_name(#[case] orm: Orm) {
             let table = $fixture();
             let rendered = render_entity(orm, &table).unwrap();
-            with_settings!({ snapshot_suffix => format!("{}_{:?}", $scenario, orm) }, {
+            with_settings!({ snapshot_suffix => format!("{}_{}", $scenario, orm_label(orm)) }, {
                 assert_snapshot!(rendered);
             });
         }
@@ -48,10 +66,11 @@ macro_rules! orm_cases {
         #[case::sqlmodel(Orm::SqlModel)]
         #[case::jpa(Orm::Jpa)]
         #[case::prisma(Orm::Prisma)]
+        #[case::drizzle(Orm::Drizzle)]
         fn $test_name(#[case] orm: Orm) {
             let schema: Vec<TableDef> = $fixture();
             let rendered = render_schema(orm, &schema).unwrap();
-            with_settings!({ snapshot_suffix => format!("{}_{:?}", $scenario, orm) }, {
+            with_settings!({ snapshot_suffix => format!("{}_{}", $scenario, orm_label(orm)) }, {
                 assert_snapshot!(rendered);
             });
         }
@@ -67,6 +86,11 @@ orm_cases!(
     basic_single_pk_snapshot,
     "basic_single_pk",
     fixtures::basic_single_pk
+);
+orm_cases!(
+    table_with_check_snapshot,
+    "table_with_check",
+    fixtures::table_with_check
 );
 orm_cases!(
     composite_pk_snapshot,
@@ -268,7 +292,7 @@ orm_cases!(
 );
 // Cross-ORM comparison of identifier escaping. Each language starts identifiers
 // differently — Prisma and Pydantic reject a leading `_`, the rest accept it —
-// so the five snapshots must differ, and every one has to carry the original
+// so the six snapshots must differ, and every one has to carry the original
 // name (`@@map` / `@map`, `column_name`, the positional column name,
 // `sa_column_kwargs`, `@Table`/`@Column`).
 orm_cases!(
@@ -298,7 +322,7 @@ orm_cases!(
 // A composite FK becomes a relation only where the backend can express one
 // (`SeaORM`'s tuple `from`/`to`, Prisma's multi-column `fields`/`references`);
 // the Python backends keep it as a `ForeignKeyConstraint` and JPA currently
-// drops it, so the five outputs disagree in a way worth pinning.
+// drops it, so the six outputs disagree in a way worth pinning.
 orm_cases!(
     multi composite_fk_relation_snapshot,
     "composite_fk_relation",
@@ -347,6 +371,11 @@ orm_cases!(
     "small_multi_schema_sequential",
     fixtures::small_multi_schema
 );
+orm_cases!(
+    multi binding_collisions_snapshot,
+    "binding_collisions",
+    fixtures::binding_collisions
+);
 
 /// Dispatch the per-ORM `to_pascal_case` helper from a single entry point so
 /// the cross-ORM consolidation test can exercise every implementation without
@@ -359,17 +388,17 @@ fn to_pascal_case_for(orm: Orm, s: &str) -> String {
         Orm::SqlAlchemy => crate::sqlalchemy::to_pascal_case_for_tests(s),
         Orm::SqlModel => crate::sqlmodel::to_pascal_case_for_tests(s),
         Orm::Jpa => crate::jpa::to_pascal_case_for_tests(s),
-        Orm::Prisma => vespertide_naming::to_pascal_case(s),
+        Orm::Prisma | Orm::Drizzle => vespertide_naming::to_pascal_case(s),
     }
 }
 
 /// Cross-ORM `to_pascal_case` consolidation. Inputs in this matrix are
 /// restricted to ASCII with `_` as the only separator — the subset where all
-/// five ORM implementations agree.
+/// six ORM implementations agree.
 ///
 /// Divergences intentionally NOT covered here:
-/// * `-` as separator: `SeaORM` and Prisma treat it as a separator (Prisma via
-///   `vespertide_naming::to_pascal_case`), the other three ORMs leave it
+/// * `-` as separator: `SeaORM`, Prisma and Drizzle treat it as a separator
+///   (the latter two via `vespertide_naming`), the other three ORMs leave it
 ///   intact (their splits operate on `_` only).
 /// * Non-ASCII characters: `SeaORM` and Prisma use `to_ascii_uppercase`, the
 ///   others use `to_uppercase` (Unicode-aware).
@@ -381,6 +410,7 @@ fn to_pascal_case_for(orm: Orm, s: &str) -> String {
 #[case::sqlmodel(Orm::SqlModel)]
 #[case::jpa(Orm::Jpa)]
 #[case::prisma(Orm::Prisma)]
+#[case::drizzle(Orm::Drizzle)]
 fn to_pascal_case_shared_semantics(
     #[values(
         ("", ""),
@@ -408,6 +438,7 @@ fn to_pascal_case_shared_semantics(
 #[case::sqlmodel(Orm::SqlModel)]
 #[case::jpa(Orm::Jpa)]
 #[case::prisma(Orm::Prisma)]
+#[case::drizzle(Orm::Drizzle)]
 fn render_entity_with_schema_snapshots(
     #[values(
         "many_to_many_article",
@@ -431,7 +462,7 @@ fn render_entity_with_schema_snapshots(
 ) {
     let (table, schema) = fixtures::schema_scenario(scenario);
     let rendered = render_entity_with_schema(orm, &table, &schema).unwrap();
-    with_settings!({ snapshot_suffix => format!("{}_{:?}", scenario, orm) }, {
+    with_settings!({ snapshot_suffix => format!("{}_{}", scenario, orm_label(orm)) }, {
         assert_snapshot!(rendered);
     });
 }

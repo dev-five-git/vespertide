@@ -1,0 +1,9 @@
+---
+source: crates/vespertide-cli/src/commands/export/tests/drizzle.rs
+expression: written
+---
+import { pgTable, integer } from "drizzle-orm/pg-core";
+
+export const events = pgTable("events", {
+  id: integer("id").primaryKey(),
+});

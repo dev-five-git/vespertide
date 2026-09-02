@@ -1,0 +1,15 @@
+---
+source: crates/vespertide-exporter/src/drizzle/mod.rs
+expression: rendered
+---
+import { mysqlTable, int, mysqlEnum } from "drizzle-orm/mysql-core";
+
+export const orders = mysqlTable("orders", {
+  id: int("id").primaryKey(),
+  st: mysqlEnum("st", ["new", "paid"]).notNull(),
+});
+
+export const tickets = mysqlTable("tickets", {
+  id: int("id").primaryKey(),
+  st: mysqlEnum("st", ["new", "paid"]).notNull(),
+});

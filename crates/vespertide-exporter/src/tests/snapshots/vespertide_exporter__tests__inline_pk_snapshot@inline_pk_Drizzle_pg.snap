@@ -1,0 +1,8 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const users = pgTable("users", {
+  id: uuid("id").notNull().defaultRandom(),
+  email: text("email").notNull(),
+});

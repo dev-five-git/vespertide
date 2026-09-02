@@ -1,0 +1,14 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const membership = pgTable("membership", {
+  x1tenantId: integer("1tenant_id").notNull(),
+  x2userId: integer("2user_id").notNull(),
+  userEmail: text("user-email").notNull(),
+  x3created: text("3created").notNull(),
+}, (t) => [
+  primaryKey({ name: "membership_pkey", columns: [t.x1tenantId, t.x2userId] }),
+  uniqueIndex("uq_membership__1tenant_id_user-email").on(t.userEmail, t.x1tenantId),
+  index("ix_membership__3created").on(t.x3created),
+]);
