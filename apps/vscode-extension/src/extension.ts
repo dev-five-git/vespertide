@@ -127,7 +127,7 @@ async function startClient(context: vscode.ExtensionContext): Promise<void> {
       ),
     },
     revealOutputChannelOn: RevealOutputChannelOn.Error,
-    traceOutputChannel: vscode.window.createOutputChannel("Vespertide LSP Trace"),
+    traceOutputChannel: vscode.window.createOutputChannel("Vespertide LSP Trace", { log: true }),
   };
 
   client = new LanguageClient("vespertide", "Vespertide", serverOptions, clientOptions);
