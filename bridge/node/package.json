@@ -1,6 +1,6 @@
 {
   "name": "vespertide",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Declarative database schema management: models in JSON/YAML, migration planning, SQL and ORM code generation",
   "license": "Apache-2.0",
   "repository": {
