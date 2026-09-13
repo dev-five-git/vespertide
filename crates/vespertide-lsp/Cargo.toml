@@ -62,7 +62,7 @@ vespertide-loader = { workspace = true }
 [dev-dependencies]
 insta = { version = "1.48", features = ["json", "yaml"] }
 proptest = "1"
-rstest = "0.26"
+rstest = "0.27"
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 criterion = { version = "0.8", features = ["html_reports"] }

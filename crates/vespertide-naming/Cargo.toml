@@ -16,7 +16,7 @@ readme = "../../README.md"
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports"] }
 proptest = "1"
-rstest = "0.26"
+rstest = "0.27"
 
 [[bench]]
 name = "naming_benchmarks"

@@ -24,7 +24,7 @@ cli = ["dep:clap"]
 
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports"] }
-rstest = "0.26"
+rstest = "0.27"
 insta = { version = "1.48", features = ["yaml"] }
 proptest = "1"
 vespertide-core = { workspace = true, features = ["arbitrary"] }
