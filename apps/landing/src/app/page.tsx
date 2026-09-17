@@ -106,7 +106,10 @@ $ vespertide export --orm sqlalchemy
 $ vespertide export --orm sqlmodel
 
 # Or Go — GORM
-$ vespertide export --orm gorm`
+$ vespertide export --orm gorm
+
+# Or Django
+$ vespertide export --orm django`
 
 type FeatureIconName =
   | 'hamburger'
@@ -158,7 +161,7 @@ const FEATURES: { icon: FeatureIconName; title: string; desc: string }[] = [
   {
     icon: 'external-link',
     title: 'ORM export',
-    desc: 'One command emits SeaORM, SQLAlchemy, SQLModel, or GORM — entities stay in lockstep with schema.',
+    desc: 'One command emits SeaORM, SQLAlchemy, Django, GORM and more — entities stay in lockstep with schema.',
   },
   {
     icon: 'github',
@@ -220,6 +223,10 @@ const ORMS = [
   { lang: 'Rust', name: 'SeaORM' },
   { lang: 'Python', name: 'SQLAlchemy' },
   { lang: 'Python', name: 'SQLModel · FastAPI' },
+  { lang: 'Python', name: 'Django' },
+  { lang: 'Java', name: 'JPA · Hibernate' },
+  { lang: 'TypeScript', name: 'Prisma' },
+  { lang: 'TypeScript', name: 'Drizzle' },
   { lang: 'Go', name: 'GORM' },
 ]
 
@@ -604,7 +611,7 @@ function ExamplesSection({ examples }: { examples: CodeExampleQuad }) {
                 },
                 {
                   k: 'Export.',
-                  v: 'SeaORM, SQLAlchemy, SQLModel, GORM — typed entities, generated.',
+                  v: 'SeaORM, SQLAlchemy, Django, GORM and more — typed entities, generated.',
                 },
               ].map((it) => (
                 <Flex alignItems="flex-start" gap="12px" key={it.k}>
