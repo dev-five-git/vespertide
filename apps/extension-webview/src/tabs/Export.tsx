@@ -16,30 +16,13 @@ interface ExportFile {
   isDummy: boolean;
 }
 
-// 실제 마이그레이션/ERD가 아직 없을 때 Export 탭이 빈 화면으로 보이지 않도록 쓰는
+// 실제 마이그레이션이 아직 없을 때 Export 탭이 빈 화면으로 보이지 않도록 쓰는
 // 프리뷰용 더미 데이터 (files 배열의 isDummy 플래그로 PREVIEW 배지와 함께 표시됨).
-// 의도적으로 유지 — 제거 대상 아님.
 const DUMMY_SQL_PG = `-- PostgreSQL migration (preview)\n\nCREATE TABLE "users" (\n  "id" SERIAL NOT NULL,\n  "email" TEXT NOT NULL,\n  "name" TEXT,\n  "created_at" TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),\n  CONSTRAINT "pk_users" PRIMARY KEY ("id"),\n  CONSTRAINT "uq_users__email" UNIQUE ("email")\n);\n\nCREATE TABLE "posts" (\n  "id" SERIAL NOT NULL,\n  "title" TEXT NOT NULL,\n  "content" TEXT,\n  "published" BOOLEAN NOT NULL DEFAULT false,\n  "author_id" INTEGER NOT NULL,\n  CONSTRAINT "pk_posts" PRIMARY KEY ("id"),\n  CONSTRAINT "fk_posts__author_id" FOREIGN KEY ("author_id") REFERENCES "users" ("id")\n);\n\nCREATE INDEX "ix_posts__author_id" ON "posts" ("author_id");`;
 
 const DUMMY_SQL_MY = `-- MySQL migration (preview)\n\nCREATE TABLE \`users\` (\n  \`id\` INT NOT NULL AUTO_INCREMENT,\n  \`email\` VARCHAR(191) NOT NULL,\n  \`name\` VARCHAR(191),\n  PRIMARY KEY (\`id\`),\n  CONSTRAINT \`uq_users__email\` UNIQUE (\`email\`)\n) ENGINE=InnoDB;\n\nCREATE TABLE \`posts\` (\n  \`id\` INT NOT NULL AUTO_INCREMENT,\n  \`title\` VARCHAR(191) NOT NULL,\n  \`author_id\` INT NOT NULL,\n  PRIMARY KEY (\`id\`),\n  CONSTRAINT \`fk_posts__author_id\` FOREIGN KEY (\`author_id\`) REFERENCES \`users\` (\`id\`)\n) ENGINE=InnoDB;`;
 
 const DUMMY_SQL_SQ = `-- SQLite migration (preview)\n\nCREATE TABLE "users" (\n  "id" INTEGER NOT NULL,\n  "email" TEXT NOT NULL,\n  "name" TEXT,\n  CONSTRAINT "pk_users" PRIMARY KEY ("id" AUTOINCREMENT),\n  CONSTRAINT "uq_users__email" UNIQUE ("email")\n);\n\nCREATE TABLE "posts" (\n  "id" INTEGER NOT NULL,\n  "title" TEXT NOT NULL,\n  "author_id" INTEGER NOT NULL,\n  CONSTRAINT "pk_posts" PRIMARY KEY ("id" AUTOINCREMENT),\n  CONSTRAINT "fk_posts__author_id" FOREIGN KEY ("author_id") REFERENCES "users" ("id")\n);`;
-
-const DUMMY_SVG = `<!-- ERD Diagram (preview) -->\n<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" viewBox="0 0 400 200">\n  <rect x="20" y="20" width="160" height="80" rx="8"\n    fill="#1e1e2e" stroke="#6366f1" stroke-width="1.5"/>\n  <text x="100" y="65" font-family="sans-serif" font-size="13"\n    fill="#a5b4fc" text-anchor="middle">users</text>\n  <rect x="220" y="20" width="160" height="80" rx="8"\n    fill="#1e1e2e" stroke="#8b5cf6" stroke-width="1.5"/>\n  <text x="300" y="65" font-family="sans-serif" font-size="13"\n    fill="#c4b5fd" text-anchor="middle">posts</text>\n  <path d="M180 60 C200 60, 200 60, 220 60"\n    fill="none" stroke="rgba(99,102,241,0.6)" stroke-width="1.5"\n    stroke-dasharray="5 3"/>\n</svg>`;
-
-// state.svg처럼 dangerouslySetInnerHTML로 주입하지 않고 JSX로 직접 렌더링되는 ERD 프리뷰.
-// DUMMY_SVG(위)는 복사/저장/소스보기용 문자열로 별도 유지.
-function DummyErdSvg() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" viewBox="0 0 400 200">
-      <rect x="20" y="20" width="160" height="80" rx="8" fill="#1e1e2e" stroke="#6366f1" strokeWidth="1.5" />
-      <text x="100" y="65" fontFamily="sans-serif" fontSize="13" fill="#a5b4fc" textAnchor="middle">users</text>
-      <rect x="220" y="20" width="160" height="80" rx="8" fill="#1e1e2e" stroke="#8b5cf6" strokeWidth="1.5" />
-      <text x="300" y="65" fontFamily="sans-serif" fontSize="13" fill="#c4b5fd" textAnchor="middle">posts</text>
-      <path d="M180 60 C200 60, 200 60, 220 60" fill="none" stroke="rgba(99,102,241,0.6)" strokeWidth="1.5" strokeDasharray="5 3" />
-    </svg>
-  );
-}
 
 // ── Export actions ────────────────────────────────────────────────────────────
 
@@ -80,7 +63,7 @@ export default function Export({ state }: Props) {
     { id: 'sql-sq',    label: 'migration.sqlite',   ext: '.sql',    lang: 'SQL',     content: state.sqlite   || DUMMY_SQL_SQ, isDummy: !hasSql },
     { id: 'orm-src',   label: `schema.${state.ormType}`, ext: state.ormType === 'prisma' ? '.prisma' : state.ormType === 'drizzle' || state.ormType === 'typeorm' ? '.ts' : state.ormType === 'gorm' ? '.go' : '.java', lang: ormLabel, content: state.ormSource || DEFAULT_SCHEMAS[state.ormType], isDummy: !state.ormSource },
     { id: 'schema-json', label: 'schema', ext: '.json', lang: 'JSON', content: hasSchema ? JSON.stringify(state.schema, null, 2) : '{}', isDummy: !hasSchema },
-    { id: 'erd-svg',   label: 'erd-diagram', ext: '.svg', lang: 'SVG', content: state.svg || DUMMY_SVG, isDummy: !hasSvg },
+    { id: 'erd-svg',   label: 'erd-diagram', ext: '.svg', lang: 'SVG', content: state.svg, isDummy: !hasSvg },
     { id: 'erd-pdf',   label: 'erd-diagram', ext: '.pdf', lang: 'PDF', content: '', isDummy: !hasSvg },
   ];
 
@@ -256,12 +239,28 @@ function FilePreviewBody({ file }: { file: ExportFile }) {
     );
   }
 
-  if (file.id === 'erd-svg' && (file.isDummy || file.content.startsWith('<svg'))) {
+  if (file.id === 'erd-svg' && file.isDummy) {
     return (
       <Box flex={1} overflow="auto" p="24px" bg="$editorBg">
-        {file.isDummy
-          ? <DummyErdSvg />
-          : <Box dangerouslySetInnerHTML={{ __html: file.content }} maxWidth="100%" />}
+        <Box
+          py="16px"
+          px="20px"
+          borderRadius="8px"
+          bg="rgba(99,102,241,0.08)"
+          border="1px solid rgba(99,102,241,0.2)"
+          fontSize="13px"
+          color="$editorFg"
+        >
+          ⚠ ORM Editor에서 스키마를 먼저 입력하세요.
+        </Box>
+      </Box>
+    );
+  }
+
+  if (file.id === 'erd-svg' && file.content.startsWith('<svg')) {
+    return (
+      <Box flex={1} overflow="auto" p="24px" bg="$editorBg">
+        <Box dangerouslySetInnerHTML={{ __html: file.content }} maxWidth="100%" />
         <Box mt="16px" fontSize="11px" opacity={0.4}>SVG 소스:</Box>
         <Box
           as="pre"
