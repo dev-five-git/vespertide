@@ -4,6 +4,7 @@ import { postMessage } from '../vscode';
 import type { AppState } from '../App';
 import { DEFAULT_SCHEMAS } from '../App';
 import type { OrmType, WebviewMessage } from '../vscode';
+import { useCopy } from '../hooks/useCopy';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -50,7 +51,7 @@ interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction
 
 export default function Export({ state }: Props) {
   const [panelId, setPanelId] = useState('sql-pg');
-  const [copied, setCopied]   = useState<string | null>(null);
+  const { copiedId, copy }    = useCopy();
 
   const hasSql    = !!(state.postgres || state.mysql || state.sqlite);
   const hasSvg    = !!state.svg;
@@ -68,13 +69,6 @@ export default function Export({ state }: Props) {
   ];
 
   const selectedFile = files.find((f) => f.id === panelId);
-
-  function copyContent(content: string, id: string) {
-    navigator.clipboard.writeText(content).then(() => {
-      setCopied(id);
-      setTimeout(() => setCopied(null), 1500);
-    });
-  }
 
   return (
     <Flex h="100%" overflow="hidden">
@@ -116,8 +110,8 @@ export default function Export({ state }: Props) {
           <>
             <FileHeader
               file={selectedFile}
-              copied={copied === selectedFile.id}
-              onCopy={() => copyContent(selectedFile.content, selectedFile.id)}
+              copied={copiedId === selectedFile.id}
+              onCopy={() => copy(selectedFile.content, selectedFile.id)}
               onSave={() => saveFile(selectedFile, state.ormType)}
             />
             <FilePreviewBody file={selectedFile} />
@@ -140,7 +134,7 @@ function SectionHeader({ label }: { label: string }) {
 
 function GroupLabel({ label }: { label: string }) {
   return (
-    <Text as="div" py="6px" px="10px" pb="2px" fontSize="9px" fontWeight={600} color="$nodeTextDim" letterSpacing="0.06em">
+    <Text as="div" py="6px" px="10px" pb="2px" fontSize="10px" fontWeight={600} color="$nodeTextDim" letterSpacing="0.06em">
       {label}
     </Text>
   );
@@ -158,13 +152,13 @@ function FileRow({ f, active, onClick }: { f: ExportFile; active: boolean; onCli
       bg={active ? 'rgba(99,102,241,0.15)' : 'transparent'}
       borderLeft={active ? '2px solid $focusBorder' : '2px solid transparent'}
     >
-      <Box as="span" fontSize="10px" color="$nodeTextDim" flexShrink={0}>
+      <Text as="span" fontSize="10px" color="$nodeTextDim" flexShrink={0}>
         {f.ext === '.sql' ? '≡' : f.ext === '.svg' || f.ext === '.pdf' ? '◫' : '{ }'}
-      </Box>
-      <Box as="span" flex={1} fontSize="12px" overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap" color="$nodeText">
-        {f.label}<Box as="span" color="$nodeTextDim">{f.ext}</Box>
-      </Box>
-      {f.isDummy && <Box as="span" fontSize="9px" color="$nodeTextDim">~</Box>}
+      </Text>
+      <Text as="span" flex={1} fontSize="12px" overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap" color="$nodeText">
+        {f.label}<Text as="span" color="$nodeTextDim">{f.ext}</Text>
+      </Text>
+      {f.isDummy && <Text as="span" fontSize="10px" color="$nodeTextDim">~</Text>}
     </Flex>
   );
 }
@@ -185,28 +179,28 @@ function FileHeader({ file, copied, onCopy, onSave }: {
     >
       <Text as="span" fontWeight={600}>{file.label}</Text>
       <Text as="span" color="$nodeTextDim">{file.ext}</Text>
-      <Box
+      <Text
         as="span"
-        fontSize="9px"
+        fontSize="10px"
         py="2px"
         px="6px"
-        borderRadius="3px"
+        borderRadius="4px"
         bg="rgba(99,102,241,0.15)"
         color="#a5b4fc"
         border="1px solid rgba(99,102,241,0.25)"
         fontWeight={700}
-      >{file.lang}</Box>
+      >{file.lang}</Text>
       {file.isDummy && (
-        <Box
+        <Text
           as="span"
-          fontSize="9px"
+          fontSize="10px"
           py="2px"
           px="6px"
-          borderRadius="3px"
+          borderRadius="4px"
           bg="rgba(251,191,36,0.12)"
           color="#fbbf24"
           border="1px solid rgba(251,191,36,0.25)"
-        >PREVIEW</Box>
+        >PREVIEW</Text>
       )}
       <Box flex={1} />
       <Box as="button" onClick={onCopy} {...btnStyle(copied ? 'green' : 'default')}>
@@ -221,20 +215,21 @@ function FilePreviewBody({ file }: { file: ExportFile }) {
   if (file.id === 'erd-pdf') {
     return (
       <Box flex={1} overflow="auto" p="24px" bg="$editorBg">
-        <Box
+        <Text
+          as="div"
           py="16px"
           px="20px"
           borderRadius="8px"
           bg="rgba(99,102,241,0.08)"
           border="1px solid rgba(99,102,241,0.2)"
-          fontSize="13px"
+          fontSize="14px"
           lineHeight={1.8}
           color="$editorFg"
         >
           PDF export converts the ERD diagram SVG to a portable document.{'\n\n'}
           Click &quot;저장&quot; to generate the PDF file.{'\n'}
           {file.isDummy ? '⚠ ORM Editor에서 스키마를 먼저 입력하세요.' : '✓ ERD 준비 완료.'}
-        </Box>
+        </Text>
       </Box>
     );
   }
@@ -242,17 +237,18 @@ function FilePreviewBody({ file }: { file: ExportFile }) {
   if (file.id === 'erd-svg' && file.isDummy) {
     return (
       <Box flex={1} overflow="auto" p="24px" bg="$editorBg">
-        <Box
+        <Text
+          as="div"
           py="16px"
           px="20px"
           borderRadius="8px"
           bg="rgba(99,102,241,0.08)"
           border="1px solid rgba(99,102,241,0.2)"
-          fontSize="13px"
+          fontSize="14px"
           color="$editorFg"
         >
           ⚠ ORM Editor에서 스키마를 먼저 입력하세요.
-        </Box>
+        </Text>
       </Box>
     );
   }
@@ -261,20 +257,20 @@ function FilePreviewBody({ file }: { file: ExportFile }) {
     return (
       <Box flex={1} overflow="auto" p="24px" bg="$editorBg">
         <Box dangerouslySetInnerHTML={{ __html: file.content }} maxWidth="100%" />
-        <Box mt="16px" fontSize="11px" opacity={0.4}>SVG 소스:</Box>
-        <Box
+        <Text as="div" mt="16px" fontSize="12px" opacity={0.4}>SVG 소스:</Text>
+        <Text
           as="pre"
           mt="8px"
           py="10px"
           px="14px"
           bg="rgba(0,0,0,0.2)"
           borderRadius="6px"
-          fontSize="11px"
+          fontSize="12px"
           lineHeight={1.6}
           whiteSpace="pre"
           overflowX="auto"
           color="$editorFg"
-        >{file.content}</Box>
+        >{file.content}</Text>
       </Box>
     );
   }
@@ -290,18 +286,18 @@ function FilePreviewBody({ file }: { file: ExportFile }) {
     >
       {file.content.split('\n').map((line, i) => (
         <Flex key={i} minH="20px">
-          <Box
+          <Text
             as="span"
             minW="44px"
             pr="10px"
             textAlign="right"
             flexShrink={0}
-            fontSize="11px"
+            fontSize="12px"
             lineHeight="20px"
             userSelect="none"
             color="$diffLinenum"
-          >{i + 1}</Box>
-          <Box as="span" flex={1} pr="16px" lineHeight="20px" whiteSpace="pre" color="$editorFg">{line}</Box>
+          >{i + 1}</Text>
+          <Text as="span" flex={1} pr="16px" lineHeight="20px" whiteSpace="pre" color="$editorFg">{line}</Text>
         </Flex>
       ))}
     </Box>
@@ -313,10 +309,10 @@ function FilePreviewBody({ file }: { file: ExportFile }) {
 function btnStyle(variant: 'primary' | 'default' | 'green') {
   const base = {
     border: 'none' as const,
-    borderRadius: '3px',
-    py: '3px',
+    borderRadius: '4px',
+    py: '4px',
     px: '12px',
-    fontSize: '11px',
+    fontSize: '12px',
     cursor: 'pointer' as const,
     fontFamily: 'inherit',
     flexShrink: 0,
