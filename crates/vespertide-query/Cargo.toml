@@ -34,7 +34,7 @@ vespertide-core = { workspace = true, features = ["arbitrary"] }
 # - rusqlite (bundled): in-memory SQLite for real execution checks (no system libsqlite needed)
 # - sqlparser:          pure-Rust 3-dialect SQL parser for Postgres/MySQL/SQLite syntax checks
 rusqlite = { version = "0.40", features = ["bundled"] }
-sqlparser = "0.62"
+sqlparser = "0.63"
 # pg_query = PostgreSQL's real C parser (libpg_query) via FFI, for strict PG
 # SQL validation. Windows (MSVC + GNU) is supported since libpg_query 16-5.1.0
 # / pg_query v5+ and CI-tested upstream, so NO platform gate — the test must

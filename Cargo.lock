@@ -2311,9 +2311,9 @@ dependencies = [
 
 [[package]]
 name = "sqlparser"
-version = "0.62.0"
+version = "0.63.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13c6d1b651dc4edf07eead2a0c6c78016ce971bc2c10da5266861b13f25e7cec"
+checksum = "3679862809bd1f92e563cf6fd820e28f39135303668001c10331d5027183e8b4"
 dependencies = [
  "log",
  "recursive",
@@ -2833,7 +2833,7 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "vespertide"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "sea-orm",
  "tokio",
@@ -2843,7 +2843,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-cli"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2877,7 +2877,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-config"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "clap",
  "schemars",
@@ -2887,7 +2887,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "criterion",
  "proptest",
@@ -2902,7 +2902,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-exporter"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "clap",
  "criterion",
@@ -2932,7 +2932,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-loader"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "rayon",
@@ -2948,7 +2948,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-lsp"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "criterion",
  "dashmap",
@@ -2979,7 +2979,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-macro"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -2999,7 +2999,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-naming"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "criterion",
  "proptest",
@@ -3018,7 +3018,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-planner"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "criterion",
  "insta",
@@ -3033,7 +3033,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-query"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "criterion",
  "insta",
