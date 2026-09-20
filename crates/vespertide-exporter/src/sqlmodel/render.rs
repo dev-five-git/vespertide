@@ -7,6 +7,7 @@ use crate::parallel_config::{
 use crate::utils::common::{
     CompositeFk, collect_composite_fks, join_qualified_refs, join_quoted, unquote,
 };
+use crate::utils::python::escape_python_keyword;
 use vespertide_core::schema::column::{ColumnType, ComplexColumnType, EnumValues};
 use vespertide_core::schema::constraint::TableConstraint;
 use vespertide_core::{ColumnDef, TableDef};
@@ -417,7 +418,10 @@ pub(super) fn render_column(
     // Build field definition
     // Pydantic rejects a leading `_` on model fields, so the escape is a letter.
     // A renamed field no longer points at its column, so name it explicitly.
-    let field_name = sanitize_identifier(col.name.as_str(), IdentifierStart::Letter);
+    let field_name = escape_python_keyword(sanitize_identifier(
+        col.name.as_str(),
+        IdentifierStart::Letter,
+    ));
     if field_name != col.name.as_str() {
         field_args.push(format!("sa_column_kwargs={{\"name\": \"{}\"}}", col.name));
     }

@@ -1,6 +1,6 @@
 //! Shared `to_pascal_case`: split on `_`, upper-case the first character of
-//! each segment, keep the rest verbatim. SQLAlchemy, SQLModel, JPA, GORM and
-//! the CLI's filename derivation all want exactly that rule, which
+//! each segment, keep the rest verbatim. SQLAlchemy, SQLModel, JPA, Django,
+//! GORM and the CLI's filename derivation all want exactly that rule, which
 //! is a naming convention rather than a language feature — which is why the
 //! Java and Go backends share it instead of carrying copies.
 //!

@@ -8,7 +8,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use vespertide_core::{ColumnName, ReferenceAction, TableConstraint, TableDef};
+use vespertide_core::{ColumnName, ReferenceAction, TableConstraint, TableDef, TableName};
 use vespertide_naming::{infer_relation_field_name, to_pascal_case};
 
 /// Collect the column names from every single-column constraint that `extract`
@@ -114,6 +114,47 @@ pub(crate) fn single_column_fk_details(
         }
     }
     map
+}
+
+/// The tables `junction` links `current` to, when `junction` is a many-to-many
+/// junction: a composite primary key (`junction_pk`, two or more columns), two
+/// or more foreign keys whose columns all lie in that key, and one of them
+/// pointing at `current`. The targets are the other keys' tables in constraint
+/// order — empty when every key points back at `current`, which is a
+/// self-relation rather than a link. `None` when `junction` is not such a
+/// table. Callers decide whether a target outside their schema counts.
+pub(crate) fn junction_targets<'a>(
+    current: &TableDef,
+    junction: &'a TableDef,
+    junction_pk: &HashSet<&str>,
+) -> Option<Vec<&'a TableName>> {
+    if junction_pk.len() < 2 {
+        return None;
+    }
+    let fks: Vec<(&[ColumnName], &TableName)> = junction
+        .constraints
+        .iter()
+        .filter_map(|c| match c {
+            TableConstraint::ForeignKey {
+                columns, ref_table, ..
+            } => Some((columns.as_slice(), ref_table)),
+            _ => None,
+        })
+        .collect();
+    if fks.len() < 2
+        || !fks
+            .iter()
+            .all(|(cols, _)| cols.iter().all(|c| junction_pk.contains(c.as_str())))
+    {
+        return None;
+    }
+    fks.iter().find(|(_, target)| **target == current.name)?;
+    Some(
+        fks.into_iter()
+            .filter(|(_, target)| **target != current.name)
+            .map(|(_, target)| target)
+            .collect(),
+    )
 }
 
 /// Name segment a relation derives from its FK columns.
