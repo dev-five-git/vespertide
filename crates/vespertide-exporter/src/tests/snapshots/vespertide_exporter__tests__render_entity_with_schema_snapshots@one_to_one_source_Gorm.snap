@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+package models
+
+import (
+	"github.com/google/uuid"
+)
+
+type Profile struct {
+	ID     uuid.UUID `gorm:"column:id;primaryKey;type:uuid" json:"id"`
+	UserID uuid.UUID `gorm:"column:user_id;not null;unique;type:uuid" json:"user_id"`
+	User   *User     `gorm:"foreignKey:UserID" json:"-"`
+}
+
+func (Profile) TableName() string { return "profile" }

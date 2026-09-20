@@ -131,6 +131,26 @@ pub(crate) fn schema_scenario(name: &str) -> (TableDef, Vec<TableDef>) {
             &["created_by_user_id", "updated_by_user_id"],
             true,
         ),
+        // A junction whose target pluralizes to a keyword (`pass`), a junction
+        // name that needs sanitizing, and a scalar column already named after
+        // the other target (`tags`).
+        "one_to_one_source" => {
+            let (_, schema) = reverse_user_schema("profile", &["user_id"], true);
+            (schema[1].clone(), schema)
+        }
+        // A one-to-one whose key is the source's whole primary key, rendered
+        // from the target: the reverse side holds at most one row.
+        "one_to_one_shared_primary_key" => {
+            let user =
+                table_with_named_pk("user", vec![simple("id", SimpleColumnType::Uuid)], &["id"]);
+            let profile = table_with_fk_constraints(
+                "profile",
+                vec![simple("user_id", SimpleColumnType::Uuid)],
+                &["user_id"],
+                vec![(vec!["user_id"], "user", vec!["id"])],
+            );
+            (user.clone(), vec![user, profile])
+        }
         "composite_and_single_fk_same_target" => {
             let target = table(
                 "target",

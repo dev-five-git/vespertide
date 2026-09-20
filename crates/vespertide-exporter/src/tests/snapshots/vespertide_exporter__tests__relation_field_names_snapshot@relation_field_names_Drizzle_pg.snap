@@ -1,0 +1,64 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const orderRegions = pgTable("order_regions", {
+  orderId: integer("order_id").notNull(),
+  regionId: integer("region_id").notNull(),
+}, (t) => [
+  primaryKey({ name: "order_regions_pkey", columns: [t.orderId, t.regionId] }),
+]);
+
+export const orderRegionsRelations = relations(orderRegions, ({ one, many }) => ({
+  orderItems: many(orderItems),
+}));
+
+export const orderItems = pgTable("order_items", {
+  id: integer("id").primaryKey(),
+  orderId: integer("order_id").notNull(),
+  regionId: integer("region_id").notNull(),
+  orderRegions: text("order_regions").notNull(),
+  orderRegions2: text("order_regions2").notNull(),
+}, (t) => [
+  foreignKey({ columns: [t.orderId, t.regionId], foreignColumns: [orderRegions.orderId, orderRegions.regionId], name: "fk_order_items__order_id_region_id" }).onDelete("cascade").onUpdate("restrict"),
+]);
+
+export const orderItemsRelations = relations(orderItems, ({ one, many }) => ({
+  orderRegion: one(orderRegions, { fields: [orderItems.orderId, orderItems.regionId], references: [orderRegions.orderId, orderRegions.regionId] }),
+}));
+
+export const users = pgTable("users", {
+  id: integer("id").primaryKey(),
+  posts: text("posts").notNull(),
+});
+
+export const usersRelations = relations(users, ({ one, many }) => ({
+  posts_rel: many(posts),
+}));
+
+export const posts = pgTable("posts", {
+  id: integer("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  tableNameId: integer("table_name_id").notNull(),
+}, (t) => [
+  foreignKey({ columns: [t.userId], foreignColumns: [users.id], name: "fk_posts__user_id" }),
+  foreignKey({ columns: [t.tableNameId], foreignColumns: [categories.id], name: "fk_posts__table_name_id" }),
+]);
+
+export const postsRelations = relations(posts, ({ one, many }) => ({
+  user: one(users, { fields: [posts.userId], references: [users.id] }),
+  tableName: one(categories, { fields: [posts.tableNameId], references: [categories.id] }),
+}));
+
+export const categories = pgTable("categories", {
+  id: integer("id").primaryKey(),
+  parentId: integer("parent_id"),
+}, (t) => [
+  foreignKey({ columns: [t.parentId], foreignColumns: [t.id], name: "fk_categories__parent_id" }),
+]);
+
+export const categoriesRelations = relations(categories, ({ one, many }) => ({
+  parent: one(categories, { fields: [categories.parentId], references: [categories.id], relationName: "CategoriesParent" }),
+  posts: many(posts),
+  parentCategories: many(categories, { relationName: "CategoriesParent" }),
+}));

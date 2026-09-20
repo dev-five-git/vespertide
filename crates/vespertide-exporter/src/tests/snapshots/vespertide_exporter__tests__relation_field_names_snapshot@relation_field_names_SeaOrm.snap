@@ -1,0 +1,96 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "order_regions")]
+pub struct Model {
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub order_id: i32,
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub region_id: i32,
+    #[sea_orm(has_many)]
+    pub order_items: HasMany<super::order_items::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "OrderRegionsSchema");
+impl ActiveModelBehavior for ActiveModel {}
+
+
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "order_items")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub order_id: i32,
+    pub region_id: i32,
+    pub order_regions: String,
+    pub order_regions2: String,
+    #[sea_orm(belongs_to, from = "(order_id, region_id)", to = "(order_id, region_id)")]
+    pub order_regions_1: HasOne<super::order_regions::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "OrderItemsSchema");
+impl ActiveModelBehavior for ActiveModel {}
+
+
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "users")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub posts: String,
+    #[sea_orm(has_many)]
+    pub posts_1: HasMany<super::posts::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "UsersSchema");
+impl ActiveModelBehavior for ActiveModel {}
+
+
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "posts")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub user_id: i32,
+    pub table_name_id: i32,
+    #[sea_orm(belongs_to, from = "user_id", to = "id")]
+    pub user: HasOne<super::users::Entity>,
+    #[sea_orm(belongs_to, from = "table_name_id", to = "id")]
+    pub table_name: HasOne<super::categories::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "PostsSchema");
+impl ActiveModelBehavior for ActiveModel {}
+
+
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "categories")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub parent_id: Option<i32>,
+    #[sea_orm(belongs_to, from = "parent_id", to = "id")]
+    pub parent: HasOne<super::categories::Entity>,
+    #[sea_orm(has_many)]
+    pub posts: HasMany<super::posts::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "CategoriesSchema");
+impl ActiveModelBehavior for ActiveModel {}

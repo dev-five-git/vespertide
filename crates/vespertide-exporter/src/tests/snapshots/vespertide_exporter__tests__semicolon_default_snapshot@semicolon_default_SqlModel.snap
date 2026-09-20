@@ -1,0 +1,16 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlmodel import Field, SQLModel
+
+
+class Notes(SQLModel, table=True):
+    __tablename__ = "notes"
+
+    id: int = Field(primary_key=True)
+    note: str = Field(default="a;b")
+    body: str = Field(...)

@@ -1,0 +1,49 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from typing import Optional
+
+from sqlmodel import Field, SQLModel
+from sqlalchemy import ForeignKeyConstraint
+
+
+class OrderRegions(SQLModel, table=True):
+    __tablename__ = "order_regions"
+
+    order_id: int = Field(primary_key=True)
+    region_id: int = Field(primary_key=True)
+
+class OrderItems(SQLModel, table=True):
+    __tablename__ = "order_items"
+
+    id: int = Field(primary_key=True)
+    order_id: int = Field(...)
+    region_id: int = Field(...)
+    order_regions: str = Field(...)
+    order_regions2: str = Field(...)
+
+    __table_args__ = (
+        ForeignKeyConstraint(["order_id", "region_id"], ["order_regions.order_id", "order_regions.region_id"]),
+    )
+
+class Users(SQLModel, table=True):
+    __tablename__ = "users"
+
+    id: int = Field(primary_key=True)
+    posts: str = Field(...)
+
+class Posts(SQLModel, table=True):
+    __tablename__ = "posts"
+
+    id: int = Field(primary_key=True)
+    user_id: int = Field(foreign_key="users.id")
+    table_name_id: int = Field(foreign_key="categories.id")
+
+class Categories(SQLModel, table=True):
+    __tablename__ = "categories"
+
+    id: int = Field(primary_key=True)
+    parent_id: Optional[int] = Field(default=None, foreign_key="categories.id")

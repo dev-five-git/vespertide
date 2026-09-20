@@ -1,0 +1,27 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+enum OrdersStatus {
+  PENDING @map("pending")
+  SHIPPED @map("shipped")
+}
+
+model Orders {
+  id Int @id
+  status OrdersStatus
+
+  @@map("orders")
+}
+
+enum TasksStatus {
+  TODO @map("todo")
+  DONE @map("done")
+}
+
+model Tasks {
+  id Int @id
+  status TasksStatus
+
+  @@map("tasks")
+}

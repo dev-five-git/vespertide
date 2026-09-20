@@ -1,0 +1,14 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+package models
+
+type Membership struct {
+	X1tenantID int32  `gorm:"column:1tenant_id;primaryKey;uniqueIndex:uq_membership__1tenant_id_user-email" json:"1tenant_id"`
+	X2userID   int32  `gorm:"column:2user_id;primaryKey" json:"2user_id"`
+	User_email string `gorm:"column:user-email;not null;type:text;uniqueIndex:uq_membership__1tenant_id_user-email" json:"user-email"`
+	X3created  string `gorm:"column:3created;not null;type:text;index:ix_membership__3created" json:"3created"`
+}
+
+func (Membership) TableName() string { return "membership" }

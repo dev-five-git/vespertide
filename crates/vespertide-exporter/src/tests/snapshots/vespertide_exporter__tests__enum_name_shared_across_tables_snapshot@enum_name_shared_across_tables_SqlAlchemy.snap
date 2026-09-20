@@ -1,0 +1,31 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+import enum
+
+from sqlalchemy import Enum, Integer
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Status(str, enum.Enum):
+    PENDING = "pending"
+    SHIPPED = "shipped"
+
+class Orders(DeclarativeBase):
+    __tablename__ = "orders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    status: Mapped[Status] = mapped_column(Enum(Status), nullable=False)
+
+class Status(str, enum.Enum):
+    TODO = "todo"
+    DONE = "done"
+
+class Tasks(DeclarativeBase):
+    __tablename__ = "tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    status: Mapped[Status] = mapped_column(Enum(Status), nullable=False)

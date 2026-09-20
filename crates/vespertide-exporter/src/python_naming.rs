@@ -1,14 +1,18 @@
-//! Shared naming helpers for the Python-targeted ORM exporters (SQLAlchemy,
-//! SQLModel). Both backends share an identical, snake-case-aware
-//! `to_pascal_case`.
+//! Shared `to_pascal_case`: split on `_`, upper-case the first character of
+//! each segment, keep the rest verbatim. SQLAlchemy, SQLModel, JPA, GORM and
+//! the CLI's filename derivation all want exactly that rule, which
+//! is a naming convention rather than a language feature — which is why the
+//! Java and Go backends share it instead of carrying copies.
 //!
 //! Enum member names go through `vespertide_naming::to_screaming_snake_case` +
 //! `sanitize_identifier` instead — that pair is shared with the Prisma backend,
 //! so the case rule lives in `vespertide-naming` rather than here.
 //!
-//! `seaorm` deliberately keeps its own `to_pascal_case` in
-//! `seaorm/imports.rs` — that variant carries reserved-keyword guards and a
-//! different allocation pattern and is NOT in scope for this consolidation.
+//! `seaorm` keeps its own `to_pascal_case` in `seaorm/imports.rs`: that variant
+//! also treats `-` as a separator and upper-cases with `to_ascii_uppercase`
+//! rather than Unicode-aware `char::to_uppercase`, so the two are not
+//! interchangeable. Reserved-keyword escaping is a separate concern, handled
+//! by `seaorm::imports::sanitize_field_name`.
 
 /// Convert snake_case (or single-word) input to PascalCase. Splits on
 /// underscores, upper-cases the first character of each segment, and

@@ -1,0 +1,30 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+import enum
+
+from sqlmodel import Field, SQLModel
+
+
+class Status(str, enum.Enum):
+    PENDING = "pending"
+    SHIPPED = "shipped"
+
+class Orders(SQLModel, table=True):
+    __tablename__ = "orders"
+
+    id: int = Field(primary_key=True)
+    status: Status = Field(...)
+
+class Status(str, enum.Enum):
+    TODO = "todo"
+    DONE = "done"
+
+class Tasks(SQLModel, table=True):
+    __tablename__ = "tasks"
+
+    id: int = Field(primary_key=True)
+    status: Status = Field(...)

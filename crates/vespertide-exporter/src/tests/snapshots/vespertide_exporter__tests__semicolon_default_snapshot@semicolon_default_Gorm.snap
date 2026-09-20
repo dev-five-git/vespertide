@@ -1,0 +1,13 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+package models
+
+type Notes struct {
+	ID   int32  `gorm:"column:id;primaryKey" json:"id"`
+	Note string `gorm:"column:note;not null;type:text" json:"note"`
+	Body string `gorm:"column:body;not null;type:text" json:"body"`
+}
+
+func (Notes) TableName() string { return "notes" }

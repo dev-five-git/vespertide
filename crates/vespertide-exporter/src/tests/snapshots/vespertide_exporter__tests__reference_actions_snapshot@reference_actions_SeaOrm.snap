@@ -1,0 +1,60 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "users")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    #[sea_orm(has_many)]
+    pub posts: HasMany<super::posts::Entity>,
+    #[sea_orm(has_many)]
+    pub comments: HasMany<super::comments::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "UsersSchema");
+impl ActiveModelBehavior for ActiveModel {}
+
+
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "posts")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub user_id: i32,
+    #[sea_orm(belongs_to, from = "user_id", to = "id")]
+    pub user: HasOne<super::users::Entity>,
+    #[sea_orm(has_many)]
+    pub comments: HasMany<super::comments::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "PostsSchema");
+impl ActiveModelBehavior for ActiveModel {}
+
+
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "comments")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub post_id: Option<i32>,
+    #[sea_orm(default_value = 1)]
+    pub author_id: i32,
+    #[sea_orm(belongs_to, from = "post_id", to = "id")]
+    pub post: HasOne<super::posts::Entity>,
+    #[sea_orm(belongs_to, from = "author_id", to = "id")]
+    pub author: HasOne<super::users::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "CommentsSchema");
+impl ActiveModelBehavior for ActiveModel {}

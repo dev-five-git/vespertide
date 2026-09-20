@@ -1,0 +1,52 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+package models
+
+type OrderRegions struct {
+	OrderID    int32        `gorm:"column:order_id;primaryKey" json:"order_id"`
+	RegionID   int32        `gorm:"column:region_id;primaryKey" json:"region_id"`
+	OrderItems []OrderItems `gorm:"foreignKey:OrderID,RegionID;references:OrderID,RegionID;constraint:OnDelete:CASCADE,OnUpdate:RESTRICT" json:"-"`
+}
+
+func (OrderRegions) TableName() string { return "order_regions" }
+
+type OrderItems struct {
+	ID            int32         `gorm:"column:id;primaryKey" json:"id"`
+	OrderID       int32         `gorm:"column:order_id;not null" json:"order_id"`
+	RegionID      int32         `gorm:"column:region_id;not null" json:"region_id"`
+	OrderRegions  string        `gorm:"column:order_regions;not null;type:text" json:"order_regions"`
+	OrderRegions2 string        `gorm:"column:order_regions2;not null;type:text" json:"order_regions2"`
+	OrderRegions3 *OrderRegions `gorm:"foreignKey:OrderID,RegionID;references:OrderID,RegionID;constraint:OnDelete:CASCADE,OnUpdate:RESTRICT" json:"-"`
+}
+
+func (OrderItems) TableName() string { return "order_items" }
+
+type Users struct {
+	ID     int32   `gorm:"column:id;primaryKey" json:"id"`
+	Posts  string  `gorm:"column:posts;not null;type:text" json:"posts"`
+	Posts2 []Posts `gorm:"foreignKey:UserID" json:"-"`
+}
+
+func (Users) TableName() string { return "users" }
+
+type Posts struct {
+	ID          int32       `gorm:"column:id;primaryKey" json:"id"`
+	UserID      int32       `gorm:"column:user_id;not null" json:"user_id"`
+	User        *Users      `gorm:"foreignKey:UserID" json:"-"`
+	TableNameID int32       `gorm:"column:table_name_id;not null" json:"table_name_id"`
+	TableName2  *Categories `gorm:"foreignKey:TableNameID" json:"-"`
+}
+
+func (Posts) TableName() string { return "posts" }
+
+type Categories struct {
+	ID       int32        `gorm:"column:id;primaryKey" json:"id"`
+	ParentID *int32       `gorm:"column:parent_id" json:"parent_id"`
+	Parent   *Categories  `gorm:"foreignKey:ParentID" json:"-"`
+	Posts    []Posts      `gorm:"foreignKey:TableNameID" json:"-"`
+	Children []Categories `gorm:"foreignKey:ParentID" json:"-"`
+}
+
+func (Categories) TableName() string { return "categories" }

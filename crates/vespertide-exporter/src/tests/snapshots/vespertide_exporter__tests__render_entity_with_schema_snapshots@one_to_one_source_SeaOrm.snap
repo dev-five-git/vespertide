@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "profile")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: Uuid,
+    #[sea_orm(unique)]
+    pub user_id: Uuid,
+    #[sea_orm(belongs_to, from = "user_id", to = "id")]
+    pub user: HasOne<super::user::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "ProfileSchema");
+impl ActiveModelBehavior for ActiveModel {}
