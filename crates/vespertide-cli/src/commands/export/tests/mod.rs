@@ -7,6 +7,8 @@ pub(super) use tempfile::tempdir;
 pub(super) use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType, TableConstraint};
 
 mod drizzle;
+mod gorm;
+mod models_file;
 mod prisma;
 
 fn write_config() {
