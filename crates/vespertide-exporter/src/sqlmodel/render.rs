@@ -1,10 +1,12 @@
 use rayon::prelude::*;
 
+use crate::constraint_scan::FkDetails;
 use crate::parallel_config::{
     PYTHON_EXPORT_PAR_TABLE_MIN_LEN, SQLMODEL_EXPORT_PAR_TABLE_THRESHOLD,
 };
-use crate::utils::common::{join_qualified_refs, join_quoted, unquote};
-use crate::utils::python::{CompositeFk, collect_composite_fks};
+use crate::utils::common::{
+    CompositeFk, collect_composite_fks, join_qualified_refs, join_quoted, unquote,
+};
 use vespertide_core::schema::column::{ColumnType, ComplexColumnType, EnumValues};
 use vespertide_core::schema::constraint::TableConstraint;
 use vespertide_core::{ColumnDef, TableDef};
@@ -255,7 +257,7 @@ fn render_entity_body(table: &TableDef, composite_fks: &[CompositeFk<'_>]) -> Ve
     let indexed_columns = crate::constraint_scan::single_column_indexes(&table.constraints);
 
     // Collect foreign key info; lookup-only, ordering unused.
-    let fk_info = crate::constraint_scan::single_column_fk_targets(&table.constraints);
+    let fk_info = crate::constraint_scan::single_column_fk_details(&table.constraints);
 
     // Render columns
     for col in &table.columns {
@@ -348,7 +350,7 @@ pub(super) fn render_column(
     is_pk: bool,
     is_unique: bool,
     is_indexed: bool,
-    fk_info: Option<&(&str, &str)>,
+    fk_info: Option<&FkDetails>,
 ) {
     // Add column comment
     if let Some(ref comment) = col.comment {
@@ -395,8 +397,11 @@ pub(super) fn render_column(
     }
 
     // Foreign key
-    if let Some((ref_table, ref_col)) = fk_info {
-        field_args.push(format!("foreign_key=\"{ref_table}.{ref_col}\""));
+    if let Some(fk) = fk_info {
+        field_args.push(format!(
+            "foreign_key=\"{}.{}\"",
+            fk.ref_table, fk.ref_column
+        ));
     }
 
     // Unique

@@ -15,8 +15,7 @@ use super::bindings::FileBindings;
 use super::types::column_ctor;
 use super::{DrizzleDialect, Imports, js_name};
 use crate::constraint_scan::{collect_back_relations, fk_relation_names, relation_segment};
-use crate::utils::common::{claim_field_name, unquote};
-use crate::utils::typescript::ts_string;
+use crate::utils::common::{claim_field_name, integer_enum_variant_value, string_literal, unquote};
 
 // ─── Constraint lookups ──────────────────────────────────────────────────────
 
@@ -108,11 +107,17 @@ pub(super) fn render_table(
         // stores no name and its kit compares by columns alone.
         let name_field = match dialect {
             DrizzleDialect::Pg => {
-                format!("name: {}, ", ts_string(&format!("{}_pkey", table.name)))
+                format!(
+                    "name: {}, ",
+                    string_literal(&format!("{}_pkey", table.name))
+                )
             }
             DrizzleDialect::Mysql => {
                 let joined = pk_columns.join("_");
-                format!("name: {}, ", ts_string(&format!("{}_{joined}", table.name)))
+                format!(
+                    "name: {}, ",
+                    string_literal(&format!("{}_{joined}", table.name))
+                )
             }
             DrizzleDialect::Sqlite => String::new(),
         };
@@ -174,7 +179,7 @@ pub(super) fn render_table(
                 // so the model does too.
                 constraint_lines.push(format!(
                     "  check({}, sql`{}`),",
-                    ts_string(name),
+                    string_literal(name),
                     escape_backtick(expr)
                 ));
             }
@@ -200,7 +205,7 @@ pub(super) fn render_table(
         "export const {} = {}({}, {{",
         bindings.table_const(&table.name),
         dialect.table_fn(),
-        ts_string(&table.name)
+        string_literal(&table.name)
     ));
     lines.extend(col_lines);
     if constraint_lines.is_empty() {
@@ -247,7 +252,7 @@ fn column_refs<T: AsRef<str>>(columns: &[T]) -> String {
 fn table_level_entry(builder: &str, name: &str, columns: &[ColumnName]) -> String {
     format!(
         "  {builder}({}).on({}),",
-        ts_string(name),
+        string_literal(name),
         column_refs(columns)
     )
 }
@@ -294,7 +299,7 @@ fn foreign_key_entry(
             .join(", ")
     };
 
-    let name_field = name.map_or_else(String::new, |n| format!(", name: {}", ts_string(n)));
+    let name_field = name.map_or_else(String::new, |n| format!(", name: {}", string_literal(n)));
     let mut parts = vec![format!(
         "  foreignKey({{ columns: [{}], foreignColumns: [{foreign_cols}]{name_field} }})",
         column_refs(columns)
@@ -302,13 +307,13 @@ fn foreign_key_entry(
     if let Some(action) = on_delete {
         parts.push(format!(
             ".onDelete({})",
-            ts_string(reference_action_to_drizzle(action))
+            string_literal(reference_action_to_drizzle(action))
         ));
     }
     if let Some(action) = on_update {
         parts.push(format!(
             ".onUpdate({})",
-            ts_string(reference_action_to_drizzle(action))
+            string_literal(reference_action_to_drizzle(action))
         ));
     }
     parts.push(",".to_string());
@@ -393,7 +398,7 @@ pub(super) fn render_relations_block(
             .is_some_and(|n| *n > 1)
             || ref_table.as_str() == table.name.as_str();
         if ambiguous && let Some(name) = relation_names.get(&constraint_idx) {
-            opts.push(format!("relationName: {}", ts_string(name)));
+            opts.push(format!("relationName: {}", string_literal(name)));
         }
 
         rel_lines.push(format!(
@@ -411,7 +416,7 @@ pub(super) fn render_relations_block(
         };
         let field = claim_field_name(preferred, &mut field_names);
         let opts = br.relation_name.as_ref().map_or_else(String::new, |n| {
-            format!(", {{ relationName: {} }}", ts_string(n))
+            format!(", {{ relationName: {} }}", string_literal(n))
         });
         let builder = if br.is_one_to_one { "one" } else { "many" };
         rel_lines.push(format!("  {field}: {builder}({source}{opts}),"));
@@ -542,7 +547,7 @@ pub(super) fn default_chain(
         } else {
             inner.to_string()
         };
-        return DefaultChain::literal(format!(".default({})", ts_string(&value)));
+        return DefaultChain::literal(format!(".default({})", string_literal(&value)));
     }
 
     if default_sql.parse::<f64>().is_ok() {
@@ -553,7 +558,7 @@ pub(super) fn default_chain(
             ColumnType::Complex(ComplexColumnType::Numeric { .. })
         );
         return DefaultChain::literal(if numeric_col {
-            format!(".default({})", ts_string(default_sql))
+            format!(".default({})", string_literal(default_sql))
         } else {
             format!(".default({default_sql})")
         });
@@ -564,9 +569,9 @@ pub(super) fn default_chain(
         values: EnumValues::Integer(variants),
         ..
     }) = col_type
-        && let Some(variant) = variants.iter().find(|v| v.name == default_sql)
+        && let Some(value) = integer_enum_variant_value(variants, default_sql)
     {
-        return DefaultChain::literal(format!(".default({})", variant.value));
+        return DefaultChain::literal(format!(".default({value})"));
     }
 
     // A bare keyword such as `CURRENT_USER`.

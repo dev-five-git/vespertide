@@ -1,10 +1,11 @@
-//! Shared enum-column scan for the single-file ORM renderers.
+//! Shared enum-column scans for the renderers that put a whole schema into
+//! one scope.
 //!
-//! Backends that write one file per table get enum scoping for free; Prisma
-//! and Drizzle emit one file for the whole schema and both start from the same
-//! per-table scan. What they do with it differs — Prisma deduplicates
-//! identifiers globally (see `prisma::enums`), Drizzle table-prefixes every
-//! type — so only the scan itself lives here.
+//! Backends that write one file per table get enum scoping for free; Prisma,
+//! Drizzle and GORM do not, and all start from the same per-table scan. What
+//! they do with it differs — Prisma deduplicates identifiers globally (see
+//! `prisma::enums`), Drizzle table-prefixes every type, GORM claims them in
+//! the package's one scope (see `scope_names`).
 
 use vespertide_core::TableDef;
 use vespertide_core::schema::column::{ColumnType, ComplexColumnType, EnumValues};
@@ -23,4 +24,13 @@ pub(crate) fn collect_table_enums(table: &TableDef) -> Vec<(&str, &EnumValues)> 
         }
     }
     result
+}
+
+/// An enum's variant names in declaration order: the values of a string
+/// enum, the member names of an integer one.
+pub(crate) fn variant_names(values: &EnumValues) -> Vec<&str> {
+    match values {
+        EnumValues::String(values) => values.iter().map(String::as_str).collect(),
+        EnumValues::Integer(values) => values.iter().map(|v| v.name.as_str()).collect(),
+    }
 }

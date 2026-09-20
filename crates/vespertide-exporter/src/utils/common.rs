@@ -1,5 +1,7 @@
 //! Cross-language helpers shared by every ORM exporter backend.
 
+use vespertide_core::{NumValue, ReferenceAction, TableConstraint, TableDef};
+
 /// Join items as a double-quoted, comma-separated list: `"a", "b", "c"`.
 ///
 /// Consolidates the quoted-comma-join pattern previously copy-pasted across
@@ -70,6 +72,32 @@ pub(crate) fn join_qualified_refs(ref_table: &str, ref_cols: &[&str]) -> String 
     out
 }
 
+/// Quote `value` as a double-quoted string literal.
+///
+/// Backslashes, quotes and the line terminators are escaped so a database name
+/// or enum value containing any of them cannot end the literal early. The
+/// escapes are the ones TypeScript and Go share, so every literal the Drizzle
+/// and GORM renderers emit — table names, column names, enum values — goes
+/// through here.
+pub(crate) fn string_literal(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 2);
+    out.push('"');
+    for ch in value.chars() {
+        match ch {
+            '\\' | '"' => {
+                out.push('\\');
+                out.push(ch);
+            }
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            _ => out.push(ch),
+        }
+    }
+    out.push('"');
+    out
+}
+
 /// Strip one matching pair of surrounding quotes from a SQL literal.
 ///
 /// Only an outer pair is removed, so quotes *inside* the literal survive:
@@ -86,6 +114,55 @@ pub(crate) fn unquote(s: &str) -> &str {
         }
     }
     s
+}
+
+/// The stored value of the integer-enum variant named `name`, if there is one.
+/// A model may write an integer enum's default as the variant name; the column
+/// stores the value.
+pub(crate) fn integer_enum_variant_value(variants: &[NumValue], name: &str) -> Option<i64> {
+    variants.iter().find(|v| v.name == name).map(|v| v.value)
+}
+
+/// `JSONB` is the one custom column type the backends map to a native JSON
+/// type instead of a plain string; the model may spell it in any case.
+pub(crate) fn is_jsonb_custom_type(custom_type: &str) -> bool {
+    custom_type.eq_ignore_ascii_case("JSONB")
+}
+
+/// A composite (multi-column) foreign key: its owning columns, target and
+/// referential actions. Backends with no native composite relation
+/// (SQLAlchemy, SQLModel) surface it as a comment; GORM renders it as
+/// a relation field with comma-separated `foreignKey`/`references`.
+pub(crate) struct CompositeFk<'a> {
+    pub(crate) local_cols: Vec<&'a str>,
+    pub(crate) ref_table: &'a str,
+    pub(crate) ref_cols: Vec<&'a str>,
+    pub(crate) on_delete: Option<&'a ReferenceAction>,
+    pub(crate) on_update: Option<&'a ReferenceAction>,
+}
+
+pub(crate) fn collect_composite_fks(table: &TableDef) -> Vec<CompositeFk<'_>> {
+    table
+        .constraints
+        .iter()
+        .filter_map(|constraint| match constraint {
+            TableConstraint::ForeignKey {
+                columns,
+                ref_table,
+                ref_columns,
+                on_delete,
+                on_update,
+                ..
+            } if columns.len() > 1 && columns.len() == ref_columns.len() => Some(CompositeFk {
+                local_cols: columns.iter().map(AsRef::as_ref).collect(),
+                ref_table: ref_table.as_str(),
+                ref_cols: ref_columns.iter().map(AsRef::as_ref).collect(),
+                on_delete: on_delete.as_ref(),
+                on_update: on_update.as_ref(),
+            }),
+            _ => None,
+        })
+        .collect()
 }
 
 /// Claim a relation field name, recording it in `taken` so later fields
@@ -227,5 +304,17 @@ mod tests {
     #[case::empty("", "")]
     fn unquote_removes_only_a_matching_outer_pair(#[case] input: &str, #[case] expected: &str) {
         assert_eq!(unquote(input), expected);
+    }
+
+    #[rstest]
+    #[case::plain("users", r#""users""#)]
+    #[case::double_quote("say \"hi\"", r#""say \"hi\"""#)]
+    #[case::backslash("back\\slash", r#""back\\slash""#)]
+    #[case::newline("two\nlines", r#""two\nlines""#)]
+    #[case::carriage_return("a\rb", r#""a\rb""#)]
+    #[case::tab("a\tb", r#""a\tb""#)]
+    #[case::empty("", r#""""#)]
+    fn string_literal_escapes_literal_terminators(#[case] input: &str, #[case] expected: &str) {
+        assert_eq!(string_literal(input), expected);
     }
 }
