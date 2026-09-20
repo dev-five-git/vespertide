@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class TaskRunStatus(models.IntegerChoices):
+    PENDING = 0
+    COMPLETED = 100
+
+class TaskRuns(models.Model):
+    id = models.IntegerField()
+    status = models.IntegerField(choices=TaskRunStatus.choices)
+
+    class Meta:
+        managed = False
+        db_table = "task_runs"

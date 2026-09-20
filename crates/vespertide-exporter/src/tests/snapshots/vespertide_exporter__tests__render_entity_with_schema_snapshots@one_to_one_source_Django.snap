@@ -1,0 +1,16 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class Profile(models.Model):
+    id = models.UUIDField(primary_key=True)
+    user = models.OneToOneField("User", on_delete=models.RESTRICT, related_name="+")
+
+    class Meta:
+        managed = False
+        db_table = "profile"

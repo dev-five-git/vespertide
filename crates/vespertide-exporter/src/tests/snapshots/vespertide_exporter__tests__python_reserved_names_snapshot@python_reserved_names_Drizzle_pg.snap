@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const eventLog = pgTable("event__log", {
+  id: integer("id").primaryKey(),
+  from: text("from").notNull(),
+  def: text("def").notNull(),
+  pk: integer("pk").notNull(),
+  userName: text("user__name").notNull(),
+  total: integer("total_").notNull(),
+  aB: text("a--b").notNull(),
+  passId: integer("pass_id").notNull(),
+}, (t) => [
+  foreignKey({ columns: [t.passId], foreignColumns: [targets.id], name: "fk_event__log__pass_id" }),
+]);
+
+export const eventLogRelations = relations(eventLog, ({ one, many }) => ({
+  pass: one(targets, { fields: [eventLog.passId], references: [targets.id] }),
+}));

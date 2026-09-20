@@ -76,9 +76,9 @@ pub(crate) fn join_qualified_refs(ref_table: &str, ref_cols: &[&str]) -> String 
 ///
 /// Backslashes, quotes and the line terminators are escaped so a database name
 /// or enum value containing any of them cannot end the literal early. The
-/// escapes are the ones TypeScript and Go share, so every literal the Drizzle
-/// and GORM renderers emit — table names, column names, enum values — goes
-/// through here.
+/// escapes are the ones TypeScript, Go and Python share, so every literal the
+/// Drizzle, GORM and Django renderers emit — table names, column names, enum
+/// values — goes through here.
 pub(crate) fn string_literal(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 2);
     out.push('"');
@@ -131,7 +131,7 @@ pub(crate) fn is_jsonb_custom_type(custom_type: &str) -> bool {
 
 /// A composite (multi-column) foreign key: its owning columns, target and
 /// referential actions. Backends with no native composite relation
-/// (SQLAlchemy, SQLModel) surface it as a comment; GORM renders it as
+/// (SQLAlchemy, SQLModel, Django) surface it as a comment; GORM renders it as
 /// a relation field with comma-separated `foreignKey`/`references`.
 pub(crate) struct CompositeFk<'a> {
     pub(crate) local_cols: Vec<&'a str>,

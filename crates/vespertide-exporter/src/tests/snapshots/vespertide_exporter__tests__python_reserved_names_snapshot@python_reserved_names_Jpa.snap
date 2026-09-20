@@ -1,0 +1,39 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "event__log")
+public class EventLog {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @Column(name = "from", nullable = false, columnDefinition = "TEXT")
+    private String from;
+
+    @Column(name = "def", nullable = false, columnDefinition = "TEXT")
+    private String def;
+
+    @Column(name = "pk", nullable = false)
+    private Integer pk;
+
+    @Column(name = "user__name", nullable = false, columnDefinition = "TEXT")
+    private String userName;
+
+    @Column(name = "total_", nullable = false)
+    private Integer total;
+
+    @Column(name = "a--b", nullable = false, columnDefinition = "TEXT")
+    private String a__b;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "pass_id", nullable = false)
+    private Targets pass;
+
+    protected EventLog() {
+    }
+}

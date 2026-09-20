@@ -1,0 +1,12 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const user = pgTable("user", {
+  id: integer("id").primaryKey(),
+});
+
+export const userRelations = relations(user, ({ one, many }) => ({
+  userUserFriends: many(userFriends, { relationName: "UserFriendsUser" }),
+  friendUserFriends: many(userFriends, { relationName: "UserFriendsFriend" }),
+}));

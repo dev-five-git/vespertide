@@ -1,0 +1,56 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "user")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    #[sea_orm(has_many, relation_enum = "UserFriends", via_rel = "User")]
+    pub user_user_friends: HasMany<super::user_friends::Entity>,
+    #[sea_orm(has_many, relation_enum = "Friend", via_rel = "Friend")]
+    pub friend_user_friends: HasMany<super::user_friends::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "UserSchema");
+impl ActiveModelBehavior for ActiveModel {}
+
+pub struct UserIdToFriendIdViaUserFriends;
+impl Linked for UserIdToFriendIdViaUserFriends {
+    type FromEntity = Entity;
+    type ToEntity = Entity;
+
+    fn link(&self) -> Vec<RelationDef> {
+        vec![
+            super::user_friends::Relation::User.def().rev(),
+            super::user_friends::Relation::Friend.def(),
+        ]
+    }
+}
+
+pub struct FriendIdToUserIdViaUserFriends;
+impl Linked for FriendIdToUserIdViaUserFriends {
+    type FromEntity = Entity;
+    type ToEntity = Entity;
+
+    fn link(&self) -> Vec<RelationDef> {
+        vec![
+            super::user_friends::Relation::Friend.def().rev(),
+            super::user_friends::Relation::User.def(),
+        ]
+    }
+}
+
+impl Model {
+    pub fn find_friend_ids_via_user_friends_from_user_id(&self) -> Select<Entity> {
+        self.find_linked(UserIdToFriendIdViaUserFriends)
+    }
+
+    pub fn find_user_ids_via_user_friends_from_friend_id(&self) -> Select<Entity> {
+        self.find_linked(FriendIdToUserIdViaUserFriends)
+    }
+}

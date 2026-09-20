@@ -1,0 +1,27 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class ProductCategory(models.TextChoices):
+    ELECTRONICS = "electronics"
+    CLOTHING = "clothing"
+    FOOD = "food"
+
+class AvailabilityStatus(models.TextChoices):
+    IN_STOCK = "in_stock"
+    OUT_OF_STOCK = "out_of_stock"
+    PRE_ORDER = "pre_order"
+
+class Products(models.Model):
+    id = models.IntegerField()
+    category = models.CharField(max_length=11, choices=ProductCategory.choices)
+    availability = models.CharField(max_length=12, choices=AvailabilityStatus.choices)
+
+    class Meta:
+        managed = False
+        db_table = "products"

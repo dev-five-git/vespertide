@@ -1,8 +1,8 @@
 //! Top-level names of a generated file that holds a whole schema in one scope.
 //!
-//! GORM writes every struct, enum type and enum constant into one Go package.
-//! A table and an enum that share a name (`role` and `user.role`), two names
-//! that fold onto
+//! GORM writes every struct, enum type and enum constant into one Go package;
+//! Django writes every model and choices class into one module. A table and an
+//! enum that share a name (`role` and `user.role`), two names that fold onto
 //! one identifier, or an enum constant that spells a struct (`Status` + `code`
 //! next to `status_code`) would otherwise be declared twice. Names are claimed
 //! here once for the whole schema and looked up by what they name, so every

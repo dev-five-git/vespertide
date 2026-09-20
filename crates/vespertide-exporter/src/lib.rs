@@ -1,7 +1,8 @@
 //! Helpers to convert `TableDef` models into ORM-specific representations
-//! such as `SeaORM`, `SQLAlchemy`, `SQLModel`, JPA, Prisma, Drizzle, and GORM.
+//! such as `SeaORM`, `SQLAlchemy`, `SQLModel`, JPA, Prisma, Drizzle, GORM, and Django.
 
 mod constraint_scan;
+pub mod django;
 pub mod drizzle;
 mod enum_scan;
 pub mod gorm;
@@ -18,6 +19,7 @@ pub mod sqlmodel;
 mod tests;
 mod utils;
 
+pub use django::DjangoExporter;
 pub use drizzle::DrizzleExporter;
 pub use gorm::GormExporter;
 pub use jpa::JpaExporter;

@@ -1,0 +1,21 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlmodel import Field, SQLModel
+
+
+class EventLog(SQLModel, table=True):
+    __tablename__ = "event__log"
+
+    id: int = Field(primary_key=True)
+    from_: str = Field(sa_column_kwargs={"name": "from"})
+    def_: str = Field(sa_column_kwargs={"name": "def"})
+    pk: int = Field(...)
+    user__name: str = Field(...)
+    total_: int = Field(...)
+    a__b: str = Field(sa_column_kwargs={"name": "a--b"})
+    pass_id: int = Field(foreign_key="targets.id")

@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class TaskStatus(models.IntegerChoices):
+    PENDING = 0
+    COMPLETED = 100
+
+class Tasks(models.Model):
+    id = models.IntegerField()
+    status = models.IntegerField(choices=TaskStatus.choices, default=1)
+
+    class Meta:
+        managed = False
+        db_table = "tasks"

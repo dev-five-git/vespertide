@@ -1,7 +1,6 @@
 ---
-source: crates/vespertide-exporter/src/django/mod.rs
-assertion_line: 175
-expression: render_entity(&table).unwrap()
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
 ---
 from __future__ import annotations
 
@@ -9,13 +8,14 @@ from django.db import models
 
 
 class PriorityLevel(models.IntegerChoices):
-    LOW = 0, "low"
-    MEDIUM = 10, "medium"
-    HIGH = 20, "high"
+    LOW = 0
+    MEDIUM = 10
+    HIGH = 20
 
 class Tasks(models.Model):
     id = models.IntegerField(primary_key=True)
     priority = models.IntegerField(choices=PriorityLevel.choices)
 
     class Meta:
+        managed = False
         db_table = "tasks"

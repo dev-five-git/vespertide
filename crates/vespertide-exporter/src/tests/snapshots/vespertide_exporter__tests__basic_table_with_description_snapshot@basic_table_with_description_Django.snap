@@ -1,7 +1,6 @@
 ---
-source: crates/vespertide-exporter/src/django/mod.rs
-assertion_line: 106
-expression: render_entity(&table).unwrap()
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
 ---
 from __future__ import annotations
 
@@ -9,11 +8,14 @@ from django.db import models
 
 
 class Users(models.Model):
-    """User accounts"""
+    """User accounts table"""
 
+    # Primary key
     id = models.AutoField(primary_key=True)
-    email = models.CharField(max_length=255, unique=True)
+    # User email address
+    email = models.TextField(unique=True)
     name = models.TextField(null=True, blank=True)
 
     class Meta:
+        managed = False
         db_table = "users"

@@ -1,7 +1,9 @@
-use vespertide_core::DefaultValue;
 use vespertide_core::schema::column::{
-    ColumnType, ComplexColumnType, EnumValues, SimpleColumnKind, SimpleColumnType,
+    ColumnType, ComplexColumnType, EnumValues, SimpleColumnType,
 };
+use vespertide_core::{DefaultValue, ReferenceAction};
+
+use crate::utils::common::{is_jsonb_custom_type, string_literal, unquote};
 
 #[derive(Default)]
 pub(super) struct UsedImports {
@@ -15,63 +17,66 @@ pub(super) fn django_field_type(
     auto_increment: bool,
 ) -> &'static str {
     match col_type {
-        ColumnType::Simple(ty) => match SimpleColumnKind::from(*ty) {
-            SimpleColumnKind::SmallInt => {
+        ColumnType::Simple(ty) => match ty {
+            SimpleColumnType::SmallInt => {
                 if is_pk && auto_increment {
                     "models.SmallAutoField"
                 } else {
                     "models.SmallIntegerField"
                 }
             }
-            SimpleColumnKind::Integer => {
+            SimpleColumnType::Integer => {
                 if is_pk && auto_increment {
                     "models.AutoField"
                 } else {
                     "models.IntegerField"
                 }
             }
-            SimpleColumnKind::BigInt => {
+            SimpleColumnType::BigInt => {
                 if is_pk && auto_increment {
                     "models.BigAutoField"
                 } else {
                     "models.BigIntegerField"
                 }
             }
-            SimpleColumnKind::Real | SimpleColumnKind::DoublePrecision => "models.FloatField",
-            SimpleColumnKind::Text | SimpleColumnKind::Xml => "models.TextField",
-            SimpleColumnKind::Boolean => "models.BooleanField",
-            SimpleColumnKind::Date => "models.DateField",
-            SimpleColumnKind::Time => "models.TimeField",
-            SimpleColumnKind::Timestamp | SimpleColumnKind::Timestamptz => "models.DateTimeField",
-            SimpleColumnKind::Interval => "models.DurationField",
-            SimpleColumnKind::Bytea => "models.BinaryField",
-            SimpleColumnKind::Uuid => "models.UUIDField",
-            SimpleColumnKind::Json => "models.JSONField",
-            SimpleColumnKind::Inet | SimpleColumnKind::Cidr => "models.GenericIPAddressField",
-            SimpleColumnKind::Macaddr => "models.CharField",
+            SimpleColumnType::Real | SimpleColumnType::DoublePrecision => "models.FloatField",
+            SimpleColumnType::Text | SimpleColumnType::Xml => "models.TextField",
+            SimpleColumnType::Boolean => "models.BooleanField",
+            SimpleColumnType::Date => "models.DateField",
+            SimpleColumnType::Time => "models.TimeField",
+            SimpleColumnType::Timestamp | SimpleColumnType::Timestamptz => "models.DateTimeField",
+            SimpleColumnType::Interval => "models.DurationField",
+            SimpleColumnType::Bytea => "models.BinaryField",
+            SimpleColumnType::Uuid => "models.UUIDField",
+            SimpleColumnType::Json => "models.JSONField",
+            SimpleColumnType::Inet | SimpleColumnType::Cidr => "models.GenericIPAddressField",
+            SimpleColumnType::Macaddr => "models.CharField",
         },
         ColumnType::Complex(ty) => match ty {
             ComplexColumnType::Varchar { .. } | ComplexColumnType::Char { .. } => {
                 "models.CharField"
             }
             ComplexColumnType::Numeric { .. } => "models.DecimalField",
+            // Postgres has no implicit `text -> jsonb` cast, so a `TextField` on a
+            // JSONB column fails every write.
+            ComplexColumnType::Custom { custom_type } if is_jsonb_custom_type(custom_type) => {
+                "models.JSONField"
+            }
             ComplexColumnType::Custom { .. } => "models.TextField",
             ComplexColumnType::Enum { values, .. } => match values {
                 EnumValues::String(_) => "models.CharField",
                 EnumValues::Integer(_) => "models.IntegerField",
             },
-            // `#[non_exhaustive]` future-variant guard; unreachable today.
-            #[cfg(not(tarpaulin_include))]
-            _ => {
-                unreachable!("ComplexColumnType is #[non_exhaustive]; all variants matched")
-            }
+            _ => unreachable!(
+                "ComplexColumnType is #[non_exhaustive]; all variants are matched above"
+            ),
         },
     }
 }
 
 #[expect(
     clippy::too_many_arguments,
-    reason = "all params are independent field-kwarg inputs; a context struct would add noise without reducing coupling"
+    reason = "independent field-kwarg inputs, read once at a single call site"
 )]
 pub(super) fn build_field_kwargs(
     col_type: &ColumnType,
@@ -86,7 +91,7 @@ pub(super) fn build_field_kwargs(
     let mut kwargs: Vec<String> = Vec::new();
 
     if let Some(db_col) = db_column {
-        kwargs.push(format!("db_column=\"{db_col}\""));
+        kwargs.push(format!("db_column={}", string_literal(db_col)));
     }
 
     // Size / precision kwargs
@@ -146,6 +151,13 @@ pub(super) fn build_default(
     sql: &str,
     used: &mut UsedImports,
 ) -> Option<String> {
+    // A `JSONField` default has to be a callable (fields.E010), and the SQL
+    // literal is the document's text, not its value. The database keeps its
+    // own default.
+    if django_field_type(col_type, false, false) == "models.JSONField" {
+        return None;
+    }
+
     if sql.contains('(') {
         let up = sql.to_uppercase();
         let is_timestamp_col = matches!(
@@ -171,9 +183,10 @@ pub(super) fn build_default(
         return Some("False".into());
     }
 
-    if sql.starts_with('\'') && sql.ends_with('\'') && sql.len() >= 2 {
-        let inner = &sql[1..sql.len() - 1];
-        return Some(format!("\"{}\"", inner.replace('"', "\\\"")));
+    if sql.len() >= 2 && sql.starts_with('\'') && sql.ends_with('\'') {
+        // `unquote` keeps the doubled SQL escape (its other consumers re-emit
+        // into SQL); a Python string wants the actual value.
+        return Some(string_literal(&unquote(sql).replace("''", "'")));
     }
 
     // A bare numeric literal (e.g. "0", "-1.5") is valid Python as-is. Any
@@ -188,13 +201,30 @@ pub(super) fn build_default(
     None
 }
 
-pub(super) fn reference_action_str(action: &vespertide_core::ReferenceAction) -> &'static str {
-    use vespertide_core::ReferenceActionKind;
-    match ReferenceActionKind::from(action) {
-        ReferenceActionKind::Cascade => "models.CASCADE",
-        ReferenceActionKind::Restrict => "models.RESTRICT",
-        ReferenceActionKind::SetNull => "models.SET_NULL",
-        ReferenceActionKind::SetDefault => "models.SET_DEFAULT",
-        ReferenceActionKind::NoAction => "models.DO_NOTHING",
+/// The `on_delete` a ForeignKey can carry; a key without an action restricts.
+/// Django emulates the action itself and rejects one the field cannot carry
+/// out: SET_DEFAULT without a default (fields.E321), SET_NULL on a field that
+/// is not null (fields.E320). The table is unmanaged, so the database still
+/// applies its own rule; DO_NOTHING leaves it to.
+pub(super) fn on_delete_for(
+    action: Option<&ReferenceAction>,
+    has_default: bool,
+    null: bool,
+) -> &'static str {
+    match action {
+        Some(ReferenceAction::SetDefault) if !has_default => "models.DO_NOTHING",
+        Some(ReferenceAction::SetNull) if !null => "models.DO_NOTHING",
+        Some(action) => reference_action_str(action),
+        None => "models.RESTRICT",
+    }
+}
+
+fn reference_action_str(action: &ReferenceAction) -> &'static str {
+    match action {
+        ReferenceAction::Cascade => "models.CASCADE",
+        ReferenceAction::Restrict => "models.RESTRICT",
+        ReferenceAction::SetNull => "models.SET_NULL",
+        ReferenceAction::SetDefault => "models.SET_DEFAULT",
+        ReferenceAction::NoAction => "models.DO_NOTHING",
     }
 }
