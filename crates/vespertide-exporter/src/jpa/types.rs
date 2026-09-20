@@ -67,9 +67,6 @@ pub(super) fn column_type_to_java(col_type: &ColumnType) -> &'static str {
             SimpleColumnType::Timestamptz => "OffsetDateTime",
             SimpleColumnType::Bytea => "byte[]",
             SimpleColumnType::Uuid => "UUID",
-            _ => unreachable!(
-                "SimpleColumnType is #[non_exhaustive]; all variants are matched above"
-            ),
         },
         ColumnType::Complex(ty) => match ty {
             ComplexColumnType::Numeric { .. } => "BigDecimal",

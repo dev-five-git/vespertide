@@ -201,9 +201,6 @@ fn pg_ctor(ty: &ColumnType, table: &str, bindings: &FileBindings) -> ColumnCtor 
             SimpleColumnType::Bytea => custom_ctor(&pg_bytea(), bindings),
             SimpleColumnType::Xml => custom_ctor(&pg_xml(), bindings),
             SimpleColumnType::Text => ctor("text"),
-            _ => unreachable!(
-                "SimpleColumnType is #[non_exhaustive]; all variants are matched above"
-            ),
         },
         ColumnType::Complex(c) => complex_ctor(c, DrizzleDialect::Pg, table, bindings),
     }
@@ -236,9 +233,6 @@ fn mysql_ctor(ty: &ColumnType, table: &str, bindings: &FileBindings) -> ColumnCt
             SimpleColumnType::Macaddr => widened("text", String::new(), "macaddr"),
             SimpleColumnType::Xml => widened("text", String::new(), "xml"),
             SimpleColumnType::Text => ctor("text"),
-            _ => unreachable!(
-                "SimpleColumnType is #[non_exhaustive]; all variants are matched above"
-            ),
         },
         ColumnType::Complex(c) => complex_ctor(c, DrizzleDialect::Mysql, table, bindings),
     }
@@ -273,9 +267,6 @@ fn sqlite_ctor(ty: &ColumnType, table: &str, bindings: &FileBindings) -> ColumnC
             SimpleColumnType::Macaddr => widened("text", String::new(), "macaddr"),
             SimpleColumnType::Xml => widened("text", String::new(), "xml"),
             SimpleColumnType::Text => ctor("text"),
-            _ => unreachable!(
-                "SimpleColumnType is #[non_exhaustive]; all variants are matched above"
-            ),
         },
         ColumnType::Complex(c) => complex_ctor(c, DrizzleDialect::Sqlite, table, bindings),
     }

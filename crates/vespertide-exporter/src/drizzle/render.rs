@@ -581,10 +581,7 @@ fn reference_action_to_drizzle(action: &ReferenceAction) -> &'static str {
         ReferenceAction::Restrict => "restrict",
         ReferenceAction::SetNull => "set null",
         ReferenceAction::SetDefault => "set default",
-        // `NoAction`, plus — `ReferenceAction` is `#[non_exhaustive]` — any
-        // action added later, which falls back to the SQL default rather than
-        // to a keyword Drizzle cannot parse.
-        _ => "no action",
+        ReferenceAction::NoAction => "no action",
     }
 }
 

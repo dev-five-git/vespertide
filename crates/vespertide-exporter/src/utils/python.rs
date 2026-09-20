@@ -60,9 +60,6 @@ pub(crate) fn column_type_to_python(col_type: &ColumnType, nullable: bool) -> St
             SimpleColumnType::Bytea => "bytes",
             SimpleColumnType::Uuid => "UUID",
             SimpleColumnType::Json => "dict",
-            _ => unreachable!(
-                "SimpleColumnType is #[non_exhaustive]; all variants are matched above"
-            ),
         },
         ColumnType::Complex(ty) => match ty {
             ComplexColumnType::Numeric { .. } => "Decimal",

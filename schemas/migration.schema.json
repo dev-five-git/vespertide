@@ -1019,7 +1019,7 @@
       ]
     },
     "ReferenceAction": {
-      "description": "The referential action taken on child rows when the referenced parent row changes.\n\nUsed in `ForeignKeyDef::on_delete` and `ForeignKeyDef::on_update` to control cascading\nbehaviour. In JSON model files these are written in `snake_case`\n(e.g. `\"on_delete\": \"cascade\"`).\n\nThis enum is `#[non_exhaustive]`: new variants may be added in future releases.\nDownstream `match` expressions should include a wildcard arm.",
+      "description": "The referential action taken on child rows when the referenced parent row changes.\n\nUsed in `ForeignKeyDef::on_delete` and `ForeignKeyDef::on_update` to control cascading\nbehaviour. In JSON model files these are written in `snake_case`\n(e.g. `\"on_delete\": \"cascade\"`).",
       "oneOf": [
         {
           "description": "Automatically delete or update child rows when the parent row is deleted or updated (`CASCADE`).",
@@ -1082,7 +1082,7 @@
       ]
     },
     "SimpleColumnType": {
-      "description": "Parameter-free SQL column types supported across all backends.\n\nEach variant maps directly to a standard SQL type. Use these via\n[`ColumnType::Simple`] when no length, precision, or scale is needed.\n\nThis enum is `#[non_exhaustive]`: new variants may be added in future releases.\nDownstream `match` expressions should include a wildcard arm.",
+      "description": "Parameter-free SQL column types supported across all backends.\n\nEach variant maps directly to a standard SQL type. Use these via\n[`ColumnType::Simple`] when no length, precision, or scale is needed.",
       "oneOf": [
         {
           "description": "16-bit signed integer (`SMALLINT`).",
