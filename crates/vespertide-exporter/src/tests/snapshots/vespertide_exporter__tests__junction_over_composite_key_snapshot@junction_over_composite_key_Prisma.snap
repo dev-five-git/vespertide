@@ -1,0 +1,30 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model User {
+  id Int @id
+  article_user ArticleUser[]
+
+  @@map("user")
+}
+
+model Article {
+  media_id Int
+  id Int
+  article_user ArticleUser[]
+
+  @@id([media_id, id])
+  @@map("article")
+}
+
+model ArticleUser {
+  media_id Int
+  article_id Int
+  user_id Int
+  user User @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  article Article @relation(fields: [media_id, article_id], references: [media_id, id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([media_id, article_id, user_id])
+  @@map("article_user")
+}

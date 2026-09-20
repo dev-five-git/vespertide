@@ -1,10 +1,11 @@
 use super::enums::render_enum;
 use super::types::{UsedTypes, column_type_to_python, column_type_to_sqlalchemy};
+use crate::constraint_scan::FkDetails;
 use crate::parallel_config::{
     PYTHON_EXPORT_PAR_TABLE_MIN_LEN, SQLALCHEMY_EXPORT_PAR_TABLE_THRESHOLD,
 };
-use crate::utils::common::{join_qualified_refs, join_quoted, push_attr};
-use crate::utils::python::collect_composite_fks;
+use crate::utils::common::{collect_composite_fks, join_qualified_refs, join_quoted, push_attr};
+use crate::utils::python::escape_python_keyword;
 use rayon::prelude::*;
 use vespertide_core::schema::column::{ColumnType, ComplexColumnType, EnumValues};
 use vespertide_core::schema::constraint::TableConstraint;
@@ -76,7 +77,7 @@ fn render_entity_part(table: &TableDef, used_types: &mut UsedTypes<'static>) -> 
 
     // Collect single-column foreign key targets once; the import flag below and
     // the per-column render lookups both read from this single scan.
-    let fk_info = crate::constraint_scan::single_column_fk_targets(&table.constraints);
+    let fk_info = crate::constraint_scan::single_column_fk_details(&table.constraints);
 
     // Check for single-column foreign keys
     if !fk_info.is_empty() {
@@ -272,7 +273,7 @@ fn render_column(
     col: &ColumnDef,
     is_pk: bool,
     is_unique: bool,
-    fk_info: Option<&(&str, &str)>,
+    fk_info: Option<&FkDetails>,
 ) {
     // Add column comment
     if let Some(ref comment) = col.comment {
@@ -291,10 +292,10 @@ fn render_column(
     push_attr(&mut attrs, &sa_type);
 
     // Foreign key
-    if let Some((ref_table, ref_col)) = fk_info {
+    if let Some(fk) = fk_info {
         push_attr(
             &mut attrs,
-            &format!("ForeignKey(\"{ref_table}.{ref_col}\")"),
+            &format!("ForeignKey(\"{}.{}\")", fk.ref_table, fk.ref_column),
         );
     }
 
@@ -340,7 +341,10 @@ fn render_column(
     // buffer (see `push_attr`), so the positional name is spliced in at the
     // front instead of `Vec::insert(0, ..)`; output is byte-identical to
     // prepending the fragment and re-joining with ", ".
-    let attr_name = sanitize_identifier(col.name.as_str(), IdentifierStart::Underscore);
+    let attr_name = escape_python_keyword(sanitize_identifier(
+        col.name.as_str(),
+        IdentifierStart::Underscore,
+    ));
     if attr_name != col.name.as_str() {
         attrs.insert_str(0, &format!("\"{}\", ", col.name));
     }

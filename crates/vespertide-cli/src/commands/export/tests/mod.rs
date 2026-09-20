@@ -6,7 +6,10 @@ pub(super) use std::fs as std_fs;
 pub(super) use tempfile::tempdir;
 pub(super) use vespertide_core::{ColumnDef, ColumnType, SimpleColumnType, TableConstraint};
 
+mod django;
 mod drizzle;
+mod gorm;
+mod models_file;
 mod prisma;
 
 fn write_config() {
@@ -334,6 +337,16 @@ fn build_output_path_handles_special_path_components() {
     let rel_path2 = Path::new("../other/items.yaml");
     let out2 = build_output_path(root, rel_path2, Orm::SeaOrm);
     assert!(out2.to_string_lossy().contains("items"));
+}
+
+/// Python files are imported as modules, so a stem that is not an identifier
+/// is escaped the way the model class names are.
+#[rstest::rstest]
+#[case::sqlalchemy(Orm::SqlAlchemy)]
+#[case::sqlmodel(Orm::SqlModel)]
+fn build_output_path_makes_python_stems_importable(#[case] orm: Orm) {
+    let out = build_output_path(Path::new("src/models"), Path::new("1st-users.json"), orm);
+    assert_eq!(out, Path::new("src/models/_1st_users.py"));
 }
 
 #[test]

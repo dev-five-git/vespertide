@@ -1,0 +1,39 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class UserRelations(models.Model):
+    id = models.IntegerField(primary_key=True)
+    kind = models.TextField()
+
+    class Meta:
+        managed = False
+        db_table = "user_relations"
+
+class User(models.Model):
+    id = models.IntegerField(primary_key=True)
+
+    class Meta:
+        managed = False
+        db_table = "user"
+
+class Sql(models.Model):
+    id = models.IntegerField(primary_key=True)
+    amount = models.IntegerField()
+
+    class Meta:
+        managed = False
+        db_table = "sql"
+
+class Posts(models.Model):
+    id = models.IntegerField(primary_key=True)
+    user = models.ForeignKey("User", on_delete=models.RESTRICT, related_name="+")
+
+    class Meta:
+        managed = False
+        db_table = "posts"

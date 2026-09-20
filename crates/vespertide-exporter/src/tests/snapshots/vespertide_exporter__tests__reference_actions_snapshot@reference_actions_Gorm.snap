@@ -1,0 +1,32 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+package models
+
+type Users struct {
+	ID       int32      `gorm:"column:id;primaryKey" json:"id"`
+	Posts    []Posts    `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE,OnUpdate:RESTRICT" json:"-"`
+	Comments []Comments `gorm:"foreignKey:AuthorID;constraint:OnDelete:SET DEFAULT,OnUpdate:CASCADE" json:"-"`
+}
+
+func (Users) TableName() string { return "users" }
+
+type Posts struct {
+	ID       int32      `gorm:"column:id;primaryKey" json:"id"`
+	UserID   int32      `gorm:"column:user_id;not null" json:"user_id"`
+	User     *Users     `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE,OnUpdate:RESTRICT" json:"-"`
+	Comments []Comments `gorm:"foreignKey:PostID;constraint:OnDelete:SET DEFAULT,OnUpdate:NO ACTION" json:"-"`
+}
+
+func (Posts) TableName() string { return "posts" }
+
+type Comments struct {
+	ID       int32  `gorm:"column:id;primaryKey" json:"id"`
+	PostID   *int32 `gorm:"column:post_id" json:"post_id"`
+	Post     *Posts `gorm:"foreignKey:PostID;constraint:OnDelete:SET DEFAULT,OnUpdate:NO ACTION" json:"-"`
+	AuthorID int32  `gorm:"column:author_id;not null;default:1" json:"author_id"`
+	Author   *Users `gorm:"foreignKey:AuthorID;constraint:OnDelete:SET DEFAULT,OnUpdate:CASCADE" json:"-"`
+}
+
+func (Comments) TableName() string { return "comments" }

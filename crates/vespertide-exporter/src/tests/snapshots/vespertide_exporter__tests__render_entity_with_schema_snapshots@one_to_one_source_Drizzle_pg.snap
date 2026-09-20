@@ -1,0 +1,15 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const profile = pgTable("profile", {
+  id: uuid("id").primaryKey(),
+  userId: uuid("user_id").notNull(),
+}, (t) => [
+  foreignKey({ columns: [t.userId], foreignColumns: [user.id], name: "fk_profile__user_id" }),
+  uniqueIndex("uq_profile__user_id").on(t.userId),
+]);
+
+export const profileRelations = relations(profile, ({ one, many }) => ({
+  user: one(user, { fields: [profile.userId], references: [user.id] }),
+}));

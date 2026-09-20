@@ -7,7 +7,9 @@ pub mod config;
 pub mod file_format;
 pub mod name_case;
 
-pub use config::{SeaOrmConfig, VespertideConfig, default_migration_filename_pattern};
+pub use config::{
+    DjangoConfig, SeaOrmConfig, VespertideConfig, default_migration_filename_pattern,
+};
 pub use file_format::FileFormat;
 pub use name_case::NameCase;
 
@@ -99,5 +101,60 @@ mod tests {
         }"#;
         let cfg: VespertideConfig = serde_json::from_str(json).unwrap();
         assert_eq!(cfg.seaorm().extra_enum_derives(), &["MyDerive"]);
+    }
+
+    #[test]
+    fn django_config_default_has_no_app_label() {
+        let cfg = DjangoConfig::default();
+        assert_eq!(cfg.app_label(), None);
+    }
+
+    #[test]
+    fn django_config_accessor() {
+        let cfg = DjangoConfig {
+            app_label: Some("myapp".to_string()),
+        };
+        assert_eq!(cfg.app_label(), Some("myapp"));
+    }
+
+    #[test]
+    fn django_config_deserialize_with_defaults() {
+        let json = r"{}";
+        let cfg: DjangoConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.app_label(), None);
+    }
+
+    #[test]
+    fn django_config_deserialize_with_app_label() {
+        let json = r#"{"appLabel": "myapp"}"#;
+        let cfg: DjangoConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.app_label(), Some("myapp"));
+    }
+
+    #[test]
+    fn django_config_app_label_absent_from_json_when_none() {
+        let cfg = DjangoConfig::default();
+        assert_eq!(serde_json::to_value(&cfg).unwrap(), serde_json::json!({}));
+    }
+
+    #[test]
+    fn vespertide_config_django_accessor() {
+        let cfg = VespertideConfig::default();
+        assert_eq!(cfg.django().app_label(), None);
+    }
+
+    #[test]
+    fn vespertide_config_deserialize_with_django() {
+        let json = r#"{
+            "modelsDir": "models",
+            "migrationsDir": "migrations",
+            "tableNamingCase": "snake",
+            "columnNamingCase": "snake",
+            "django": {
+                "appLabel": "myapp"
+            }
+        }"#;
+        let cfg: VespertideConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.django().app_label(), Some("myapp"));
     }
 }

@@ -78,6 +78,28 @@ impl SeaOrmConfig {
     }
 }
 
+/// Django-specific export configuration.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct DjangoConfig {
+    /// Explicit `app_label` written into every generated model's `Meta`
+    /// class. Needed when generated models don't live inside a standard
+    /// Django app package layout, where Django would otherwise infer the
+    /// label from the containing package. `None` (default) omits
+    /// `app_label` and leaves Django's normal inference in place.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_label: Option<String>,
+}
+
+impl DjangoConfig {
+    /// Explicit `app_label` to emit in every model's `Meta` class, if set.
+    pub fn app_label(&self) -> Option<&str> {
+        self.app_label.as_deref()
+    }
+}
+
 /// Top-level vespertide configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -100,6 +122,9 @@ pub struct VespertideConfig {
     /// SeaORM-specific export configuration.
     #[serde(default)]
     pub seaorm: SeaOrmConfig,
+    /// Django-specific export configuration.
+    #[serde(default)]
+    pub django: DjangoConfig,
     /// Prefix to add to all table names (including migration version table).
     /// Default: "" (no prefix)
     #[serde(default)]
@@ -138,6 +163,7 @@ impl Default for VespertideConfig {
             migration_filename_pattern: default_migration_filename_pattern(),
             model_export_dir: default_model_export_dir(),
             seaorm: SeaOrmConfig::default(),
+            django: DjangoConfig::default(),
             prefix: String::new(),
             lock_timeout_ms: None,
             statement_timeout_ms: None,
@@ -189,6 +215,11 @@ impl VespertideConfig {
     /// SeaORM-specific export configuration.
     pub fn seaorm(&self) -> &SeaOrmConfig {
         &self.seaorm
+    }
+
+    /// Django-specific export configuration.
+    pub fn django(&self) -> &DjangoConfig {
+        &self.django
     }
 
     /// Prefix to add to all table names.

@@ -450,7 +450,7 @@
       "description": "Inline primary key declaration on a [`ColumnDef`], supporting both shorthand and full syntax.\n\nIn JSON model files you can write either:\n- `\"primary_key\": true` (shorthand, no auto-increment)\n- `\"primary_key\": {\"auto_increment\": true}` (full object syntax)\n\n[`ColumnDef`]: crate::schema::ColumnDef"
     },
     "ReferenceAction": {
-      "description": "The referential action taken on child rows when the referenced parent row changes.\n\nUsed in `ForeignKeyDef::on_delete` and `ForeignKeyDef::on_update` to control cascading\nbehaviour. In JSON model files these are written in `snake_case`\n(e.g. `\"on_delete\": \"cascade\"`).\n\nThis enum is `#[non_exhaustive]`: new variants may be added in future releases.\nDownstream `match` expressions should include a wildcard arm.",
+      "description": "The referential action taken on child rows when the referenced parent row changes.\n\nUsed in `ForeignKeyDef::on_delete` and `ForeignKeyDef::on_update` to control cascading\nbehaviour. In JSON model files these are written in `snake_case`\n(e.g. `\"on_delete\": \"cascade\"`).",
       "oneOf": [
         {
           "const": "cascade",
@@ -513,7 +513,7 @@
       "type": "object"
     },
     "SimpleColumnType": {
-      "description": "Parameter-free SQL column types supported across all backends.\n\nEach variant maps directly to a standard SQL type. Use these via\n[`ColumnType::Simple`] when no length, precision, or scale is needed.\n\nThis enum is `#[non_exhaustive]`: new variants may be added in future releases.\nDownstream `match` expressions should include a wildcard arm.",
+      "description": "Parameter-free SQL column types supported across all backends.\n\nEach variant maps directly to a standard SQL type. Use these via\n[`ColumnType::Simple`] when no length, precision, or scale is needed.",
       "oneOf": [
         {
           "const": "small_int",

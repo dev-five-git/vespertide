@@ -1,0 +1,35 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class User(models.Model):
+    id = models.IntegerField(primary_key=True)
+
+    class Meta:
+        managed = False
+        db_table = "user"
+
+class Article(models.Model):
+    pk = models.CompositePrimaryKey("media_id", "id")
+    media_id = models.IntegerField()
+    id = models.IntegerField()
+
+    class Meta:
+        managed = False
+        db_table = "article"
+
+class ArticleUser(models.Model):
+    pk = models.CompositePrimaryKey("media_id", "article_id", "user_id")
+    media_id = models.IntegerField()
+    article_id = models.IntegerField()
+    user = models.ForeignKey("User", on_delete=models.RESTRICT, related_name="+")
+    # composite foreign key: (media_id, article_id) -> article(media_id, id)
+
+    class Meta:
+        managed = False
+        db_table = "article_user"

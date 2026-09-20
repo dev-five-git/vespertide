@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const ordersStatus = pgEnum("orders_status", ["pending", "shipped"]);
+
+export const orders = pgTable("orders", {
+  id: integer("id").primaryKey(),
+  status: ordersStatus("status").notNull(),
+});
+
+export const tasksStatus = pgEnum("tasks_status", ["todo", "done"]);
+
+export const tasks = pgTable("tasks", {
+  id: integer("id").primaryKey(),
+  status: tasksStatus("status").notNull(),
+});

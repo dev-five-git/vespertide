@@ -88,9 +88,6 @@ impl UsedTypes<'_> {
             SimpleColumnType::Inet | SimpleColumnType::Cidr | SimpleColumnType::Macaddr => {
                 self.sa_types.insert("String");
             }
-            _ => unreachable!(
-                "SimpleColumnType is #[non_exhaustive]; all variants are matched above"
-            ),
         }
     }
 
@@ -139,9 +136,6 @@ pub(super) fn column_type_to_sqlalchemy(col_type: &ColumnType) -> String {
             SimpleColumnType::Inet | SimpleColumnType::Cidr | SimpleColumnType::Macaddr => {
                 "String(255)".into()
             }
-            _ => unreachable!(
-                "SimpleColumnType is #[non_exhaustive]; all variants are matched above"
-            ),
         },
         ColumnType::Complex(ty) => match ty {
             ComplexColumnType::Numeric { precision, scale } => {

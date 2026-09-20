@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class Notes(models.Model):
+    id = models.IntegerField(primary_key=True)
+    note = models.TextField(default="a;b")
+    body = models.TextField()
+
+    class Meta:
+        managed = False
+        db_table = "notes"

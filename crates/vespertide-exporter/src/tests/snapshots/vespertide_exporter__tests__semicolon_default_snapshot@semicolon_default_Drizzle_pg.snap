@@ -1,0 +1,9 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const notes = pgTable("notes", {
+  id: integer("id").primaryKey(),
+  note: text("note").notNull().default("a;b"),
+  body: text("body").notNull(),
+});

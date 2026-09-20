@@ -13,7 +13,7 @@
 
 use vespertide_naming::build_enum_type_name;
 
-use crate::utils::typescript::ts_string;
+use crate::utils::common::string_literal;
 
 /// The natural `const` binding an enum declaration and its columns share,
 /// derived from the database type name so the two stay recognisably paired.
@@ -31,10 +31,10 @@ pub(super) fn enum_const_name(table: &str, enum_name: &str) -> String {
 /// them to PostgreSQL as written, so there is no variant-name normalization
 /// and nothing that would need a `@map` equivalent.
 pub(super) fn render_enum_decl(const_name: &str, db_name: &str, values: &[String]) -> String {
-    let variants: Vec<String> = values.iter().map(|v| ts_string(v)).collect();
+    let variants: Vec<String> = values.iter().map(|v| string_literal(v)).collect();
     format!(
         "export const {const_name} = pgEnum({}, [{}]);",
-        ts_string(db_name),
+        string_literal(db_name),
         variants.join(", ")
     )
 }

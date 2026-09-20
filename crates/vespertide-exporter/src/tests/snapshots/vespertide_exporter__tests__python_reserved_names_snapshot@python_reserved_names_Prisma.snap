@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model EventLog {
+  id Int @id
+  from String
+  def String
+  pk Int
+  user__name String
+  total_ Int
+  a__b String @map("a--b")
+  pass_id Int
+  pass Targets @relation(fields: [pass_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("event__log")
+}

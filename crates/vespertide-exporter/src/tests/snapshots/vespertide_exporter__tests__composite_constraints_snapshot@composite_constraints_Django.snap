@@ -1,0 +1,24 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class OrderItems(models.Model):
+    pk = models.CompositePrimaryKey("order_id", "product_id")
+    order = models.ForeignKey("Orders", on_delete=models.RESTRICT, related_name="+")
+    product = models.ForeignKey("Products", on_delete=models.RESTRICT, related_name="+")
+    quantity = models.IntegerField()
+
+    class Meta:
+        managed = False
+        db_table = "order_items"
+        indexes = [
+            models.Index(fields=["order_id"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=["order_id", "product_id"], name="uq_order_items__uq_order_items__order_product"),
+        ]

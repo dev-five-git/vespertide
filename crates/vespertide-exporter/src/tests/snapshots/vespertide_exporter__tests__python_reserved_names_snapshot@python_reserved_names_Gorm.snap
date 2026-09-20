@@ -1,0 +1,19 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+package models
+
+type EventLog struct {
+	ID       int32    `gorm:"column:id;primaryKey" json:"id"`
+	From     string   `gorm:"column:from;not null;type:text" json:"from"`
+	Def      string   `gorm:"column:def;not null;type:text" json:"def"`
+	Pk       int32    `gorm:"column:pk;not null" json:"pk"`
+	UserName string   `gorm:"column:user__name;not null;type:text" json:"user__name"`
+	Total    int32    `gorm:"column:total_;not null" json:"total_"`
+	A__b     string   `gorm:"column:a--b;not null;type:text" json:"a--b"`
+	PassID   int32    `gorm:"column:pass_id;not null" json:"pass_id"`
+	Pass     *Targets `gorm:"foreignKey:PassID" json:"-"`
+}
+
+func (EventLog) TableName() string { return "event__log" }

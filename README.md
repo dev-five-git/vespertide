@@ -16,7 +16,7 @@ Declarative database schema management. Define your schemas in JSON, and Vespert
 - **Enum Types**: Native string enums and integer enums (no migration needed for new values)
 - **Zero-Runtime Migrations**: Compile-time macro generates database-specific SQL
 - **JSON Schema Validation**: Ships with JSON Schemas for IDE autocompletion and validation
-- **ORM Export**: Export schemas to SeaORM, SQLAlchemy, SQLModel, JPA, Prisma, Drizzle
+- **ORM Export**: Export schemas to SeaORM, SQLAlchemy, SQLModel, JPA, Prisma, Drizzle, GORM, Django
 - **Language Server**: First-class editor support via the bundled `vespertide-lsp` — see [LSP Features](#lsp-features) below
 
 ## What's new in 0.2.0
@@ -24,7 +24,7 @@ Declarative database schema management. Define your schemas in JSON, and Vespert
 API stability pass with a byte-identical JSON wire format — existing models and migration files load unchanged.
 
 - **Newtype identifiers**: `TableName`, `ColumnName`, `IndexName` in `vespertide-core` (`crates/vespertide-core/src/schema/names.rs`). `#[serde(transparent)]` keeps JSON identical; `Deref<Target = str>` means most call sites need no edit.
-- **`#[non_exhaustive]` configs**: `VespertideConfig`, `SeaOrmConfig`, and `MigrationOptions` must be built with `..Default::default()` (or `MigrationOptions::new()`), so future fields don't break semver.
+- **`#[non_exhaustive]` configs**: `VespertideConfig`, `SeaOrmConfig`, `DjangoConfig`, and `MigrationOptions` must be built with `..Default::default()` (or `MigrationOptions::new()`), so future fields don't break semver.
 - **Decomposed `QueryError`**: new `InvalidColumnType`, `SchemaError`, `BackendError`, and `UnsupportedAction` variants. `QueryError::Other(String)` is `#[deprecated]` but still compiles.
 - **Cloneable `MigrationError`**: backed by `Arc<dyn Error>`, so retry loops can re-emit errors without re-running the planner.
 - **Faster LSP**: every editor hot path (diagnostics, symbols, drift) is now `RingCache`-backed in `vespertide-lsp`. No API change; -99% latency on the synthetic `tools/lsp-profile/` workload.
@@ -245,6 +245,8 @@ vespertide export --orm sqlmodel    # Python - SQLModel (FastAPI)
 vespertide export --orm jpa         # Java - JPA/Hibernate entities
 vespertide export --orm prisma      # Prisma - schema.prisma models
 vespertide export --orm drizzle     # TypeScript - Drizzle ORM (pg/mysql/sqlite files)
+vespertide export --orm gorm        # Go - GORM models (models.go)
+vespertide export --orm django      # Python - Django models (models.py)
 ```
 
 ## Runtime Migrations (Macro)

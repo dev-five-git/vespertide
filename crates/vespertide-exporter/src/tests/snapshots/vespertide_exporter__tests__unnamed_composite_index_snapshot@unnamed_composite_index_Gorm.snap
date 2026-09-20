@@ -1,0 +1,13 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+package models
+
+type UnnamedIndex struct {
+	ID   int32 `gorm:"column:id;primaryKey" json:"id"`
+	ColA int32 `gorm:"column:col_a;not null;index:ix_unnamed_index__col_a_col_b" json:"col_a"`
+	ColB int32 `gorm:"column:col_b;not null;index:ix_unnamed_index__col_a_col_b" json:"col_b"`
+}
+
+func (UnnamedIndex) TableName() string { return "unnamed_index" }

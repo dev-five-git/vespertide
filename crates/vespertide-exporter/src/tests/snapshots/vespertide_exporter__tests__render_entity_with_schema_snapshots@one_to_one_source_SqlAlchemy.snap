@@ -1,0 +1,17 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from uuid import UUID
+
+from sqlalchemy import ForeignKey, Uuid
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Profile(DeclarativeBase):
+    __tablename__ = "profile"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("user.id"), nullable=False, unique=True)

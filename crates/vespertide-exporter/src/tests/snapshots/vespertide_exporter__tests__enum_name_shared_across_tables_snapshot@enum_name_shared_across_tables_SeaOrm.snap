@@ -1,0 +1,54 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, vespera::Schema)]
+#[serde(rename_all = "camelCase")]
+#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "orders_status")]
+pub enum Status {
+    #[sea_orm(string_value = "pending")]
+    Pending,
+    #[sea_orm(string_value = "shipped")]
+    Shipped,
+}
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "orders")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub status: Status,
+}
+
+vespera::schema_type!(Schema from Model, name = "OrdersSchema");
+impl ActiveModelBehavior for ActiveModel {}
+
+
+use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, vespera::Schema)]
+#[serde(rename_all = "camelCase")]
+#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "tasks_status")]
+pub enum Status {
+    #[sea_orm(string_value = "todo")]
+    Todo,
+    #[sea_orm(string_value = "done")]
+    Done,
+}
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "tasks")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub status: Status,
+}
+
+vespera::schema_type!(Schema from Model, name = "TasksSchema");
+impl ActiveModelBehavior for ActiveModel {}

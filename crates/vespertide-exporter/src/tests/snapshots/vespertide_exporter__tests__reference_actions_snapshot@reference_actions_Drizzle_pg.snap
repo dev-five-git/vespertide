@@ -1,0 +1,38 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const users = pgTable("users", {
+  id: integer("id").primaryKey(),
+});
+
+export const usersRelations = relations(users, ({ one, many }) => ({
+  posts: many(posts),
+  comments: many(comments),
+}));
+
+export const posts = pgTable("posts", {
+  id: integer("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+}, (t) => [
+  foreignKey({ columns: [t.userId], foreignColumns: [users.id], name: "fk_posts__user_id" }).onDelete("cascade").onUpdate("restrict"),
+]);
+
+export const postsRelations = relations(posts, ({ one, many }) => ({
+  user: one(users, { fields: [posts.userId], references: [users.id] }),
+  comments: many(comments),
+}));
+
+export const comments = pgTable("comments", {
+  id: integer("id").primaryKey(),
+  postId: integer("post_id"),
+  authorId: integer("author_id").notNull().default(1),
+}, (t) => [
+  foreignKey({ columns: [t.postId], foreignColumns: [posts.id], name: "fk_comments__post_id" }).onDelete("set default").onUpdate("no action"),
+  foreignKey({ columns: [t.authorId], foreignColumns: [users.id], name: "fk_comments__author_id" }).onDelete("set default").onUpdate("cascade"),
+]);
+
+export const commentsRelations = relations(comments, ({ one, many }) => ({
+  post: one(posts, { fields: [comments.postId], references: [posts.id] }),
+  author: one(users, { fields: [comments.authorId], references: [users.id] }),
+}));

@@ -86,31 +86,6 @@ pub(crate) fn ts_binding(name: &str) -> String {
     sanitized
 }
 
-/// Quote `value` as a double-quoted TypeScript string literal.
-///
-/// Backslashes, quotes and the line terminators are escaped so a database name
-/// or enum value containing any of them cannot end the literal early. Every
-/// literal Drizzle emits — table names, column names, enum values — goes
-/// through here.
-pub(crate) fn ts_string(value: &str) -> String {
-    let mut out = String::with_capacity(value.len() + 2);
-    out.push('"');
-    for ch in value.chars() {
-        match ch {
-            '\\' | '"' => {
-                out.push('\\');
-                out.push(ch);
-            }
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            _ => out.push(ch),
-        }
-    }
-    out.push('"');
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,17 +104,5 @@ mod tests {
     #[case::sql_reserved_only("order", "order")]
     fn ts_binding_escapes_digits_and_reserved_words(#[case] input: &str, #[case] expected: &str) {
         assert_eq!(ts_binding(input), expected);
-    }
-
-    #[rstest]
-    #[case::plain("users", r#""users""#)]
-    #[case::double_quote("say \"hi\"", r#""say \"hi\"""#)]
-    #[case::backslash("back\\slash", r#""back\\slash""#)]
-    #[case::newline("two\nlines", r#""two\nlines""#)]
-    #[case::carriage_return("a\rb", r#""a\rb""#)]
-    #[case::tab("a\tb", r#""a\tb""#)]
-    #[case::empty("", r#""""#)]
-    fn ts_string_escapes_literal_terminators(#[case] input: &str, #[case] expected: &str) {
-        assert_eq!(ts_string(input), expected);
     }
 }

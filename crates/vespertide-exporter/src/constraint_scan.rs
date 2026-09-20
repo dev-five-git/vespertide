@@ -8,7 +8,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use vespertide_core::{ColumnName, TableConstraint, TableDef};
+use vespertide_core::{ColumnName, ReferenceAction, TableConstraint, TableDef, TableName};
 use vespertide_naming::{infer_relation_field_name, to_pascal_case};
 
 /// Collect the column names from every single-column constraint that `extract`
@@ -73,20 +73,30 @@ pub(crate) fn single_column_indexes(constraints: &[TableConstraint]) -> HashSet<
     })
 }
 
-/// Map each single-column foreign key's column name to its
-/// `(ref_table, ref_col)` target. Only foreign keys with exactly one owning
-/// column and one referenced column are included; composite FKs are skipped.
+/// A single-column foreign key's target and referential actions.
+pub(crate) struct FkDetails<'a> {
+    pub(crate) ref_table: &'a str,
+    pub(crate) ref_column: &'a str,
+    pub(crate) on_delete: Option<&'a ReferenceAction>,
+    pub(crate) on_update: Option<&'a ReferenceAction>,
+}
+
+/// Map each single-column foreign key's column name to its target and
+/// referential actions. Only foreign keys with exactly one owning column and
+/// one referenced column are included; composite FKs are skipped.
 ///
 /// Lookup-only, ordering unused.
-pub(crate) fn single_column_fk_targets(
+pub(crate) fn single_column_fk_details(
     constraints: &[TableConstraint],
-) -> HashMap<&str, (&str, &str)> {
+) -> HashMap<&str, FkDetails<'_>> {
     let mut map = HashMap::new();
     for constraint in constraints {
         if let TableConstraint::ForeignKey {
             columns,
             ref_table,
             ref_columns,
+            on_delete,
+            on_update,
             ..
         } = constraint
             && columns.len() == 1
@@ -94,11 +104,57 @@ pub(crate) fn single_column_fk_targets(
         {
             map.insert(
                 columns[0].as_str(),
-                (ref_table.as_str(), ref_columns[0].as_str()),
+                FkDetails {
+                    ref_table: ref_table.as_str(),
+                    ref_column: ref_columns[0].as_str(),
+                    on_delete: on_delete.as_ref(),
+                    on_update: on_update.as_ref(),
+                },
             );
         }
     }
     map
+}
+
+/// The tables `junction` links `current` to, when `junction` is a many-to-many
+/// junction: a composite primary key (`junction_pk`, two or more columns), two
+/// or more foreign keys whose columns all lie in that key, and one of them
+/// pointing at `current`. The targets are the other keys' tables in constraint
+/// order — empty when every key points back at `current`, which is a
+/// self-relation rather than a link. `None` when `junction` is not such a
+/// table. Callers decide whether a target outside their schema counts.
+pub(crate) fn junction_targets<'a>(
+    current: &TableDef,
+    junction: &'a TableDef,
+    junction_pk: &HashSet<&str>,
+) -> Option<Vec<&'a TableName>> {
+    if junction_pk.len() < 2 {
+        return None;
+    }
+    let fks: Vec<(&[ColumnName], &TableName)> = junction
+        .constraints
+        .iter()
+        .filter_map(|c| match c {
+            TableConstraint::ForeignKey {
+                columns, ref_table, ..
+            } => Some((columns.as_slice(), ref_table)),
+            _ => None,
+        })
+        .collect();
+    if fks.len() < 2
+        || !fks
+            .iter()
+            .all(|(cols, _)| cols.iter().all(|c| junction_pk.contains(c.as_str())))
+    {
+        return None;
+    }
+    fks.iter().find(|(_, target)| **target == current.name)?;
+    Some(
+        fks.into_iter()
+            .filter(|(_, target)| **target != current.name)
+            .map(|(_, target)| target)
+            .collect(),
+    )
 }
 
 /// Name segment a relation derives from its FK columns.
@@ -159,6 +215,10 @@ pub(crate) fn fk_relation_names(table: &TableDef) -> HashMap<usize, String> {
 /// name both ends must agree on — is the same everywhere.
 pub(crate) struct BackRelation {
     pub(crate) source_table: String,
+    pub(crate) fk_columns: Vec<String>,
+    pub(crate) ref_columns: Vec<String>,
+    pub(crate) on_delete: Option<ReferenceAction>,
+    pub(crate) on_update: Option<ReferenceAction>,
     pub(crate) rel_segment: String,
     pub(crate) is_one_to_one: bool,
     pub(crate) relation_name: Option<String>,
@@ -170,65 +230,67 @@ pub(crate) fn collect_back_relations(target_table: &str, schema: &[TableDef]) ->
     let mut result = Vec::new();
 
     for source in schema {
-        let fks_to_target: Vec<(usize, &[ColumnName])> = source
+        let fks_to_target = source
             .constraints
             .iter()
-            .enumerate()
-            .filter_map(|(idx, c)| {
-                if let TableConstraint::ForeignKey {
-                    columns, ref_table, ..
-                } = c
-                {
-                    if ref_table.as_str() == target_table {
-                        Some((idx, columns.as_slice()))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
+            .filter(|c| {
+                matches!(c, TableConstraint::ForeignKey { ref_table, .. }
+                    if ref_table.as_str() == target_table)
             })
-            .collect();
+            .count();
 
-        if fks_to_target.is_empty() {
+        if fks_to_target == 0 {
             continue;
         }
 
         let source_relation_names = fk_relation_names(source);
-        let multi_fk = fks_to_target.len() > 1;
+        let multi_fk = fks_to_target > 1;
         let is_self_ref = source.name.as_str() == target_table;
 
-        for (constraint_idx, fk_cols) in &fks_to_target {
-            let is_one_to_one = if let [fk_col] = fk_cols {
-                source.constraints.iter().any(|c| {
-                    matches!(c, TableConstraint::Unique { columns, .. }
-                        if columns.len() == 1 && columns[0] == *fk_col)
-                })
-            } else {
-                // A composite FK is one-to-one when the source can hold at
-                // most one row per target key: its FK columns are exactly its
-                // own PK, or a composite unique covers exactly that set.
-                let fk_set: HashSet<&str> = fk_cols.iter().map(ColumnName::as_str).collect();
-                let pk_cols = primary_key(&source.constraints)
-                    .map(TableConstraint::columns)
-                    .unwrap_or_default();
-                pk_cols.len() == fk_set.len() && pk_cols.iter().all(|c| fk_set.contains(c.as_str()))
-                    || source.constraints.iter().any(|c| {
-                        matches!(c, TableConstraint::Unique { columns, .. }
-                            if columns.len() == fk_set.len()
-                                && columns.iter().all(|col| fk_set.contains(col.as_str())))
-                    })
+        for (constraint_idx, constraint) in source.constraints.iter().enumerate() {
+            let TableConstraint::ForeignKey {
+                columns: fk_cols,
+                ref_table,
+                ref_columns,
+                on_delete,
+                on_update,
+                ..
+            } = constraint
+            else {
+                continue;
             };
+            if ref_table.as_str() != target_table {
+                continue;
+            }
+
+            // A key is one-to-one when the source can hold at most one row
+            // per target key: its FK columns are exactly its own PK, or a
+            // unique covers exactly that set.
+            let fk_set: HashSet<&str> = fk_cols.iter().map(ColumnName::as_str).collect();
+            let pk_cols = primary_key(&source.constraints)
+                .map(TableConstraint::columns)
+                .unwrap_or_default();
+            let is_one_to_one = pk_cols.len() == fk_set.len()
+                && pk_cols.iter().all(|c| fk_set.contains(c.as_str()))
+                || source.constraints.iter().any(|c| {
+                    matches!(c, TableConstraint::Unique { columns, .. }
+                        if columns.len() == fk_set.len()
+                            && columns.iter().all(|col| fk_set.contains(col.as_str())))
+                });
 
             let rel_segment = relation_segment(fk_cols);
             let relation_name = if multi_fk || is_self_ref {
-                source_relation_names.get(constraint_idx).cloned()
+                source_relation_names.get(&constraint_idx).cloned()
             } else {
                 None
             };
 
             result.push(BackRelation {
                 source_table: source.name.as_str().to_string(),
+                fk_columns: fk_cols.iter().map(ToString::to_string).collect(),
+                ref_columns: ref_columns.iter().map(ToString::to_string).collect(),
+                on_delete: on_delete.clone(),
+                on_update: on_update.clone(),
                 rel_segment,
                 is_one_to_one,
                 relation_name,
