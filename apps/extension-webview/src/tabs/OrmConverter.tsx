@@ -41,7 +41,7 @@ export default function OrmConverter({ state, setState }: Props) {
     >
       {/* ORM buttons */}
       <Box>
-        <Box fontSize="11px" opacity={0.55} mb="8px" letterSpacing="0.03em">
+        <Box fontSize="12px" opacity={0.55} mb="8px" letterSpacing="0.03em">
           변환할 대상 ORM 선택
         </Box>
         <Flex flexWrap="wrap" gap="8px">
@@ -118,7 +118,7 @@ export default function OrmConverter({ state, setState }: Props) {
               : '$btnSecBg'}
             color="$btnFg"
             border="none"
-            borderRadius="3px"
+            borderRadius="4px"
             fontSize="12px"
             cursor={canConvert ? 'pointer' : 'not-allowed'}
             opacity={canConvert ? 1 : 0.5}
@@ -139,7 +139,7 @@ export default function OrmConverter({ state, setState }: Props) {
       {/* Current source preview */}
       {state.ormSource && (
         <VStack flex={1} overflow="hidden">
-          <Box fontSize="11px" opacity={0.55} mb="6px">
+          <Box fontSize="12px" opacity={0.55} mb="6px">
             현재 스키마 ({ORM_LABELS[state.ormType]})
           </Box>
           <Box
