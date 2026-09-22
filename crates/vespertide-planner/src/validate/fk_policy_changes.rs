@@ -180,9 +180,6 @@ pub fn render_reference_action(action: Option<&ReferenceAction>) -> &'static str
         Some(ReferenceAction::SetNull) => "SET NULL",
         Some(ReferenceAction::SetDefault) => "SET DEFAULT",
         Some(ReferenceAction::NoAction) | None => "NO ACTION",
-        // reason: unreachable - exhaustive over current ReferenceAction variants; fallback required only for #[non_exhaustive] future variants
-        #[cfg(not(tarpaulin_include))]
-        Some(_) => "(unknown)",
     }
 }
 

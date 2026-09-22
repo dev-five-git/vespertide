@@ -1,0 +1,23 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "notes")
+public class Notes {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @Column(name = "note", nullable = false, columnDefinition = "TEXT")
+    private String note = "a;b";
+
+    @Column(name = "body", nullable = false, columnDefinition = "TEXT")
+    private String body;
+
+    protected Notes() {
+    }
+}

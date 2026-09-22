@@ -1,0 +1,12 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+package models
+
+type Products struct {
+	ID    int32 `gorm:"column:id;primaryKey" json:"id"`
+	Price int32 `gorm:"column:price;not null" json:"price"`
+}
+
+func (Products) TableName() string { return "products" }

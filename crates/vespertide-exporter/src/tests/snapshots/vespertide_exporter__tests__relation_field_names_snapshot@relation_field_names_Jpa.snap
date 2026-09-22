@@ -1,0 +1,104 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "order_regions")
+public class OrderRegions {
+
+    @Id
+    @Column(name = "order_id")
+    private Integer orderId;
+
+    @Id
+    @Column(name = "region_id")
+    private Integer regionId;
+
+    protected OrderRegions() {
+    }
+}
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "order_items")
+public class OrderItems {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @Column(name = "order_id", nullable = false)
+    private Integer orderId;
+
+    @Column(name = "region_id", nullable = false)
+    private Integer regionId;
+
+    @Column(name = "order_regions", nullable = false, columnDefinition = "TEXT")
+    private String orderRegions;
+
+    @Column(name = "order_regions2", nullable = false, columnDefinition = "TEXT")
+    private String orderRegions2;
+
+    protected OrderItems() {
+    }
+}
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "users")
+public class Users {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @Column(name = "posts", nullable = false, columnDefinition = "TEXT")
+    private String posts;
+
+    protected Users() {
+    }
+}
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "posts")
+public class Posts {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private Users user;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "table_name_id", nullable = false)
+    private Categories tableName;
+
+    protected Posts() {
+    }
+}
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "categories")
+public class Categories {
+
+    @Id
+    @Column(name = "id")
+    private Integer id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "parent_id")
+    private Categories parent;
+
+    protected Categories() {
+    }
+}

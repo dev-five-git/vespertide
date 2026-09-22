@@ -258,13 +258,9 @@ impl ColumnDef {
 ///
 /// Each variant maps directly to a standard SQL type. Use these via
 /// [`ColumnType::Simple`] when no length, precision, or scale is needed.
-///
-/// This enum is `#[non_exhaustive]`: new variants may be added in future releases.
-/// Downstream `match` expressions should include a wildcard arm.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
-#[non_exhaustive]
 pub enum SimpleColumnType {
     /// 16-bit signed integer (`SMALLINT`).
     SmallInt,

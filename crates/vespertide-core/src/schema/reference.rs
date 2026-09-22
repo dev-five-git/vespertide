@@ -5,13 +5,9 @@ use serde::{Deserialize, Serialize};
 /// Used in `ForeignKeyDef::on_delete` and `ForeignKeyDef::on_update` to control cascading
 /// behaviour. In JSON model files these are written in `snake_case`
 /// (e.g. `"on_delete": "cascade"`).
-///
-/// This enum is `#[non_exhaustive]`: new variants may be added in future releases.
-/// Downstream `match` expressions should include a wildcard arm.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
-#[non_exhaustive]
 pub enum ReferenceAction {
     /// Automatically delete or update child rows when the parent row is deleted or updated (`CASCADE`).
     Cascade,
@@ -46,9 +42,7 @@ impl ReferenceAction {
 
 #[cfg(test)]
 mod tests {
-    //! Coverage-closure tests for `ReferenceAction::to_sql_keyword`.
-    //! Targets `uncovered-detail.json` lines 40, 41, 42
-    //! (`SetNull` / `SetDefault` / `NoAction` match arms).
+    //! `ReferenceAction::to_sql_keyword` emits one SQL keyword per variant.
     use super::*;
     use rstest::rstest;
 
@@ -62,9 +56,6 @@ mod tests {
         #[case] action: ReferenceAction,
         #[case] expected: &'static str,
     ) {
-        // Each rstest case visits one match arm of to_sql_keyword. The
-        // SetNull/SetDefault/NoAction cases cover the previously-uncovered
-        // lines 40, 41, 42.
         assert_eq!(action.to_sql_keyword(), expected);
     }
 }

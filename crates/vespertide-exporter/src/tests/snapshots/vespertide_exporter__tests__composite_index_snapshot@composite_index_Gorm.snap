@@ -1,0 +1,13 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+package models
+
+type CompositeIndex struct {
+	ID       int32  `gorm:"column:id;primaryKey" json:"id"`
+	TenantID int32  `gorm:"column:tenant_id;not null;index:ix_composite_index__idx_tenant_name" json:"tenant_id"`
+	Name     string `gorm:"column:name;not null;type:text;index:ix_composite_index__idx_tenant_name" json:"name"`
+}
+
+func (CompositeIndex) TableName() string { return "composite_index" }

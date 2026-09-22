@@ -40,9 +40,6 @@ pub(super) fn column_type_to_prisma(
                 | SimpleColumnType::Cidr
                 | SimpleColumnType::Macaddr
                 | SimpleColumnType::Xml => "String",
-                _ => unreachable!(
-                    "SimpleColumnType is #[non_exhaustive]; all variants are matched above"
-                ),
             };
             format!("{base}{q}")
         }

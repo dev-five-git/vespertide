@@ -9,6 +9,7 @@ use super::relations::{
     relation_field_defs_with_schema, render_self_ref_link_helpers, render_self_ref_query_helpers,
 };
 use super::types::{column_type_supports_eq, format_default_value};
+use crate::utils::common::is_jsonb_custom_type;
 
 /// Render a single table into `SeaORM` entity code with schema context, configuration,
 /// and module path mappings for correct cross-directory relation paths.
@@ -218,7 +219,7 @@ pub(super) fn render_column(
         }
         // JSONB custom type should use Json rust type
         ColumnType::Complex(ComplexColumnType::Custom { custom_type })
-            if custom_type.eq_ignore_ascii_case("JSONB") =>
+            if is_jsonb_custom_type(custom_type) =>
         {
             if column.nullable {
                 "Option<Json>".to_string()

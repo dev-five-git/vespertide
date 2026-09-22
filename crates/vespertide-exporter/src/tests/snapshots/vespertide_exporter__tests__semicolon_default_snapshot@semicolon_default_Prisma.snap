@@ -1,0 +1,11 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model Notes {
+  id Int @id
+  note String @default("a;b")
+  body String
+
+  @@map("notes")
+}

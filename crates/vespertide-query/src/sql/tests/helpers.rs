@@ -16,7 +16,6 @@ fn reference_action_sql(action: &ReferenceAction) -> &'static str {
         ReferenceAction::SetNull => "SET NULL",
         ReferenceAction::SetDefault => "SET DEFAULT",
         ReferenceAction::NoAction => "NO ACTION",
-        _ => unreachable!("ReferenceAction is #[non_exhaustive]; all variants are matched above"),
     }
 }
 

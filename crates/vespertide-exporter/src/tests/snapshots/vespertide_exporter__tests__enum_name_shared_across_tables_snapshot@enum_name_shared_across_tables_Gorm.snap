@@ -1,0 +1,33 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+package models
+
+type OrdersStatus string
+
+const (
+	OrdersStatusPending OrdersStatus = "pending"
+	OrdersStatusShipped OrdersStatus = "shipped"
+)
+
+type Orders struct {
+	ID     int32        `gorm:"column:id;primaryKey" json:"id"`
+	Status OrdersStatus `gorm:"column:status;not null" json:"status"`
+}
+
+func (Orders) TableName() string { return "orders" }
+
+type TasksStatus string
+
+const (
+	TasksStatusTodo TasksStatus = "todo"
+	TasksStatusDone TasksStatus = "done"
+)
+
+type Tasks struct {
+	ID     int32       `gorm:"column:id;primaryKey" json:"id"`
+	Status TasksStatus `gorm:"column:status;not null" json:"status"`
+}
+
+func (Tasks) TableName() string { return "tasks" }

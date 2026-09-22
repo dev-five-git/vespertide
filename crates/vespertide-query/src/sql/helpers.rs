@@ -108,7 +108,6 @@ fn apply_simple_column_type(
         SimpleColumnType::Cidr => apply_postgres_text_fallback_type(col, backend, "CIDR"),
         SimpleColumnType::Macaddr => apply_postgres_text_fallback_type(col, backend, "MACADDR"),
         SimpleColumnType::Xml => apply_postgres_text_fallback_type(col, backend, "XML"),
-        _ => unreachable!("SimpleColumnType is #[non_exhaustive]; all variants are matched above"),
     }
 }
 
@@ -219,7 +218,6 @@ pub(crate) fn to_sea_fk_action(action: &ReferenceAction) -> ForeignKeyAction {
         ReferenceAction::SetNull => ForeignKeyAction::SetNull,
         ReferenceAction::SetDefault => ForeignKeyAction::SetDefault,
         ReferenceAction::NoAction => ForeignKeyAction::NoAction,
-        _ => unreachable!("ReferenceAction is #[non_exhaustive]; all variants are matched above"),
     }
 }
 

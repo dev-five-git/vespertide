@@ -9,8 +9,23 @@ use vespertide_core::{
 };
 use vespertide_exporter::{Orm, render_entity_with_schema};
 
-const ALL_ORMS: [Orm; 4] = [Orm::SeaOrm, Orm::SqlAlchemy, Orm::SqlModel, Orm::Jpa];
-const ENUM_ORMS: [Orm; 3] = [Orm::SeaOrm, Orm::SqlAlchemy, Orm::SqlModel];
+const ALL_ORMS: [Orm; 7] = [
+    Orm::SeaOrm,
+    Orm::SqlAlchemy,
+    Orm::SqlModel,
+    Orm::Jpa,
+    Orm::Prisma,
+    Orm::Drizzle,
+    Orm::Gorm,
+];
+const ENUM_ORMS: [Orm; 6] = [
+    Orm::SeaOrm,
+    Orm::SqlAlchemy,
+    Orm::SqlModel,
+    Orm::Prisma,
+    Orm::Drizzle,
+    Orm::Gorm,
+];
 const FK_COLUMNS_PER_TABLE: usize = 20;
 
 fn simple_type(ty: SimpleColumnType) -> ColumnType {

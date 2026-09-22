@@ -11,7 +11,7 @@ use vespertide_core::schema::column::{
 
 use super::bindings::FileBindings;
 use super::{DrizzleDialect, js_name};
-use crate::utils::typescript::ts_string;
+use crate::utils::common::string_literal;
 
 /// One resolved Drizzle column constructor.
 pub(super) struct ColumnCtor {
@@ -34,7 +34,7 @@ impl ColumnCtor {
         format!(
             "{}({}{}){}",
             self.symbol,
-            ts_string(col_db),
+            string_literal(col_db),
             self.args,
             self.note
         )
@@ -70,7 +70,7 @@ fn widened(symbol: &str, args: String, source: &str) -> ColumnCtor {
 /// `["draft", "published"]` — the variant list MySQL and SQLite inline into the
 /// column, since neither declares an enum type separately.
 fn enum_value_list(values: &[String]) -> String {
-    let items: Vec<String> = values.iter().map(|v| ts_string(v)).collect();
+    let items: Vec<String> = values.iter().map(|v| string_literal(v)).collect();
     format!("[{}]", items.join(", "))
 }
 
@@ -115,7 +115,7 @@ pub(super) fn render_custom_type_decl(decl: &CustomTypeDecl, const_name: &str) -
     format!(
         "const {const_name} = customType<{{ data: {} }}>({{ dataType() {{ return {}; }} }});",
         decl.ts_data,
-        ts_string(&decl.data_type)
+        string_literal(&decl.data_type)
     )
 }
 
@@ -201,9 +201,6 @@ fn pg_ctor(ty: &ColumnType, table: &str, bindings: &FileBindings) -> ColumnCtor 
             SimpleColumnType::Bytea => custom_ctor(&pg_bytea(), bindings),
             SimpleColumnType::Xml => custom_ctor(&pg_xml(), bindings),
             SimpleColumnType::Text => ctor("text"),
-            _ => unreachable!(
-                "SimpleColumnType is #[non_exhaustive]; all variants are matched above"
-            ),
         },
         ColumnType::Complex(c) => complex_ctor(c, DrizzleDialect::Pg, table, bindings),
     }
@@ -236,9 +233,6 @@ fn mysql_ctor(ty: &ColumnType, table: &str, bindings: &FileBindings) -> ColumnCt
             SimpleColumnType::Macaddr => widened("text", String::new(), "macaddr"),
             SimpleColumnType::Xml => widened("text", String::new(), "xml"),
             SimpleColumnType::Text => ctor("text"),
-            _ => unreachable!(
-                "SimpleColumnType is #[non_exhaustive]; all variants are matched above"
-            ),
         },
         ColumnType::Complex(c) => complex_ctor(c, DrizzleDialect::Mysql, table, bindings),
     }
@@ -273,9 +267,6 @@ fn sqlite_ctor(ty: &ColumnType, table: &str, bindings: &FileBindings) -> ColumnC
             SimpleColumnType::Macaddr => widened("text", String::new(), "macaddr"),
             SimpleColumnType::Xml => widened("text", String::new(), "xml"),
             SimpleColumnType::Text => ctor("text"),
-            _ => unreachable!(
-                "SimpleColumnType is #[non_exhaustive]; all variants are matched above"
-            ),
         },
         ColumnType::Complex(c) => complex_ctor(c, DrizzleDialect::Sqlite, table, bindings),
     }

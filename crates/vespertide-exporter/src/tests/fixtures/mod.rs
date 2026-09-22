@@ -11,6 +11,12 @@ use vespertide_core::{
 mod collisions;
 pub(crate) use collisions::binding_collisions;
 
+mod reference_actions;
+pub(crate) use reference_actions::reference_actions;
+
+mod identifiers;
+pub(crate) use identifiers::{enum_name_shared_across_tables, relation_field_names};
+
 pub(crate) fn col(name: &str, ty: ColumnType) -> ColumnDef {
     ColumnDef::new(name, ty, false)
 }
@@ -23,7 +29,7 @@ pub(crate) fn simple(name: &str, ty: SimpleColumnType) -> ColumnDef {
     col(name, ColumnType::Simple(ty))
 }
 
-fn nullable_simple(name: &str, ty: SimpleColumnType) -> ColumnDef {
+pub(crate) fn nullable_simple(name: &str, ty: SimpleColumnType) -> ColumnDef {
     nullable_col(name, ColumnType::Simple(ty))
 }
 
@@ -331,7 +337,7 @@ pub(crate) fn enum_special_values() -> TableDef {
     )
 }
 
-fn string_enum(name: &str, values: &[&str]) -> ColumnType {
+pub(crate) fn string_enum(name: &str, values: &[&str]) -> ColumnType {
     ColumnType::Complex(ComplexColumnType::Enum {
         name: name.into(),
         values: EnumValues::String(values.iter().copied().map(Into::into).collect()),
@@ -762,6 +768,19 @@ pub(crate) fn json_default() -> TableDef {
         vec![
             simple("id", SimpleColumnType::Integer),
             simple("data", SimpleColumnType::Json).default(r#"{"hello": "world"}"#.into()),
+        ],
+        vec![pk(&["id"])],
+    )
+}
+
+/// A default carrying `;`, which GORM's tag syntax cannot hold.
+pub(crate) fn semicolon_default() -> TableDef {
+    table(
+        "notes",
+        vec![
+            simple("id", SimpleColumnType::Integer),
+            simple("note", SimpleColumnType::Text).default("'a;b'".into()),
+            simple("body", SimpleColumnType::Text),
         ],
         vec![pk(&["id"])],
     )

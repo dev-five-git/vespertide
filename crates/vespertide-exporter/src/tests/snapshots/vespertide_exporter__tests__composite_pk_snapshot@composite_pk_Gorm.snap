@@ -1,0 +1,12 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+package models
+
+type Accounts struct {
+	ID       int32 `gorm:"column:id;primaryKey" json:"id"`
+	TenantID int64 `gorm:"column:tenant_id;primaryKey" json:"tenant_id"`
+}
+
+func (Accounts) TableName() string { return "accounts" }

@@ -410,8 +410,7 @@ fn reference_action_to_prisma(action: &ReferenceAction) -> &'static str {
         ReferenceAction::Restrict => "Restrict",
         ReferenceAction::SetNull => "SetNull",
         ReferenceAction::SetDefault => "SetDefault",
-        // Includes NoAction and unknown/future referential actions.
-        _ => "NoAction",
+        ReferenceAction::NoAction => "NoAction",
     }
 }
 
