@@ -1,0 +1,22 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class EventLog(models.Model):
+    id = models.IntegerField(primary_key=True)
+    from_field = models.TextField(db_column="from")
+    def_field = models.TextField(db_column="def")
+    pk_field = models.IntegerField(db_column="pk")
+    user_name = models.TextField(db_column="user__name")
+    total_field = models.IntegerField(db_column="total_")
+    a_b = models.TextField(db_column="a--b")
+    pass_field = models.ForeignKey("Targets", on_delete=models.RESTRICT, db_column="pass_id", related_name="+")
+
+    class Meta:
+        managed = False
+        db_table = "event__log"

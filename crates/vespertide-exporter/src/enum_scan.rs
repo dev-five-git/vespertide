@@ -2,10 +2,10 @@
 //! one scope.
 //!
 //! Backends that write one file per table get enum scoping for free; Prisma,
-//! Drizzle and GORM do not, and all start from the same per-table scan. What
-//! they do with it differs — Prisma deduplicates identifiers globally (see
-//! `prisma::enums`), Drizzle table-prefixes every type, GORM claims them in
-//! the package's one scope (see `scope_names`).
+//! Drizzle, GORM and Django do not, and all start from the same per-table
+//! scan. What they do with it differs — Prisma deduplicates identifiers
+//! globally (see `prisma::enums`), Drizzle table-prefixes every type, GORM and
+//! Django claim them in the file's one scope (see `scope_names`).
 
 use vespertide_core::TableDef;
 use vespertide_core::schema::column::{ColumnType, ComplexColumnType, EnumValues};

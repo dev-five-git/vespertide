@@ -1,0 +1,22 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlalchemy import ForeignKey, Integer, Text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class EventLog(DeclarativeBase):
+    __tablename__ = "event__log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    from_: Mapped[str] = mapped_column("from", Text, nullable=False)
+    def_: Mapped[str] = mapped_column("def", Text, nullable=False)
+    pk: Mapped[int] = mapped_column(Integer, nullable=False)
+    user__name: Mapped[str] = mapped_column(Text, nullable=False)
+    total_: Mapped[int] = mapped_column(Integer, nullable=False)
+    a__b: Mapped[str] = mapped_column("a--b", Text, nullable=False)
+    pass_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"), nullable=False)

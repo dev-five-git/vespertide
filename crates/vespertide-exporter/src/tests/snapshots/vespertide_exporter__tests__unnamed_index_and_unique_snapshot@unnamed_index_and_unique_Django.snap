@@ -1,0 +1,23 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class Events(models.Model):
+    id = models.IntegerField(primary_key=True)
+    venue_id = models.IntegerField()
+    date = models.DateField()
+
+    class Meta:
+        managed = False
+        db_table = "events"
+        indexes = [
+            models.Index(fields=["venue_id", "date"], name="ix_events__date_venue_id"),
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=["venue_id", "date"], name="uq_events__date_venue_id"),
+        ]

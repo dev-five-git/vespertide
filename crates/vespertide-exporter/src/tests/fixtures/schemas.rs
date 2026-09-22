@@ -134,6 +134,99 @@ pub(crate) fn schema_scenario(name: &str) -> (TableDef, Vec<TableDef>) {
         // A junction whose target pluralizes to a keyword (`pass`), a junction
         // name that needs sanitizing, and a scalar column already named after
         // the other target (`tags`).
+        "many_to_many_reserved_names" => {
+            let user = table_with_named_pk(
+                "user",
+                vec![
+                    simple("id", SimpleColumnType::Integer),
+                    simple("tags", SimpleColumnType::Text),
+                ],
+                &["id"],
+            );
+            let tags = table_with_named_pk(
+                "tags",
+                vec![simple("id", SimpleColumnType::Integer)],
+                &["id"],
+            );
+            let pass = table_with_named_pk(
+                "pass",
+                vec![simple("id", SimpleColumnType::Integer)],
+                &["id"],
+            );
+            let user_tags = table_with_fk_constraints(
+                "user_tags",
+                vec![
+                    simple("user_id", SimpleColumnType::Integer),
+                    simple("tag_id", SimpleColumnType::Integer),
+                ],
+                &["user_id", "tag_id"],
+                vec![
+                    (vec!["user_id"], "user", vec!["id"]),
+                    (vec!["tag_id"], "tags", vec!["id"]),
+                ],
+            );
+            let user_pass = table_with_fk_constraints(
+                "user-pass",
+                vec![
+                    simple("user_id", SimpleColumnType::Integer),
+                    simple("pass_id", SimpleColumnType::Integer),
+                ],
+                &["user_id", "pass_id"],
+                vec![
+                    (vec!["user_id"], "user", vec!["id"]),
+                    (vec!["pass_id"], "pass", vec!["id"]),
+                ],
+            );
+            (user.clone(), vec![user, tags, pass, user_tags, user_pass])
+        }
+        // A self-junction (both keys -> `user`) and a junction between two other
+        // tables: neither is a many-to-many of `user`.
+        "many_to_many_uninvolved" => {
+            let user = table_with_named_pk(
+                "user",
+                vec![simple("id", SimpleColumnType::Integer)],
+                &["id"],
+            );
+            let user_friends = table_with_fk_constraints(
+                "user_friends",
+                vec![
+                    simple("user_id", SimpleColumnType::Integer),
+                    simple("friend_id", SimpleColumnType::Integer),
+                ],
+                &["user_id", "friend_id"],
+                vec![
+                    (vec!["user_id"], "user", vec!["id"]),
+                    (vec!["friend_id"], "user", vec!["id"]),
+                ],
+            );
+            let groups = table_with_named_pk(
+                "groups",
+                vec![simple("id", SimpleColumnType::Integer)],
+                &["id"],
+            );
+            let tags = table_with_named_pk(
+                "tags",
+                vec![simple("id", SimpleColumnType::Integer)],
+                &["id"],
+            );
+            let group_tags = table_with_fk_constraints(
+                "group_tags",
+                vec![
+                    simple("group_id", SimpleColumnType::Integer),
+                    simple("tag_id", SimpleColumnType::Integer),
+                ],
+                &["group_id", "tag_id"],
+                vec![
+                    (vec!["group_id"], "groups", vec!["id"]),
+                    (vec!["tag_id"], "tags", vec!["id"]),
+                ],
+            );
+            (
+                user.clone(),
+                vec![user, user_friends, groups, tags, group_tags],
+            )
+        }
+        // The unique-FK side of a one-to-one, rendered as the focus table.
         "one_to_one_source" => {
             let (_, schema) = reverse_user_schema("profile", &["user_id"], true);
             (schema[1].clone(), schema)

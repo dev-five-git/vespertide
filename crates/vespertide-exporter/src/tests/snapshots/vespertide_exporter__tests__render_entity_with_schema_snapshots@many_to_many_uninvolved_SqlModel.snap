@@ -1,0 +1,14 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlmodel import Field, SQLModel
+
+
+class User(SQLModel, table=True):
+    __tablename__ = "user"
+
+    id: int = Field(primary_key=True)

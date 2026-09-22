@@ -29,11 +29,12 @@ fn write_models_across_directories() {
     write_model(Path::new("models/blog/post.json"), &post);
 }
 
-/// Model directories do not reach the output. A Go directory is one package,
-/// so both tables land in the same file and the relation between them
-/// resolves without an import.
+/// Model directories do not reach the output. A Go directory is one package
+/// and Django loads one `models` module, so both tables land in the same file
+/// and the relation between them resolves without an import.
 #[rstest]
 #[case::gorm(Orm::Gorm, "models.go")]
+#[case::django(Orm::Django, "models.py")]
 #[serial]
 #[tokio::test]
 async fn export_writes_nested_model_directories_into_one_file(
@@ -55,11 +56,12 @@ async fn export_writes_nested_model_directories_into_one_file(
     });
 }
 
-/// The export root doubles as a source directory — a Go package — and
-/// nothing in it is swept: a re-export replaces the one file an earlier
+/// The export root doubles as a source directory — a Go package, a Django app
+/// — and nothing in it is swept: a re-export replaces the one file an earlier
 /// export wrote and leaves the user's own files, nested ones included, alone.
 #[rstest]
 #[case::gorm(Orm::Gorm, "models.go", "repository.go", "cache/store.go")]
+#[case::django(Orm::Django, "models.py", "admin.py", "migrations/0001_initial.py")]
 #[serial]
 #[tokio::test]
 async fn export_replaces_only_its_own_models_file(
@@ -94,10 +96,16 @@ async fn export_replaces_only_its_own_models_file(
     );
 }
 
-/// `models.go` is a name the user may already own, so a file that does not
-/// open with the generated marker is reported instead of overwritten.
+/// `models.go` and `models.py` are names the user may already own — `startapp`
+/// writes the latter — so a file that does not open with the generated marker
+/// is reported instead of overwritten.
 #[rstest]
 #[case::gorm(Orm::Gorm, "models.go", "package models\n")]
+#[case::django(
+    Orm::Django,
+    "models.py",
+    "from django.db import models\n\n# Create your models here.\n"
+)]
 #[serial]
 #[tokio::test]
 async fn export_refuses_a_models_file_it_did_not_write(

@@ -1,0 +1,26 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "event__log")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub from: String,
+    pub def: String,
+    pub pk: i32,
+    pub user__name: String,
+    pub total_: i32,
+    #[sea_orm(column_name = "a--b")]
+    pub a__b: String,
+    pub pass_id: i32,
+    #[sea_orm(belongs_to, from = "pass_id", to = "id")]
+    pub pass: HasOne<super::targets::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "EventLogSchema");
+impl ActiveModelBehavior for ActiveModel {}

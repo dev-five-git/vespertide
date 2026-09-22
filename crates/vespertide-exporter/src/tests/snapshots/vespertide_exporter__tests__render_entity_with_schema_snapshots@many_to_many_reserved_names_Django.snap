@@ -1,0 +1,18 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class User(models.Model):
+    id = models.IntegerField(primary_key=True)
+    tags = models.TextField()
+    tags2 = models.ManyToManyField("Tags", through="UserTags", related_name="+")
+    pass_field = models.ManyToManyField("Pass", through="User_pass", related_name="+")
+
+    class Meta:
+        managed = False
+        db_table = "user"

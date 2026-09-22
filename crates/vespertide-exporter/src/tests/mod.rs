@@ -23,10 +23,10 @@ fn orm_label(orm: Orm) -> String {
 }
 
 /// Dispatch the per-ORM **multi-table** entry point so the cross-ORM
-/// `orm_cases!(multi ...)` arm renders a `Vec<TableDef>` schema for all seven
+/// `orm_cases!(multi ...)` arm renders a `Vec<TableDef>` schema for all eight
 /// ORMs through a single call. JPA's `render_entities` returns `Vec<String>`
 /// (one entry per entity); we join with `"\n"` to match the
-/// `String`-returning shape of the other six.
+/// `String`-returning shape of the other seven.
 fn render_schema(orm: Orm, schema: &[TableDef]) -> Result<String, String> {
     match orm {
         Orm::SeaOrm => crate::seaorm::export(schema),
@@ -36,6 +36,7 @@ fn render_schema(orm: Orm, schema: &[TableDef]) -> Result<String, String> {
         Orm::Prisma => crate::prisma::export(schema),
         Orm::Drizzle => crate::drizzle::export(schema),
         Orm::Gorm => crate::gorm::export(schema),
+        Orm::Django => crate::django::export(schema),
     }
 }
 
@@ -51,6 +52,7 @@ macro_rules! orm_cases {
         #[case::prisma(Orm::Prisma)]
         #[case::drizzle(Orm::Drizzle)]
         #[case::gorm(Orm::Gorm)]
+        #[case::django(Orm::Django)]
         fn $test_name(#[case] orm: Orm) {
             let table = $fixture();
             let rendered = render_entity(orm, &table).unwrap();
@@ -70,6 +72,7 @@ macro_rules! orm_cases {
         #[case::prisma(Orm::Prisma)]
         #[case::drizzle(Orm::Drizzle)]
         #[case::gorm(Orm::Gorm)]
+        #[case::django(Orm::Django)]
         fn $test_name(#[case] orm: Orm) {
             let schema: Vec<TableDef> = $fixture();
             let rendered = render_schema(orm, &schema).unwrap();
@@ -331,8 +334,9 @@ orm_cases!(
 // (`SeaORM`'s tuple `from`/`to`, Prisma's multi-column `fields`/`references`,
 // Drizzle's `foreignKey({columns, foreignColumns})` plus a `one(...)` relation,
 // GORM's comma-separated `foreignKey`/`references`); SQLAlchemy and SQLModel
-// keep it as a `ForeignKeyConstraint` and JPA currently drops it, so the seven
-// outputs disagree in a way worth pinning.
+// keep it as a `ForeignKeyConstraint`, Django emits a `# composite foreign key:`
+// comment, and JPA currently drops it, so the eight outputs disagree in a way
+// worth pinning.
 orm_cases!(
     multi composite_fk_relation_snapshot,
     "composite_fk_relation",
@@ -398,9 +402,19 @@ orm_cases!(
     fixtures::relation_field_names
 );
 orm_cases!(
+    multi junction_over_composite_key_snapshot,
+    "junction_over_composite_key",
+    fixtures::junction_over_composite_key
+);
+orm_cases!(
     multi enum_name_shared_across_tables_snapshot,
     "enum_name_shared_across_tables",
     fixtures::enum_name_shared_across_tables
+);
+orm_cases!(
+    python_reserved_names_snapshot,
+    "python_reserved_names",
+    fixtures::python_reserved_names
 );
 
 /// Dispatch the per-ORM `to_pascal_case` helper from a single entry point so
@@ -414,20 +428,20 @@ fn to_pascal_case_for(orm: Orm, s: &str) -> String {
         Orm::SqlModel => crate::sqlmodel::to_pascal_case_for_tests(s),
         Orm::Jpa => crate::jpa::to_pascal_case_for_tests(s),
         Orm::Prisma | Orm::Drizzle => vespertide_naming::to_pascal_case(s),
-        Orm::Gorm => crate::python_naming::to_pascal_case(s),
+        Orm::Gorm | Orm::Django => crate::python_naming::to_pascal_case(s),
     }
 }
 
 /// Cross-ORM `to_pascal_case` consolidation. Inputs in this matrix are
 /// restricted to ASCII with `_` as the only separator — the subset where all
-/// seven ORM implementations agree.
+/// eight ORM implementations agree.
 ///
 /// Divergences intentionally NOT covered here:
 /// * `-` as separator: `SeaORM`, Prisma and Drizzle treat it as a separator
-///   (the latter two via `vespertide_naming`), the other four ORMs leave it
+///   (the latter two via `vespertide_naming`), the other five ORMs leave it
 ///   intact (their splits operate on `_` only).
 /// * Non-ASCII characters: `SeaORM`, Prisma and Drizzle use
-///   `to_ascii_uppercase`, the other four use `to_uppercase` (Unicode-aware).
+///   `to_ascii_uppercase`, the other five use `to_uppercase` (Unicode-aware).
 /// These divergences are exercised in each backend's own test module where
 /// applicable.
 #[rstest]
@@ -438,6 +452,7 @@ fn to_pascal_case_for(orm: Orm, s: &str) -> String {
 #[case::prisma(Orm::Prisma)]
 #[case::drizzle(Orm::Drizzle)]
 #[case::gorm(Orm::Gorm)]
+#[case::django(Orm::Django)]
 fn to_pascal_case_shared_semantics(
     #[values(
         ("", ""),
@@ -469,6 +484,7 @@ fn to_pascal_case_shared_semantics(
 #[case::prisma(Orm::Prisma)]
 #[case::drizzle(Orm::Drizzle)]
 #[case::gorm(Orm::Gorm)]
+#[case::django(Orm::Django)]
 fn render_entity_with_schema_snapshots(
     #[values(
         "many_to_many_article",
@@ -487,7 +503,9 @@ fn render_entity_with_schema_snapshots(
         "triple_reverse_relations",
         "multiple_has_one_relations",
         "one_to_one_source",
-        "one_to_one_shared_primary_key"
+        "one_to_one_shared_primary_key",
+        "many_to_many_reserved_names",
+        "many_to_many_uninvolved"
     )]
     scenario: &str,
     #[case] orm: Orm,

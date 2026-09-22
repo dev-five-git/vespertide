@@ -1,0 +1,14 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+package models
+
+type User struct {
+	ID        int32       `gorm:"column:id;primaryKey" json:"id"`
+	Tags      string      `gorm:"column:tags;not null;type:text" json:"tags"`
+	UserTags  []UserTags  `gorm:"foreignKey:UserID" json:"-"`
+	User_pass []User_pass `gorm:"foreignKey:UserID" json:"-"`
+}
+
+func (User) TableName() string { return "user" }

@@ -1,0 +1,20 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+from django.db import models
+
+
+class CompositeUnique(models.Model):
+    id = models.IntegerField(primary_key=True)
+    tenant_id = models.IntegerField()
+    name = models.TextField()
+
+    class Meta:
+        managed = False
+        db_table = "composite_unique"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant_id", "name"], name="uq_composite_unique__uq_tenant_name"),
+        ]

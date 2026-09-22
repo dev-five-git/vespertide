@@ -1,0 +1,32 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+from __future__ import annotations
+
+
+from sqlmodel import Field, SQLModel
+from sqlalchemy import ForeignKeyConstraint
+
+
+class User(SQLModel, table=True):
+    __tablename__ = "user"
+
+    id: int = Field(primary_key=True)
+
+class Article(SQLModel, table=True):
+    __tablename__ = "article"
+
+    media_id: int = Field(primary_key=True)
+    id: int = Field(primary_key=True)
+
+class ArticleUser(SQLModel, table=True):
+    __tablename__ = "article_user"
+
+    media_id: int = Field(primary_key=True)
+    article_id: int = Field(primary_key=True)
+    user_id: int = Field(primary_key=True, foreign_key="user.id")
+
+    __table_args__ = (
+        ForeignKeyConstraint(["media_id", "article_id"], ["article.media_id", "article.id"]),
+    )

@@ -1,0 +1,11 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+model User {
+  id Int @id
+  user_user_friends UserFriends[] @relation("UserFriendsUser")
+  friend_user_friends UserFriends[] @relation("UserFriendsFriend")
+
+  @@map("user")
+}

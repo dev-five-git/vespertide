@@ -5,6 +5,7 @@ use crate::parallel_config::{
     PYTHON_EXPORT_PAR_TABLE_MIN_LEN, SQLALCHEMY_EXPORT_PAR_TABLE_THRESHOLD,
 };
 use crate::utils::common::{collect_composite_fks, join_qualified_refs, join_quoted, push_attr};
+use crate::utils::python::escape_python_keyword;
 use rayon::prelude::*;
 use vespertide_core::schema::column::{ColumnType, ComplexColumnType, EnumValues};
 use vespertide_core::schema::constraint::TableConstraint;
@@ -340,7 +341,10 @@ fn render_column(
     // buffer (see `push_attr`), so the positional name is spliced in at the
     // front instead of `Vec::insert(0, ..)`; output is byte-identical to
     // prepending the fragment and re-joining with ", ".
-    let attr_name = sanitize_identifier(col.name.as_str(), IdentifierStart::Underscore);
+    let attr_name = escape_python_keyword(sanitize_identifier(
+        col.name.as_str(),
+        IdentifierStart::Underscore,
+    ));
     if attr_name != col.name.as_str() {
         attrs.insert_str(0, &format!("\"{}\", ", col.name));
     }

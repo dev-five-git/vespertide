@@ -1,0 +1,25 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "user")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub tags: String,
+    #[sea_orm(has_many)]
+    pub user_tags: HasMany<super::user_tags::Entity>,
+    #[sea_orm(has_many, via = "user_tags")]
+    pub tags_via_user_tags: HasMany<super::tags::Entity>,
+    #[sea_orm(has_many)]
+    pub user_pass: HasMany<super::user_pass::Entity>,
+    #[sea_orm(has_many, via = "user_pass")]
+    pub pass_via_user_pass: HasMany<super::pass::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "UserSchema");
+impl ActiveModelBehavior for ActiveModel {}

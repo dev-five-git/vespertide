@@ -1,0 +1,37 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+export const user = pgTable("user", {
+  id: integer("id").primaryKey(),
+});
+
+export const userRelations = relations(user, ({ one, many }) => ({
+  articleUser: many(articleUser),
+}));
+
+export const article = pgTable("article", {
+  mediaId: integer("media_id").notNull(),
+  id: integer("id").notNull(),
+}, (t) => [
+  primaryKey({ name: "article_pkey", columns: [t.mediaId, t.id] }),
+]);
+
+export const articleRelations = relations(article, ({ one, many }) => ({
+  articleUser: many(articleUser),
+}));
+
+export const articleUser = pgTable("article_user", {
+  mediaId: integer("media_id").notNull(),
+  articleId: integer("article_id").notNull(),
+  userId: integer("user_id").notNull(),
+}, (t) => [
+  primaryKey({ name: "article_user_pkey", columns: [t.mediaId, t.articleId, t.userId] }),
+  foreignKey({ columns: [t.mediaId, t.articleId], foreignColumns: [article.mediaId, article.id], name: "fk_article_user__article_id_media_id" }),
+  foreignKey({ columns: [t.userId], foreignColumns: [user.id], name: "fk_article_user__user_id" }),
+]);
+
+export const articleUserRelations = relations(articleUser, ({ one, many }) => ({
+  mediaArticle: one(article, { fields: [articleUser.mediaId, articleUser.articleId], references: [article.mediaId, article.id] }),
+  user: one(user, { fields: [articleUser.userId], references: [user.id] }),
+}));

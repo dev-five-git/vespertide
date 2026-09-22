@@ -1,0 +1,62 @@
+---
+source: crates/vespertide-exporter/src/tests/mod.rs
+expression: rendered
+---
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "user")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    #[sea_orm(has_many)]
+    pub article_users: HasMany<super::article_user::Entity>,
+    #[sea_orm(has_many, via = "article_user")]
+    pub articles_via_article_user: HasMany<super::article::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "UserSchema");
+impl ActiveModelBehavior for ActiveModel {}
+
+
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "article")]
+pub struct Model {
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub media_id: i32,
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub id: i32,
+    #[sea_orm(has_many)]
+    pub article_users: HasMany<super::article_user::Entity>,
+    #[sea_orm(has_many, via = "article_user")]
+    pub users_via_article_user: HasMany<super::user::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "ArticleSchema");
+impl ActiveModelBehavior for ActiveModel {}
+
+
+use sea_orm::entity::prelude::*;
+
+#[sea_orm::model]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "article_user")]
+pub struct Model {
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub media_id: i32,
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub article_id: i32,
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub user_id: i32,
+    #[sea_orm(belongs_to, from = "(media_id, article_id)", to = "(media_id, id)")]
+    pub article: HasOne<super::article::Entity>,
+    #[sea_orm(belongs_to, from = "user_id", to = "id")]
+    pub user: HasOne<super::user::Entity>,
+}
+
+vespera::schema_type!(Schema from Model, name = "ArticleUserSchema");
+impl ActiveModelBehavior for ActiveModel {}

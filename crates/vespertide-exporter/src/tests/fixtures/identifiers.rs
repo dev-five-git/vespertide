@@ -113,3 +113,25 @@ pub(crate) fn enum_name_shared_across_tables() -> Vec<TableDef> {
         })
         .collect()
 }
+
+/// Column names that are legal in SQL but not as Python attributes or Django
+/// fields: keywords, Django's reserved `pk`, the `__` lookup separator, a
+/// trailing `_`, a separator the sanitizer itself introduces, and a FK whose
+/// `_id`-stripped base is a keyword. The table name carries `__` too.
+pub(crate) fn python_reserved_names() -> TableDef {
+    TableDef {
+        name: "event__log".into(),
+        description: None,
+        columns: vec![
+            simple("id", SimpleColumnType::Integer),
+            simple("from", SimpleColumnType::Text),
+            simple("def", SimpleColumnType::Text),
+            simple("pk", SimpleColumnType::Integer),
+            simple("user__name", SimpleColumnType::Text),
+            simple("total_", SimpleColumnType::Integer),
+            simple("a--b", SimpleColumnType::Text),
+            simple("pass_id", SimpleColumnType::Integer),
+        ],
+        constraints: vec![pk(&["id"]), fk(&["pass_id"], "targets", &["id"])],
+    }
+}

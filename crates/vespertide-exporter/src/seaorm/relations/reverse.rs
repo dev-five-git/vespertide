@@ -6,7 +6,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use vespertide_core::{ColumnName, TableConstraint, TableDef, TableName};
+use vespertide_core::{TableConstraint, TableDef};
 use vespertide_naming::seaorm_module_name;
 
 use super::super::imports::{
@@ -15,7 +15,7 @@ use super::super::imports::{
 };
 use super::super::render::primary_key_columns;
 use super::naming::{generate_relation_enum_name, pluralize, unique_relation_enum_name};
-use crate::constraint_scan::single_column_uniques;
+use crate::constraint_scan::{junction_targets, single_column_uniques};
 
 /// Information about a reverse relation to be generated.
 struct ReverseRelation {
@@ -75,63 +75,21 @@ pub(super) fn collect_reverse_relation_targets(
     targets
 }
 
-/// Collect target entities from a junction table for M2M relations.
+/// Collect target entities from a junction table for M2M relations: the
+/// junction itself, then every linked table `schema` knows.
 fn collect_many_to_many_targets(
     current_table: &TableDef,
     junction_table: &TableDef,
     junction_pk: &HashSet<&str>,
     schema: &[TableDef],
 ) -> Option<Vec<String>> {
-    if junction_pk.len() < 2 {
-        return None;
-    }
-
-    let fks: Vec<(&[ColumnName], &TableName)> = junction_table
-        .constraints
-        .iter()
-        .filter_map(|c| {
-            if let TableConstraint::ForeignKey {
-                columns, ref_table, ..
-            } = c
-            {
-                Some((columns.as_slice(), ref_table))
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    if fks.len() < 2 {
-        return None;
-    }
-
-    let all_fk_cols_in_pk = fks
-        .iter()
-        .all(|(cols, _)| cols.iter().all(|c| junction_pk.contains(c.as_str())));
-
-    if !all_fk_cols_in_pk {
-        return None;
-    }
-
-    fks.iter()
-        .find(|(_, ref_table)| **ref_table == current_table.name)?;
-
-    let mut targets = Vec::new();
-
-    // Junction table itself
-    targets.push(junction_table.name.to_string());
-
-    // Target tables via M2M
-    for (_, ref_table) in &fks {
-        if **ref_table == current_table.name {
-            continue;
-        }
-        let target_exists = schema.iter().any(|t| &t.name == *ref_table);
-        if target_exists {
-            targets.push(ref_table.to_string());
-        }
-    }
-
+    let m2m = junction_targets(current_table, junction_table, junction_pk)?;
+    let mut targets = vec![junction_table.name.to_string()];
+    targets.extend(
+        m2m.into_iter()
+            .filter(|target| schema.iter().any(|t| &t.name == *target))
+            .map(ToString::to_string),
+    );
     Some(targets)
 }
 
@@ -363,55 +321,14 @@ fn collect_many_to_many_relations(
     junction_pk: &HashSet<&str>,
     schema: &[TableDef],
 ) -> Option<Vec<ReverseRelation>> {
-    // Junction table must have composite PK (2+ columns)
-    if junction_pk.len() < 2 {
+    let m2m = junction_targets(current_table, junction_table, junction_pk)?;
+    // Every FK points back at the current table: a self-relation, not an M2M
+    // junction linking two distinct tables.
+    if m2m.is_empty() {
         return None;
     }
-
-    // Collect all FKs from the junction table
-    let fks: Vec<(&[ColumnName], &TableName)> = junction_table
-        .constraints
-        .iter()
-        .filter_map(|c| {
-            if let TableConstraint::ForeignKey {
-                columns, ref_table, ..
-            } = c
-            {
-                Some((columns.as_slice(), ref_table))
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    // Must have at least 2 FKs to be a junction table
-    if fks.len() < 2 {
-        return None;
-    }
-
-    // Check if all FK columns are part of the PK (typical junction table pattern)
-    let all_fk_cols_in_pk = fks
-        .iter()
-        .all(|(cols, _)| cols.iter().all(|c| junction_pk.contains(c.as_str())));
-
-    if !all_fk_cols_in_pk {
-        return None;
-    }
-
-    // Find which FK references the current table
-    fks.iter()
-        .find(|(_, ref_table)| **ref_table == current_table.name)?;
 
     let mut relations = Vec::new();
-
-    // All FKs point back at the current table ⇒ pure self-ref junction, not an
-    // M2M junction linking two distinct tables.
-    if fks
-        .iter()
-        .all(|(_, ref_table)| **ref_table == current_table.name)
-    {
-        return None;
-    }
 
     // First, add has_many to the junction table itself (direct relation, not M2M)
     let junction_pascal = to_pascal_case(&junction_table.name);
@@ -429,12 +346,8 @@ fn collect_many_to_many_relations(
     });
 
     // Then add has_many with via for the target tables (M2M relations)
-    for (_columns, ref_table) in &fks {
-        if **ref_table == current_table.name {
-            continue;
-        }
-
-        let target_exists = schema.iter().any(|t| &t.name == *ref_table);
+    for ref_table in m2m {
+        let target_exists = schema.iter().any(|t| &t.name == ref_table);
         if !target_exists {
             continue;
         }
