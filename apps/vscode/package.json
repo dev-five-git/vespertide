@@ -1,0 +1,112 @@
+{
+  "name": "vespertide-vscode",
+  "displayName": "Vespertide",
+  "description": "Database schema management — ORM editor, ERD viewer, migration diff, and ORM converter",
+  "version": "0.1.61",
+  "publisher": "vespertide",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "vespertide.openAIAgent",
+        "title": "AI Agent",
+        "icon": "$(comment-discussion)",
+        "category": "Vespertide"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "vespertide.openAIAgent",
+          "when": "view == vespertide.mainPanel",
+          "group": "navigation"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "vespertide",
+          "title": "Vespertide",
+          "icon": "assets/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "vespertide": [
+        {
+          "type": "webview",
+          "id": "vespertide.mainPanel",
+          "name": "Vespertide"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Vespertide",
+      "properties": {
+        "vespertide.mcpEndpoint": {
+          "type": "string",
+          "default": "http://localhost:3456",
+          "description": "MCP 서버 엔드포인트 URL"
+        },
+        "vespertide.oauth.slack.clientId": {
+          "type": "string",
+          "default": "",
+          "description": "Slack OAuth App Client ID (https://api.slack.com/apps)"
+        },
+        "vespertide.oauth.slack.clientSecret": {
+          "type": "string",
+          "default": "",
+          "description": "Slack OAuth App Client Secret"
+        },
+        "vespertide.oauth.notion.clientId": {
+          "type": "string",
+          "default": "",
+          "description": "Notion OAuth Client ID (https://www.notion.so/my-integrations)"
+        },
+        "vespertide.oauth.notion.clientSecret": {
+          "type": "string",
+          "default": "",
+          "description": "Notion OAuth Client Secret"
+        },
+        "vespertide.oauth.jira.clientId": {
+          "type": "string",
+          "default": "",
+          "description": "Atlassian OAuth App Client ID (https://developer.atlassian.com/console/myapps/)"
+        },
+        "vespertide.oauth.gemini.clientId": {
+          "type": "string",
+          "default": "",
+          "description": "Google OAuth Client ID (https://console.cloud.google.com/apis/credentials) — use Desktop app type"
+        },
+        "vespertide.oauth.gemini.clientSecret": {
+          "type": "string",
+          "default": "",
+          "description": "Google OAuth Client Secret"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "webpack --mode production && npm run build:webview",
+    "build:ext": "webpack --mode production",
+    "build:webview": "cd ../extension-webview && npm run build",
+    "dev": "webpack --mode development --watch",
+    "dev:webview": "cd ../extension-webview && npm run dev",
+    "package": "vsce package",
+    "compile": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.3.0",
+    "webpack": "^5.90.0",
+    "webpack-cli": "^5.1.4"
+  }
+}
