@@ -2694,13 +2694,12 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter"
-version = "0.26.12"
+version = "0.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83c567a8e18ae93f20982c90370b16fd24023aeaf52f6052b96957ab253a0fec"
+checksum = "a5129de2ccc97808c4583d48f1fb44576d015cf241e432800572bda11ef30c3b"
 dependencies = [
  "cc",
  "regex",
- "regex-syntax",
  "serde_json",
  "streaming-iterator",
  "tree-sitter-language",
@@ -2718,9 +2717,9 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-language"
-version = "0.1.7"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "009994f150cc0cd50ff54917d5bc8bffe8cad10ca10d81c34da2ec421ae61782"
+checksum = "d0af592be68c579aa78a16846bd19422978c3c52e438523d45ff5d1bff1f9d4a"
 
 [[package]]
 name = "tree-sitter-yaml"
@@ -2833,7 +2832,7 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "vespertide"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "sea-orm",
  "tokio",
@@ -2843,7 +2842,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-cli"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2877,7 +2876,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-config"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "clap",
  "schemars",
@@ -2887,7 +2886,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "criterion",
  "proptest",
@@ -2902,7 +2901,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-exporter"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "clap",
  "criterion",
@@ -2932,7 +2931,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-loader"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "rayon",
@@ -2948,7 +2947,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-lsp"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "criterion",
  "dashmap",
@@ -2979,7 +2978,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-macro"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -2999,7 +2998,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-naming"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "criterion",
  "proptest",
@@ -3018,7 +3017,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-planner"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "criterion",
  "insta",
@@ -3033,7 +3032,7 @@ dependencies = [
 
 [[package]]
 name = "vespertide-query"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "criterion",
  "insta",
