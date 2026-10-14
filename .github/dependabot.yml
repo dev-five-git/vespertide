@@ -5,6 +5,7 @@
 # `changepacks/action@main` is grouped under `ignore` per project policy
 # (org-internal action intentionally tracks main).
 
+
 version: 2
 updates:
   # GitHub Actions: actions are pinned to major version tags (e.g. `@v6`),
@@ -17,7 +18,7 @@ updates:
       day: "monday"
       time: "06:00"
       timezone: "Asia/Seoul"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       github-actions-major:
         applies-to: version-updates
@@ -32,6 +33,7 @@ updates:
       - dependency-name: "*"
         update-types: ["version-update:semver-minor", "version-update:semver-patch"]
 
+
   # Cargo dependencies: weekly minor/patch updates, group by ecosystem.
   - package-ecosystem: "cargo"
     directory: "/"
@@ -40,7 +42,7 @@ updates:
       day: "monday"
       time: "06:00"
       timezone: "Asia/Seoul"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 0
     groups:
       cargo-patches:
         applies-to: version-updates
